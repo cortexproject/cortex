@@ -29,7 +29,7 @@ type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, 
 
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
 		return "", BlocksStorageFlags
@@ -40,7 +40,7 @@ func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
 		return cortexConfigFile, e2e.EmptyFlags()
@@ -86,7 +86,7 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 
 func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
 		// set the ca

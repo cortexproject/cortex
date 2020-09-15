@@ -2,9 +2,13 @@ package ingester
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -174,4 +178,79 @@ func TestFlushReasonString(t *testing.T) {
 	for fr := flushReason(0); fr < maxFlushReason; fr++ {
 		require.True(t, len(fr.String()) > 0)
 	}
+}
+
+// Issue 3139 depends on a timing between immediate flush, and periodic flush, and the fact that "immediate" chunks get behind "idle" chunks.
+// Periodic flush may still find "idle" chunks and put them onto queue, because "ingester for flusher" still runs all the loops.
+// When flush of "immediate" chunk fails (eg. due to storage error), it is put back onto the queue, but behind Idle chunk.
+// When handling Idle chunks, they are then compared against user limit (MinChunkLength), which panics -- because we were not setting limits.
+func TestIssue3139(t *testing.T) {
+	dir, err := ioutil.TempDir("", "wal")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(dir)
+	})
+
+	cfg := emptyIngesterConfig()
+	cfg.WALConfig.FlushOnShutdown = false
+	cfg.WALConfig.Dir = dir
+	cfg.WALConfig.WALEnabled = true
+
+	cfg.FlushCheckPeriod = 10 * time.Millisecond
+	cfg.MaxChunkAge = 1 * time.Hour // We don't want to hit "age" check, but idle-ness check.
+	cfg.MaxChunkIdle = 0            // Everything is idle immediately
+
+	// Sleep long enough for period flush to happen. Also we want to return errors to the first attempts, so that
+	// series are flushed again.
+	st := &sleepyStoreWithErrors{d: 500 * time.Millisecond, errorsToGenerate: 1}
+
+	ing := createTestIngester(t, cfg, st)
+
+	// Generates a sample. While it is flushed for the first time (which returns error), it will be put on the queue
+	// again.
+	pushSample(t, ing, client.Sample{Value: 100, TimestampMs: int64(model.Now())})
+
+	// stop ingester -- no flushing should happen yet
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	// Make sure nothing was flushed yet... sample should be in WAL
+	require.Equal(t, 0, st.samples)
+	require.Equal(t, 1, st.errorsToGenerate) // no error was "consumed"
+
+	// Start new ingester, for flushing only
+	ing, err = NewForFlusher(cfg, st, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+	t.Cleanup(func() {
+		// Just in case test fails earlier, stop ingester anyay.
+		_ = services.StopAndAwaitTerminated(context.Background(), ing)
+	})
+
+	ing.Flush()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+
+	// Verify sample was flushed from WAL.
+	require.Equal(t, 1, st.samples)
+}
+
+type sleepyStoreWithErrors struct {
+	d                time.Duration
+	errorsToGenerate int
+	samples          int
+}
+
+func (m *sleepyStoreWithErrors) Put(_ context.Context, chunks []chunk.Chunk) error {
+	if m.d > 0 {
+		time.Sleep(m.d)
+	}
+
+	if m.errorsToGenerate > 0 {
+		m.errorsToGenerate--
+		return fmt.Errorf("put error")
+	}
+
+	for _, c := range chunks {
+		m.samples += c.Data.Len()
+	}
+	return nil
 }

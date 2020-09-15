@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -843,19 +844,9 @@ func BenchmarkIngesterPushErrors(b *testing.B) {
 	benchmarkIngesterPush(b, limits, true)
 }
 
-func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
-	cfg := defaultIngesterTestConfig()
-	clientCfg := defaultClientTestConfig()
-
-	const (
-		series  = 100
-		samples = 100
-	)
-
-	// Construct a set of realistic-looking samples, all with slightly different label sets
-	var allLabels []labels.Labels
-	var allSamples []client.Sample
-	for j := 0; j < series; j++ {
+// Construct a set of realistic-looking samples, all with slightly different label sets
+func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []client.Sample) {
+	for j := 0; j < nSeries; j++ {
 		labels := chunk.BenchmarkLabels.Copy()
 		for i := range labels {
 			if labels[i].Name == "cpu" {
@@ -865,6 +856,19 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		allLabels = append(allLabels, labels)
 		allSamples = append(allSamples, client.Sample{TimestampMs: 0, Value: float64(j)})
 	}
+	return
+}
+
+func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
+	cfg := defaultIngesterTestConfig()
+	clientCfg := defaultClientTestConfig()
+
+	const (
+		series  = 100
+		samples = 100
+	)
+
+	allLabels, allSamples := benchmarkData(series)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	encodings := []struct {
@@ -896,4 +900,49 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		})
 	}
 
+}
+
+func BenchmarkIngester_QueryStream(b *testing.B) {
+	cfg := defaultIngesterTestConfig()
+	clientCfg := defaultClientTestConfig()
+	limits := defaultLimitsTestConfig()
+	_, ing := newTestStore(b, cfg, clientCfg, limits, nil)
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	const (
+		series  = 2000
+		samples = 1000
+	)
+
+	allLabels, allSamples := benchmarkData(series)
+
+	// Bump the timestamp and set a random value on each of our test samples each time round the loop
+	for j := 0; j < samples; j++ {
+		for i := range allSamples {
+			allSamples[i].TimestampMs = int64(j + 1)
+			allSamples[i].Value = rand.Float64()
+		}
+		_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, nil, client.API))
+		require.NoError(b, err)
+	}
+
+	req := &client.QueryRequest{
+		StartTimestampMs: 0,
+		EndTimestampMs:   samples + 1,
+
+		Matchers: []*client.LabelMatcher{{
+			Type:  client.EQUAL,
+			Name:  model.MetricNameLabel,
+			Value: "container_cpu_usage_seconds_total",
+		}},
+	}
+
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+
+	b.ResetTimer()
+
+	for ix := 0; ix < b.N; ix++ {
+		err := ing.QueryStream(req, mockStream)
+		require.NoError(b, err)
+	}
 }

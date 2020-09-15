@@ -24,7 +24,7 @@ func TestProcessorError(t *testing.T) {
 		return nil
 	}
 
-	p := newProcessor("output", resultFn, nil, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"type"}), prometheus.NewCounter(prometheus.CounterOpts{}))
+	p := newProcessor("output", resultFn, nil, nil, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"type"}), prometheus.NewCounter(prometheus.CounterOpts{}))
 
 	// Day 18500
 	now := time.Unix(1598456178, 0)

@@ -10,6 +10,10 @@ type AllowedUsers map[string]struct{}
 
 var AllowAllUsers = AllowedUsers(nil)
 
+func (a AllowedUsers) AllUsersAllowed() bool {
+	return a == nil
+}
+
 func (a AllowedUsers) IsAllowed(user string) bool {
 	if a == nil {
 		return true

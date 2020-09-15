@@ -69,6 +69,18 @@ func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string
 			Name: "cortex_blocksconvert_scheduler_scanned_plans",
 			Help: "Number of plans in different status",
 		}, []string{"status"}),
+		queuedPlansGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scheduler_queued_plans",
+			Help: "Number of queued plans",
+		}),
+		oldestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scheduler_oldest_queued_plan_seconds",
+			Help: "Unix timestamp of oldest plan.",
+		}),
+		newestPlanTimestamp: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scheduler_newest_queued_plan_seconds",
+			Help: "Unix timestamp of newest plan",
+		}),
 	}
 
 	s.Service = services.NewTimerService(cfg.ScanInterval, s.scanBucketForPlans, s.scanBucketForPlans, nil)
@@ -85,7 +97,10 @@ type Scheduler struct {
 	bucket       objstore.Bucket
 	bucketPrefix string
 
-	planStatus *prometheus.GaugeVec
+	planStatus          *prometheus.GaugeVec
+	queuedPlansGauge    prometheus.Gauge
+	oldestPlanTimestamp prometheus.Gauge
+	newestPlanTimestamp prometheus.Gauge
 
 	// Used to avoid scanning while there is dequeuing happening.
 	dequeueWG sync.WaitGroup
@@ -138,7 +153,9 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	var queue []queuedPlan
 
 	runConcurrently(ctx, s.cfg.PlanScanConcurrency, users, func(user string) {
-		userPlans, err := scanForPlans(ctx, s.bucket, s.bucketPrefix, user)
+		userPrefix := path.Join(s.bucketPrefix, user) + "/"
+
+		userPlans, err := scanForPlans(ctx, s.bucket, userPrefix)
 		if err != nil {
 			level.Error(s.log).Log("msg", "failed to scan plans for user", "user", user, "err", err)
 			return
@@ -151,19 +168,9 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 		for base, plan := range userPlans {
 			st := plan.Status()
 			if st == InProgress {
-				for pg, t := range plan.ProgressFiles {
-					if time.Since(t) > s.cfg.MaxProgressFileAge {
-						level.Warn(s.log).Log("msg", "deleting obsolete progress file", "path", pg)
-						err := s.bucket.Delete(ctx, pg)
-						if err != nil {
-							level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
-						} else {
-							delete(plan.ProgressFiles, pg)
-						}
-					}
-				}
+				s.deleteObsoleteProgressFiles(ctx, &plan, path.Join(userPrefix, base))
 
-				// After deleting old progress files, status might have changed from InProgress to New.
+				// After deleting old progress files, status might have changed from InProgress to Error.
 				st = plan.Status()
 			}
 
@@ -203,6 +210,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	s.scanMu.Lock()
 	s.allUserPlans = allPlans
 	s.plansQueue = queue
+	s.updateQueuedPlansMetrics()
 	s.scanMu.Unlock()
 
 	totalPlans := 0
@@ -213,6 +221,31 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 	level.Info(s.log).Log("msg", "plans scan finished", "queued", len(queue), "total_plans", totalPlans)
 
 	return nil
+}
+
+func (s *Scheduler) deleteObsoleteProgressFiles(ctx context.Context, plan *plan, planBaseName string) {
+	for pg, t := range plan.ProgressFiles {
+		if time.Since(t) < s.cfg.MaxProgressFileAge {
+			continue
+		}
+
+		level.Warn(s.log).Log("msg", "found obsolete progress file, will be deleted and error uploaded", "path", pg)
+
+		errFile := blocksconvert.ErrorFilename(planBaseName)
+		if err := s.bucket.Upload(ctx, blocksconvert.ErrorFilename(planBaseName), strings.NewReader("Obsolete progress file found: "+pg)); err != nil {
+			level.Error(s.log).Log("msg", "failed to create error for obsolete progress file", "err", err)
+			continue
+		}
+
+		plan.ErrorFile = errFile
+
+		if err := s.bucket.Delete(ctx, pg); err != nil {
+			level.Error(s.log).Log("msg", "failed to delete obsolete progress file", "path", pg, "err", err)
+			continue
+		}
+
+		delete(plan.ProgressFiles, pg)
+	}
 }
 
 // Returns next plan that builder should work on.
@@ -273,6 +306,7 @@ func (s *Scheduler) getNextPlanAndIncreaseDequeuingWG() string {
 
 	var p string
 	p, s.plansQueue = s.plansQueue[0].PlanFile, s.plansQueue[1:]
+	s.updateQueuedPlansMetrics()
 
 	s.dequeueWG.Add(1)
 	return p
@@ -320,18 +354,18 @@ func scanForUsers(ctx context.Context, bucket objstore.Bucket, bucketPrefix stri
 	return users, err
 }
 
-func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, user string) (map[string]plan, error) {
-	prefix := path.Join(bucketPrefix, user)
-	prefixWithSlash := prefix + "/"
-
+// Returns map of "base name" -> plan. Base name is object name of the plan, with removed prefix
+// and also stripped from suffixes. Scanner-produced base names are day indexes.
+// Individual paths in plan struct are full paths.
+func scanForPlans(ctx context.Context, bucket objstore.Bucket, prefix string) (map[string]plan, error) {
 	plans := map[string]plan{}
 
 	err := bucket.Iter(ctx, prefix, func(fullPath string) error {
-		if !strings.HasPrefix(fullPath, prefixWithSlash) {
+		if !strings.HasPrefix(fullPath, prefix) {
 			return errors.Errorf("invalid prefix: %v", fullPath)
 		}
 
-		filename := fullPath[len(prefixWithSlash):]
+		filename := fullPath[len(prefix):]
 		if ok, base := blocksconvert.IsPlanFilename(filename); ok {
 			p := plans[base]
 			p.PlanFiles = append(p.PlanFiles, fullPath)
@@ -357,7 +391,7 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, bucketPrefix, use
 	})
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get plan status for user %s", user)
+		return nil, err
 	}
 
 	return plans, nil
@@ -428,4 +462,18 @@ func (s *Scheduler) httpPlans(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	util.RenderHTTPResponse(writer, data, plansTemplate, req)
+}
+
+// This function runs with lock.
+func (s *Scheduler) updateQueuedPlansMetrics() {
+	s.queuedPlansGauge.Set(float64(len(s.plansQueue)))
+
+	if len(s.plansQueue) > 0 {
+		daySeconds := 24 * time.Hour.Seconds()
+		s.oldestPlanTimestamp.Set(float64(s.plansQueue[len(s.plansQueue)-1].DayIndex) * daySeconds)
+		s.newestPlanTimestamp.Set(float64(s.plansQueue[0].DayIndex) * daySeconds)
+	} else {
+		s.oldestPlanTimestamp.Set(0)
+		s.newestPlanTimestamp.Set(0)
+	}
 }

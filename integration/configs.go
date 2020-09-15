@@ -4,11 +4,10 @@ package integration
 
 import (
 	"fmt"
-	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -19,7 +18,7 @@ type storeConfig struct {
 }
 
 const (
-	networkNamePrefix      = "e2e-cortex-test-"
+	defaultNetworkName     = "e2e-cortex-test"
 	bucketName             = "cortex"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
@@ -31,21 +30,19 @@ const (
 	serverKeyFile          = "certs/server.key"
 )
 
-// Generate a 6 character (a-z,0-9) id for the test being run.
-// This ID is used to generate a network name for the test
-func genUniqueTestID() string {
-	rand.Seed(time.Now().UnixNano())
-	chars := []rune("abcdefghijklmnopqrstuvwxyz" + "0123456789")
-	length := 6
-	var b strings.Builder
-	for i := 0; i < length; i++ {
-		b.WriteRune(chars[rand.Intn(len(chars))])
+// GetNetworkName returns the docker network name to run tests within.
+func GetNetworkName() string {
+	// If the E2E_NETWORK_NAME is set, use that for the network name.
+	// Otherwise, return the default network name.
+	if os.Getenv("E2E_NETWORK_NAME") != "" {
+		return os.Getenv("E2E_NETWORK_NAME")
 	}
-	return b.String() // E.g. "ExcbsVQs"
+
+	return defaultNetworkName
 }
 
 var (
-	networkName         = networkNamePrefix + genUniqueTestID()
+	networkName         = GetNetworkName()
 	storeConfigTemplate = `
 - from: {{.From}}
   store: {{.IndexStore}}
@@ -109,18 +106,18 @@ var (
 	}
 
 	BlocksStorageFlags = map[string]string{
-		"-store.engine":                                              blocksStorageEngine,
-		"-experimental.blocks-storage.backend":                       "s3",
-		"-experimental.blocks-storage.tsdb.block-ranges-period":      "1m",
-		"-experimental.blocks-storage.bucket-store.sync-interval":    "5s",
-		"-experimental.blocks-storage.tsdb.retention-period":         "5m",
-		"-experimental.blocks-storage.tsdb.ship-interval":            "1m",
-		"-experimental.blocks-storage.tsdb.head-compaction-interval": "1s",
-		"-experimental.blocks-storage.s3.access-key-id":              e2edb.MinioAccessKey,
-		"-experimental.blocks-storage.s3.secret-access-key":          e2edb.MinioSecretKey,
-		"-experimental.blocks-storage.s3.bucket-name":                bucketName,
-		"-experimental.blocks-storage.s3.endpoint":                   fmt.Sprintf("%s-minio-9000:9000", networkName),
-		"-experimental.blocks-storage.s3.insecure":                   "true",
+		"-store.engine":                                 blocksStorageEngine,
+		"-blocks-storage.backend":                       "s3",
+		"-blocks-storage.tsdb.block-ranges-period":      "1m",
+		"-blocks-storage.bucket-store.sync-interval":    "5s",
+		"-blocks-storage.tsdb.retention-period":         "5m",
+		"-blocks-storage.tsdb.ship-interval":            "1m",
+		"-blocks-storage.tsdb.head-compaction-interval": "1s",
+		"-blocks-storage.s3.access-key-id":              e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key":          e2edb.MinioSecretKey,
+		"-blocks-storage.s3.bucket-name":                bucketName,
+		"-blocks-storage.s3.endpoint":                   fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":                   "true",
 	}
 
 	BlocksStorageConfig = buildConfigFromTemplate(`

@@ -106,6 +106,7 @@ func (tl *TombstonesLoader) reloadTombstones() error {
 	for userID, oldGenNumbers := range tl.cacheGenNumbers {
 		newGenNumbers, err := tl.deleteStore.getCacheGenerationNumbers(context.Background(), userID)
 		if err != nil {
+			tl.cacheGenNumbersMtx.RUnlock()
 			return err
 		}
 

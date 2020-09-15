@@ -6,15 +6,20 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -78,6 +83,7 @@ func TestTsdbBuilder(t *testing.T) {
 	blocks := db.Blocks()
 	require.Equal(t, 1, len(blocks))
 	require.Equal(t, id, blocks[0].Meta().ULID)
+	require.Equal(t, id, blocks[0].Meta().Compaction.Sources[0])
 	require.Equal(t, uint64(seriesCount), blocks[0].Meta().Stats.NumSeries)
 	require.Equal(t, uint64(totalSamples.Load()), blocks[0].Meta().Stats.NumSamples)
 
@@ -107,6 +113,33 @@ func TestTsdbBuilder(t *testing.T) {
 	require.NoError(t, q.Close())
 
 	require.NoError(t, db.Close())
+
+	m, err := metadata.Read(filepath.Join(dir, id.String()))
+	require.NoError(t, err)
+
+	otherID := ulid.MustNew(ulid.Now(), nil)
+
+	// Make sure that deduplicate filter doesn't remove this block (thanks to correct sources).
+	df := block.NewDeduplicateFilter()
+	inp := map[ulid.ULID]*metadata.Meta{
+		otherID: {
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    otherID,
+				MinTime: 0,
+				MaxTime: 0,
+				Compaction: tsdb.BlockMetaCompaction{
+					Sources: []ulid.ULID{otherID},
+				},
+				Version: 0,
+			},
+		},
+
+		id: m,
+	}
+
+	err = df.Filter(context.Background(), inp, extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"}))
+	require.NoError(t, err)
+	require.NotNil(t, inp[id])
 }
 
 func metricInfo(ix int) (labels.Labels, int) {

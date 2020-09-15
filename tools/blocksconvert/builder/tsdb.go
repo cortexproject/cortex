@@ -188,6 +188,7 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 	if err := d.series.flushSeries(); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "flushing series")
 	}
+	d.seriesInMemory.Set(0)
 
 	meta := &metadata.Meta{
 		BlockMeta: tsdb.BlockMeta{

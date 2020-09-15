@@ -181,7 +181,7 @@ GET,POST /ingester/flush
 GET,POST /flush
 ```
 
-Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
+Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
 
 ### Shutdown
 

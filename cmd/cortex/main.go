@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -148,9 +149,21 @@ func main() {
 	util.CheckFatal("initializing cortex", err)
 
 	if t.Cfg.ListModules {
+		allDeps := t.ModuleManager.DependenciesForModule(cortex.All)
+
 		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
-			fmt.Fprintln(os.Stdout, m)
+			ix := sort.SearchStrings(allDeps, m)
+			included := ix < len(allDeps) && allDeps[ix] == m
+
+			if included {
+				fmt.Fprintln(os.Stdout, m, "*")
+			} else {
+				fmt.Fprintln(os.Stdout, m)
+			}
 		}
+
+		fmt.Fprintln(os.Stdout)
+		fmt.Fprintln(os.Stdout, "Modules marked with * are included in target All.")
 
 		// in test mode we cannot call os.Exit, it will stop to whole test process.
 		if testMode {

@@ -22,36 +22,46 @@ var (
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
 		// 0.6.0 used 204 status code for querier and ingester
 		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0": preCortex1Flags,
+		"quay.io/cortexproject/cortex:v0.6.0": preCortex10Flags,
 
 		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0": preCortex1Flags,
+		"quay.io/cortexproject/cortex:v0.7.0": preCortex10Flags,
 
 		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
 			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-				"-experimental.store-gateway.sharding-enabled":              "",
-				"-experimental.store-gateway.sharding-ring.store":           "",
-				"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-				"-experimental.store-gateway.replication-factor":            "",
+				"-store-gateway.sharding-enabled":              "",
+				"-store-gateway.sharding-ring.store":           "",
+				"-store-gateway.sharding-ring.consul.hostname": "",
+				"-store-gateway.replication-factor":            "",
 			})
 		},
 
-		"quay.io/cortexproject/cortex:v1.1.0": nil,
-		"quay.io/cortexproject/cortex:v1.2.0": nil,
-		"quay.io/cortexproject/cortex:v1.3.0": nil,
+		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
 	}
 )
 
-func preCortex1Flags(flags map[string]string) map[string]string {
+func preCortex10Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              flags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   flags["-table-manager.poll-interval"],
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
+		"-schema-config-file":                          "",
+		"-config-yaml":                                 flags["-schema-config-file"],
+		"-table-manager.poll-interval":                 "",
+		"-dynamodb.poll-interval":                      flags["-table-manager.poll-interval"],
+		"-store-gateway.sharding-enabled":              "",
+		"-store-gateway.sharding-ring.store":           "",
+		"-store-gateway.sharding-ring.consul.hostname": "",
+		"-store-gateway.replication-factor":            "",
+	})
+}
+
+func preCortex14Flags(flags map[string]string) map[string]string {
+	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
+		// Blocks storage CLI flags removed the "experimental" prefix in 1.4.
+		"-store-gateway.sharding-enabled":              "",
+		"-store-gateway.sharding-ring.store":           "",
+		"-store-gateway.sharding-ring.consul.hostname": "",
+		"-store-gateway.replication-factor":            "",
 	})
 }
 

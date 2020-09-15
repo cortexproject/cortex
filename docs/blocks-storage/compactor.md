@@ -73,7 +73,7 @@ This section described the compactor configuration. For the general Cortex confi
 
 ### `compactor_config`
 
-The `compactor_config` configures the compactor for the experimental blocks storage.
+The `compactor_config` configures the compactor for the blocks storage.
 
 ```yaml
 compactor:

@@ -1,6 +1,6 @@
 ---
-title: "Getting Started with Blocks Storage (experimental)"
-linkTitle: "Blocks Storage (experimental)"
+title: "Getting Started with Blocks Storage"
+linkTitle: "Blocks Storage"
 weight: 2
 slug: getting-started-blocks-storage
 ---
@@ -9,7 +9,7 @@ Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 
-This document will focus on single-process Cortex with the experimental blocks storage.
+This document will focus on single-process Cortex with the blocks storage.
 See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../blocks-storage/)
 for more information about the blocks storage.
 

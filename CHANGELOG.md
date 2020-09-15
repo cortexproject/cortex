@@ -2,15 +2,21 @@
 
 ## master / unreleased
 
+* [CHANGE] Cassandra backend support is now GA (stable).
+* [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes).
+  - `-experimental.blocks-storage.*` flags renamed to `-blocks-storage.*`
+  - `-experimental.store-gateway.*` flags renamed to `-store-gateway.*`
+  - `-experimental.querier.store-gateway-client.*` flags renamed to `-querier.store-gateway-client.*`
+  - `-experimental.querier.store-gateway-addresses` flag renamed to `-querier.store-gateway-addresses`
 * [CHANGE] Distributor API endpoints are no longer served unless target is set to `distributor` or `all`. #3112
 * [CHANGE] Increase the default Cassandra client replication factor to 3. #3007
-* [CHANGE] Experimental blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
+* [CHANGE] Blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996
   * `cortex_ingester_sent_files`
   * `cortex_ingester_received_files`
   * `cortex_ingester_received_bytes_total`
   * `cortex_ingester_sent_bytes_total`
 * [CHANGE] The buckets for the `cortex_chunk_store_index_lookups_per_query` metric have been changed to 1, 2, 4, 8, 16. #3021
-* [CHANGE] Experimental blocks storage: the `operation` label value `getrange` has changed into `get_range` for the metrics `thanos_store_bucket_cache_operation_requests_total` and `thanos_store_bucket_cache_operation_hits_total`. #3000
+* [CHANGE] Blocks storage: the `operation` label value `getrange` has changed into `get_range` for the metrics `thanos_store_bucket_cache_operation_requests_total` and `thanos_store_bucket_cache_operation_hits_total`. #3000
 * [CHANGE] Experimental Delete Series: `/api/v1/admin/tsdb/delete_series` and `/api/v1/admin/tsdb/cancel_delete_request` purger APIs to return status code `204` instead of `200` for success. #2946
 * [CHANGE] Histogram `cortex_memcache_request_duration_seconds` `method` label value changes from `Memcached.Get` to `Memcached.GetBatched` for batched lookups, and is not reported for non-batched lookups (label value `Memcached.GetMulti` remains, and had exactly the same value as `Get` in nonbatched lookups).  The same change applies to tracing spans. #3046
 * [CHANGE] TLS server validation is now enabled by default, a new parameter `tls_insecure_skip_verify` can be set to true to skip validation optionally. #3030
@@ -27,7 +33,7 @@
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed
    - `-redis.wait-on-pool-exhaustion` removed
-* [FEATURE] Experimental blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
+* [FEATURE] Blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
@@ -49,8 +55,8 @@
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013
 * [BUGFIX] Querier: query /series from ingesters regardless the `-querier.query-ingesters-within` setting. #3035
-* [BUGFIX] Experimental blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. #3015
-* [BUGFIX] Experimental blocks storage: fixed memberlist support for the store-gateways and compactors ring used when blocks sharding is enabled. #3058 #3095
+* [BUGFIX] Blocks storage: Ingester is less likely to hit gRPC message size limit when streaming data to queriers. #3015
+* [BUGFIX] Blocks storage: fixed memberlist support for the store-gateways and compactors ring used when blocks sharding is enabled. #3058 #3095
 * [BUGFIX] Fix configuration for TLS server validation, TLS skip verify was hardcoded to true for all TLS configurations and prevented validation of server certificates. #3030
 * [BUGFIX] Fixes the Alertmanager panicking when no `-alertmanager.web.external-url` is provided. #3017
 * [BUGFIX] Fixes the registration of the Alertmanager API metrics `cortex_alertmanager_alerts_received_total` and `cortex_alertmanager_alerts_invalid_total`. #3065

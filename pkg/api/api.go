@@ -277,13 +277,13 @@ func (a *API) RegisterRing(r *ring.Ring) {
 func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
 	storegatewaypb.RegisterStoreGatewayServer(a.server.GRPC, s)
 
-	a.indexPage.AddLink(SectionAdminEndpoints, "/store-gateway/ring", "Store Gateway Ring (experimental blocks storage)")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/store-gateway/ring", "Store Gateway Ring")
 	a.RegisterRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false)
 }
 
 // RegisterCompactor registers the ring UI page associated with the compactor.
 func (a *API) RegisterCompactor(c *compactor.Compactor) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status (experimental blocks storage)")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status")
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false)
 }
 

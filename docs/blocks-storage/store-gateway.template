@@ -15,7 +15,7 @@ The store-gateway is **semi-stateful**.
 
 At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
-While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-experimental.blocks-storage.bucket-store.sync-interval`.
+While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-blocks-storage.bucket-store.sync-interval`.
 
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
@@ -31,9 +31,9 @@ Store-gateways continuously monitor the ring state and whenever the ring topolog
 
 For each block belonging to a store-gateway shard, the store-gateway loads its `meta.json`, the `deletion-mark.json` and the index-header. Once a block is loaded on the store-gateway, it's ready to be queried by queriers. When the querier queries blocks through a store-gateway, the response will contain the list of actually queried block IDs. If a querier tries to query a block which has not been loaded by a store-gateway, the querier will either retry on a different store-gateway (if blocks replication is enabled) or fail the query.
 
-Blocks can be replicated across multiple store-gateway instances based on a replication factor configured via `-experimental.store-gateway.replication-factor`. The blocks replication is used to protect from query failures caused by some blocks not loaded by any store-gateway instance at a given time like, for example, in the event of a store-gateway failure or while restarting a store-gateway instance (e.g. during a rolling update).
+Blocks can be replicated across multiple store-gateway instances based on a replication factor configured via `-store-gateway.replication-factor`. The blocks replication is used to protect from query failures caused by some blocks not loaded by any store-gateway instance at a given time like, for example, in the event of a store-gateway failure or while restarting a store-gateway instance (e.g. during a rolling update).
 
-This feature can be enabled via `-experimental.store-gateway.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-experimental.store-gateway.sharding-ring.*` flags (or their respective YAML config options).
+This feature can be enabled via `-store-gateway.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-store-gateway.sharding-ring.*` flags (or their respective YAML config options).
 
 ### Sharding strategies
 
@@ -46,13 +46,13 @@ The **`default`** sharding strategy spreads the blocks of each tenant across all
 
 The **`shuffle-sharding`** strategy spreads the blocks of a tenant across a subset of store-gateway instances. This way, the number of store-gateway instances loading blocks of a single tenant is limited and the blast radius of any issue that could be introduced by the tenant's workload is limited to its shard instances.
 
-The shuffle sharding strategy can be enabled via `-experimental.store-gateway.sharding-strategy=shuffle-sharding` and requires the `-experimental.store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
+The shuffle sharding strategy can be enabled via `-store-gateway.sharding-strategy=shuffle-sharding` and requires the `-store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
 
 ### Auto-forget
 
 When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.
 
-To protect from this, when an healthy store-gateway instance finds another instance in the ring which is unhealthy for more than 10 times the configured `-experimental.store-gateway.sharding-ring.heartbeat-timeout`, the healthy instance forcibly removes the unhealthy one from the ring.
+To protect from this, when an healthy store-gateway instance finds another instance in the ring which is unhealthy for more than 10 times the configured `-store-gateway.sharding-ring.heartbeat-timeout`, the healthy instance forcibly removes the unhealthy one from the ring.
 
 This feature is called **auto-forget** and is built into the store-gateway.
 
@@ -75,14 +75,14 @@ The store-gateway can use a cache to speed up lookups of postings and series fro
 
 #### In-memory index cache
 
-The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-experimental.blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
+The `inmemory` index cache is **enabled by default** and its max size can be configured through the flag `-blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes` (or config file). The trade-off of using the in-memory index cache is:
 
 - Pros: zero latency
 - Cons: increased store-gateway memory usage, not shared across multiple store-gateway replicas (when sharding is disabled or replication factor > 1)
 
 #### Memcached index cache
 
-The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-experimental.blocks-storage.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-experimental.blocks-storage.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
+The `memcached` index cache allows to use [Memcached](https://memcached.org/) as cache backend. This cache backend is configured using `-blocks-storage.bucket-store.index-cache.backend=memcached` and requires the Memcached server(s) addresses via `-blocks-storage.bucket-store.index-cache.memcached.addresses` (or config file). The addresses are resolved using the [DNS service provider](../configuration/arguments.md#dns-service-discovery).
 
 The trade-off of using the Memcached index cache is:
 
@@ -101,9 +101,9 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
-To enable chunks cache, please set `-experimental.blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-experimental.blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
+To enable chunks cache, please set `-blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
 
-There are additional low-level options for configuring chunks cache. Please refer to other flags with `-experimental.blocks-storage.bucket-store.chunks-cache.*` prefix.
+There are additional low-level options for configuring chunks cache. Please refer to other flags with `-blocks-storage.bucket-store.chunks-cache.*` prefix.
 
 ### Metadata cache
 
@@ -116,9 +116,9 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-experimental.blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-experimental.blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
-Additional options for configuring metadata cache have `-experimental.blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
+Additional options for configuring metadata cache have `-blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 
 _The same memcached backend cluster should be shared between store-gateways and queriers._
 

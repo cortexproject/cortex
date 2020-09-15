@@ -35,8 +35,6 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
-- TSDB block storage.
-- Cassandra storage engine.
 - Azure blob storage.
 - Zone awareness based replication.
 - User subrings.

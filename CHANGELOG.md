@@ -8,6 +8,7 @@
   - `-experimental.store-gateway.*` flags renamed to `-store-gateway.*`
   - `-experimental.querier.store-gateway-client.*` flags renamed to `-querier.store-gateway-client.*`
   - `-experimental.querier.store-gateway-addresses` flag renamed to `-querier.store-gateway-addresses`
+* [CHANGE] Ingester: Removed deprecated untyped record from chunks WAL. Only if you are running `v1.0` or below, it is recommended to first upgrade to `v1.1`/`v1.2`/`v1.3` and run it for a day before upgrading to `v1.4` to avoid data loss. #3115
 * [CHANGE] Distributor API endpoints are no longer served unless target is set to `distributor` or `all`. #3112
 * [CHANGE] Increase the default Cassandra client replication factor to 3. #3007
 * [CHANGE] Blocks storage: removed the support to transfer blocks between ingesters on shutdown. When running the Cortex blocks storage, ingesters are expected to run with a persistent disk. The following metrics have been removed: #2996

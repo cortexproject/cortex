@@ -10,11 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -223,103 +221,6 @@ func TestCheckpointRepair(t *testing.T) {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 	}
 
-}
-
-func TestMigrationToTypedRecord(t *testing.T) {
-	// WAL record migration.
-	walRecordOld := &Record{
-		UserId: "12345",
-		Labels: []Labels{
-			{Fingerprint: 7568176523, Labels: []client.LabelAdapter{{Name: "n1", Value: "v1"}}},
-			{Fingerprint: 5720984283, Labels: []client.LabelAdapter{{Name: "n2", Value: "v2"}}},
-		},
-		Samples: []Sample{
-			{Fingerprint: 768276312, Timestamp: 10, Value: 10},
-			{Fingerprint: 326847234, Timestamp: 99, Value: 99},
-		},
-	}
-	walRecordNew := &WALRecord{
-		UserID: "12345",
-		Series: []tsdb_record.RefSeries{
-			{Ref: 7568176523, Labels: []labels.Label{{Name: "n1", Value: "v1"}}},
-			{Ref: 5720984283, Labels: []labels.Label{{Name: "n2", Value: "v2"}}},
-		},
-		Samples: []tsdb_record.RefSample{
-			{Ref: 768276312, T: 10, V: 10},
-			{Ref: 326847234, T: 99, V: 99},
-		},
-	}
-
-	// Encoding old record.
-	oldRecordBytes, err := proto.Marshal(walRecordOld)
-	require.NoError(t, err)
-	// Series and samples are encoded separately in the new record.
-	newRecordSeriesBytes := walRecordNew.encodeSeries(nil)
-	newRecordSamples := walRecordNew.encodeSamples(nil)
-
-	// Test decoding of old record.
-	record, walRecord := &Record{}, &WALRecord{}
-	err = decodeWALRecord(oldRecordBytes, record, walRecord)
-	require.NoError(t, err)
-	require.Equal(t, walRecordOld, record)
-	require.Equal(t, &WALRecord{}, walRecord)
-
-	// Test series and samples of new record separately.
-	record, walRecord = &Record{}, &WALRecord{}
-	err = decodeWALRecord(newRecordSeriesBytes, record, walRecord)
-	require.NoError(t, err)
-	require.Equal(t, &Record{}, record)
-	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
-	require.Equal(t, walRecordNew.Series, walRecord.Series)
-	require.Equal(t, 0, len(walRecord.Samples))
-
-	record, walRecord = &Record{}, &WALRecord{}
-	err = decodeWALRecord(newRecordSamples, record, walRecord)
-	require.NoError(t, err)
-	require.Equal(t, &Record{}, record)
-	require.Equal(t, walRecordNew.UserID, walRecord.UserID)
-	require.Equal(t, walRecordNew.Samples, walRecord.Samples)
-	require.Equal(t, 0, len(walRecord.Series))
-
-	// Checkpoint record migration.
-	checkpointRecord := &Series{
-		UserId:      "12345",
-		Fingerprint: 3479837401,
-		Labels: []client.LabelAdapter{
-			{Name: "n1", Value: "v1"},
-			{Name: "n2", Value: "v2"},
-		},
-		Chunks: []client.Chunk{
-			{
-				StartTimestampMs: 12345,
-				EndTimestampMs:   23456,
-				Encoding:         3,
-				Data:             []byte{3, 3, 65, 23, 66},
-			},
-			{
-				StartTimestampMs: 34567,
-				EndTimestampMs:   45678,
-				Encoding:         2,
-				Data:             []byte{11, 22, 33, 44, 55, 66, 77, 88},
-			},
-		},
-	}
-
-	oldRecordBytes, err = proto.Marshal(checkpointRecord)
-	require.NoError(t, err)
-	newRecordBytes, err := encodeWithTypeHeader(checkpointRecord, CheckpointRecord, nil)
-	require.NoError(t, err)
-
-	m, err := decodeCheckpointRecord(oldRecordBytes, &Series{})
-	require.NoError(t, err)
-	oldCheckpointRecordDecoded := m.(*Series)
-
-	m, err = decodeCheckpointRecord(newRecordBytes, &Series{})
-	require.NoError(t, err)
-	newCheckpointRecordDecoded := m.(*Series)
-
-	require.Equal(t, checkpointRecord, oldCheckpointRecordDecoded)
-	require.Equal(t, checkpointRecord, newCheckpointRecordDecoded)
 }
 
 func TestCheckpointIndex(t *testing.T) {

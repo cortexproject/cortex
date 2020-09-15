@@ -69,6 +69,7 @@
 * [BUGFIX] Cassandra: fixed consistency setting in the CQL session when creating the keyspace. #3105
 * [BUGFIX] Ruler: Config API would return both the `record` and `alert` in `YAML` response keys even when one of them must be empty. #3120
 * [BUGFIX] Index page now uses configured HTTP path prefix when creating links. #3126
+* [BUGFIX] Purger: fixed deadlock when reloading of tombstones failed. #3182
 * [BUGFIX] Fixed panic in flusher job, when error writing chunks to the store would cause "idle" chunks to be flushed, which triggered panic. #3140
 * [BUGFIX] Index page no longer shows links that are not valid for running Cortex instance. #3133
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157

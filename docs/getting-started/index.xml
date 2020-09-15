@@ -113,11 +113,11 @@ and verify the same data appears in both Prometheus and Cortex.&lt;/p>
 &lt;p>&lt;strong>To clean up:&lt;/strong> CTRL-C the Prometheus process and run:&lt;/p>
 &lt;pre>&lt;code>$ docker rm -f cortex1 cortex2 cortex3 consul grafana
 $ docker network remove cortex
-&lt;/code>&lt;/pre></description></item><item><title>Docs: Getting Started with Blocks Storage (experimental)</title><link>/docs/getting-started/getting-started-blocks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-blocks-storage/</guid><description>
+&lt;/code>&lt;/pre></description></item><item><title>Docs: Getting Started with Blocks Storage</title><link>/docs/getting-started/getting-started-blocks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-blocks-storage/</guid><description>
 &lt;p>Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.&lt;/p>
-&lt;p>This document will focus on single-process Cortex with the experimental blocks storage.
+&lt;p>This document will focus on single-process Cortex with the blocks storage.
 See &lt;a href="/docs/architecture/">the architecture doc&lt;/a> for more information about the microservices and &lt;a href="../blocks-storage/">blocks operation&lt;/a>
 for more information about the blocks storage.&lt;/p>
 &lt;p>Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
@@ -225,7 +225,7 @@ and verify the same data appears in both Prometheus and Cortex.&lt;/p>
 &lt;p>&lt;strong>To clean up:&lt;/strong> CTRL-C the Prometheus process and run:&lt;/p>
 &lt;pre>&lt;code>$ docker rm -f cortex1 cortex2 cortex3 consul grafana
 $ docker network remove cortex
-&lt;/code>&lt;/pre></description></item><item><title>Docs: Getting Started with Gossiped Ring (experimental)</title><link>/docs/getting-started/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-with-gossiped-ring/</guid><description>
+&lt;/code>&lt;/pre></description></item><item><title>Docs: Getting Started with Gossiped Ring</title><link>/docs/getting-started/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/getting-started-with-gossiped-ring/</guid><description>
 &lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
 &lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.

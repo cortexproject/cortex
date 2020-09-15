@@ -5,7 +5,7 @@ defaults: &defaults
   docker:
     # IMPORTANT: whenever you change the build-image version tag, remember to replace it
     #            across the entire file (there are multiple references).
-    - image: quay.io/cortexproject/build-image:clarify-local-website-setup-and-upgrade-depds-7c069848b-WIP
+    - image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
   working_directory: /go/src/github.com/cortexproject/cortex
 
 filters: &filters
@@ -87,7 +87,7 @@ jobs:
 
   test:
     docker:
-      - image: quay.io/cortexproject/build-image:clarify-local-website-setup-and-upgrade-depds-7c069848b-WIP
+      - image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
       - image: cassandra:3.11
         environment:
           JVM_OPTS: "-Xms1024M -Xmx1024M"
@@ -111,7 +111,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:clarify-local-website-setup-and-upgrade-depds-7c069848b-WIP configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2 configs-integration-test
 
   integration:
     machine:
@@ -125,8 +125,8 @@ jobs:
         name: Upgrade golang
         command: |
           cd /tmp && \
-          wget https://dl.google.com/go/go1.14.4.linux-amd64.tar.gz && \
-          tar -zxvf go1.14.4.linux-amd64.tar.gz && \
+          wget https://dl.google.com/go/go1.14.9.linux-amd64.tar.gz && \
+          tar -zxvf go1.14.9.linux-amd64.tar.gz && \
           sudo rm -fr /usr/local/go && \
           sudo mv /tmp/go /usr/local/go && \
           cd -

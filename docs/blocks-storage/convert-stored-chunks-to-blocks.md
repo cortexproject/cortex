@@ -1,36 +1,39 @@
 ---
-title: "Convert data from chunks to blocks"
-linkTitle: "Convert data from chunks to blocks"
-weight: 5
-slug: convert-data-from-chunks-to-blocks
+title: "Convert long-term storage from chunks to blocks"
+linkTitle: "Convert long-term storage from chunks to blocks"
+weight: 6
+slug: convert-long-term-storage-from-chunks-to-blocks
 ---
 
-If you have [configured your cluster to write new data to blocks](./migrate-from-chunks-to-blocks/), there is still a question about old data.
-Cortex can query both chunks and the blocks at the same time, but converting old chunks to blocks still has some benefits.
+If you have [configured your cluster to write new data to blocks](./migrate-from-chunks-to-blocks.md), there is still a question about old data.
+Cortex can query both chunks and the blocks at the same time, but converting old chunks to blocks still has some benefits, like being able to decommission the chunks storage backend and save costs.
 This document presents set of tools for doing the conversion.
 
-[Original design document](https://docs.google.com/document/d/1VI0cgaJmHD0pcrRb3UV04f8szXXGmFKQyqUJnFOcf6Q/edit?usp=sharing) for `blocksconvert is also available.
+_[Original design document](https://docs.google.com/document/d/1VI0cgaJmHD0pcrRb3UV04f8szXXGmFKQyqUJnFOcf6Q/edit?usp=sharing) for `blocksconvert` is also available._
 
 ## Tools
 
-Cortex now contains tool called `blocksconvert`, which is actually collection of three tools for doing conversion of chunks to blocks.
+Cortex provides a tool called `blocksconvert`, which is actually collection of three tools for converting chunks to blocks.
 
 Tools are:
 
-- *Scanner* scans the index database and produces so-called "plan files", each file being a set of series and chunks for each series. Plan files are uploaded to the same object store where blocks live.
-- *Scheduler* looks for plan files, and distributes them to builders. Scheduler has global view of overall conversion progress.
-- *Builder* asks scheduler for next plan file to work on, fetches chunks, puts them into TSDB block, and uploads the block to the object store. It repeats this process until there are no more plans.
+- [**Scanner**](#scanner)<br />
+  Scans the chunks index database and produces so-called "plan files", each file being a set of series and chunks for each series. Plan files are uploaded to the same object store bucket where blocks live.
+- [**Scheduler**](#scheduler)<br />
+  Looks for plan files, and distributes them to builders. Scheduler has global view of overall conversion progress.
+- [**Builder**](#builder)<br />
+  Asks scheduler for next plan file to work on, fetches chunks, puts them into TSDB block, and uploads the block to the object store. It repeats this process until there are no more plans.
 
-All tools start HTTP server (see `-server.http*` options) with `/metrics` endpoint.
+All tools start HTTP server (see `-server.http*` options) exposing the `/metrics` endpoint.
 All tools also start gRPC server (`-server.grpc*` options), but only Scheduler exposes services on it.
 
 ### Scanner
 
 Scanner is started by running `blocksconvert -target=scanner`. Scanner requires configuration for accessing Cortex Index:
 
-- `-schema-config-file` – this is standard Cortex schema file
+- `-schema-config-file` – this is standard Cortex schema file.
 - `-bigtable.instance`, `-bigtable.project` – options for BigTable access.
-- `-experimental.blocks-storage.backend` and corresponding `-experimental.blocks-storage.*` options for storing plan files
+- `-blocks-storage.backend` and corresponding `-blocks-storage.*` options for storing plan files.
 - `-scanner.local-dir` – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.
 - `-scanner.allowed-users` – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.
 - `-scanner.ignore-user` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
@@ -54,7 +57,7 @@ Scanner exposes metrics with `cortex_blocksconvert_scanner_` prefix, eg. total n
 
 Scheduler is started by running `blocksconvert -target=scheduler`. It only needs to be configured with options to access the object store with blocks:
 
-- `-experimental.blocks-storage.*` - Blocks storage object store configuration.
+- `-blocks-storage.*` - Blocks storage object store configuration.
 - `-scheduler.scan-interval` – How often to scan for plan files and their status.
 - `-scheduler.allowed-users` – Comma-separated list of Cortex tenants. If set, only plans for these tenants will be offered to Builders.
 
@@ -72,7 +75,7 @@ Builder is started by `blocksconvert -target=builder`. It needs to be configured
 - `-builder.scheduler-endpoint` - where to find scheduler, eg. "scheduler:9095"
 - `-schema-config-file` - Cortex schema file, used to find out which chunks store to use for given plan
 - `-gcs.bucketname` – when using GCS as chunks store
-- `-experimental.blocks-storage.*` - blocks storage configuration
+- `-blocks-storage.*` - blocks storage configuration
 - `-builder.output-dir` - Local directory where Builder keeps the block while it is being built. Once block is uploaded to blocks storage, it is deleted from local directory.
 
 Multiple builders may run at the same time, each builder will receive different plan to work on from scheduler.

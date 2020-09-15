@@ -463,12 +463,47 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	userAM, ok := am.alertmanagers[userID]
 	am.alertmanagersMtx.Unlock()
 
-	if !ok || !userAM.IsActive() {
-		http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+	if ok {
+		if !userAM.IsActive() {
+			http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+			return
+		}
+
+		userAM.mux.ServeHTTP(w, req)
 		return
 	}
 
-	userAM.mux.ServeHTTP(w, req)
+	if am.fallbackConfig != "" {
+		userAM, err = am.alertmanagerFromFallbackConfig(userID)
+		if err != nil {
+			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
+			return
+		}
+
+		userAM.mux.ServeHTTP(w, req)
+		return
+	}
+
+	http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+}
+
+func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
+	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
+	cfgDesc := alerts.ToProto("", nil, userID)
+	err := am.store.SetAlertConfig(context.Background(), cfgDesc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calling setConfig with an empty configuration will use the fallback config.
+	err = am.setConfig(cfgDesc)
+	if err != nil {
+		return nil, err
+	}
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	return am.alertmanagers[userID], nil
 }
 
 // GetStatusHandler returns the status handler for this multi-tenant

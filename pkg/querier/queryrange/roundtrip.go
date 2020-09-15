@@ -160,7 +160,10 @@ func NewTripperware(
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, registerer)
+		shouldCache := func(r Request) bool {
+			return !r.GetCachingOptions().Disabled
+		}
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}

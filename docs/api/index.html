@@ -203,7 +203,7 @@ POST &lt;legacy-http-prefix&gt;/rules/{namespace}
 
 # Legacy
 DELETE &lt;legacy-http-prefix&gt;/rules/{namespace}/{groupName}
-</code></pre><p>Deletes a rule group by namespace and group name. This endpoints returns <code>202</code> on success.</p><h3 id=delete-namespace>Delete namespace</h3><pre><code>DELETE /api/v1/rules/{namespace}
+</code></pre><p>Deletes a rule group by namespace and group name. This endpoints returns <code>202</code> on success.</p><p><em>This experimental endpoint is disabled by default and can be enabled via the <code>-experimental.ruler.enable-api</code> CLI flag (or its respective YAML config option).</em></p><p><em>Requires <a href=#authentication>authentication</a>.</em></p><h3 id=delete-namespace>Delete namespace</h3><pre><code>DELETE /api/v1/rules/{namespace}
 
 # Legacy
 DELETE &lt;legacy-http-prefix&gt;/rules/{namespace}

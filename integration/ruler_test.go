@@ -77,7 +77,7 @@ func TestRulerAPI(t *testing.T) {
 
 	// Delete the set rule groups
 	require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
-	require.NoError(t, c.DeleteNamespace(namespaceTwo))
+	require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
 
 	// Wait until the users manager has been terminated
 	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))

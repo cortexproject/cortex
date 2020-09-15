@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+## 1.4.0-rc.0 in progress
+
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
 * [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180
   - `-experimental.blocks-storage.*` flags renamed to `-blocks-storage.*`

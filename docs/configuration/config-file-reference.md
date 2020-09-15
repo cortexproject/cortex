@@ -614,13 +614,13 @@ lifecycler:
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
 
-# How often to update active series metrics (blocks engine only).
+# How often to update active series metrics.
 # CLI flag: -ingester.active-series-update-period
-[active_series_update_period: <duration> | default = 5m]
+[active_series_update_period: <duration> | default = 1m]
 
-# After what time is series considered to be inactive (blocks engine only).
-# CLI flag: -ingester.active-series-idle
-[active_series_idle: <duration> | default = 15m]
+# After what time a series is considered to be inactive.
+# CLI flag: -ingester.active-series-idle-timeout
+[active_series_idle_timeout: <duration> | default = 15m]
 ```
 
 ### `querier_config`

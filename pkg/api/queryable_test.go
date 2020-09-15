@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestApiStatusCodes(t *testing.T) {
@@ -40,6 +41,12 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            chunk.QueryError("special handling"), // handled specially by chunk_store_queryable
 			expectedString: "special handling",
+			expectedCode:   422,
+		},
+
+		{
+			err:            validation.LimitError("limit exceeded"),
+			expectedString: "limit exceeded",
 			expectedCode:   422,
 		},
 

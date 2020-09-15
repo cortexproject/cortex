@@ -285,7 +285,9 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	startTime := model.Time(sp.Start)
 	endTime := model.Time(sp.End)
 	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
-		return storage.ErrSeriesSet(fmt.Errorf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		return storage.ErrSeriesSet(limitErr)
+
 	}
 
 	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)

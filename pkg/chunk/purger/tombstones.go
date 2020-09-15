@@ -48,7 +48,7 @@ type TombstonesSet struct {
 }
 
 // Used for easier injection of mocks.
-type DeleteStoreApi interface {
+type DeleteStoreAPI interface {
 	getCacheGenerationNumbers(ctx context.Context, user string) (*cacheGenNumbers, error)
 	GetPendingDeleteRequestsForUser(ctx context.Context, id string) ([]DeleteRequest, error)
 }
@@ -62,13 +62,13 @@ type TombstonesLoader struct {
 	cacheGenNumbers    map[string]*cacheGenNumbers
 	cacheGenNumbersMtx sync.RWMutex
 
-	deleteStore DeleteStoreApi
+	deleteStore DeleteStoreAPI
 	metrics     *tombstonesLoaderMetrics
 	quit        chan struct{}
 }
 
 // NewTombstonesLoader creates a TombstonesLoader
-func NewTombstonesLoader(deleteStore DeleteStoreApi, registerer prometheus.Registerer) *TombstonesLoader {
+func NewTombstonesLoader(deleteStore DeleteStoreAPI, registerer prometheus.Registerer) *TombstonesLoader {
 	tl := TombstonesLoader{
 		tombstones:      map[string]*TombstonesSet{},
 		cacheGenNumbers: map[string]*cacheGenNumbers{},

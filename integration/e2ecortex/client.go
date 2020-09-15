@@ -338,8 +338,8 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	return nil
 }
 
-// DeleteNamespace deletes all the rule groups (and the namespace itself).
-func (c *Client) DeleteNamespace(namespace string) error {
+// DeleteRuleNamespace deletes all the rule groups (and the namespace itself).
+func (c *Client) DeleteRuleNamespace(namespace string) error {
 	// Create HTTP request
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), nil)
 	if err != nil {

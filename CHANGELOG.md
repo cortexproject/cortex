@@ -2,8 +2,8 @@
 
 ## master / unreleased
 
-* [CHANGE] Cassandra backend support is now GA (stable).
-* [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes).
+* [CHANGE] Cassandra backend support is now GA (stable). #3180
+* [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180
   - `-experimental.blocks-storage.*` flags renamed to `-blocks-storage.*`
   - `-experimental.store-gateway.*` flags renamed to `-store-gateway.*`
   - `-experimental.querier.store-gateway-client.*` flags renamed to `-querier.store-gateway-client.*`

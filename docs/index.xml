@@ -8103,6 +8103,7 @@ __replica__: replica2
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Changelog</title><link>/docs/changelog/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/changelog/</guid><description>
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
+&lt;h2 id="140-rc0-in-progress">1.4.0-rc.0 in progress&lt;/h2>
 &lt;ul>
 &lt;li>[CHANGE] Cassandra backend support is now GA (stable). &lt;a href="https://github.com/cortexproject/cortex/pull/3180">#3180&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Blocks storage is now GA (stable). The &lt;code>-experimental&lt;/code> prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). &lt;a href="https://github.com/cortexproject/cortex/pull/3180">#3180&lt;/a>

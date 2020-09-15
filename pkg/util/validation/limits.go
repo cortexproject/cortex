@@ -18,6 +18,13 @@ const (
 	GlobalIngestionRateStrategy = "global"
 )
 
+//LimitError are errors that do not comply with the limits specified.
+type LimitError string
+
+func (e LimitError) Error() string {
+	return string(e)
+}
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {

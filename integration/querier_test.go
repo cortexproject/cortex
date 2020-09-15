@@ -619,7 +619,3 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, TableManager, tableManager)
 }
-
-func formatTime(t time.Time) string {
-	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
-}

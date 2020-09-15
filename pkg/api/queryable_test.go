@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestApiStatusCodes(t *testing.T) {
@@ -44,7 +45,7 @@ func TestApiStatusCodes(t *testing.T) {
 		},
 
 		{
-			err:            querier.UserError("limit exceeded"),
+			err:            validation.LimitError("limit exceeded"),
 			expectedString: "limit exceeded",
 			expectedCode:   422,
 		},

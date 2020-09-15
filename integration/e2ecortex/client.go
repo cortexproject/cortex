@@ -137,8 +137,8 @@ func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Dur
 		"http://%s/api/prom/api/v1/query_range?query=%s&start=%s&end=%s&step=%s",
 		c.querierAddress,
 		url.QueryEscape(query),
-		formatTime(start),
-		formatTime(end),
+		FormatTime(start),
+		FormatTime(end),
 		strconv.FormatFloat(step.Seconds(), 'f', -1, 64),
 	)
 
@@ -462,6 +462,7 @@ func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error)
 	return client.Do(req)
 }
 
-func formatTime(t time.Time) string {
+// FormatTime converts a time to a string acceptable by the Prometheus API.
+func FormatTime(t time.Time) string {
 	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }

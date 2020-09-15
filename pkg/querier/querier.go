@@ -66,13 +66,6 @@ type Config struct {
 	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`
 }
 
-// UserError are errors caused by user input as opposed to errors executing the query.
-type UserError string
-
-func (e UserError) Error() string {
-	return string(e)
-}
-
 var (
 	errBadLookbackConfigs = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 )
@@ -292,8 +285,8 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	startTime := model.Time(sp.Start)
 	endTime := model.Time(sp.End)
 	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
-		userErr := UserError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
-		return storage.ErrSeriesSet(userErr)
+		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+		return storage.ErrSeriesSet(limitErr)
 
 	}
 

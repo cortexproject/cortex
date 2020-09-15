@@ -69,11 +69,11 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	// Start Cortex in single binary mode, reading the config from file and overwriting
 	// the backend config to make it work with Minio.
 	flags := map[string]string{
-		"-experimental.blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-experimental.blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-experimental.blocks-storage.s3.bucket-name":       bucketName,
-		"-experimental.blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
-		"-experimental.blocks-storage.s3.insecure":          "true",
+		"-blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-blocks-storage.s3.bucket-name":       bucketName,
+		"-blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":          "true",
 	}
 
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)

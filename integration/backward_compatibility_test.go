@@ -29,10 +29,10 @@ var (
 
 		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
 			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-				"-experimental.store-gateway.sharding-enabled":              "",
-				"-experimental.store-gateway.sharding-ring.store":           "",
-				"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-				"-experimental.store-gateway.replication-factor":            "",
+				"-store-gateway.sharding-enabled":              "",
+				"-store-gateway.sharding-ring.store":           "",
+				"-store-gateway.sharding-ring.consul.hostname": "",
+				"-store-gateway.replication-factor":            "",
 			})
 		},
 
@@ -44,14 +44,14 @@ var (
 
 func preCortex1Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              flags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   flags["-table-manager.poll-interval"],
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
+		"-schema-config-file":                          "",
+		"-config-yaml":                                 flags["-schema-config-file"],
+		"-table-manager.poll-interval":                 "",
+		"-dynamodb.poll-interval":                      flags["-table-manager.poll-interval"],
+		"-store-gateway.sharding-enabled":              "",
+		"-store-gateway.sharding-ring.store":           "",
+		"-store-gateway.sharding-ring.consul.hostname": "",
+		"-store-gateway.replication-factor":            "",
 	})
 }
 

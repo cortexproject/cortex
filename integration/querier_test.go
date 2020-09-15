@@ -72,25 +72,25 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
 			flags := mergeFlags(BlocksStorageFlags, map[string]string{
-				"-experimental.blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
-				"-experimental.blocks-storage.tsdb.ship-interval":               "1s",
-				"-experimental.blocks-storage.bucket-store.sync-interval":       "1s",
-				"-experimental.blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
-				"-experimental.blocks-storage.bucket-store.index-cache.backend": testCfg.indexCacheBackend,
-				"-experimental.store-gateway.sharding-enabled":                  strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
-				"-experimental.store-gateway.sharding-strategy":                 testCfg.blocksShardingStrategy,
-				"-experimental.store-gateway.tenant-shard-size":                 fmt.Sprintf("%d", testCfg.tenantShardSize),
-				"-querier.ingester-streaming":                                   strconv.FormatBool(testCfg.ingesterStreamingEnabled),
+				"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+				"-blocks-storage.tsdb.ship-interval":               "1s",
+				"-blocks-storage.bucket-store.sync-interval":       "1s",
+				"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+				"-blocks-storage.bucket-store.index-cache.backend": testCfg.indexCacheBackend,
+				"-store-gateway.sharding-enabled":                  strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
+				"-store-gateway.sharding-strategy":                 testCfg.blocksShardingStrategy,
+				"-store-gateway.tenant-shard-size":                 fmt.Sprintf("%d", testCfg.tenantShardSize),
+				"-querier.ingester-streaming":                      strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 			})
 
 			// Start dependencies.
 			consul := e2edb.NewConsul()
-			minio := e2edb.NewMinio(9000, flags["-experimental.blocks-storage.s3.bucket-name"])
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 			memcached := e2ecache.NewMemcached()
 			require.NoError(t, s.StartAndWaitReady(consul, minio, memcached))
 
 			// Add the memcached address to the flags.
-			flags["-experimental.blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+			flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
 
 			// Start Cortex components.
 			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
@@ -103,7 +103,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Start the querier with configuring store-gateway addresses if sharding is disabled.
 			if testCfg.blocksShardingStrategy == "" {
 				flags = mergeFlags(flags, map[string]string{
-					"-experimental.querier.store-gateway-addresses": strings.Join([]string{storeGateway1.NetworkGRPCEndpoint(), storeGateway2.NetworkGRPCEndpoint()}, ","),
+					"-querier.store-gateway-addresses": strings.Join([]string{storeGateway1.NetworkGRPCEndpoint(), storeGateway2.NetworkGRPCEndpoint()}, ","),
 				})
 			}
 			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
@@ -282,23 +282,23 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
 			flags := mergeFlags(BlocksStorageFlags, map[string]string{
-				"-experimental.blocks-storage.tsdb.block-ranges-period":                     blockRangePeriod.String(),
-				"-experimental.blocks-storage.tsdb.ship-interval":                           "1s",
-				"-experimental.blocks-storage.bucket-store.sync-interval":                   "1s",
-				"-experimental.blocks-storage.tsdb.retention-period":                        ((blockRangePeriod * 2) - 1).String(),
-				"-experimental.blocks-storage.bucket-store.index-cache.backend":             testCfg.indexCacheBackend,
-				"-experimental.blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
-				"-querier.ingester-streaming":                                               strconv.FormatBool(testCfg.ingesterStreamingEnabled),
+				"-blocks-storage.tsdb.block-ranges-period":                     blockRangePeriod.String(),
+				"-blocks-storage.tsdb.ship-interval":                           "1s",
+				"-blocks-storage.bucket-store.sync-interval":                   "1s",
+				"-blocks-storage.tsdb.retention-period":                        ((blockRangePeriod * 2) - 1).String(),
+				"-blocks-storage.bucket-store.index-cache.backend":             testCfg.indexCacheBackend,
+				"-blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+				"-querier.ingester-streaming":                                  strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 				// Ingester.
 				"-ring.store":      "consul",
 				"-consul.hostname": consul.NetworkHTTPEndpoint(),
 				// Distributor.
 				"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
 				// Store-gateway.
-				"-experimental.store-gateway.sharding-enabled":              strconv.FormatBool(testCfg.blocksShardingEnabled),
-				"-experimental.store-gateway.sharding-ring.store":           "consul",
-				"-experimental.store-gateway.sharding-ring.consul.hostname": consul.NetworkHTTPEndpoint(),
-				"-experimental.store-gateway.replication-factor":            "1",
+				"-store-gateway.sharding-enabled":              strconv.FormatBool(testCfg.blocksShardingEnabled),
+				"-store-gateway.sharding-ring.store":           "consul",
+				"-store-gateway.sharding-ring.consul.hostname": consul.NetworkHTTPEndpoint(),
+				"-store-gateway.replication-factor":            "1",
 			})
 
 			// Start Cortex replicas.
@@ -424,14 +424,14 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	// Configure the blocks storage to frequently compact TSDB head
 	// and ship blocks to the storage.
 	flags := mergeFlags(BlocksStorageFlags, map[string]string{
-		"-experimental.blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
-		"-experimental.blocks-storage.tsdb.ship-interval":       "1s",
-		"-experimental.blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
 	})
 
 	// Start dependencies.
 	consul := e2edb.NewConsul()
-	minio := e2edb.NewMinio(9000, flags["-experimental.blocks-storage.s3.bucket-name"])
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components for the write path.
@@ -468,10 +468,10 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 
 	// Start the querier and store-gateway, and configure them to not frequently sync blocks.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-experimental.blocks-storage.bucket-store.sync-interval": "1m",
+		"-blocks-storage.bucket-store.sync-interval": "1m",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-experimental.blocks-storage.bucket-store.sync-interval": "1m",
+		"-blocks-storage.bucket-store.sync-interval": "1m",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
@@ -489,7 +489,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	assert.Equal(t, expectedVector1, result.(model.Vector))
 
 	// Delete all blocks from the storage.
-	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-experimental.blocks-storage.s3.bucket-name"])
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, err)
 	require.NoError(t, storage.DeleteBlocks("user-1"))
 

@@ -141,7 +141,6 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	refCachePurgeDuration  prometheus.Histogram
-	activeSeriesPerUser    *prometheus.GaugeVec
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -181,10 +180,6 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
 			Buckets: prometheus.DefBuckets,
 		}),
-		activeSeriesPerUser: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_ingester_tsdb_active_series",
-			Help: "Number of currently active series per user.",
-		}, []string{"user"}),
 	}
 }
 
@@ -364,7 +359,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
 		case <-activeSeriesPurgeTicker.C:
-			i.updateActiveSeries()
+			i.v2UpdateActiveSeries()
 
 		case <-ctx.Done():
 			return nil
@@ -374,16 +369,17 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	}
 }
 
-func (i *Ingester) updateActiveSeries() {
+func (i *Ingester) v2UpdateActiveSeries() {
+	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesIdleTimeout)
+
 	for _, userID := range i.getTSDBUsers() {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
 			continue
 		}
 
-		now := time.Now()
-		userDB.activeSeries.Purge(now.Add(-i.cfg.ActiveSeriesIdle))
-		i.TSDBState.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
+		userDB.activeSeries.Purge(purgeTime)
+		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -93,7 +94,12 @@ func TestTeardown(t *testing.T) {
 		"cortex_ingester_memory_series_removed_total",
 		"cortex_ingester_memory_series",
 		"cortex_ingester_memory_users",
+		"cortex_ingester_active_series",
 	}
+
+	ing.userStatesMtx.Lock()
+	ing.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-5 * time.Minute))
+	ing.userStatesMtx.Unlock()
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
@@ -112,6 +118,11 @@ func TestTeardown(t *testing.T) {
 			# HELP cortex_ingester_memory_users The current number of users in memory.
 			# TYPE cortex_ingester_memory_users gauge
 			cortex_ingester_memory_users 3
+			# HELP cortex_ingester_active_series Number of currently active series per user.
+			# TYPE cortex_ingester_active_series gauge
+			cortex_ingester_active_series{user="1"} 100
+			cortex_ingester_active_series{user="2"} 100
+			cortex_ingester_active_series{user="3"} 100
 		`), metricNames...))
 
 	ing.userStatesMtx.Lock()
@@ -135,5 +146,10 @@ func TestTeardown(t *testing.T) {
 	# HELP cortex_ingester_memory_users The current number of users in memory.
 	# TYPE cortex_ingester_memory_users gauge
 	cortex_ingester_memory_users 0
+	# HELP cortex_ingester_active_series Number of currently active series per user.
+	# TYPE cortex_ingester_active_series gauge
+	cortex_ingester_active_series{user="1"} 0
+	cortex_ingester_active_series{user="2"} 0
+	cortex_ingester_active_series{user="3"} 0
 	`), metricNames...))
 }

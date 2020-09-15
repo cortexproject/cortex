@@ -51,7 +51,7 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
 		"cortex_discarded_samples_total",
-		"cortex_ingester_tsdb_active_series",
+		"cortex_ingester_active_series",
 	}
 	userID := "test"
 
@@ -126,9 +126,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_tsdb_active_series gauge
-				cortex_ingester_tsdb_active_series{user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -170,9 +170,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
-				# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_tsdb_active_series gauge
-				cortex_ingester_tsdb_active_series{user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -214,9 +214,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
-				# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_tsdb_active_series gauge
-				cortex_ingester_tsdb_active_series{user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -258,9 +258,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="new-value-for-timestamp",user="test"} 1
-				# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-				# TYPE cortex_ingester_tsdb_active_series gauge
-				cortex_ingester_tsdb_active_series{user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 	}
@@ -323,7 +323,7 @@ func TestIngester_v2Push(t *testing.T) {
 			assert.ElementsMatch(t, testData.expectedMetadataIngested, mres.Metadata)
 
 			// Update active series for metrics check.
-			i.updateActiveSeries()
+			i.v2UpdateActiveSeries()
 
 			// Append additional metrics to assert on.
 			mn := append(metricNames, testData.additionalMetrics...)
@@ -407,7 +407,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
-		"cortex_ingester_tsdb_active_series",
+		"cortex_ingester_active_series",
 	}
 
 	registry := prometheus.NewRegistry()
@@ -450,7 +450,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 	}
 
 	// Update active series for metrics check.
-	i.updateActiveSeries()
+	i.v2UpdateActiveSeries()
 
 	// Check tracked Prometheus metrics
 	expectedMetrics := `
@@ -474,10 +474,10 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="test-1"} 0
 		cortex_ingester_memory_series_removed_total{user="test-2"} 0
-		# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-		# TYPE cortex_ingester_tsdb_active_series gauge
-		cortex_ingester_tsdb_active_series{user="test-1"} 1
-		cortex_ingester_tsdb_active_series{user="test-2"} 1
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="test-1"} 1
+		cortex_ingester_active_series{user="test-2"} 1
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
@@ -489,14 +489,14 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	metricNames := []string{
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
-		"cortex_ingester_tsdb_active_series",
+		"cortex_ingester_active_series",
 	}
 
 	registry := prometheus.NewRegistry()
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
-	cfg.ActiveSeriesIdle = 100 * time.Millisecond
+	cfg.ActiveSeriesIdleTimeout = 100 * time.Millisecond
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
@@ -536,7 +536,7 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Update active series for metrics check. This will remove inactive series.
-	i.updateActiveSeries()
+	i.v2UpdateActiveSeries()
 
 	// Check tracked Prometheus metrics
 	expectedMetrics := `
@@ -548,10 +548,10 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="test-1"} 0
 		cortex_ingester_memory_series_removed_total{user="test-2"} 0
-		# HELP cortex_ingester_tsdb_active_series Number of currently active series per user.
-		# TYPE cortex_ingester_tsdb_active_series gauge
-		cortex_ingester_tsdb_active_series{user="test-1"} 0
-		cortex_ingester_tsdb_active_series{user="test-2"} 0
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="test-1"} 0
+		cortex_ingester_active_series{user="test-2"} 0
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))

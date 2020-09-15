@@ -75,7 +75,7 @@ type Config struct {
 	BlocksStorageEnabled     bool                     `yaml:"-"`
 	BlocksStorageConfig      tsdb.BlocksStorageConfig `yaml:"-"`
 	ActiveSeriesUpdatePeriod time.Duration            `yaml:"active_series_update_period"`
-	ActiveSeriesIdle         time.Duration            `yaml:"active_series_idle"`
+	ActiveSeriesIdleTimeout  time.Duration            `yaml:"active_series_idle_timeout"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -105,8 +105,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.DurationVar(&cfg.ActiveSeriesUpdatePeriod, "ingester.active-series-update-period", 5*time.Minute, "How often to update active series metrics (blocks engine only).")
-	f.DurationVar(&cfg.ActiveSeriesIdle, "ingester.active-series-idle", 15*time.Minute, "After what time is series considered to be inactive (blocks engine only).")
+	f.DurationVar(&cfg.ActiveSeriesUpdatePeriod, "ingester.active-series-update-period", 1*time.Minute, "How often to update active series metrics.")
+	f.DurationVar(&cfg.ActiveSeriesIdleTimeout, "ingester.active-series-idle-timeout", 15*time.Minute, "After what time a series is considered to be inactive.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -324,6 +324,9 @@ func (i *Ingester) loop(ctx context.Context) error {
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
 
+	activeSeriesPurgeTicker := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
+	defer activeSeriesPurgeTicker.Stop()
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -334,6 +337,9 @@ func (i *Ingester) loop(ctx context.Context) error {
 
 		case <-rateUpdateTicker.C:
 			i.userStates.updateRates()
+
+		case <-activeSeriesPurgeTicker.C:
+			i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesIdleTimeout))
 
 		case <-ctx.Done():
 			return nil
@@ -429,10 +435,12 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	}
 
 	for _, ts := range req.Timeseries {
+		seriesSamplesIngested := 0
 		for _, s := range ts.Samples {
 			// append() copies the memory in `ts.Labels` except on the error path
 			err := i.append(ctx, userID, ts.Labels, model.Time(s.TimestampMs), model.SampleValue(s.Value), req.Source, record)
 			if err == nil {
+				seriesSamplesIngested++
 				continue
 			}
 
@@ -446,6 +454,11 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 
 			// non-validation error: abandon this request
 			return nil, grpcForwardableError(userID, http.StatusInternalServerError, err)
+		}
+
+		if seriesSamplesIngested > 0 {
+			// updateActiveSeries will copy labels if necessary.
+			i.updateActiveSeries(userID, time.Now(), ts.Labels)
 		}
 	}
 
@@ -970,4 +983,12 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 		return fmt.Errorf("ingester not ready: %v", err)
 	}
 	return i.lifecycler.CheckReady(ctx)
+}
+
+// labels will be copied if needed.
+func (i *Ingester) updateActiveSeries(userID string, now time.Time, labels []client.LabelAdapter) {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	i.userStates.updateActiveSeriesForUser(userID, now, client.FromLabelAdaptersToLabels(labels))
 }

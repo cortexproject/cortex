@@ -53,6 +53,8 @@ type ingesterMetrics struct {
 	seriesDequeuedOutcome         *prometheus.CounterVec
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
+
+	activeSeriesPerUser *prometheus.GaugeVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool) *ingesterMetrics {
@@ -189,6 +191,11 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
 			Help: "Unix timestamp of the oldest unflushed chunk in the memory",
 		}),
+
+		activeSeriesPerUser: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_active_series",
+			Help: "Number of currently active series per user.",
+		}, []string{"user"}),
 	}
 
 	if createMetricsConflictingWithTSDB {

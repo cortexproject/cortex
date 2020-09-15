@@ -31,7 +31,7 @@ type activeSeriesStripe struct {
 
 	mu     sync.RWMutex
 	refs   map[model.Fingerprint][]activeSeriesEntry
-	active int // Number of active entries in this stripe. Only decreased during purge.
+	active int // Number of active entries in this stripe. Only decreased during purge or clear.
 }
 
 // activeSeriesEntry holds a timestamp for single series.
@@ -64,6 +64,12 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, now time.Time, labelsC
 func (c *ActiveSeries) Purge(keepUntil time.Time) {
 	for s := 0; s < numActiveSeriesStripes; s++ {
 		c.stripes[s].purge(keepUntil)
+	}
+}
+
+func (c *ActiveSeries) clear() {
+	for s := 0; s < numActiveSeriesStripes; s++ {
+		c.stripes[s].clear()
 	}
 }
 
@@ -131,6 +137,15 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fp model.Fingerprint, se
 	s.refs[fp] = append(s.refs[fp], e)
 
 	return e.nanos, true
+}
+
+func (s *activeSeriesStripe) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.oldestEntryTs.Store(0)
+	s.refs = map[model.Fingerprint][]activeSeriesEntry{}
+	s.active = 0
 }
 
 func (s *activeSeriesStripe) purge(keepUntil time.Time) {

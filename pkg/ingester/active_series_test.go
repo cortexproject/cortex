@@ -143,23 +143,19 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 }
 
 func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
-	const numSeries = 10000
-
 	c := NewActiveSeries()
 
 	// Prepare series
-	series := [numSeries]labels.Labels{}
-	for s := 0; s < numSeries; s++ {
+	series := make([]labels.Labels, b.N)
+	for s := 0; s < b.N; s++ {
 		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
 	}
 
-	now := time.Now()
+	now := time.Now().UnixNano()
 
 	b.ResetTimer()
-	for i := 0; i < int(math.Ceil(float64(b.N)/numSeries)); i++ {
-		for s := 0; s < numSeries; s++ {
-			c.UpdateSeries(series[s], now, copyFn)
-		}
+	for ix := 0; ix < b.N; ix++ {
+		c.UpdateSeries(series[ix], time.Unix(0, now+int64(ix)), copyFn)
 	}
 }
 

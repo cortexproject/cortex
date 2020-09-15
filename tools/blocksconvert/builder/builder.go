@@ -119,6 +119,10 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_builder_in_progress",
 			Help: "Build in progress",
 		}),
+		currentPlanStartTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_builder_plan_start_time_seconds",
+			Help: "Start time of current plan's time range (unix timestamp).",
+		}),
 		planFileReadPosition: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_builder_plan_file_position",
 			Help: "Read bytes from the plan file.",
@@ -161,6 +165,7 @@ type Builder struct {
 	planFileSize         prometheus.Gauge
 	buildInProgress      prometheus.Gauge
 	chunksNotFound       prometheus.Counter
+	currentPlanStartTime prometheus.Gauge
 }
 
 func (b *Builder) cleanup(_ context.Context) error {
@@ -274,6 +279,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	defer b.buildInProgress.Set(0)
 	defer b.planFileSize.Set(0)
 	defer b.planFileReadPosition.Set(0)
+	defer b.currentPlanStartTime.Set(0)
 
 	planLog := log.With(b.log, "plan", planFile)
 
@@ -317,6 +323,8 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	if err != nil {
 		return err
 	}
+
+	b.currentPlanStartTime.Set(float64(dayStart.Unix()))
 
 	level.Info(planLog).Log("msg", "processing plan file", "user", userID, "dayStart", dayStart, "dayEnd", dayEnd)
 	chunkClient, err := b.createChunkClientForDay(dayStart)

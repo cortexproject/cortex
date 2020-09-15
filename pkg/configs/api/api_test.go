@@ -374,3 +374,25 @@ func TestParseConfigFormat(t *testing.T) {
 		})
 	}
 }
+
+func Test_SetConfig_ValidateTemplateFiles(t *testing.T) {
+	cfg := userconfig.Config{
+		TemplateFiles: map[string]string{
+			"mytemplate.tmpl": `
+				{{ define "mytemplate" }}
+				ToUpper{{ .Value | toUpper }}
+				ToLower{{ .Value | toLower }}
+				Title{{ .Value | title }}
+				Join{{ .Values | join " " }}
+				Match{{ .Value | match "fir" }}
+				SafeHTML{{ .Value | safeHtml }}
+				ReReplaceAll{{ .Value | reReplaceAll "-" "_" }}
+				StringSlice{{ .Value | stringSlice }}
+				{{ end }}
+			`,
+		},
+	}
+
+	err := validateTemplateFiles(cfg)
+	assert.Equal(t, nil, err)
+}

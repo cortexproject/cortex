@@ -340,6 +340,7 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 		t.Cfg.Flusher,
 		t.Cfg.Ingester,
 		t.Store,
+		t.Overrides,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -611,7 +612,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV)
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util.Logger)
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -686,7 +687,7 @@ func (t *Cortex) setupModuleManager() error {
 		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
 		Flusher:            {Store, API},
 		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
-		StoreQueryable:     {Overrides, Store},
+		StoreQueryable:     {Overrides, Store, MemberlistKV},
 		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
 		TableManager:       {API},
 		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},

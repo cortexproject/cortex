@@ -37,6 +37,7 @@ type Config struct {
 	UploadFiles bool
 	KeepFiles   bool
 
+	AllowedUsers       string
 	IgnoredUserPattern string
 }
 
@@ -47,7 +48,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
-	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-user", "", "Regex pattern with ignored users.")
+	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
+	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
 }
 
 type Scanner struct {
@@ -69,8 +71,9 @@ type Scanner struct {
 	indexReaderParsedIndexEntries prometheus.Counter
 	ignoredEntries                prometheus.Counter
 
-	schema  chunk.SchemaConfig
-	ignored *regexp.Regexp
+	schema       chunk.SchemaConfig
+	ignoredUsers *regexp.Regexp
+	allowedUsers blocksconvert.AllowedUsers
 }
 
 func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
@@ -92,8 +95,13 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		}
 	}
 
+	var users = blocksconvert.AllowAllUsers
+	if cfg.AllowedUsers != "" {
+		users = blocksconvert.ParseAllowedUsers(cfg.AllowedUsers)
+	}
+
 	var ignoredUserRegex *regexp.Regexp = nil
-	if cfg.IgnoredUserPattern != "" {
+	if users.AllUsersAllowed() && cfg.IgnoredUserPattern != "" {
 		re, err := regexp.Compile(cfg.IgnoredUserPattern)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to compile ignored user regex")
@@ -113,7 +121,8 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		bucket:       bucketClient,
 		bucketPrefix: scfg.BucketPrefix,
 		reg:          reg,
-		ignored:      ignoredUserRegex,
+		allowedUsers: users,
+		ignoredUsers: ignoredUserRegex,
 
 		indexReaderRowsRead: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_bigtable_read_rows_total",
@@ -294,7 +303,7 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	dir := filepath.Join(s.cfg.OutputDirectory, table)
 	level.Info(tableLog).Log("msg", "scanning table", "output", dir)
 
-	ignoredUsers, err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries, s.ignoredEntries)
+	ignoredUsers, err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.allowedUsers, s.ignoredUsers, s.openFiles, s.series, s.indexEntries, s.ignoredEntries)
 	if err != nil {
 		return errors.Wrapf(err, "failed to scan table %s and generate plan files", table)
 	}
@@ -338,7 +347,19 @@ func shouldSkipOperationBecauseFileExists(file string) bool {
 	return err == nil
 }
 
-func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) ([]string, error) {
+func scanSingleTable(
+	ctx context.Context,
+	indexReader IndexReader,
+	tableName string,
+	outDir string,
+	concurrency int,
+	allowed blocksconvert.AllowedUsers,
+	ignored *regexp.Regexp,
+	openFiles prometheus.Gauge,
+	series prometheus.Counter,
+	indexEntries *prometheus.CounterVec,
+	ignoredEntries prometheus.Counter,
+) ([]string, error) {
 	err := os.RemoveAll(outDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to delete directory %s", outDir)
@@ -359,7 +380,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, result, ignored, series, indexEntries, ignoredEntries))
+		ps = append(ps, newProcessor(outDir, result, allowed, ignored, series, indexEntries, ignoredEntries))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)

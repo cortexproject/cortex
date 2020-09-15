@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 	"path"
+	"sync"
 
 	"github.com/go-kit/kit/log/level"
 	"gopkg.in/yaml.v2"
@@ -11,8 +12,52 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// TODO: Update this content to be a template that is dynamic based on how Cortex is run.
-var indexPageContent = template.Must(template.New("main").Parse(`
+const (
+	SectionAdminEndpoints = "Admin Endpoints:"
+	SectionDangerous      = "Dangerous:"
+)
+
+func newIndexPageContent() *IndexPageContent {
+	return &IndexPageContent{
+		content: map[string]map[string]string{},
+	}
+}
+
+// IndexPageContent is a map of sections to path -> description.
+type IndexPageContent struct {
+	mu      sync.Mutex
+	content map[string]map[string]string
+}
+
+func (pc *IndexPageContent) AddLink(section, path, description string) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+
+	sectionMap := pc.content[section]
+	if sectionMap == nil {
+		sectionMap = make(map[string]string)
+		pc.content[section] = sectionMap
+	}
+
+	sectionMap[path] = description
+}
+
+func (pc *IndexPageContent) GetContent() map[string]map[string]string {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+
+	result := map[string]map[string]string{}
+	for k, v := range pc.content {
+		sm := map[string]string{}
+		for smK, smV := range v {
+			sm[smK] = smV
+		}
+		result[k] = sm
+	}
+	return result
+}
+
+var indexPageTemplate = ` 
 <!DOCTYPE html>
 <html>
 	<head>
@@ -21,38 +66,28 @@ var indexPageContent = template.Must(template.New("main").Parse(`
 	</head>
 	<body>
 		<h1>Cortex</h1>
-		<p>Admin Endpoints:</p>
+		{{ range $s, $links := . }}
+		<p>{{ $s }}</p>
 		<ul>
-			<li><a href="{{ .AddPathPrefix "/config" }}">Current Config</a></li>
-			<li><a href="{{ .AddPathPrefix "/distributor/all_user_stats" }}">Usage Statistics</a></li>
-			<li><a href="{{ .AddPathPrefix "/distributor/ha_tracker" }}">HA Tracking Status</a></li>
-			<li><a href="{{ .AddPathPrefix "/multitenant_alertmanager/status" }}">Alertmanager Status</a></li>
-			<li><a href="{{ .AddPathPrefix "/ingester/ring" }}">Ingester Ring Status</a></li>
-			<li><a href="{{ .AddPathPrefix "/ruler/ring" }}">Ruler Ring Status</a></li>
-			<li><a href="{{ .AddPathPrefix "/services" }}">Service Status</a></li>
-			<li><a href="{{ .AddPathPrefix "/compactor/ring" }}">Compactor Ring Status (experimental blocks storage)</a></li>
-			<li><a href="{{ .AddPathPrefix "/store-gateway/ring" }}">Store Gateway Ring (experimental blocks storage)</a></li>
+			{{ range $path, $desc := $links }}
+				<li><a href="{{ AddPathPrefix $path }}">{{ $desc }}</a></li>
+			{{ end }}
 		</ul>
-
-		<p>Dangerous:</p>
-		<ul>
-			<li><a href="{{ .AddPathPrefix "/ingester/flush" }}">Trigger a Flush</a></li>
-			<li><a href="{{ .AddPathPrefix "/ingester/shutdown" }}">Trigger Ingester Shutdown</a></li>
-		</ul>
+		{{ end }}
 	</body>
-</html>`))
+</html>`
 
-type indexPageInput struct {
-	pathPrefix string
-}
+func indexHandler(httpPathPrefix string, content *IndexPageContent) http.HandlerFunc {
+	templ := template.New("main")
+	templ.Funcs(map[string]interface{}{
+		"AddPathPrefix": func(link string) string {
+			return path.Join(httpPathPrefix, link)
+		},
+	})
+	template.Must(templ.Parse(indexPageTemplate))
 
-func (i indexPageInput) AddPathPrefix(p string) string {
-	return path.Join(i.pathPrefix, p)
-}
-
-func indexHandler(httpPathPrefix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := indexPageContent.Execute(w, indexPageInput{pathPrefix: httpPathPrefix})
+		err := templ.Execute(w, content.GetContent())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

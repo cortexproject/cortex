@@ -191,6 +191,10 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 			Version: 1,
 			MinTime: math.MaxInt64,
 			MaxTime: math.MinInt64,
+			Compaction: tsdb.BlockMetaCompaction{
+				Level:   1,
+				Sources: []ulid.ULID{d.ulid},
+			},
 		},
 
 		Thanos: metadata.Thanos{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
@@ -48,16 +49,27 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	}
 
 	for _, info := range infos {
+		// After resolving link, info.Name() may be different than user, so keep original name.
+		user := info.Name()
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
+			info, err = os.Stat(filepath.Join(root, info.Name()))
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		if !info.IsDir() {
 			continue
 		}
 
-		list, err := l.listAllRulesGroupsForUser(ctx, info.Name())
+		list, err := l.listAllRulesGroupsForUser(ctx, user)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", info.Name())
+			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", user)
 		}
 
-		lists[info.Name()] = list
+		lists[user] = list
 	}
 
 	return lists, nil
@@ -102,13 +114,24 @@ func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (
 	}
 
 	for _, info := range infos {
+		// After resolving link, info.Name() may be different than namespace, so keep original name.
+		namespace := info.Name()
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			// ioutil.ReadDir only returns result of LStat. Calling Stat resolves symlink.
+			info, err = os.Stat(filepath.Join(root, info.Name()))
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		if info.IsDir() {
 			continue
 		}
 
-		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, info.Name())
+		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, info.Name())
+			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, namespace)
 		}
 
 		allLists = append(allLists, list...)

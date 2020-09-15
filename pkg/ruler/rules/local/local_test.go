@@ -17,8 +17,11 @@ import (
 )
 
 func TestClient_ListAllRuleGroups(t *testing.T) {
-	user := "user"
-	namespace := "ns"
+	user1 := "user"
+	user2 := "second-user"
+
+	namespace1 := "ns"
+	namespace2 := "z-another" // This test relies on the fact that ioutil.ReadDir() returns files sorted by name.
 
 	dir, err := ioutil.TempDir("", "")
 	require.NoError(t, err)
@@ -42,10 +45,25 @@ func TestClient_ListAllRuleGroups(t *testing.T) {
 	b, err := yaml.Marshal(ruleGroups)
 	require.NoError(t, err)
 
-	err = os.MkdirAll(path.Join(dir, user), 0777)
+	err = os.MkdirAll(path.Join(dir, user1), 0777)
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(path.Join(dir, user, namespace), b, 0777)
+	// Link second user to first.
+	err = os.Symlink(user1, path.Join(dir, user2))
+	require.NoError(t, err)
+
+	err = ioutil.WriteFile(path.Join(dir, user1, namespace1), b, 0777)
+	require.NoError(t, err)
+
+	const ignoredDir = "ignored-dir"
+	err = os.Mkdir(path.Join(dir, user1, ignoredDir), os.ModeDir|0644)
+	require.NoError(t, err)
+
+	err = os.Symlink(ignoredDir, path.Join(dir, user1, "link-to-dir"))
+	require.NoError(t, err)
+
+	// Link second namespace to first.
+	err = os.Symlink(namespace1, path.Join(dir, user1, namespace2))
 	require.NoError(t, err)
 
 	client, err := NewLocalRulesClient(Config{
@@ -57,13 +75,13 @@ func TestClient_ListAllRuleGroups(t *testing.T) {
 	userMap, err := client.ListAllRuleGroups(ctx)
 	require.NoError(t, err)
 
-	actual, found := userMap[user]
-	require.True(t, found)
+	for _, u := range []string{user1, user2} {
+		actual, found := userMap[u]
+		require.True(t, found)
 
-	require.Equal(t, len(ruleGroups.Groups), len(actual))
-	for i, actualGroup := range actual {
-		expected := rules.ToProto(user, namespace, ruleGroups.Groups[i])
-
-		require.Equal(t, expected, actualGroup)
+		require.Equal(t, 2, len(actual))
+		// We rely on the fact that files are parsed in alphabetical order, and our namespace1 < namespace2.
+		require.Equal(t, rules.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
+		require.Equal(t, rules.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
 	}
 }

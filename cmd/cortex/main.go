@@ -106,6 +106,16 @@ func main() {
 		}
 	}
 
+	// Validate the config once both the config file has been loaded
+	// and CLI flags parsed.
+	err = cfg.Validate(util.Logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error validating config: %v\n", err)
+		if !testMode {
+			os.Exit(1)
+		}
+	}
+
 	// Continue on if -modules flag is given. Code handling the
 	// -modules flag will not start cortex.
 	if testMode && !cfg.ListModules {
@@ -118,13 +128,6 @@ func main() {
 	}
 
 	util.InitLogger(&cfg.Server)
-	// Validate the config once both the config file has been loaded
-	// and CLI flags parsed.
-	err = cfg.Validate(util.Logger)
-	if err != nil {
-		fmt.Printf("error validating config: %v\n", err)
-		os.Exit(1)
-	}
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
 	ballast := make([]byte, ballastBytes)

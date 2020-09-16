@@ -1,11 +1,11 @@
 package builder
 
 import (
-	"encoding/json"
+	"bufio"
+	"encoding/gob"
 	"io"
 	"os"
 
-	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
@@ -119,15 +119,15 @@ func heapifySymbols(files []*symbolsFile, ix int) {
 
 type symbolsFile struct {
 	f   *os.File
-	dec *json.Decoder
+	dec *gob.Decoder
 
 	next   bool
 	symbol string
 }
 
 func newSymbolsFile(f *os.File) *symbolsFile {
-	sn := snappy.NewReader(f)
-	dec := json.NewDecoder(sn)
+	buf := bufio.NewReaderSize(f, 65536)
+	dec := gob.NewDecoder(buf)
 
 	return &symbolsFile{
 		f:   f,

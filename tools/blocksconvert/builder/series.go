@@ -1,74 +1,26 @@
 package builder
 
 import (
-	"encoding/json"
+	"bufio"
+	"encoding/gob"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 
-	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
-type seriesLabels []string
-
-func seriesLabelsLess(a, b seriesLabels) bool {
-	l := len(a)
-	if len(b) < l {
-		l = len(b)
-	}
-
-	for i := 0; i < l; i++ {
-		if a[i] != b[i] {
-			return a[i] < b[i]
-		}
-	}
-	return len(a) < len(b)
-}
-
 type series struct {
-	Metric  seriesLabels
-	Chunks  []seriesChunk
+	// All fields must be exported for serialization to work properly.
+	Metric  labels.Labels
+	Chunks  []chunks.Meta
 	MinTime int64
 	MaxTime int64
 	Samples uint64
-}
-
-func (s series) Labels() labels.Labels {
-	var result []labels.Label
-
-	for ix := 0; ix < len(s.Metric)-1; ix += 2 {
-		result = append(result, labels.Label{
-			Name:  s.Metric[ix],
-			Value: s.Metric[ix+1],
-		})
-	}
-
-	return result
-}
-
-func (s series) ChunksMetas() []chunks.Meta {
-	var result []chunks.Meta
-
-	for _, c := range s.Chunks {
-		result = append(result, chunks.Meta{
-			Ref:     c.Ref,
-			MinTime: c.MinTime,
-			MaxTime: c.MaxTime,
-		})
-	}
-
-	return result
-}
-
-type seriesChunk struct {
-	Ref     uint64 `json:"ref"`
-	MinTime int64  `json:"min"`
-	MaxTime int64  `json:"max"`
 }
 
 // Keeps series in memory until limit is reached. Then series are sorted, and written to the file.
@@ -96,23 +48,9 @@ func (sl *seriesList) addSeries(m labels.Labels, cs []chunks.Meta, samples uint6
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
-	scs := make([]seriesChunk, 0, len(cs))
-	for _, c := range cs {
-		scs = append(scs, seriesChunk{
-			Ref:     c.Ref,
-			MinTime: c.MinTime,
-			MaxTime: c.MaxTime,
-		})
-	}
-
-	metric := make([]string, 0, 2*len(m))
-	for _, l := range m {
-		metric = append(metric, l.Name, l.Value)
-	}
-
 	sl.sers = append(sl.sers, series{
-		Metric:  metric,
-		Chunks:  scs,
+		Metric:  m,
+		Chunks:  cs,
 		MinTime: minTime,
 		MaxTime: maxTime,
 		Samples: samples,
@@ -136,7 +74,7 @@ func (sl *seriesList) flushSeriesNoLock(force bool) error {
 
 	// Sort series by labels first.
 	sort.Slice(sl.sers, func(i, j int) bool {
-		return seriesLabelsLess(sl.sers[i].Metric, sl.sers[j].Metric)
+		return labels.Compare(sl.sers[i].Metric, sl.sers[j].Metric) < 0
 	})
 
 	seriesFile := filepath.Join(sl.dir, fmt.Sprintf("series_%d", len(sl.seriesFiles)))
@@ -171,8 +109,8 @@ func writeSymbols(filename string, symbols []string) error {
 		return err
 	}
 
-	sn := snappy.NewBufferedWriter(f)
-	enc := json.NewEncoder(sn)
+	buf := bufio.NewWriterSize(f, 1*1024*1024)
+	enc := gob.NewEncoder(buf)
 
 	errs := errors.MultiError{}
 
@@ -184,7 +122,7 @@ func writeSymbols(filename string, symbols []string) error {
 		}
 	}
 
-	errs.Add(sn.Flush())
+	errs.Add(buf.Flush())
 	errs.Add(f.Close())
 	return errs.Err()
 }
@@ -199,13 +137,14 @@ func writeSeries(filename string, sers []series) (map[string]struct{}, error) {
 
 	errs := errors.MultiError{}
 
-	sn := snappy.NewBufferedWriter(f)
-	enc := json.NewEncoder(sn)
+	buf := bufio.NewWriterSize(f, 1*1024*1024)
+	enc := gob.NewEncoder(buf)
 
-	// Write each series as a separate json object, so that we can read them back individually.
+	// Write each series as a separate object, so that we can read them back individually.
 	for _, ser := range sers {
 		for _, sym := range ser.Metric {
-			symbols[sym] = struct{}{}
+			symbols[sym.Name] = struct{}{}
+			symbols[sym.Value] = struct{}{}
 		}
 
 		err := enc.Encode(ser)
@@ -215,7 +154,7 @@ func writeSeries(filename string, sers []series) (map[string]struct{}, error) {
 		}
 	}
 
-	errs.Add(sn.Flush())
+	errs.Add(buf.Flush())
 	errs.Add(f.Close())
 
 	return symbols, errs.Err()

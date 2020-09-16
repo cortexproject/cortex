@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"crypto/rand"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -194,8 +193,8 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		BlockMeta: tsdb.BlockMeta{
 			ULID:    d.ulid,
 			Version: 1,
-			MinTime: math.MaxInt64,
-			MaxTime: math.MinInt64,
+			MinTime: int64(d.startTime),
+			MaxTime: int64(d.endTime),
 			Compaction: tsdb.BlockMetaCompaction{
 				Level:   1,
 				Sources: []ulid.ULID{d.ulid},
@@ -219,9 +218,6 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 	}
 
 	level.Info(d.log).Log("msg", "added symbols to index", "count", symbols)
-
-	meta.MinTime = int64(d.startTime)
-	meta.MaxTime = int64(d.endTime)
 
 	stats, err := addSeriesToIndex(indexWriter, d.series)
 	if err != nil {
@@ -256,8 +252,8 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList) (tsdb.BlockStat
 
 	ix := 0
 	for s, ok := it.Next(); ok; s, ok = it.Next() {
-		l := s.Labels()
-		cs := s.ChunksMetas()
+		l := s.Metric
+		cs := s.Chunks
 
 		if err := indexWriter.AddSeries(uint64(ix), l, cs...); err != nil {
 			return stats, errors.Wrapf(err, "adding series %v", l)

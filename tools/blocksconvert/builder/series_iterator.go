@@ -1,11 +1,12 @@
 package builder
 
 import (
-	"encoding/json"
+	"bufio"
+	"encoding/gob"
 	"io"
 	"os"
 
-	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
@@ -91,11 +92,11 @@ func heapifySeries(files []*seriesFile, ix int) {
 	left := 2*ix + 1
 	right := 2*ix + 2
 
-	if left < len(files) && seriesLabelsLess(files[left].peek().Metric, files[smallest].peek().Metric) {
+	if left < len(files) && labels.Compare(files[left].peek().Metric, files[smallest].peek().Metric) < 0 {
 		smallest = left
 	}
 
-	if right < len(files) && seriesLabelsLess(files[right].peek().Metric, files[smallest].peek().Metric) {
+	if right < len(files) && labels.Compare(files[right].peek().Metric, files[smallest].peek().Metric) < 0 {
 		smallest = right
 	}
 
@@ -107,15 +108,15 @@ func heapifySeries(files []*seriesFile, ix int) {
 
 type seriesFile struct {
 	f   *os.File
-	dec *json.Decoder
+	dec *gob.Decoder
 
 	next bool
 	ser  series
 }
 
 func newSeriesFile(f *os.File) *seriesFile {
-	sn := snappy.NewReader(f)
-	dec := json.NewDecoder(sn)
+	buf := bufio.NewReaderSize(f, 1*1024*1024)
+	dec := gob.NewDecoder(buf)
 
 	return &seriesFile{
 		f:   f,

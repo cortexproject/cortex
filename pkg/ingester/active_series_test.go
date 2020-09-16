@@ -148,7 +148,7 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 
 	// Prepare series
 	nameBuf := bytes.Buffer{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 50; i++ {
 		nameBuf.WriteString("abcdefghijklmnopqrstuvzyx")
 	}
 	name := nameBuf.String()
@@ -210,4 +210,10 @@ func benchmarkPurge(b *testing.B, twice bool) {
 			assert.Equal(b, numSeries-numExpiresSeries, c.Active())
 		}
 	}
+}
+
+func TestYoloBuf(t *testing.T) {
+	s := yoloBuf("hello world")
+
+	require.Equal(t, []byte("hello world"), s)
 }

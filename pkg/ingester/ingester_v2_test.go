@@ -315,9 +315,7 @@ func TestIngester_v2Push(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			if testData.disableActiveSeries {
-				cfg.ActiveSeriesEnabled = false
-			}
+			cfg.ActiveSeriesEnabled = !testData.disableActiveSeries
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)

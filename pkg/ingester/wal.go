@@ -557,7 +557,7 @@ func recoverFromWAL(ingester *Ingester) error {
 func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int, error) {
 
 	// Use a local userStates, so we don't need to worry about locking.
-	userStates := newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics, params.ingester.cfg.ActiveSeriesEnabled)
+	userStates := newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics)
 
 	lastCheckpointDir, idx, err := lastCheckpoint(params.walDir)
 	if err != nil {
@@ -593,7 +593,7 @@ func processCheckpointWithRepair(params walRecoveryParameters) (*userStates, int
 	}
 
 	// Creating new userStates to discard the old chunks.
-	userStates = newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics, params.ingester.cfg.ActiveSeriesEnabled)
+	userStates = newUserStates(params.ingester.limiter, params.ingester.cfg, params.ingester.metrics)
 	if idx < 0 {
 		// There was only 1 checkpoint. We don't error in this case
 		// as for the first checkpoint entire WAL will/should be present.

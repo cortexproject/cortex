@@ -194,7 +194,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true),
+		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesEnabled),
 
 		limits:        limits,
 		chunkStore:    chunkStore,
@@ -234,7 +234,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics, i.cfg.ActiveSeriesEnabled)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
 	}
 
 	var err error
@@ -276,7 +276,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 
 	i := &Ingester{
 		cfg:         cfg,
-		metrics:     newIngesterMetrics(registerer, true),
+		metrics:     newIngesterMetrics(registerer, true, false),
 		chunkStore:  chunkStore,
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		wal:         &noopWAL{},

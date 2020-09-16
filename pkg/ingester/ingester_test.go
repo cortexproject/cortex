@@ -1004,9 +1004,7 @@ func TestIngesterActiveSeries(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			if testData.disableActiveSeries {
-				cfg.ActiveSeriesEnabled = false
-			}
+			cfg.ActiveSeriesEnabled = !testData.disableActiveSeries
 
 			_, i := newTestStore(t,
 				cfg,

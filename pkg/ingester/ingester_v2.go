@@ -193,7 +193,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:           cfg,
 		clientConfig:  clientConfig,
-		metrics:       newIngesterMetrics(registerer, false),
+		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesEnabled),
 		limits:        limits,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
@@ -220,7 +220,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg, i.metrics, false) // active series are tracked separately in blocks-ingester.
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
@@ -238,7 +238,7 @@ func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, e
 
 	i := &Ingester{
 		cfg:       cfg,
-		metrics:   newIngesterMetrics(registerer, false),
+		metrics:   newIngesterMetrics(registerer, false, false),
 		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
 	}

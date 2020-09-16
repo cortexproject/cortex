@@ -57,7 +57,7 @@ type ingesterMetrics struct {
 	activeSeriesPerUser *prometheus.GaugeVec
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool) *ingesterMetrics {
 	m := &ingesterMetrics{
 		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -192,10 +192,15 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Help: "Unix timestamp of the oldest unflushed chunk in the memory",
 		}),
 
-		activeSeriesPerUser: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+		// Not registered automatically, but only if activeSeriesEnabled is true.
+		activeSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+	}
+
+	if activeSeriesEnabled && r != nil {
+		r.MustRegister(m.activeSeriesPerUser)
 	}
 
 	if createMetricsConflictingWithTSDB {

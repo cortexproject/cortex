@@ -115,7 +115,7 @@ func (i *Ingester) TransferChunks(stream client.Ingester_TransferChunksServer) e
 	seriesReceived := 0
 
 	xfer := func() error {
-		userStates := newUserStates(i.limiter, i.cfg, i.metrics, i.cfg.ActiveSeriesEnabled)
+		userStates := newUserStates(i.limiter, i.cfg, i.metrics)
 
 		var err error
 		fromIngesterID, seriesReceived, err = i.fillUserStatesFromStream(userStates, stream)

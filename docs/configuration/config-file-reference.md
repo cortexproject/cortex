@@ -2968,7 +2968,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # Trip circuit-breaker after this number of consecutive dial failures (if zero
 # then circuit-breaker is disabled).
 # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
-[circuit_breaker_consecutive_failures: <int> | default = 0]
+[circuit_breaker_consecutive_failures: <int> | default = 10]
 
 # Duration circuit-breaker remains open after tripping (if zero then 60 seconds
 # is used).

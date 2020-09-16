@@ -109,7 +109,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
 	f.BoolVar(&cfg.ActiveSeriesEnabled, "ingester.active-series-enabled", false, "Enable tracking of active series.")
 	f.DurationVar(&cfg.ActiveSeriesUpdatePeriod, "ingester.active-series-update-period", 1*time.Minute, "How often to update active series metrics.")
-	f.DurationVar(&cfg.ActiveSeriesIdleTimeout, "ingester.active-series-idle-timeout", 15*time.Minute, "After what time a series is considered to be inactive.")
+	f.DurationVar(&cfg.ActiveSeriesIdleTimeout, "ingester.active-series-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

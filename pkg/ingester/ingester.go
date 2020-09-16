@@ -71,9 +71,9 @@ type Config struct {
 
 	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
 
-	ActiveSeriesEnabled      bool          `yaml:"active_series_enabled"`
-	ActiveSeriesUpdatePeriod time.Duration `yaml:"active_series_update_period"`
-	ActiveSeriesIdleTimeout  time.Duration `yaml:"active_series_idle_timeout"`
+	ActiveSeriesMetricsEnabled      bool          `yaml:"active_series_metrics_enabled"`
+	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
+	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
 	// Use blocks storage.
 	BlocksStorageEnabled bool                     `yaml:"-"`
@@ -107,9 +107,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
-	f.BoolVar(&cfg.ActiveSeriesEnabled, "ingester.active-series-enabled", false, "Enable tracking of active series.")
-	f.DurationVar(&cfg.ActiveSeriesUpdatePeriod, "ingester.active-series-update-period", 1*time.Minute, "How often to update active series metrics.")
-	f.DurationVar(&cfg.ActiveSeriesIdleTimeout, "ingester.active-series-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
+	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", false, "Enable tracking of active series and export them as metrics.")
+	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
+	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -194,7 +194,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesEnabled),
+		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
 		limits:        limits,
 		chunkStore:    chunkStore,
@@ -328,8 +328,8 @@ func (i *Ingester) loop(ctx context.Context) error {
 	defer metadataPurgeTicker.Stop()
 
 	var activeSeriesTickerChan <-chan time.Time
-	if i.cfg.ActiveSeriesEnabled {
-		t := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
+	if i.cfg.ActiveSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
 		activeSeriesTickerChan = t.C
 		defer t.Stop()
 	}
@@ -346,7 +346,7 @@ func (i *Ingester) loop(ctx context.Context) error {
 			i.userStates.updateRates()
 
 		case <-activeSeriesTickerChan:
-			i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesIdleTimeout))
+			i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout))
 
 		case <-ctx.Done():
 			return nil
@@ -463,7 +463,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 			return nil, grpcForwardableError(userID, http.StatusInternalServerError, err)
 		}
 
-		if i.cfg.ActiveSeriesEnabled && seriesSamplesIngested > 0 {
+		if i.cfg.ActiveSeriesMetricsEnabled && seriesSamplesIngested > 0 {
 			// updateActiveSeries will copy labels if necessary.
 			i.updateActiveSeries(userID, time.Now(), ts.Labels)
 		}

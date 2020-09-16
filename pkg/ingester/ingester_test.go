@@ -1004,7 +1004,7 @@ func TestIngesterActiveSeries(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			cfg.ActiveSeriesEnabled = !testData.disableActiveSeries
+			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			_, i := newTestStore(t,
 				cfg,
@@ -1029,7 +1029,7 @@ func TestIngesterActiveSeries(t *testing.T) {
 			// Update active series for metrics check.
 			if !testData.disableActiveSeries {
 				i.userStatesMtx.Lock()
-				i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesIdleTimeout))
+				i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout))
 				i.userStatesMtx.Unlock()
 			}
 

@@ -193,7 +193,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:           cfg,
 		clientConfig:  clientConfig,
-		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesEnabled),
+		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled),
 		limits:        limits,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
@@ -330,8 +330,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	defer refCachePurgeTicker.Stop()
 
 	var activeSeriesTickerChan <-chan time.Time
-	if i.cfg.ActiveSeriesEnabled {
-		t := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
+	if i.cfg.ActiveSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
 		activeSeriesTickerChan = t.C
 		defer t.Stop()
 	}
@@ -375,7 +375,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 }
 
 func (i *Ingester) v2UpdateActiveSeries() {
-	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesIdleTimeout)
+	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
 
 	for _, userID := range i.getTSDBUsers() {
 		userDB := i.getTSDB(userID)
@@ -515,7 +515,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.cfg.ActiveSeriesEnabled && succeededSamplesCount > oldSucceededSamplesCount {
+		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
 			db.activeSeries.UpdateSeries(client.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
 				// If we have already made a copy during this push, no need to create new one.
 				if copiedLabels != nil {

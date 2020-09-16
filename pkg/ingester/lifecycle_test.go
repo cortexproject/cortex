@@ -43,7 +43,7 @@ func defaultIngesterTestConfig() Config {
 	cfg.LifecyclerConfig.ID = "localhost"
 	cfg.LifecyclerConfig.FinalSleep = 0
 	cfg.MaxTransferRetries = 0
-	cfg.ActiveSeriesEnabled = true
+	cfg.ActiveSeriesMetricsEnabled = true
 	return cfg
 }
 

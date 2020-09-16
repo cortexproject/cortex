@@ -315,7 +315,7 @@ func TestIngester_v2Push(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			cfg.ActiveSeriesEnabled = !testData.disableActiveSeries
+			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
@@ -539,7 +539,7 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
-	cfg.ActiveSeriesIdleTimeout = 100 * time.Millisecond
+	cfg.ActiveSeriesMetricsIdleTimeout = 100 * time.Millisecond
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)

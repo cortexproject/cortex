@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"bufio"
 	"encoding/gob"
 	"fmt"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/errors"
@@ -109,8 +109,8 @@ func writeSymbols(filename string, symbols []string) error {
 		return err
 	}
 
-	buf := bufio.NewWriterSize(f, 1*1024*1024)
-	enc := gob.NewEncoder(buf)
+	sn := snappy.NewBufferedWriter(f)
+	enc := gob.NewEncoder(sn)
 
 	errs := errors.MultiError{}
 
@@ -122,7 +122,7 @@ func writeSymbols(filename string, symbols []string) error {
 		}
 	}
 
-	errs.Add(buf.Flush())
+	errs.Add(sn.Close())
 	errs.Add(f.Close())
 	return errs.Err()
 }
@@ -137,8 +137,8 @@ func writeSeries(filename string, sers []series) (map[string]struct{}, error) {
 
 	errs := errors.MultiError{}
 
-	buf := bufio.NewWriterSize(f, 1*1024*1024)
-	enc := gob.NewEncoder(buf)
+	sn := snappy.NewBufferedWriter(f)
+	enc := gob.NewEncoder(sn)
 
 	// Write each series as a separate object, so that we can read them back individually.
 	for _, ser := range sers {
@@ -154,7 +154,7 @@ func writeSeries(filename string, sers []series) (map[string]struct{}, error) {
 		}
 	}
 
-	errs.Add(buf.Flush())
+	errs.Add(sn.Close())
 	errs.Add(f.Close())
 
 	return symbols, errs.Err()

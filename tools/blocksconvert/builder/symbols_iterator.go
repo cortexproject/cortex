@@ -1,11 +1,11 @@
 package builder
 
 import (
-	"bufio"
 	"encoding/gob"
 	"io"
 	"os"
 
+	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/tsdb/errors"
 )
 
@@ -126,8 +126,8 @@ type symbolsFile struct {
 }
 
 func newSymbolsFile(f *os.File) *symbolsFile {
-	buf := bufio.NewReaderSize(f, 65536)
-	dec := gob.NewDecoder(buf)
+	sn := snappy.NewReader(f)
+	dec := gob.NewDecoder(sn)
 
 	return &symbolsFile{
 		f:   f,

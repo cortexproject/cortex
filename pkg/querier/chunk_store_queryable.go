@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
@@ -53,10 +53,10 @@ func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...
 
 // Series in the returned set are sorted alphabetically by labels.
 func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
-	chunksBySeries := map[model.Fingerprint][]chunk.Chunk{}
+	chunksBySeries := map[string][]chunk.Chunk{}
 	for _, c := range chunks {
-		fp := client.Fingerprint(c.Metric)
-		chunksBySeries[fp] = append(chunksBySeries[fp], c)
+		key := distributor.LabelsToKeyString(c.Metric)
+		chunksBySeries[key] = append(chunksBySeries[key], c)
 	}
 
 	series := make([]storage.Series, 0, len(chunksBySeries))

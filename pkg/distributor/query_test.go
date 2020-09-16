@@ -1,8 +1,10 @@
 package distributor
 
 import (
+	"strconv"
 	"testing"
 
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -105,4 +107,51 @@ func TestMergeSamplesIntoFirstNilB(t *testing.T) {
 	b := mergeSamples(a, nil)
 
 	require.Equal(t, b, a)
+}
+
+func BenchmarkSeriesMap(b *testing.B) {
+	benchmarkSeriesMap(100000, b)
+}
+
+func benchmarkSeriesMap(numSeries int, b *testing.B) {
+	series := makeSeries(numSeries)
+	sm := map[string]int{}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for i, s := range series {
+			sm[LabelsToKeyString(s)] = i
+		}
+
+		for _, s := range series {
+			_, ok := sm[LabelsToKeyString(s)]
+			if !ok {
+				b.Fatal("element missing")
+			}
+		}
+
+		if len(sm) != numSeries {
+			b.Fatal("the number of series expected:", numSeries, "got:", len(sm))
+		}
+	}
+}
+
+func makeSeries(n int) []labels.Labels {
+	series := make([]labels.Labels, 0, n)
+	for i := 0; i < n; i++ {
+		series = append(series, labels.FromMap(map[string]string{
+			"label0": "value0",
+			"label1": "value1",
+			"label2": "value2",
+			"label3": "value3",
+			"label4": "value4",
+			"label5": "value5",
+			"label6": "value6",
+			"label7": "value7",
+			"label8": "value8",
+			"label9": strconv.Itoa(i),
+		}))
+	}
+
+	return series
 }

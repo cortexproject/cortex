@@ -170,32 +170,32 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		return nil, err
 	}
 
-	hashToChunkseries := map[model.Fingerprint]ingester_client.TimeSeriesChunk{}
-	hashToTimeSeries := map[model.Fingerprint]ingester_client.TimeSeries{}
+	hashToChunkseries := map[string]ingester_client.TimeSeriesChunk{}
+	hashToTimeSeries := map[string]ingester_client.TimeSeries{}
 
 	for _, result := range results {
 		response := result.(*ingester_client.QueryStreamResponse)
 
 		// Parse any chunk series
 		for _, series := range response.Chunkseries {
-			hash := client.FastFingerprint(series.Labels)
-			existing := hashToChunkseries[hash]
+			key := LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			existing := hashToChunkseries[key]
 			existing.Labels = series.Labels
 			existing.Chunks = append(existing.Chunks, series.Chunks...)
-			hashToChunkseries[hash] = existing
+			hashToChunkseries[key] = existing
 		}
 
 		// Parse any time series
 		for _, series := range response.Timeseries {
-			hash := client.FastFingerprint(series.Labels)
-			existing := hashToTimeSeries[hash]
+			key := LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			existing := hashToTimeSeries[key]
 			existing.Labels = series.Labels
 			if existing.Samples == nil {
 				existing.Samples = series.Samples
 			} else {
 				existing.Samples = mergeSamples(existing.Samples, series.Samples)
 			}
-			hashToTimeSeries[hash] = existing
+			hashToTimeSeries[key] = existing
 		}
 	}
 
@@ -251,4 +251,11 @@ func sameSamples(a, b []ingester_client.Sample) bool {
 		}
 	}
 	return true
+}
+
+// LabelsToKeyString is used to form a string to be used as
+// the hashKey. Don't print, use l.String() for printing.
+func LabelsToKeyString(l labels.Labels) string {
+	b := make([]byte, 0, 1024)
+	return string(l.Bytes(b))
 }

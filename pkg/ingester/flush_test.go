@@ -147,8 +147,9 @@ func emptyIngesterConfig() Config {
 			HeartbeatPeriod: 10 * time.Second,
 		},
 
-		ConcurrentFlushes: 1,             // Single queue only. Doesn't really matter for this test (same series is always flushed by same worker), but must be positive.
-		RateUpdatePeriod:  1 * time.Hour, // Must be positive, doesn't matter for this test.
+		ConcurrentFlushes:               1,               // Single queue only. Doesn't really matter for this test (same series is always flushed by same worker), but must be positive.
+		RateUpdatePeriod:                1 * time.Hour,   // Must be positive, doesn't matter for this test.
+		ActiveSeriesMetricsUpdatePeriod: 5 * time.Minute, // Must be positive.
 	}
 }
 

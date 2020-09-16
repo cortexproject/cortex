@@ -946,3 +946,96 @@ func BenchmarkIngester_QueryStream(b *testing.B) {
 		require.NoError(b, err)
 	}
 }
+
+func TestIngesterActiveSeries(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_active_series",
+	}
+	userID := "test"
+
+	tests := map[string]struct {
+		reqs                []*client.WriteRequest
+		expectedMetrics     string
+		disableActiveSeries bool
+	}{
+		"should succeed on valid series and metadata": {
+			reqs: []*client.WriteRequest{
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
+					client.API),
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
+					client.API),
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"successful push, active series disabled": {
+			disableActiveSeries: true,
+			reqs: []*client.WriteRequest{
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
+					client.API),
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
+					client.API),
+			},
+			expectedMetrics: ``,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+
+			// Create a mocked ingester
+			cfg := defaultIngesterTestConfig()
+			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
+
+			_, i := newTestStore(t,
+				cfg,
+				defaultClientTestConfig(),
+				defaultLimitsTestConfig(), registry)
+
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			ctx := user.InjectOrgID(context.Background(), userID)
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// Push timeseries
+			for _, req := range testData.reqs {
+				_, err := i.Push(ctx, req)
+				assert.NoError(t, err)
+			}
+
+			// Update active series for metrics check.
+			if !testData.disableActiveSeries {
+				i.userStatesMtx.Lock()
+				i.userStates.purgeAndUpdateActiveSeries(time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout))
+				i.userStatesMtx.Unlock()
+			}
+
+			// Check tracked Prometheus metrics
+			err := testutil.GatherAndCompare(registry, strings.NewReader(testData.expectedMetrics), metricNames...)
+			assert.NoError(t, err)
+		})
+	}
+}

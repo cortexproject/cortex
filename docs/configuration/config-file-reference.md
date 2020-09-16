@@ -613,6 +613,18 @@ lifecycler:
 # Period with which to update the per-user ingestion rates.
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
+
+# Enable tracking of active series and export them as metrics.
+# CLI flag: -ingester.active-series-metrics-enabled
+[active_series_metrics_enabled: <boolean> | default = false]
+
+# How often to update active series metrics.
+# CLI flag: -ingester.active-series-metrics-update-period
+[active_series_metrics_update_period: <duration> | default = 1m]
+
+# After what time a series is considered to be inactive.
+# CLI flag: -ingester.active-series-metrics-idle-timeout
+[active_series_metrics_idle_timeout: <duration> | default = 10m]
 ```
 
 ### `querier_config`

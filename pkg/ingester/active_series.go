@@ -5,12 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -30,7 +28,7 @@ type activeSeriesStripe struct {
 	oldestEntryTs atomic.Int64
 
 	mu     sync.RWMutex
-	refs   map[model.Fingerprint][]activeSeriesEntry
+	refs   map[uint64][]activeSeriesEntry
 	active int // Number of active entries in this stripe. Only decreased during purge or clear.
 }
 
@@ -45,7 +43,7 @@ func NewActiveSeries() *ActiveSeries {
 
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
 	for i := 0; i < numActiveSeriesStripes; i++ {
-		c.stripes[i].refs = map[model.Fingerprint][]activeSeriesEntry{}
+		c.stripes[i].refs = map[uint64][]activeSeriesEntry{}
 	}
 
 	return c
@@ -53,10 +51,14 @@ func NewActiveSeries() *ActiveSeries {
 
 // Updates series timestamp to 'now'. Function is called to make a copy of labels if entry doesn't exist yet.
 func (c *ActiveSeries) UpdateSeries(series labels.Labels, now time.Time, labelsCopy func(labels.Labels) labels.Labels) {
-	fp := client.Fingerprint(series)
-	stripeID := util.HashFP(fp) % numActiveSeriesStripes
+	fp := fingerprint(series)
+	stripeID := fp % numActiveSeriesStripes
 
 	c.stripes[stripeID].updateSeriesTimestamp(now, series, fp, labelsCopy)
+}
+
+func fingerprint(series labels.Labels) uint64 {
+	return uint64(client.Fingerprint(series))
 }
 
 // Purge removes expired entries from the cache. This function should be called
@@ -81,13 +83,13 @@ func (c *ActiveSeries) Active() int {
 	return total
 }
 
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fp model.Fingerprint, labelsCopy func(labels.Labels) labels.Labels) {
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, labelsCopy func(labels.Labels) labels.Labels) {
 	nowNanos := now.UnixNano()
 
-	e := s.findEntryForSeries(fp, series)
+	e := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
-		e, entryTimeSet = s.findOrCreateEntryForSeries(fp, series, nowNanos, labelsCopy)
+		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, series, nowNanos, labelsCopy)
 	}
 
 	if !entryTimeSet {
@@ -110,28 +112,28 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 	}
 }
 
-func (s *activeSeriesStripe) findEntryForSeries(fp model.Fingerprint, series labels.Labels) *atomic.Int64 {
+func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) *atomic.Int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Check if already exists within the entries.
-	for ix, entry := range s.refs[fp] {
+	for ix, entry := range s.refs[fingerprint] {
 		if labels.Equal(entry.lbs, series) {
-			return s.refs[fp][ix].nanos
+			return s.refs[fingerprint][ix].nanos
 		}
 	}
 
 	return nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fp model.Fingerprint, series labels.Labels, nowNanos int64, labelsCopy func(labels.Labels) labels.Labels) (*atomic.Int64, bool) {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, series labels.Labels, nowNanos int64, labelsCopy func(labels.Labels) labels.Labels) (*atomic.Int64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Check if already exists within the entries.
-	for ix, entry := range s.refs[fp] {
+	for ix, entry := range s.refs[fingerprint] {
 		if labels.Equal(entry.lbs, series) {
-			return s.refs[fp][ix].nanos, false
+			return s.refs[fingerprint][ix].nanos, false
 		}
 	}
 
@@ -141,7 +143,7 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fp model.Fingerprint, se
 		nanos: atomic.NewInt64(nowNanos),
 	}
 
-	s.refs[fp] = append(s.refs[fp], e)
+	s.refs[fingerprint] = append(s.refs[fingerprint], e)
 
 	return e.nanos, true
 }
@@ -151,7 +153,7 @@ func (s *activeSeriesStripe) clear() {
 	defer s.mu.Unlock()
 
 	s.oldestEntryTs.Store(0)
-	s.refs = map[model.Fingerprint][]activeSeriesEntry{}
+	s.refs = map[uint64][]activeSeriesEntry{}
 	s.active = 0
 }
 

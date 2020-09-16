@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
@@ -497,6 +498,12 @@ func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan b
 }
 
 func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
+	b := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 5 * time.Second,
+		MaxRetries: 5,
+	})
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -508,7 +515,27 @@ func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.Pla
 				return nil
 			}
 
-			m, cs, err := fetchAndBuildSingleSeries(ctx, f, e.Chunks)
+			var m labels.Labels
+			var cs []chunk.Chunk
+			var err error
+
+			// Rather than aborting entire block build due to temporary errors ("connection reset by peer", "http2: client conn not usable"),
+			// try to fetch chunks multiple times.
+			for b.Reset(); b.Ongoing(); {
+				m, cs, err = fetchAndBuildSingleSeries(ctx, f, e.Chunks)
+				if err == nil {
+					break
+				}
+
+				if b.Ongoing() {
+					level.Warn(log).Log("msg", "failed to fetch chunks for series", "series", e.SeriesID, "err", err, "retries", b.NumRetries()+1)
+					b.Wait()
+				}
+			}
+
+			if err == nil {
+				err = b.Err()
+			}
 			if err != nil {
 				return errors.Wrapf(err, "failed to fetch chunks for series %s", e.SeriesID)
 			}

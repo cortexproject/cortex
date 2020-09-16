@@ -31,6 +31,8 @@ type userStates struct {
 	limiter *Limiter
 	cfg     Config
 	metrics *ingesterMetrics
+	// Is tracking of active series enabled?
+	activeSeriesEnabled bool
 }
 
 type userState struct {
@@ -61,11 +63,12 @@ const (
 	perMetricSeriesLimit = "per_metric_series_limit"
 )
 
-func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics) *userStates {
+func newUserStates(limiter *Limiter, cfg Config, metrics *ingesterMetrics, activeSeriesEnabled bool) *userStates {
 	return &userStates{
-		limiter: limiter,
-		cfg:     cfg,
-		metrics: metrics,
+		limiter:             limiter,
+		cfg:                 cfg,
+		metrics:             metrics,
+		activeSeriesEnabled: activeSeriesEnabled,
 	}
 }
 
@@ -85,8 +88,10 @@ func (us *userStates) gc() {
 		if state.fpToSeries.length() == 0 {
 			us.states.Delete(key)
 
-			state.activeSeries.clear()
-			state.activeSeriesGauge.Set(0)
+			if state.activeSeries != nil {
+				state.activeSeries.clear()
+				state.activeSeriesGauge.Set(0)
+			}
 		}
 		return true
 	})
@@ -103,7 +108,7 @@ func (us *userStates) updateRates() {
 
 // Labels will be copied if they are kept.
 func (us *userStates) updateActiveSeriesForUser(userID string, now time.Time, lbls []labels.Label) {
-	if s, ok := us.get(userID); ok {
+	if s, ok := us.get(userID); ok && s.activeSeries != nil {
 		s.activeSeries.UpdateSeries(lbls, now, func(l labels.Labels) labels.Labels { return client.CopyLabels(l) })
 	}
 }
@@ -111,8 +116,10 @@ func (us *userStates) updateActiveSeriesForUser(userID string, now time.Time, lb
 func (us *userStates) purgeAndUpdateActiveSeries(purgeTime time.Time) {
 	us.states.Range(func(key, value interface{}) bool {
 		state := value.(*userState)
-		state.activeSeries.Purge(purgeTime)
-		state.activeSeriesGauge.Set(float64(state.activeSeries.Active()))
+		if state.activeSeries != nil {
+			state.activeSeries.Purge(purgeTime)
+			state.activeSeriesGauge.Set(float64(state.activeSeries.Active()))
+		}
 		return true
 	})
 }
@@ -141,14 +148,16 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
 			seriesInMetric:      newMetricCounter(us.limiter),
-			activeSeries:        NewActiveSeries(),
 
 			memSeries:             us.metrics.memSeries,
 			memSeriesCreatedTotal: us.metrics.memSeriesCreatedTotal.WithLabelValues(userID),
 			memSeriesRemovedTotal: us.metrics.memSeriesRemovedTotal.WithLabelValues(userID),
 			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
 			createdChunks:         us.metrics.createdChunks,
-			activeSeriesGauge:     us.metrics.activeSeriesPerUser.WithLabelValues(userID),
+		}
+		if us.activeSeriesEnabled {
+			state.activeSeries = NewActiveSeries()
+			state.activeSeriesGauge = us.metrics.activeSeriesPerUser.WithLabelValues(userID)
 		}
 		state.mapper = newFPMapper(state.fpToSeries)
 		stored, ok := us.states.LoadOrStore(userID, state)

@@ -234,7 +234,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics, i.cfg.ActiveSeriesEnabled)
 	}
 
 	var err error

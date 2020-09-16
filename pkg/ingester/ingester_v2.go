@@ -220,7 +220,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	// Init the limter and instantiate the user states which depend on it
 	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.ShardByAllLabels)
-	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
+	i.userStates = newUserStates(i.limiter, cfg, i.metrics, false) // active series are tracked separately in blocks-ingester.
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 

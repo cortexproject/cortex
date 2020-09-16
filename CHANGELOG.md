@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.4.0-rc.0 in progress
+## 1.4.0-rc.0 / 2020-09-15
 
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
 * [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180
@@ -27,7 +27,6 @@
 * [CHANGE] `ruler.evaluation_delay_duration` field in YAML config has been moved and renamed to `limits.ruler_evaluation_delay_duration`. #3098
 * [CHANGE] Removed obsolete `results_cache.max_freshness` from YAML config (deprecated since Cortex 1.2). #3145
 * [CHANGE] Removed obsolete `-promql.lookback-delta` option (deprecated since Cortex 1.2, replaced with `-querier.lookback-delta`). #3144
-* [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
 * [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
   - The following changes have been made in Redis configuration:
    - `-redis.master_name` added
@@ -36,9 +35,11 @@
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed
    - `-redis.wait-on-pool-exhaustion` removed
+* [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
 * [FEATURE] Blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`
+* [FEATURE] Experimental blocksconvert: introduce an experimental tool `blocksconvert` to migrate long-term storage chunks to blocks. #3092 #3122 #3127 #3162
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018
@@ -57,6 +58,8 @@
 * [ENHANCEMENT] Experimental Delete Series: Retry processing of Delete requests during failures. #2926
 * [ENHANCEMENT] Improve performance of QueryStream() in ingesters. #3177
 * [ENHANCEMENT] Modules included in "All" target are now visible in output of `-modules` CLI flag. #3155
+* [ENHANCEMENT] Added `/debug/fgprof` endpoint to debug running Cortex process using `fgprof`. This adds up to the existing `/debug/...` endpoints. #3131
+* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. (#2976)
 * [BUGFIX] Ruler: when loading rules from "local" storage, check for directory after resolving symlink. #3137
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013

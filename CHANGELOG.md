@@ -49,7 +49,7 @@
 * [ENHANCEMENT] Add "integration" as a label for `cortex_alertmanager_notifications_total` and `cortex_alertmanager_notifications_failed_total` metrics. #3056
 * [ENHANCEMENT] Add `cortex_ruler_config_last_reload_successful` and `cortex_ruler_config_last_reload_successful_seconds` to check status of users rule manager. #3056
 * [ENHANCEMENT] The configuration validation now fails if an empty YAML node has been set for a root YAML config property. #3080
-* [ENHANCEMENT] Memcached dial() calls now have an optional circuit-breaker to avoid hammering a broken cache #3051
+* [ENHANCEMENT] Memcached dial() calls now have a circuit-breaker to avoid hammering a broken cache. #3051, #3189
 * [ENHANCEMENT] `-ruler.evaluation-delay-duration` is now overridable as a per-tenant limit, `ruler_evaluation_delay_duration`. #3098
 * [ENHANCEMENT] Add TLS support to etcd client. #3102
 * [ENHANCEMENT] When a tenant accesses the Alertmanager UI or its API, if we have valid `-alertmanager.configs.fallback` we'll use that to start the manager and avoid failing the request. #3073

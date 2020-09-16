@@ -189,6 +189,8 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 	}
 	d.seriesInMemory.Set(0)
 
+	level.Info(d.log).Log("msg", "all chunks fetched, building block index")
+
 	meta := &metadata.Meta{
 		BlockMeta: tsdb.BlockMeta{
 			ULID:    d.ulid,

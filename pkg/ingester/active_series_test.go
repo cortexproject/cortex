@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strconv"
@@ -146,9 +147,15 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 	c := NewActiveSeries()
 
 	// Prepare series
+	nameBuf := bytes.Buffer{}
+	for i := 0; i < 10; i++ {
+		nameBuf.WriteString("abcdefghijklmnopqrstuvzyx")
+	}
+	name := nameBuf.String()
+
 	series := make([]labels.Labels, b.N)
 	for s := 0; s < b.N; s++ {
-		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+		series[s] = labels.Labels{{Name: name, Value: name + strconv.Itoa(s)}}
 	}
 
 	now := time.Now().UnixNano()

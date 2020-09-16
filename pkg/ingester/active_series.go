@@ -115,11 +115,8 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 	}
 
 	if !entryTimeSet {
-		for prev := e.Load(); nowNanos > prev; {
-			if e.CAS(prev, nowNanos) {
-				entryTimeSet = true
-				break
-			}
+		if prev := e.Load(); nowNanos > prev {
+			entryTimeSet = e.CAS(prev, nowNanos)
 		}
 	}
 

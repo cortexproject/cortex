@@ -46,3 +46,4 @@ Currently experimental features are:
 - Openstack Swift storage.
 - gRPC Store.
 - Querier support for querying chunks and blocks store at the same time.
+- Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)

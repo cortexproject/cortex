@@ -147,7 +147,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 }
 
 func (c *memcachedClient) circuitBreakerStateChange(name string, from gobreaker.State, to gobreaker.State) {
-	level.Info(c.logger).Log("msg", "circuit-breaker state change", "name", name, "from", from, "to", to)
+	level.Info(c.logger).Log("msg", "circuit-breaker state change", "name", name, "from-state", from, "to-state", to)
 }
 
 func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout time.Duration) (net.Conn, error) {

@@ -329,8 +329,12 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
 	defer refCachePurgeTicker.Stop()
 
-	activeSeriesPurgeTicker := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
-	defer activeSeriesPurgeTicker.Stop()
+	var activeSeriesTickerChan <-chan time.Time
+	if i.cfg.ActiveSeriesEnabled {
+		t := time.NewTicker(i.cfg.ActiveSeriesUpdatePeriod)
+		activeSeriesTickerChan = t.C
+		defer t.Stop()
+	}
 
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
@@ -358,7 +362,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
 				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
 			}
-		case <-activeSeriesPurgeTicker.C:
+
+		case <-activeSeriesTickerChan:
 			i.v2UpdateActiveSeries()
 
 		case <-ctx.Done():
@@ -510,7 +515,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if succeededSamplesCount > oldSucceededSamplesCount {
+		if i.cfg.ActiveSeriesEnabled && succeededSamplesCount > oldSucceededSamplesCount {
 			db.activeSeries.UpdateSeries(client.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
 				// If we have already made a copy during this push, no need to create new one.
 				if copiedLabels != nil {

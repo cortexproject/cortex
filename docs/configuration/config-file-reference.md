@@ -614,6 +614,10 @@ lifecycler:
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
 
+# Enable tracking of active series.
+# CLI flag: -ingester.active-series-enabled
+[active_series_enabled: <boolean> | default = false]
+
 # How often to update active series metrics.
 # CLI flag: -ingester.active-series-update-period
 [active_series_update_period: <duration> | default = 1m]

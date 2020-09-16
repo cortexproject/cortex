@@ -62,6 +62,7 @@ func TestIngester_v2Push(t *testing.T) {
 		expectedMetadataIngested []*client.MetricMetadata
 		expectedMetrics          string
 		additionalMetrics        []string
+		disableActiveSeries      bool
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*client.WriteRequest{
@@ -129,6 +130,45 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"successful push, active series disabled": {
+			disableActiveSeries: true,
+			reqs: []*client.WriteRequest{
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
+					client.API),
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
+					client.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []client.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 2
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -275,6 +315,9 @@ func TestIngester_v2Push(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
+			if testData.disableActiveSeries {
+				cfg.ActiveSeriesEnabled = false
+			}
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
@@ -323,7 +366,9 @@ func TestIngester_v2Push(t *testing.T) {
 			assert.ElementsMatch(t, testData.expectedMetadataIngested, mres.Metadata)
 
 			// Update active series for metrics check.
-			i.v2UpdateActiveSeries()
+			if !testData.disableActiveSeries {
+				i.v2UpdateActiveSeries()
+			}
 
 			// Append additional metrics to assert on.
 			mn := append(metricNames, testData.additionalMetrics...)

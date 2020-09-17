@@ -494,7 +494,7 @@ func parsePlanEntries(ctx context.Context, dec *json.Decoder, planEntryCh chan b
 		}
 		err = nil
 	}
-	return err
+	return errors.Wrap(err, "parsing plan entries")
 }
 
 func fetchAndBuild(ctx context.Context, f *fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {

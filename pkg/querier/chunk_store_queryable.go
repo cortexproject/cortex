@@ -10,7 +10,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 )
@@ -55,7 +55,7 @@ func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...
 func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkIteratorFunc) storage.SeriesSet {
 	chunksBySeries := map[string][]chunk.Chunk{}
 	for _, c := range chunks {
-		key := distributor.LabelsToKeyString(c.Metric)
+		key := client.LabelsToKeyString(c.Metric)
 		chunksBySeries[key] = append(chunksBySeries[key], c)
 	}
 

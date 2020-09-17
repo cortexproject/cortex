@@ -178,7 +178,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 		// Parse any chunk series
 		for _, series := range response.Chunkseries {
-			key := LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			key := client.LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
 			existing := hashToChunkseries[key]
 			existing.Labels = series.Labels
 			existing.Chunks = append(existing.Chunks, series.Chunks...)
@@ -187,7 +187,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 		// Parse any time series
 		for _, series := range response.Timeseries {
-			key := LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
+			key := client.LabelsToKeyString(client.FromLabelAdaptersToLabels(series.Labels))
 			existing := hashToTimeSeries[key]
 			existing.Labels = series.Labels
 			if existing.Samples == nil {
@@ -251,11 +251,4 @@ func sameSamples(a, b []ingester_client.Sample) bool {
 		}
 	}
 	return true
-}
-
-// LabelsToKeyString is used to form a string to be used as
-// the hashKey. Don't print, use l.String() for printing.
-func LabelsToKeyString(l labels.Labels) string {
-	b := make([]byte, 0, 1024)
-	return string(l.Bytes(b))
 }

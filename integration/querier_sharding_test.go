@@ -39,7 +39,7 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, memcached))
 
-	minio := e2edb.NewMinio(9000, BlocksStorageFlags["-experimental.blocks-storage.s3.bucket-name"])
+	minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	flags := BlocksStorageFlags

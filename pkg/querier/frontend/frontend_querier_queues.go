@@ -169,7 +169,7 @@ func (q *queues) addQuerierConnection(querier string) {
 func (q *queues) removeQuerierConnection(querier string) {
 	conns := q.querierConnections[querier]
 	if conns <= 0 {
-		return
+		panic("unexpected number of connections for querier")
 	}
 
 	conns--
@@ -179,6 +179,10 @@ func (q *queues) removeQuerierConnection(querier string) {
 		delete(q.querierConnections, querier)
 
 		ix := sort.SearchStrings(q.sortedQueriers, querier)
+		if ix >= len(q.sortedQueriers) || q.sortedQueriers[ix] != querier {
+			panic("incorrect state of sorted queriers")
+		}
+
 		q.sortedQueriers = append(q.sortedQueriers[:ix], q.sortedQueriers[ix+1:]...)
 
 		q.recomputeUserQueriers()

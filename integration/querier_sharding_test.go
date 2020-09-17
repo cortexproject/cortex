@@ -92,6 +92,15 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
+	// Send both queriers a single query, so that they both initialize their cortex_querier_request_duration_seconds metrics.
+	for _, q := range []*e2ecortex.CortexService{querier1, querier2} {
+		c, err := e2ecortex.NewClient("", q.HTTPEndpoint(), "", "", userID)
+		require.NoError(t, err)
+
+		_, err = c.Query("series_1", now)
+		require.NoError(t, err)
+	}
+
 	wg := sync.WaitGroup{}
 
 	// Run all queries concurrently to get better distribution of requests between queriers.
@@ -112,18 +121,9 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 
 	wg.Wait()
 
-	// Send both queriers a single query, so that they both initialize their cortex_querier_request_duration_seconds metrics.
-	for _, q := range []*e2ecortex.CortexService{querier1, querier2} {
-		c, err := e2ecortex.NewClient("", q.HTTPEndpoint(), "", "", userID)
-		require.NoError(t, err)
-
-		_, err = c.Query("series_1", now)
-		require.NoError(t, err)
-	}
-
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numQueries), "cortex_query_frontend_queries_total"))
 
-	// Verify that only single querier handled all the queries.
+	// Verify that only single querier handled all the queries when sharding is enabled, otherwise queries have been fairly distributed across queriers.
 	q1Values, err := querier1.SumMetrics([]string{"cortex_querier_request_duration_seconds"}, e2e.WithMetricCount)
 	require.NoError(t, err)
 	require.Len(t, q1Values, 1)

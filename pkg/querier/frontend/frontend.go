@@ -401,6 +401,10 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	defer f.mtx.Unlock()
 
 	queue := f.queues.getOrAddQueue(userID, maxQueriers)
+	if queue == nil {
+		// This can only happen if userID is "".
+		return errors.New("no queue found")
+	}
 
 	select {
 	case queue <- req:

@@ -45,7 +45,7 @@ type Limits struct {
 	CreationGracePeriod       time.Duration       `yaml:"creation_grace_period"`
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
-	SubringSize               int                 `yaml:"user_subring_size"`
+	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
 
 	// Ingester enforced limits.
 	// Series
@@ -83,7 +83,7 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&l.SubringSize, "experimental.distributor.user-subring-size", 0, "Per-user subring to shard metrics to ingesters. 0 is disabled.")
+	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
@@ -360,9 +360,9 @@ func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
-// SubringSize returns the size of the subring for a given user.
-func (o *Overrides) SubringSize(userID string) int {
-	return o.getOverridesForUser(userID).SubringSize
+// IngestionTenantShardSize returns the ingesters shard size for a given user.
+func (o *Overrides) IngestionTenantShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IngestionTenantShardSize
 }
 
 // EvaluationDelay returns the rules evaluation delay for a given user.
@@ -370,7 +370,7 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
 }
 
-// StoreGatewayTenantShardSize returns the size of the store-gateway shard size for a given user.
+// StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
 func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).StoreGatewayTenantShardSize
 }

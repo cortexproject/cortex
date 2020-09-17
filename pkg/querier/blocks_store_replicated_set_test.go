@@ -37,10 +37,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 	block3Hash := cortex_tsdb.HashBlockID(block3)
 	block4Hash := cortex_tsdb.HashBlockID(block4)
 
-	// Ensure the user ID we use belongs to the instances holding the token for the block 1
-	// (it's expected by the assertions below).
 	userID := "user-A"
-	require.LessOrEqual(t, cortex_tsdb.HashTenantID(userID), block1Hash)
 
 	tests := map[string]struct {
 		shardingStrategy  string
@@ -250,7 +247,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			queryBlocks: []ulid.ULID{block1, block2, block4},
 			expectedClients: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block4},
-				"127.0.0.2": {block2},
+				"127.0.0.3": {block2},
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 1, SS = 4": {
@@ -286,7 +283,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				block2: {"127.0.0.1"},
 			},
 			expectedClients: map[string][]ulid.ULID{
-				"127.0.0.2": {block1, block2},
+				"127.0.0.3": {block1, block2},
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 2, SS = 2 with excluded blocks and no replacement available": {
@@ -301,7 +298,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 			queryBlocks: []ulid.ULID{block1, block2},
 			exclude: map[ulid.ULID][]string{
-				block1: {"127.0.0.1", "127.0.0.2"},
+				block1: {"127.0.0.1", "127.0.0.3"},
 				block2: {"127.0.0.1"},
 			},
 			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),

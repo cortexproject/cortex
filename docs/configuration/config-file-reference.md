@@ -392,6 +392,10 @@ ha_tracker:
 # CLI flag: -distributor.extra-query-delay
 [extra_queue_delay: <duration> | default = 0s]
 
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -distributor.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
+
 # Distribute samples based on all labels, as opposed to solely by user and
 # metric name.
 # CLI flag: -distributor.shard-by-all-labels
@@ -2748,9 +2752,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.enforce-metric-name
 [enforce_metric_name: <boolean> | default = true]
 
-# Per-user subring to shard metrics to ingesters. 0 is disabled.
-# CLI flag: -experimental.distributor.user-subring-size
-[user_subring_size: <int> | default = 0]
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set both on ingesters and distributors. When this setting is specified
+# in the per-tenant overrides, a value of 0 disables shuffle sharding for the
+# tenant.
+# CLI flag: -distributor.ingestion-tenant-shard-size
+[ingestion_tenant_shard_size: <int> | default = 0]
 
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples

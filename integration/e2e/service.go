@@ -586,7 +586,7 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
-		sums[i] = sumValues(getValues(metrics, options))
+		sums[i] = SumValues(getValues(metrics, options))
 	}
 
 	return sums, nil

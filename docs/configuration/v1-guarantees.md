@@ -37,7 +37,7 @@ Currently experimental features are:
 
 - Azure blob storage.
 - Zone awareness based replication.
-- User subrings.
+- Shuffle sharding (both read and write path).
 - Ruler API (to PUT rules).
 - Alertmanager API
 - Memcached client DNS-based service discovery.

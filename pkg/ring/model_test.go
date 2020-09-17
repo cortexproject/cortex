@@ -186,3 +186,57 @@ func TestDesc_Ready(t *testing.T) {
 		t.Fatal("expected ready, got", err)
 	}
 }
+
+func TestDesc_getTokensByZone(t *testing.T) {
+	tests := map[string]struct {
+		desc     *Desc
+		expected map[string][]TokenDesc
+	}{
+		"empty ring": {
+			desc:     &Desc{Ingesters: map[string]IngesterDesc{}},
+			expected: map[string][]TokenDesc{},
+		},
+		"single zone": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: ""},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: ""},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: ""},
+			}},
+			expected: map[string][]TokenDesc{
+				"": {
+					{Token: 1, Ingester: "instance-1", Zone: ""},
+					{Token: 2, Ingester: "instance-2", Zone: ""},
+					{Token: 3, Ingester: "instance-3", Zone: ""},
+					{Token: 4, Ingester: "instance-2", Zone: ""},
+					{Token: 5, Ingester: "instance-1", Zone: ""},
+					{Token: 6, Ingester: "instance-3", Zone: ""},
+				},
+			},
+		},
+		"multiple zones": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: "zone-1"},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: "zone-1"},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: "zone-2"},
+			}},
+			expected: map[string][]TokenDesc{
+				"zone-1": {
+					{Token: 1, Ingester: "instance-1", Zone: "zone-1"},
+					{Token: 2, Ingester: "instance-2", Zone: "zone-1"},
+					{Token: 4, Ingester: "instance-2", Zone: "zone-1"},
+					{Token: 5, Ingester: "instance-1", Zone: "zone-1"},
+				},
+				"zone-2": {
+					{Token: 3, Ingester: "instance-3", Zone: "zone-2"},
+					{Token: 6, Ingester: "instance-3", Zone: "zone-2"},
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expected, testData.desc.getTokensByZone())
+		})
+	}
+}

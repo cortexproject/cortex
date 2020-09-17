@@ -12,6 +12,7 @@
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
+* [BUGFIX] Check for postgres rows errors. #3197
 
 ## 1.4.0-rc.0 in progress
 

@@ -479,12 +479,14 @@ func (r *Ring) Subring(key uint32, n int) ReadRing {
 // generator is initialised with a seed based on the provided identifier.
 //
 // This implementation guarantees:
+//
 // - Stability: given the same ring, two invocations returns the same result.
+//
 // - Consistency: adding/removing 1 instance from the ring generates a resulting
-//   subring with no more then 1 difference.
-// - Shuffling: probabilistically, for a large enough cluster each identifier gets
-//   a different set of instances, with a reduced number of overlapping instances
-//   between two identifiers.
+// subring with no more then 1 difference.
+//
+// - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
+// set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	// Nothing to do if the shard size is not smaller then the actual ring.
 	if size <= 0 || r.IngesterCount() <= size {

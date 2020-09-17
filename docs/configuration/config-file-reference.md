@@ -2756,7 +2756,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Must be set both on ingesters and distributors. When this setting is specified
 # in the per-tenant overrides, a value of 0 disables shuffle sharding for the
 # tenant.
-# CLI flag: -distribution.ingestion-tenant-shard-size
+# CLI flag: -distributor.ingestion-tenant-shard-size
 [ingestion_tenant_shard_size: <int> | default = 0]
 
 # The maximum number of series for which a query can fetch samples from each

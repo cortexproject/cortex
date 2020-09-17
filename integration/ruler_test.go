@@ -101,6 +101,7 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	configOverrides := map[string]string{
 		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
+		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 	}
 
 	// Start Cortex components.
@@ -131,6 +132,18 @@ func TestRulerAPISingleBinary(t *testing.T) {
 
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"prometheus_engine_queries"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "engine", "ruler"))))
+
+	// Test Cleanup and Restart
+
+	// Stop the running cortex
+	require.NoError(t, cortex.Stop())
+
+	// Restart Cortex with identical configs
+	cortexRestarted := e2ecortex.NewSingleBinaryWithConfigFile("cortex-restarted", cortexConfigFile, configOverrides, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortexRestarted))
+
+	// Wait until the user manager is created
+	require.NoError(t, cortexRestarted.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
 }
 
 func TestRulerAlertmanager(t *testing.T) {

@@ -619,3 +619,104 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, TableManager, tableManager)
 }
+
+func TestHashCollisionHandling(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+	flags := mergeFlags(ChunksStorageFlags, map[string]string{})
+
+	// Start dependencies.
+	dynamo := e2edb.NewDynamoDB()
+
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
+
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	require.NoError(t, s.StartAndWaitReady(tableManager))
+
+	// Wait until the first table-manager sync has completed, so that we're
+	// sure the tables have been created.
+	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	// Wait until the distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Push a series for each user to Cortex.
+	now := time.Now()
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-0")
+	require.NoError(t, err)
+
+	var series []prompb.TimeSeries
+	var expectedVector model.Vector
+	// Generate two series which collide on fingerprints and fast fingerprints.
+	tsMillis := e2e.TimeToMilliseconds(now)
+	metric1 := []prompb.Label{
+		{Name: "A", Value: "K6sjsNNczPl"},
+		{Name: labels.MetricName, Value: "fingerprint_collision"},
+	}
+	metric2 := []prompb.Label{
+		{Name: "A", Value: "cswpLMIZpwt"},
+		{Name: labels.MetricName, Value: "fingerprint_collision"},
+	}
+
+	series = append(series, prompb.TimeSeries{
+		Labels: metric1,
+		Samples: []prompb.Sample{
+			{Value: float64(0), Timestamp: tsMillis},
+		},
+	})
+	expectedVector = append(expectedVector, &model.Sample{
+		Metric:    prompbLabelsToModelMetric(metric1),
+		Value:     model.SampleValue(float64(0)),
+		Timestamp: model.Time(tsMillis),
+	})
+	series = append(series, prompb.TimeSeries{
+		Labels: metric2,
+		Samples: []prompb.Sample{
+			{Value: float64(1), Timestamp: tsMillis},
+		},
+	})
+	expectedVector = append(expectedVector, &model.Sample{
+		Metric:    prompbLabelsToModelMetric(metric2),
+		Value:     model.SampleValue(float64(1)),
+		Timestamp: model.Time(tsMillis),
+	})
+
+	res, err := c.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// Wait until the querier has updated the ring.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Query the series.
+	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-0")
+	require.NoError(t, err)
+
+	result, err := c.Query("fingerprint_collision", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	require.Equal(t, expectedVector, result.(model.Vector))
+}
+
+func prompbLabelsToModelMetric(pbLabels []prompb.Label) model.Metric {
+	metric := model.Metric{}
+
+	for _, l := range pbLabels {
+		metric[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+
+	return metric
+}

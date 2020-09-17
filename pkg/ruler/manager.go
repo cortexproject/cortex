@@ -246,6 +246,9 @@ func (r *DefaultMultiTenantManager) Stop() {
 	wg.Wait()
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
+
+	// cleanup user rules directories
+	r.mapper.cleanup()
 }
 
 func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {

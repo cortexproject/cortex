@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"hash"
 	"math"
 	"sync"
 	"time"
@@ -60,8 +61,13 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, now time.Time, labelsC
 
 var sep = []byte{model.SeparatorByte}
 
+var hashPool = sync.Pool{New: func() interface{} { return xxhash.New() }}
+
 func fingerprint(series labels.Labels) uint64 {
-	sum := xxhash.New()
+	sum := hashPool.Get().(hash.Hash64)
+	defer hashPool.Put(sum)
+
+	sum.Reset()
 	for _, label := range series {
 		_, _ = sum.Write(yoloBuf(label.Name))
 		_, _ = sum.Write(sep)
@@ -109,11 +115,8 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 	}
 
 	if !entryTimeSet {
-		for prev := e.Load(); nowNanos > prev; {
-			if e.CAS(prev, nowNanos) {
-				entryTimeSet = true
-				break
-			}
+		if prev := e.Load(); nowNanos > prev {
+			entryTimeSet = e.CAS(prev, nowNanos)
 		}
 	}
 

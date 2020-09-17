@@ -604,7 +604,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 }
 
 // ForAllIngesters runs f, in parallel, for all ingesters
-func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f func(client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f func(context.Context, client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {
 		return nil, err
@@ -613,13 +613,13 @@ func (d *Distributor) ForAllIngesters(ctx context.Context, reallyAll bool, f fun
 		replicationSet.MaxErrors = 0
 	}
 
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ing *ring.IngesterDesc) (interface{}, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
 		}
 
-		return f(client.(ingester_client.IngesterClient))
+		return f(ctx, client.(ingester_client.IngesterClient))
 	})
 }
 
@@ -628,7 +628,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 	req := &client.LabelValuesRequest{
 		LabelName: string(labelName),
 	}
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -652,7 +652,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 // LabelNames returns all of the label names.
 func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
 	req := &client.LabelNamesRequest{}
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})
 	if err != nil {
@@ -684,7 +684,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -712,7 +712,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	req := &ingester_client.MetricsMetadataRequest{}
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForAllIngesters(ctx, false, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, false, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
 	if err != nil {
@@ -746,7 +746,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	req := &client.UserStatsRequest{}
-	resps, err := d.ForAllIngesters(ctx, true, func(client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForAllIngesters(ctx, true, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {

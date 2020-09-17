@@ -144,6 +144,8 @@ func TestQueuesConsistency(t *testing.T) {
 
 	lastUserIndexes := map[string]int{}
 
+	conns := map[string]int{}
+
 	for i := 0; i < 1000; i++ {
 		switch r.Int() % 6 {
 		case 0:
@@ -155,9 +157,15 @@ func TestQueuesConsistency(t *testing.T) {
 		case 2:
 			uq.deleteQueue(generateTenant(r))
 		case 3:
-			uq.addQuerierConnection(generateQuerier(r))
+			q := generateQuerier(r)
+			uq.addQuerierConnection(q)
+			conns[q]++
 		case 4:
-			uq.removeQuerierConnection(generateQuerier(r))
+			q := generateQuerier(r)
+			if conns[q] > 0 {
+				uq.removeQuerierConnection(q)
+				conns[q]--
+			}
 		}
 
 		assert.NoErrorf(t, isConsistent(uq), "last action %d", i)

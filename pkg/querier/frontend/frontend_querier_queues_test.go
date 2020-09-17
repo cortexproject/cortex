@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -246,4 +247,37 @@ func TestShuffleQueriers(t *testing.T) {
 	r2 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r2))
 	require.Equal(t, r1, r2)
+}
+
+func TestShuffleQueriersCorrectness(t *testing.T) {
+	const queriersCount = 100
+
+	var allSortedQueriers []string
+	for i := 0; i < queriersCount; i++ {
+		allSortedQueriers = append(allSortedQueriers, fmt.Sprintf("%d", i))
+	}
+	sort.Strings(allSortedQueriers)
+
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	const tests = 1000
+	for i := 0; i < tests; i++ {
+		toSelect := r.Intn(queriersCount)
+		if toSelect == 0 {
+			toSelect = 3
+		}
+
+		selected := shuffleQueriersForUser(r.Int63(), toSelect, allSortedQueriers, nil)
+
+		require.Equal(t, toSelect, len(selected))
+
+		sort.Strings(allSortedQueriers)
+		prevQuerier := ""
+		for _, q := range allSortedQueriers {
+			require.True(t, prevQuerier < q, "non-unique querier")
+			prevQuerier = q
+
+			ix := sort.SearchStrings(allSortedQueriers, q)
+			require.True(t, ix < len(allSortedQueriers) && allSortedQueriers[ix] == q, "selected querier is not between all queriers")
+		}
+	}
 }

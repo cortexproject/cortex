@@ -8118,6 +8118,7 @@ __replica__: replica2
 &lt;h2 id="master--unreleased">master / unreleased&lt;/h2>
 &lt;ul>
 &lt;li>[ENHANCEMENT] Ingester: added new metric &lt;code>cortex_ingester_active_series&lt;/code> to track active series more accurately. Also added options to control whether active series tracking is enabled (&lt;code>-ingester.active-series-enabled&lt;/code>, defaults to false), and how often this metric is updated (&lt;code>-ingester.active-series-update-period&lt;/code>) and max idle time for series to be considered inactive (&lt;code>-ingester.active-series-idle-timeout&lt;/code>). &lt;a href="https://github.com/cortexproject/cortex/pull/3153">#3153&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Ruler: directories in the configured &lt;code>rules-path&lt;/code> will be removed on startup and shutdown in order to ensure they don&amp;rsquo;t persist between runs. &lt;a href="https://github.com/cortexproject/cortex/pull/3195">#3195&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="140-rc0-in-progress">1.4.0-rc.0 in progress&lt;/h2>
 &lt;ul>

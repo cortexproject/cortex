@@ -69,7 +69,7 @@ func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Serve
 	if cfg.QuerierID == "" {
 		hostname, err := os.Hostname()
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "unable to get hostname used to initialise default querier ID")
 		}
 		cfg.QuerierID = hostname
 	}

@@ -223,5 +223,5 @@ func getSeedForUser(user string) int64 {
 	d := md5.New()
 	_, _ = d.Write([]byte(user))
 	buf := d.Sum(nil)
-	return int64(binary.BigEndian.Uint64(buf[:8]) ^ binary.BigEndian.Uint64(buf[8:]))
+	return int64(binary.BigEndian.Uint64(buf))
 }

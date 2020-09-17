@@ -2414,6 +2414,11 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.dns-lookup-period
 [dns_lookup_duration: <duration> | default = 10s]
 
+# Querier ID, sent to frontend service to identify requests from the same
+# querier. Defaults to hostname.
+# CLI flag: -querier.id
+[id: <string> | default = ""]
+
 grpc_client_config:
   # gRPC client max receive message size (bytes).
   # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
@@ -2830,6 +2835,15 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
+
+# Maximum number of queriers that can handle requests for a single user. If set
+# to 0 or value higher than number of available queriers, *all* queriers will
+# handle requests for the user. Each frontend will select the same set of
+# queriers for the same user (given that all queriers are connected to all
+# frontends). This option only works with queriers connecting to the
+# query-frontend, not when using downstream URL.
+# CLI flag: -frontend.max-queriers-per-user
+[max_queriers_per_user: <int> | default = 0]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.

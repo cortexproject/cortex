@@ -271,7 +271,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	frontend, err := New(config, logger, nil)
+	frontend, err := New(config, limits{}, logger, nil)
 	require.NoError(t, err)
 	defer frontend.Close()
 
@@ -310,4 +310,12 @@ func defaultFrontendConfig() Config {
 	config := Config{}
 	flagext.DefaultValues(&config)
 	return config
+}
+
+type limits struct {
+	queriers int
+}
+
+func (l limits) MaxQueriersPerUser(_ string) int {
+	return l.queriers
 }

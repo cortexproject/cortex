@@ -19,6 +19,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
+type mockCloser struct{}
+
+func (mockCloser) Close() error {
+	return nil
+}
+
 type mockFrontendClient struct {
 	failRecv bool
 }
@@ -38,11 +44,11 @@ type mockFrontendProcessClient struct {
 	wg       sync.WaitGroup
 }
 
-func (m *mockFrontendProcessClient) Send(*ProcessResponse) error {
+func (m *mockFrontendProcessClient) Send(*ClientToFrontend) error {
 	m.wg.Done()
 	return nil
 }
-func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
+func (m *mockFrontendProcessClient) Recv() (*FrontendToClient, error) {
 	m.wg.Wait()
 	m.wg.Add(1)
 
@@ -54,7 +60,7 @@ func (m *mockFrontendProcessClient) Recv() (*ProcessRequest, error) {
 		return nil, errors.New("wups")
 	}
 
-	return &ProcessRequest{
+	return &FrontendToClient{
 		HttpRequest: &httpgrpc.HTTPRequest{},
 	}, nil
 }
@@ -91,7 +97,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("Testing concurrency %v", tt.concurrency), func(t *testing.T) {
-			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), &mockFrontendClient{}, grpcclient.ConfigWithTLS{})
+			mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), mockCloser{}, &mockFrontendClient{}, grpcclient.ConfigWithTLS{}, "querier")
 
 			for _, c := range tt.concurrency {
 				calls.Store(0)
@@ -127,7 +133,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		failRecv: true,
 	}
 
-	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{})
+	mgr := newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), mockCloser{}, client, grpcclient.ConfigWithTLS{}, "querier")
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)
@@ -151,7 +157,7 @@ func TestServeCancelStopsProcess(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), client, grpcclient.ConfigWithTLS{GRPC: grpcclient.Config{MaxSendMsgSize: 100000}})
+	mgr := newFrontendManager(ctx, util.Logger, httpgrpc_server.NewServer(handler), mockCloser{}, client, grpcclient.ConfigWithTLS{GRPC: grpcclient.Config{MaxSendMsgSize: 100000}}, "querier")
 
 	mgr.concurrentRequests(1)
 	time.Sleep(50 * time.Millisecond)

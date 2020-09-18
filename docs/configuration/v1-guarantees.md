@@ -46,3 +46,5 @@ Currently experimental features are:
 - Openstack Swift storage.
 - gRPC Store.
 - Querier support for querying chunks and blocks store at the same time.
+- TLS configuration in gRPC and HTTP clients.
+- TLS configuration in Etcd client.

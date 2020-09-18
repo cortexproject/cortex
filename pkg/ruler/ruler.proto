@@ -7,6 +7,7 @@ package ruler;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 import "github.com/cortexproject/cortex/pkg/ingester/client/cortex.proto";
 import "github.com/cortexproject/cortex/pkg/ruler/rules/rules.proto";
@@ -17,9 +18,12 @@ option (gogoproto.unmarshaler_all) = true;
 
 service Ruler {
   rpc Rules(RulesRequest) returns (RulesResponse) {};
+  rpc ReloadRules(ReloadRulesRequest) returns (google.protobuf.Empty);
 }
 
 message RulesRequest {}
+
+message ReloadRulesRequest {}
 
 message RulesResponse {
   repeated GroupStateDesc groups = 1;

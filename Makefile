@@ -65,7 +65,7 @@ pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
-pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
+pkg/ruler/ruler.pb.go: pkg/ruler/ruler.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto

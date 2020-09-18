@@ -460,6 +460,9 @@ func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Best case effort to reload rules.
+	go r.updateRules(userID)
+
 	respondAccepted(w, logger)
 }
 

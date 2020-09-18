@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -347,21 +349,32 @@ func (r *Ruler) run(ctx context.Context) error {
 	tick := time.NewTicker(r.cfg.PollInterval)
 	defer tick.Stop()
 
-	r.loadRules(ctx)
+	r.loadRules(ctx, "")
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
-			r.loadRules(ctx)
+			r.loadRules(ctx, "")
 		}
 	}
 }
 
-func (r *Ruler) loadRules(ctx context.Context) {
+// Load the rules for a particular userID. If userID empty, we load all rules.
+func (r *Ruler) loadRules(ctx context.Context, userID string) {
 	ringHasher := fnv.New32a()
 
-	configs, err := r.store.ListAllRuleGroups(ctx)
+	var configs map[string]rules.RuleGroupList
+	var err error
+
+	if userID == "" {
+		configs, err = r.store.ListAllRuleGroups(ctx)
+	} else {
+		var rgs rules.RuleGroupList
+		rgs, err = r.store.ListRuleGroups(ctx, userID, "")
+		configs[userID] = rgs
+	}
+
 	if err != nil {
 		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
 		return
@@ -549,4 +562,67 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 	}
 
 	return &RulesResponse{Groups: groupDescs}, nil
+}
+
+// updateRules will force each ruler to update the rules for the userID.
+// This is called right after a user updates his config, this way they don't need to
+// wait until the refresh interval to see their config changes.
+func (r *Ruler) updateRules(userID string) {
+	rulers, err := r.ring.GetAll(ring.Read)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to read ring for updateRules", "err", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	ctx = user.InjectOrgID(ctx, userID)
+	ctx, err = user.InjectIntoGRPCRequest(ctx)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to inject user ID into grpc request", "err", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	for _, rlr := range rulers.Ingesters {
+		dialOpts, err := r.cfg.ClientTLSConfig.GetGRPCDialOptions()
+		if err != nil {
+			level.Error(r.logger).Log("msg", "unable to get dail options", "err", err)
+			return
+		}
+
+		wg.Add(1)
+
+		go func(logger log.Logger, addr string, dialOpts []grpc.DialOption, wg *sync.WaitGroup) {
+			conn, err := grpc.Dial(rlr.Addr, dialOpts...)
+			if err != nil {
+				level.Error(r.logger).Log("msg", "unable to dial gRPC connection", "err", err)
+				return
+			}
+			cc := NewRulerClient(conn)
+			_, err = cc.ReloadRules(ctx, nil)
+
+			if err != nil {
+				level.Error(r.logger).Log("msg", "err reloading rules", "err", err, "ruler", rlr.Addr)
+				return
+			}
+
+			wg.Done()
+		}(r.logger, rlr.Addr, dialOpts, &wg)
+	}
+
+	wg.Wait()
+}
+
+// ReloadRules implements the rules service.
+func (r *Ruler) ReloadRules(ctx context.Context, _ *ReloadRulesRequest) (*emptypb.Empty, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id found in context")
+	}
+
+	r.loadRules(ctx, userID)
+	return nil, nil
 }

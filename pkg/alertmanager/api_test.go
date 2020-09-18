@@ -66,7 +66,25 @@ template_files:
   "good.tpl": "good-templ"
   "not/very/good.tpl": "bad-template"
 `,
-			err: fmt.Errorf("error validating Alertmanager config: unable to create template file not/very/good.tpl"),
+			err: fmt.Errorf("error validating Alertmanager config: template file name 'not/very/good.tpl' is not not valid, consider using 'good.tpl'"),
+		},
+		{
+			name: "It is not valid with .",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+template_files:
+  "good.tpl": "good-templ"
+  ".": "bad-template"
+`,
+			err: fmt.Errorf("error validating Alertmanager config: unable to create template file '.'"),
 		},
 		{
 			name: "It is not valid if the config is empty due to wrong indendatation",

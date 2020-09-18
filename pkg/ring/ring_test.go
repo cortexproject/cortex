@@ -147,7 +147,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 			numZones:             1,
 			replicationFactor:    3,
 			zoneAwarenessEnabled: true,
-			expectedErr:          "at least 2 live replicas required, could only find 1",
+			expectedErr:          "at least 2 live replicas required across different availability zones, could only find 1",
 		},
 		"should succeed if there are ingesters in 2 zones on RF = 3": {
 			numIngesters:         16,

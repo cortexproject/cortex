@@ -87,11 +87,11 @@ Then we add a new instance and the **updated ring** is:
 
 Now, let’s compare two different algorithms to solve collisions:
 
-- Using the random generator:  
-Random sequence = 3 (**I4**), 6 (I4 - collision), 12 (**I3**)  
+- Using the random generator:<br />
+Random sequence = 3 (**I4**), 6 (I4 - collision), 12 (**I3**)<br />
 **all instances are different** (I4, I3)
-- Walking the ring:  
-Random sequence = 3 (**I4**), 6 (I4 - collision, next is **I1**)  
+- Walking the ring:<br />
+Random sequence = 3 (**I4**), 6 (I4 - collision, next is **I1**)<br />
 **only 1 instance is different** (I4, I1)
 
 #### Shuffling

@@ -82,7 +82,7 @@ To choose N Queriers for a tenant, we propose to use a simple algorithm:
 1. Sort all Queriers by their ID
 2. SID = tenant ID
 3. SID = hash(SID)
-4. Pick the querier from the list of sorted queries with:  
+4. Pick the querier from the list of sorted queries with:<br />
 index = FNV-1a(SID) % number of Queriers
 5. Loop to (3) until we’ve found N distinct queriers (where N is the shard size) and stop early if there aren’t enough queriers
 
@@ -146,7 +146,7 @@ The proposed solution to add shuffle sharding support to the store-gateway is to
 
 When shuffle sharding is enabled:
 
-- The **store-gateway** `syncUsersBlocks()` will build a tenant’s subring for each tenant found scanning the bucket and will skip any tenant not belonging to its shard.  
+- The **store-gateway** `syncUsersBlocks()` will build a tenant’s subring for each tenant found scanning the bucket and will skip any tenant not belonging to its shard.<br />
 Likewise, ShardingMetadataFilter will first build a **tenant’s subring** and then will use the existing logic to filter out blocks not belonging to store-gateway instance itself. The tenant ID can be read from the block’s meta.json.
 - The **querier** `blocksStoreReplicationSet.GetClientsFor()` will first build a **tenant’s subring** and then will use the existing logic to find out to which store-gateway instance each requested block belongs to.
 

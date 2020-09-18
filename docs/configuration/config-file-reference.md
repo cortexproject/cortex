@@ -564,7 +564,7 @@ lifecycler:
   # CLI flag: -ingester.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
-  # The availability zone of the host, this instance is running on.
+  # The availability zone where this instance is running.
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
 

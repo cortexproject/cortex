@@ -66,7 +66,7 @@ template_files:
   "good.tpl": "good-templ"
   "not/very/good.tpl": "bad-template"
 `,
-			err: fmt.Errorf("error validating Alertmanager config: template file name 'not/very/good.tpl' is not not valid, consider using 'good.tpl'"),
+			err: fmt.Errorf("error validating Alertmanager config: unable to create template file 'not/very/good.tpl'"),
 		},
 		{
 			name: "It is not valid with .",

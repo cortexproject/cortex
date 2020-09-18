@@ -154,10 +154,6 @@ func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
 	defer os.RemoveAll(tmpDir)
 
 	for _, tmpl := range cfg.Templates {
-		if tmpl.Filename != filepath.Base(tmpl.Filename) {
-			return fmt.Errorf("template file name '%s' is not not valid, consider using '%s'", tmpl.Filename, filepath.Base(tmpl.Filename))
-		}
-
 		_, err := createTemplateFile(tmpDir, cfg.User, tmpl.Filename, tmpl.Body)
 		if err != nil {
 			level.Error(logger).Log("msg", "unable to create template file", "err", err, "user", cfg.User)

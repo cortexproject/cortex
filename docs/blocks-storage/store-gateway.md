@@ -31,7 +31,7 @@ Store-gateways continuously monitor the ring state and whenever the ring topolog
 
 For each block belonging to a store-gateway shard, the store-gateway loads its `meta.json`, the `deletion-mark.json` and the index-header. Once a block is loaded on the store-gateway, it's ready to be queried by queriers. When the querier queries blocks through a store-gateway, the response will contain the list of actually queried block IDs. If a querier tries to query a block which has not been loaded by a store-gateway, the querier will either retry on a different store-gateway (if blocks replication is enabled) or fail the query.
 
-Blocks can be replicated across multiple store-gateway instances based on a replication factor configured via `-store-gateway.replication-factor`. The blocks replication is used to protect from query failures caused by some blocks not loaded by any store-gateway instance at a given time like, for example, in the event of a store-gateway failure or while restarting a store-gateway instance (e.g. during a rolling update).
+Blocks can be replicated across multiple store-gateway instances based on a replication factor configured via `-store-gateway.sharding-ring.replication-factor`. The blocks replication is used to protect from query failures caused by some blocks not loaded by any store-gateway instance at a given time like, for example, in the event of a store-gateway failure or while restarting a store-gateway instance (e.g. during a rolling update).
 
 This feature can be enabled via `-store-gateway.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-store-gateway.sharding-ring.*` flags (or their respective YAML config options).
 
@@ -199,12 +199,12 @@ store_gateway:
     # The replication factor to use when sharding blocks. This option needs be
     # set both on the store-gateway and querier when running in microservices
     # mode.
-    # CLI flag: -store-gateway.replication-factor
+    # CLI flag: -store-gateway.sharding-ring.replication-factor
     [replication_factor: <int> | default = 3]
 
     # File path where tokens are stored. If empty, tokens are not stored at
     # shutdown and restored at startup.
-    # CLI flag: -store-gateway.tokens-file-path
+    # CLI flag: -store-gateway.sharding-ring.tokens-file-path
     [tokens_file_path: <string> | default = ""]
 
   # The sharding strategy to use. Supported values are: default,

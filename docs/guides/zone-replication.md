@@ -5,7 +5,7 @@ weight: 5
 slug: zone-aware-replication
 ---
 
-Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless these instances are all running within the same availability zone (or data center, or rack) or in different ones.
+Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.
 
 It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.
 

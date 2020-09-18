@@ -2,7 +2,7 @@
 title: "Shuffle sharding and zone awareness"
 linkTitle: "Shuffle sharding and zone awareness"
 weight: 1
-slug: blocks-storage-sharding
+slug: shuffle-sharding-and-zone-awareness
 ---
 
 - Author: @pracucci, @tomwilkie, @pstibrany

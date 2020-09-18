@@ -2,7 +2,7 @@
 title: "Shuffle sharding on the read path"
 linkTitle: "Shuffle sharding on the read path"
 weight: 1
-slug: blocks-storage-sharding
+slug: shuffle-sharding-on-the-read-path
 ---
 
 - Author: @pracucci, @tomwilkie, @pstibrany
@@ -164,50 +164,7 @@ Cortex must guarantee query correctness; transiently incorrect results may be ca
 
 The problem to solve is: how can a querier efficiently find which ingesters have data for a given tenant?  Each option must consider the changing of the set of ingesters and the changing of each tenant’s subring size.
 
-### Option #1: Ingesters expose list of tenants
-
-A possible solution could be keeping in the querier an in-memory data structure to map each ingester to the list of tenants for which it has some data. This data structure would be constructed at querier startup, and then periodically updated, interpolating two information:
-
-1. The current state of the ring
-2. The list of tenants directly exposed by each ingester (via a dedicated gRPC call)
-
-#### Scenario: new querier starts up
-
-When a querier starts up and before getting ready:
-
-1. It scans all ingesters (discovered via the ring) and fetches the list of tenants for which each ingester has some data
-2. For each found tenant (unique list of tenant IDs across all ingesters responses), the querier looks at the current state of the ring and adds to the map the list of ingesters currently assigned to the tenant shard, even if they don’t hold any data yet (because may start receiving series shortly)
-
-Then the querier watches the ingester ring and rebuilds the in-memory map whenever the ring topology changes.
-
-#### Scenario: querier receives a query for an unknown tenant
-
-A new tenant starts remote writing to the cluster. The querier doesn’t know it in its in-memory map, so it adds the tenant on the fly to the map just looking at the current state of the ring.
-
-#### Scenario: ingester scale up / down
-
-When a new ingester is added / removed to / from the ring, the ring topology changes and queriers will update the in-memory map.
-
-#### Scenario: per-tenant shard size increases
-
-Queriers periodically (every 1m) reload the limits config file. When a tenant shard size change is detected, the querier updates the in-memory map for the affected tenant.
-
-**Issue:** some time series data may be missing in queries up to 1m.
-
-#### Edge case: queriers notice the ring topology change before distributors
-
-Consider the following scenario:
-
-1. Tenant A shard is composed by ingesters 1,2,3,4,5,6
-2. Tenant A is remote writing 1 single series and gets replicated to ingester 1,2,3
-3. The ring topology changes and tenant A shard is ingesters 1,2,3,7,8,9
-4. Querier notices the ring topology change and updates the in-memory map. Given tenant A series were only on ingester 1,2,3, the querier maps tenant A to ingester 1,2,3 (because of what received from ingesters via gRPC) and 7,8,9 (because of the current state of the ring)
-5. Distributor hasn’t updated the ring state yet
-6. Tenant A remote writes 1 **new** series, which get replicated to 4,5,6
-7. Distributor updates the ring state
-8. **Race condition:** querier will not know that ingesters 4,5,6 contains tenant A data until the next sync
-
-### Option #2: use only the information contained in the ring.
+### Proposal: use only the information contained in the ring.
 
 *This section describes an alternative approach.  Discussion is still on-going.*
 
@@ -250,7 +207,12 @@ for len(selectedNodes) < subringSize {
 
 When an ingester is permanently removed from the ring it will flush its data to the object store and the subrings containing the removed ingester will gain a “new” ingester.  Queries consult the store and merge the results with those from the ingesters, so no data will be missed.
 
-TODO do we need “leaving” ingester to hang around for 15mins after flushing until the store gateway is guaranteed to pick up their flush blocks?
+Queriers and store-gateways will discover newly flushed blocks on next sync (`-blocks-storage.bucket-store.sync-interval`, default 5 minutes).
+Multiple ingesters should not be scaled-down within this interval.
+
+To improve read-performance, queriers and rulers are usually configured with non-zero value of `-querier.query-store-after` option.
+This option makes queriers and rulers to only consult ingesters when running queries withing specified time window (eg. 12h). 
+During scale-down this needs to be lowered in order to let queriers and rulers use flushed blocks from the storage.
 
 #### Scenario: increase size of a tenant’s subring
 
@@ -264,7 +226,50 @@ This is deemed an infrequent operation that we considered banning, but have a pr
 
 The proposal is to have separate read subring and write subring size in the config.  The read subring will not be allowed to be smaller than the write subring.  When reducing the size of a tenant’s subring, operators must first reduce the write subring, and then two hours later when the blocks have been flushed, the read subring.  In the majority of cases the read subring will not need to be specified, as it will default to the write subring size.
 
-### Option #3: streaming updates from ingesters to queriers
+### Considered alternative #1: Ingesters expose list of tenants
+
+A possible solution could be keeping in the querier an in-memory data structure to map each ingester to the list of tenants for which it has some data. This data structure would be constructed at querier startup, and then periodically updated, interpolating two information:
+
+1. The current state of the ring
+2. The list of tenants directly exposed by each ingester (via a dedicated gRPC call)
+
+#### Scenario: new querier starts up
+
+When a querier starts up and before getting ready:
+
+1. It scans all ingesters (discovered via the ring) and fetches the list of tenants for which each ingester has some data
+2. For each found tenant (unique list of tenant IDs across all ingesters responses), the querier looks at the current state of the ring and adds to the map the list of ingesters currently assigned to the tenant shard, even if they don’t hold any data yet (because may start receiving series shortly)
+
+Then the querier watches the ingester ring and rebuilds the in-memory map whenever the ring topology changes.
+
+#### Scenario: querier receives a query for an unknown tenant
+
+A new tenant starts remote writing to the cluster. The querier doesn’t know it in its in-memory map, so it adds the tenant on the fly to the map just looking at the current state of the ring.
+
+#### Scenario: ingester scale up / down
+
+When a new ingester is added / removed to / from the ring, the ring topology changes and queriers will update the in-memory map.
+
+#### Scenario: per-tenant shard size increases
+
+Queriers periodically (every 1m) reload the limits config file. When a tenant shard size change is detected, the querier updates the in-memory map for the affected tenant.
+
+**Issue:** some time series data may be missing in queries up to 1m.
+
+#### Edge case: queriers notice the ring topology change before distributors
+
+Consider the following scenario:
+
+1. Tenant A shard is composed by ingesters 1,2,3,4,5,6
+2. Tenant A is remote writing 1 single series and gets replicated to ingester 1,2,3
+3. The ring topology changes and tenant A shard is ingesters 1,2,3,7,8,9
+4. Querier notices the ring topology change and updates the in-memory map. Given tenant A series were only on ingester 1,2,3, the querier maps tenant A to ingester 1,2,3 (because of what received from ingesters via gRPC) and 7,8,9 (because of the current state of the ring)
+5. Distributor hasn’t updated the ring state yet
+6. Tenant A remote writes 1 **new** series, which get replicated to 4,5,6
+7. Distributor updates the ring state
+8. **Race condition:** querier will not know that ingesters 4,5,6 contains tenant A data until the next sync
+
+### Considered alternative #2: streaming updates from ingesters to queriers
 
 *This section describes an alternative approach.*
 
@@ -335,14 +340,6 @@ The ruler re-syncs the rule groups from the bucket whenever one of the following
 1. Periodic interval (configurable)
 2. Ring topology changes
 3. The configured shard size of a tenant has changed
-
-#### Customer impact
-
-### Scenario
-
-- T0: ingesters 1,2,3
-- T1: ring topology change and 4th is added and 3 is removed (so current ingesters are 1,2,4)
-- T2: querier needs to query ingesters 1,2,3,4
 
 ### Other notes
 

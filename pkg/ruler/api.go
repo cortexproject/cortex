@@ -450,7 +450,7 @@ func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 			e = append(e, err.Error())
 		}
 
-		http.Error(w, strings.Join(e, ","), http.StatusBadRequest)
+		http.Error(w, strings.Join(e, ", "), http.StatusBadRequest)
 		return
 	}
 

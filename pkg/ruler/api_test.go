@@ -182,7 +182,7 @@ func TestRuler_Create(t *testing.T) {
 			name:   "with an empty payload",
 			input:  "",
 			status: 400,
-			err:    errors.New("invalid rules config: rule group name must not be empty\n"),
+			err:    errors.New("invalid rules config: rule group name must not be empty"),
 		},
 		{
 			name: "with no rule group name",
@@ -193,7 +193,7 @@ rules:
   expr: up
 `,
 			status: 400,
-			err:    errors.New("invalid rules config: rule group name must not be empty\n"),
+			err:    errors.New("invalid rules config: rule group name must not be empty"),
 		},
 		{
 			name: "with no rules",
@@ -202,7 +202,7 @@ name: rg_name
 interval: 15s
 `,
 			status: 400,
-			err:    errors.New("invalid rules config: rule group 'rg_name' has no rules\n"),
+			err:    errors.New("invalid rules config: rule group 'rg_name' has no rules"),
 		},
 		{
 			name:   "with a a valid rules file",
@@ -246,7 +246,7 @@ rules:
 				require.Equal(t, 200, w.Code)
 				require.Equal(t, tt.output, w.Body.String())
 			} else {
-				require.EqualError(t, tt.err, w.Body.String())
+				require.Equal(t, tt.err.Error()+"\n", w.Body.String())
 			}
 		})
 	}

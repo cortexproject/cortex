@@ -461,7 +461,7 @@ func (r *Ruler) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Best case effort to reload rules.
-	go r.updateRules(userID)
+	r.updateRules(userID)
 
 	respondAccepted(w, logger)
 }
@@ -484,6 +484,9 @@ func (r *Ruler) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 		respondError(logger, w, err.Error())
 		return
 	}
+
+	// Best case effort to reload rules.
+	r.updateRules(userID)
 
 	respondAccepted(w, logger)
 }

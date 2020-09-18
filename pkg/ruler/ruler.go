@@ -364,7 +364,7 @@ func (r *Ruler) run(ctx context.Context) error {
 func (r *Ruler) loadRules(ctx context.Context, userID string) {
 	ringHasher := fnv.New32a()
 
-	var configs map[string]rules.RuleGroupList
+	configs := map[string]rules.RuleGroupList{}
 	var err error
 
 	if userID == "" {
@@ -568,14 +568,19 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 // This is called right after a user updates his config, this way they don't need to
 // wait until the refresh interval to see their config changes.
 func (r *Ruler) updateRules(userID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if !r.cfg.EnableSharding {
+		r.loadRules(ctx, userID)
+		return
+	}
+
 	rulers, err := r.ring.GetAll(ring.Read)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "unable to read ring for updateRules", "err", err)
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
 
 	ctx = user.InjectOrgID(ctx, userID)
 	ctx, err = user.InjectIntoGRPCRequest(ctx)
@@ -587,16 +592,17 @@ func (r *Ruler) updateRules(userID string) {
 	var wg sync.WaitGroup
 
 	for _, rlr := range rulers.Ingesters {
-		dialOpts, err := r.cfg.ClientTLSConfig.GetGRPCDialOptions()
-		if err != nil {
-			level.Error(r.logger).Log("msg", "unable to get dail options", "err", err)
-			return
-		}
-
 		wg.Add(1)
 
-		go func(logger log.Logger, addr string, dialOpts []grpc.DialOption, wg *sync.WaitGroup) {
-			conn, err := grpc.Dial(rlr.Addr, dialOpts...)
+		go func(logger log.Logger, addr string, wg *sync.WaitGroup) {
+			defer wg.Done()
+
+			dialOpts, err := r.cfg.ClientTLSConfig.GetGRPCDialOptions()
+			if err != nil {
+				level.Error(r.logger).Log("msg", "unable to get dail options", "err", err)
+				return
+			}
+			conn, err := grpc.Dial(addr, dialOpts...)
 			if err != nil {
 				level.Error(r.logger).Log("msg", "unable to dial gRPC connection", "err", err)
 				return
@@ -605,12 +611,11 @@ func (r *Ruler) updateRules(userID string) {
 			_, err = cc.ReloadRules(ctx, nil)
 
 			if err != nil {
-				level.Error(r.logger).Log("msg", "err reloading rules", "err", err, "ruler", rlr.Addr)
+				level.Error(r.logger).Log("msg", "err reloading rules", "err", err, "ruler", addr)
 				return
 			}
 
-			wg.Done()
-		}(r.logger, rlr.Addr, dialOpts, &wg)
+		}(r.logger, rlr.Addr, &wg)
 	}
 
 	wg.Wait()

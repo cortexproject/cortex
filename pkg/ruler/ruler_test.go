@@ -127,7 +127,7 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
-	ruler.loadRules(context.Background())
+	ruler.loadRules(context.Background(), "")
 
 	return ruler, cleanup
 }

@@ -295,10 +295,10 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				// Distributor.
 				"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
 				// Store-gateway.
-				"-store-gateway.sharding-enabled":              strconv.FormatBool(testCfg.blocksShardingEnabled),
-				"-store-gateway.sharding-ring.store":           "consul",
-				"-store-gateway.sharding-ring.consul.hostname": consul.NetworkHTTPEndpoint(),
-				"-store-gateway.replication-factor":            "1",
+				"-store-gateway.sharding-enabled":                 strconv.FormatBool(testCfg.blocksShardingEnabled),
+				"-store-gateway.sharding-ring.store":              "consul",
+				"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
+				"-store-gateway.sharding-ring.replication-factor": "1",
 			})
 
 			// Start Cortex replicas.

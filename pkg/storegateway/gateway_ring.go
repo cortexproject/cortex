@@ -61,19 +61,21 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 		os.Exit(1)
 	}
 
+	ringFlagsPrefix := "store-gateway.sharding-ring."
+
 	// Ring flags
-	cfg.KVStore.RegisterFlagsWithPrefix("store-gateway.sharding-ring.", "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "store-gateway.sharding-ring.heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
-	f.DurationVar(&cfg.HeartbeatTimeout, "store-gateway.sharding-ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring."+sharedOptionWithQuerier)
-	f.IntVar(&cfg.ReplicationFactor, "store-gateway.replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
-	f.StringVar(&cfg.TokensFilePath, "store-gateway.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	cfg.KVStore.RegisterFlagsWithPrefix(ringFlagsPrefix, "collectors/", f)
+	f.DurationVar(&cfg.HeartbeatPeriod, ringFlagsPrefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring.")
+	f.DurationVar(&cfg.HeartbeatTimeout, ringFlagsPrefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which store gateways are considered unhealthy within the ring."+sharedOptionWithQuerier)
+	f.IntVar(&cfg.ReplicationFactor, ringFlagsPrefix+"replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
+	f.StringVar(&cfg.TokensFilePath, ringFlagsPrefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
-	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), "store-gateway.sharding-ring.instance-interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.InstanceAddr, "store-gateway.sharding-ring.instance-addr", "", "IP address to advertise in the ring.")
-	f.IntVar(&cfg.InstancePort, "store-gateway.sharding-ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
-	f.StringVar(&cfg.InstanceID, "store-gateway.sharding-ring.instance-id", hostname, "Instance ID to register in the ring.")
+	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), ringFlagsPrefix+"instance-interface", "Name of network interface to read address from.")
+	f.StringVar(&cfg.InstanceAddr, ringFlagsPrefix+"instance-addr", "", "IP address to advertise in the ring.")
+	f.IntVar(&cfg.InstancePort, ringFlagsPrefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
+	f.StringVar(&cfg.InstanceID, ringFlagsPrefix+"instance-id", hostname, "Instance ID to register in the ring.")
 
 	// Defaults for internal settings.
 	cfg.RingCheckPeriod = 5 * time.Second

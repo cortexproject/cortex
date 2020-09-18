@@ -1,6 +1,6 @@
 package builder
 
-// Heap is a binary tree where parent node is "lower" than its children nodes ("Heap Property").
+// Heap is a binary tree where parent node is "smaller" than its children nodes ("Heap Property").
 // Heap is stored in a slice, where children nodes for node at position ix are at positions 2*ix+1 and 2*ix+2.
 //
 // Heapify will maintain the heap property for node "ix".

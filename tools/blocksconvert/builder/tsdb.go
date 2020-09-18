@@ -174,7 +174,7 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 
 	err = d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
 
-	d.seriesInMemory.Set(float64(d.series.seriesInMemory()))
+	d.seriesInMemory.Set(float64(d.series.unflushedSeries()))
 	d.writtenSamples.Add(float64(seriesSamples))
 	return err
 }

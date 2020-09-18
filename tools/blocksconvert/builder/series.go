@@ -59,7 +59,7 @@ func (sl *seriesList) addSeries(m labels.Labels, cs []chunks.Meta, samples uint6
 	return sl.flushSeriesNoLock(false)
 }
 
-func (sl *seriesList) seriesInMemory() int {
+func (sl *seriesList) unflushedSeries() int {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 

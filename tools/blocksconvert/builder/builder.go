@@ -210,7 +210,7 @@ func (b *Builder) cleanup(_ context.Context) error {
 	for _, f := range files {
 		toRemove := filepath.Join(b.plansDir, f.Name())
 
-		level.Info(b.log).Log("msg", "deleting plan file", "file", toRemove)
+		level.Info(b.log).Log("msg", "deleting unfinished local plan file", "file", toRemove)
 		err = os.Remove(toRemove)
 		if err != nil {
 			return errors.Wrapf(err, "removing %s", toRemove)
@@ -332,6 +332,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	if err != nil {
 		return errors.Wrapf(err, "failed to download plan file %s to %s", planFile, localPlanFile)
 	}
+	level.Info(planLog).Log("msg", "downloaded plan file", "localPlanFile", localPlanFile)
 
 	b.planFileSize.Set(float64(planSize))
 
@@ -420,9 +421,14 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 		if b.cfg.DeleteLocalBlock {
 			if err := os.RemoveAll(blockDir); err != nil {
-				level.Warn(planLog).Log("msg", "failed to delete local block")
+				level.Warn(planLog).Log("msg", "failed to delete local block", "err", err)
 			}
 		}
+	}
+
+	err = os.Remove(localPlanFile)
+	if err != nil {
+		level.Warn(planLog).Log("msg", "failed to delete local plan file", "err", err)
 	}
 
 	// Upload finished status file

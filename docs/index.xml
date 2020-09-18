@@ -8152,6 +8152,7 @@ __replica__: replica2
 &lt;li>[BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. &lt;a href="https://github.com/cortexproject/cortex/pull/3178">#3178&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Ruler: directories in the configured &lt;code>rules-path&lt;/code> will be removed on startup and shutdown in order to ensure they don&amp;rsquo;t persist between runs. &lt;a href="https://github.com/cortexproject/cortex/pull/3195">#3195&lt;/a>&lt;/li>
 &lt;li>[BUGFIX] Handle hash-collisions in the query path. &lt;a href="https://github.com/cortexproject/cortex/pull/3192">#3192&lt;/a>&lt;/li>
+&lt;li>[BUGFIX] Check for postgres rows errors. &lt;a href="https://github.com/cortexproject/cortex/pull/3197">#3197&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="140-rc0-in-progress">1.4.0-rc.0 in progress&lt;/h2>
 &lt;ul>

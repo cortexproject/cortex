@@ -36,14 +36,14 @@ var (
 
 func preCortex10Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                          "",
-		"-config-yaml":                                 flags["-schema-config-file"],
-		"-table-manager.poll-interval":                 "",
-		"-dynamodb.poll-interval":                      flags["-table-manager.poll-interval"],
-		"-store-gateway.sharding-enabled":              "",
-		"-store-gateway.sharding-ring.store":           "",
-		"-store-gateway.sharding-ring.consul.hostname": "",
-		"-store-gateway.replication-factor":            "",
+		"-schema-config-file":                             "",
+		"-config-yaml":                                    flags["-schema-config-file"],
+		"-table-manager.poll-interval":                    "",
+		"-dynamodb.poll-interval":                         flags["-table-manager.poll-interval"],
+		"-store-gateway.sharding-enabled":                 "",
+		"-store-gateway.sharding-ring.store":              "",
+		"-store-gateway.sharding-ring.consul.hostname":    "",
+		"-store-gateway.sharding-ring.replication-factor": "",
 	})
 }
 

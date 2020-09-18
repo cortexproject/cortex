@@ -4026,9 +4026,9 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as an A/AAAA query. For example: &lt;code>dns+memcached.local:11211&lt;/code>&lt;/li>
 &lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;br />
-The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
+The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+_memcached._tcp.memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;br />
-The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
+The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;h2 id="logging-of-ip-of-reverse-proxy">Logging of IP of reverse proxy&lt;/h2>
 &lt;p>If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.&lt;/p>
@@ -4335,4 +4335,6 @@ and development.&lt;/p>
 &lt;li>Querier support for querying chunks and blocks store at the same time.&lt;/li>
 &lt;li>Tracking of active series and exporting them as metrics (&lt;code>-ingester.active-series-metrics-enabled&lt;/code> and related flags)&lt;/li>
 &lt;li>Shuffle-sharding of queriers in the query-frontend (i.e. use of &lt;code>-frontend.max-queriers-per-user&lt;/code> flag with non-zero value).&lt;/li>
+&lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
+&lt;li>TLS configuration in Etcd client.&lt;/li>
 &lt;/ul></description></item></channel></rss>

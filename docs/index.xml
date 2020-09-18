@@ -5055,9 +5055,9 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;li>&lt;strong>&lt;code>dns+&lt;/code>&lt;/strong>&lt;br />
 The domain name after the prefix is looked up as an A/AAAA query. For example: &lt;code>dns+memcached.local:11211&lt;/code>&lt;/li>
 &lt;li>&lt;strong>&lt;code>dnssrv+&lt;/code>&lt;/strong>&lt;br />
-The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
+The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: &lt;code>dnssrv+_memcached._tcp.memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;li>&lt;strong>&lt;code>dnssrvnoa+&lt;/code>&lt;/strong>&lt;br />
-The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
+The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: &lt;code>dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;h2 id="logging-of-ip-of-reverse-proxy">Logging of IP of reverse proxy&lt;/h2>
 &lt;p>If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.&lt;/p>
@@ -8026,6 +8026,8 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>Querier support for querying chunks and blocks store at the same time.&lt;/li>
 &lt;li>Tracking of active series and exporting them as metrics (&lt;code>-ingester.active-series-metrics-enabled&lt;/code> and related flags)&lt;/li>
 &lt;li>Shuffle-sharding of queriers in the query-frontend (i.e. use of &lt;code>-frontend.max-queriers-per-user&lt;/code> flag with non-zero value).&lt;/li>
+&lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
+&lt;li>TLS configuration in Etcd client.&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
 &lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
 &lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>
@@ -8156,6 +8158,7 @@ __replica__: replica2
 &lt;/ul>
 &lt;h2 id="140-rc0-in-progress">1.4.0-rc.0 in progress&lt;/h2>
 &lt;ul>
+&lt;li>[CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. &lt;a href="https://github.com/cortexproject/cortex/pull/3198">#3198&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Cassandra backend support is now GA (stable). &lt;a href="https://github.com/cortexproject/cortex/pull/3180">#3180&lt;/a>&lt;/li>
 &lt;li>[CHANGE] Blocks storage is now GA (stable). The &lt;code>-experimental&lt;/code> prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). &lt;a href="https://github.com/cortexproject/cortex/pull/3180">#3180&lt;/a> &lt;a href="https://github.com/cortexproject/cortex/pull/3201">#3201&lt;/a>
 &lt;ul>

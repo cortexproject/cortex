@@ -94,7 +94,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	}
 	plansDir := filepath.Join(cfg.OutputDirectory, "plans")
 	if err := os.MkdirAll(plansDir, os.FileMode(0700)); err != nil {
-		return nil, errors.Wrap(err, "failed to create output directory")
+		return nil, errors.Wrap(err, "failed to create plans directory")
 	}
 
 	b := &Builder{
@@ -166,7 +166,7 @@ type Builder struct {
 	chunksCache   cache.Cache
 	schemaConfig  chunk.SchemaConfig
 	storageConfig storage.Config
-	plansDir      string // directory for storing plan
+	plansDir      string
 
 	fetchedChunks     prometheus.Counter
 	fetchedChunksSize prometheus.Counter
@@ -332,13 +332,13 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	if err != nil {
 		return errors.Wrapf(err, "failed to download plan file %s to %s", planFile, localPlanFile)
 	}
-	level.Info(planLog).Log("msg", "downloaded plan file", "localPlanFile", localPlanFile)
+	level.Info(planLog).Log("msg", "downloaded plan file", "localPlanFile", localPlanFile, "size", planSize)
 
 	b.planFileSize.Set(float64(planSize))
 
 	f, err := os.Open(localPlanFile)
 	if err != nil {
-		return errors.Wrapf(err, "failed to local read plan file %s", localPlanFile)
+		return errors.Wrapf(err, "failed to read local plan file %s", localPlanFile)
 	}
 	defer func() {
 		_ = f.Close()

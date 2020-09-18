@@ -16,11 +16,13 @@
 ## 1.4.0-rc.0 in progress
 
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
-* [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180
+* [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180 #3201
   - `-experimental.blocks-storage.*` flags renamed to `-blocks-storage.*`
   - `-experimental.store-gateway.*` flags renamed to `-store-gateway.*`
   - `-experimental.querier.store-gateway-client.*` flags renamed to `-querier.store-gateway-client.*`
   - `-experimental.querier.store-gateway-addresses` flag renamed to `-querier.store-gateway-addresses`
+  - `-store-gateway.replication-factor` flag renamed to `-store-gateway.sharding-ring.replication-factor`
+  - `-store-gateway.tokens-file-path` flag renamed to `store-gateway.sharding-ring.tokens-file-path`
 * [CHANGE] Ingester: Removed deprecated untyped record from chunks WAL. Only if you are running `v1.0` or below, it is recommended to first upgrade to `v1.1`/`v1.2`/`v1.3` and run it for a day before upgrading to `v1.4` to avoid data loss. #3115
 * [CHANGE] Distributor API endpoints are no longer served unless target is set to `distributor` or `all`. #3112
 * [CHANGE] Increase the default Cassandra client replication factor to 3. #3007

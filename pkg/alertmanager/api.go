@@ -133,6 +133,10 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 
 // Partially copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
 func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
+	// We don't have a valid use case for empty configurations. If a tenant does not have a
+	// configuration set and issue a request to the Alertmanager, we'll a) upload an empty
+	// config and b) immediately start an Alertmanager instance for them if a fallback
+	// configuration is provisioned.
 	if cfg.RawConfig == "" {
 		return fmt.Errorf("configuration provided is empty, if you'd like to remove your configuration please use the delete configuration endpoint")
 	}

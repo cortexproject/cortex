@@ -216,7 +216,9 @@ func (s *Scanner) running(ctx context.Context) error {
 			if !tableNames[t.table] {
 				// remove table.
 				allTables = append(allTables[:ix], allTables[ix+1:]...)
+				continue
 			}
+			ix++
 		}
 
 		level.Error(s.logger).Log("msg", "applied tables filter", "selected", len(allTables))

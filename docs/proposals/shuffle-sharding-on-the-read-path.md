@@ -12,7 +12,7 @@ slug: blocks-storage-sharding
 
 ## Background
 
-Cortex currently supports sharding of tenants to a subset of the ingesters on the write path [PR](https://github.com/cortexproject/cortex/pull/1947). 
+Cortex currently supports sharding of tenants to a subset of the ingesters on the write path [PR](https://github.com/cortexproject/cortex/pull/1947).
 
 This feature is called “subring”, because it computes a subset of nodes registered to the hash ring. The aim of this feature is to improve isolation between tenants and reduce the number of tenants impacted by an outage.
 
@@ -82,7 +82,7 @@ To choose N Queriers for a tenant, we propose to use a simple algorithm:
 1. Sort all Queriers by their ID
 2. SID = tenant ID
 3. SID = hash(SID)
-4. Pick the querier from the list of sorted queries with:   
+4. Pick the querier from the list of sorted queries with:  
 index = FNV-1a(SID) % number of Queriers
 5. Loop to (3) until we’ve found N distinct queriers (where N is the shard size) and stop early if there aren’t enough queriers
 
@@ -211,7 +211,7 @@ Consider the following scenario:
 
 *This section describes an alternative approach.  Discussion is still on-going.*
 
-The idea is for the queries to be able to deduce what ingesters could possibly hold data for a given tenant by just consulting the ring (and the per-tenant sub ring sizes).  We posit that this is possible with only a single piece of extra information: a single timestamp per ingester saying when the ingester first joined the ring. 
+The idea is for the queries to be able to deduce what ingesters could possibly hold data for a given tenant by just consulting the ring (and the per-tenant sub ring sizes).  We posit that this is possible with only a single piece of extra information: a single timestamp per ingester saying when the ingester first joined the ring.
 
 #### Scenario: ingester scale up
 
@@ -223,22 +223,22 @@ To do this, during the subring selection if we encounters an ingester added with
 var (
     subringSize   int
     selectedNodes []Node
-    deadline      = time.Now().Add(-flushWindow) 
+    deadline      = time.Now().Add(-flushWindow)
 )
 
 for len(selectedNodes) < subringSize {
     token := random.Next()
-	node := getNodeByToken(token)
-	for {
+    node := getNodeByToken(token)
+    for {
         if node in selectedNodes {
-            node = node.Next() 
-		    continue
+            node = node.Next()
+            continue
         }
         if node.Added.After(deadline) {
             subringSize++
             selectedNodes.Add(node)
-            node = node.Next() 
-            continue	
+            node = node.Next()
+            continue
         )
         selectedNodes.Add(node)
         break

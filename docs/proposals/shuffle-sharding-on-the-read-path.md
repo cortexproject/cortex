@@ -211,7 +211,7 @@ Queriers and store-gateways will discover newly flushed blocks on next sync (`-b
 Multiple ingesters should not be scaled-down within this interval.
 
 To improve read-performance, queriers and rulers are usually configured with non-zero value of `-querier.query-store-after` option.
-This option makes queriers and rulers to consult **only** ingesters when running queries withing specified time window (eg. 12h). 
+This option makes queriers and rulers to consult **only** ingesters when running queries within specified time window (eg. 12h). 
 During scale-down this needs to be lowered in order to let queriers and rulers use flushed blocks from the storage.
 
 #### Scenario: increase size of a tenant’s subring

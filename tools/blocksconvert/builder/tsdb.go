@@ -3,10 +3,8 @@ package builder
 import (
 	"context"
 	"crypto/rand"
-	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -42,24 +40,30 @@ type tsdbBuilder struct {
 	startTime model.Time
 	endTime   model.Time
 
-	seriesMu sync.Mutex
-	series   []series
-
-	symbolsMap *symbolsMap
+	series    *seriesList
+	seriesDir string
 
 	writtenSamples  prometheus.Counter
 	processedSeries prometheus.Counter
+	seriesInMemory  prometheus.Gauge
 }
 
-func newTsdbBuilder(outDir string, start, end time.Time, log log.Logger, processedSeries, writtenSamples prometheus.Counter) (*tsdbBuilder, error) {
+func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
 	id, err := ulid.New(ulid.Now(), rand.Reader)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ULID")
 	}
 
 	blockDir := filepath.Join(outDir, id.String()+".tmp")
+	seriesDir := filepath.Join(blockDir, "series")
 
 	err = os.RemoveAll(blockDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Also makes blockDir, if missing
+	err = os.MkdirAll(seriesDir, 0777)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +81,12 @@ func newTsdbBuilder(outDir string, start, end time.Time, log log.Logger, process
 		chunksWriter: chunksWriter,
 		startTime:    model.TimeFromUnixNano(start.UnixNano()),
 		endTime:      model.TimeFromUnixNano(end.UnixNano()),
-		symbolsMap:   newSymbolsMap(),
+		series:       newSeriesList(seriesBatchLimit, seriesDir),
+		seriesDir:    seriesDir,
 
 		processedSeries: processedSeries,
 		writtenSamples:  writtenSamples,
+		seriesInMemory:  seriesInMemory,
 	}, err
 }
 
@@ -166,18 +172,11 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 	minTime := chs[0].MinTime
 	maxTime := chs[len(chs)-1].MaxTime
 
+	err = d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
+
+	d.seriesInMemory.Set(float64(d.series.unflushedSeries()))
 	d.writtenSamples.Add(float64(seriesSamples))
-	d.addSeries(metric, chs, seriesSamples, minTime, maxTime)
-	return nil
-}
-
-func (d *tsdbBuilder) addSeries(m labels.Labels, cs []chunks.Meta, samples uint64, minTime, maxTime int64) {
-	sl := d.symbolsMap.toSymbolLabels(m)
-
-	d.seriesMu.Lock()
-	defer d.seriesMu.Unlock()
-
-	d.series = append(d.series, series{metric: sl, cs: cs, minTime: minTime, maxTime: maxTime, samples: samples})
+	return err
 }
 
 func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid.ULID, error) {
@@ -185,12 +184,19 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		return ulid.ULID{}, errors.Wrap(err, "closing chunks writer")
 	}
 
+	if err := d.series.flushSeries(); err != nil {
+		return ulid.ULID{}, errors.Wrap(err, "flushing series")
+	}
+	d.seriesInMemory.Set(0)
+
+	level.Info(d.log).Log("msg", "all chunks fetched, building block index")
+
 	meta := &metadata.Meta{
 		BlockMeta: tsdb.BlockMeta{
 			ULID:    d.ulid,
 			Version: 1,
-			MinTime: math.MaxInt64,
-			MaxTime: math.MinInt64,
+			MinTime: int64(d.startTime),
+			MaxTime: int64(d.endTime),
 			Compaction: tsdb.BlockMetaCompaction{
 				Level:   1,
 				Sources: []ulid.ULID{d.ulid},
@@ -208,37 +214,20 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		return ulid.ULID{}, errors.Wrap(err, "new index writer")
 	}
 
-	// Sort symbols, and add them to index.
-	symbols := d.symbolsMap.getSortedSymbols()
-	level.Info(d.log).Log("msg", "adding symbols to index", "count", len(symbols))
-
-	for _, s := range symbols {
-		if err := indexWriter.AddSymbol(s); err != nil {
-			return ulid.ULID{}, errors.Wrapf(err, "adding symbol %v", s)
-		}
+	symbols, err := addSymbolsToIndex(indexWriter, d.series)
+	if err != nil {
+		return ulid.ULID{}, errors.Wrap(err, "adding symbols")
 	}
 
-	level.Info(d.log).Log("msg", "adding series to index", "count", len(d.series))
+	level.Info(d.log).Log("msg", "added symbols to index", "count", symbols)
 
-	// Sort series lexicographically, and add them to index.
-	sort.Slice(d.series, func(i, j int) bool {
-		return d.symbolsMap.compareSymbolLabels(d.series[i].metric, d.series[j].metric) < 0
-	})
-
-	meta.MinTime = int64(d.startTime)
-	meta.MaxTime = int64(d.endTime)
-
-	for ix, s := range d.series {
-		m := d.symbolsMap.toLabels(s.metric)
-
-		if err := indexWriter.AddSeries(uint64(ix), m, s.cs...); err != nil {
-			return ulid.ULID{}, errors.Wrapf(err, "adding series %v", m.String())
-		}
-
-		meta.Stats.NumSamples += s.samples
-		meta.Stats.NumSeries++
-		meta.Stats.NumChunks += uint64(len(s.cs))
+	stats, err := addSeriesToIndex(indexWriter, d.series)
+	if err != nil {
+		return ulid.ULID{}, errors.Wrap(err, "adding series")
 	}
+	meta.Stats = stats
+
+	level.Info(d.log).Log("msg", "added series to index", "series", stats.NumSeries, "chunks", stats.NumChunks, "samples", stats.NumSamples)
 
 	if err := indexWriter.Close(); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "closing index writer")
@@ -255,9 +244,55 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 	return d.ulid, nil
 }
 
-type series struct {
-	metric           []symbolLabel
-	cs               []chunks.Meta
-	minTime, maxTime int64
-	samples          uint64
+func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList) (tsdb.BlockStats, error) {
+	var stats tsdb.BlockStats
+
+	it, err := sl.seriesIterator()
+	if err != nil {
+		return stats, errors.Wrap(err, "reading series")
+	}
+
+	ix := 0
+	for s, ok := it.Next(); ok; s, ok = it.Next() {
+		l := s.Metric
+		cs := s.Chunks
+
+		if err := indexWriter.AddSeries(uint64(ix), l, cs...); err != nil {
+			return stats, errors.Wrapf(err, "adding series %v", l)
+		}
+
+		ix++
+
+		stats.NumSamples += s.Samples
+		stats.NumSeries++
+		stats.NumChunks += uint64(len(cs))
+	}
+
+	return stats, nil
+}
+
+func addSymbolsToIndex(indexWriter *index.Writer, sl *seriesList) (int, error) {
+	symbols := 0
+	it, err := sl.symbolsIterator()
+	if err != nil {
+		return 0, errors.Wrap(err, "reading symbols")
+	}
+
+	for s, ok := it.Next(); ok; s, ok = it.Next() {
+		symbols++
+		if err := indexWriter.AddSymbol(s); err != nil {
+			_ = it.Close() // Make sure to close any open files.
+			return 0, errors.Wrapf(err, "adding symbol %v", s)
+		}
+	}
+	if err := it.Error(); err != nil {
+		_ = it.Close() // Make sure to close any open files.
+		return 0, err
+	}
+
+	if err := it.Close(); err != nil {
+		return 0, err
+	}
+
+	return symbols, nil
 }

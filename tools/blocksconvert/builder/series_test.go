@@ -49,8 +49,7 @@ func TestSeries(t *testing.T) {
 	symbolsMap := map[string]bool{}
 
 	for _, s := range series {
-		_, err = sl.addSeries(s.l, s.cs, s.samples, s.minTime, s.maxTime)
-		require.NoError(t, err)
+		require.NoError(t, sl.addSeries(s.l, s.cs, s.samples, s.minTime, s.maxTime))
 
 		for _, l := range s.l {
 			symbolsMap[l.Name] = true

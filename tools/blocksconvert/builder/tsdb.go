@@ -172,9 +172,9 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 	minTime := chs[0].MinTime
 	maxTime := chs[len(chs)-1].MaxTime
 
-	inmem, err := d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
+	err = d.series.addSeries(metric, chs, seriesSamples, minTime, maxTime)
 
-	d.seriesInMemory.Set(float64(inmem))
+	d.seriesInMemory.Set(float64(d.series.seriesInMemory()))
 	d.writtenSamples.Add(float64(seriesSamples))
 	return err
 }

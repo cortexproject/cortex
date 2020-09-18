@@ -14,8 +14,7 @@ type symbolsIterator struct {
 	errs  errors.MultiError
 
 	// To avoid returning duplicates, we remember last returned symbol.
-	last     string
-	returned bool // Used to avoid skipping first "" symbol.
+	lastReturned *string
 }
 
 func newSymbolsIterator(files []*symbolsFile) *symbolsIterator {
@@ -53,7 +52,7 @@ func (sit *symbolsIterator) buildHeap() {
 	}
 }
 
-// Advances iterator forward, and returns next element. If there is no next element, returns false.
+// Next advances iterator forward, and returns next element. If there is no next element, returns false.
 func (sit *symbolsIterator) Next() (string, bool) {
 again:
 	if sit.errs.Err() != nil {
@@ -64,7 +63,7 @@ again:
 		return "", false
 	}
 
-	result := sit.files[0].advance()
+	result := sit.files[0].pop()
 
 	hasNext, err := sit.files[0].hasNext()
 	sit.errs.Add(err)
@@ -79,13 +78,12 @@ again:
 
 	heapifySymbols(sit.files, 0)
 
-	if !sit.returned || sit.last != result {
-		sit.returned = true
-		sit.last = result
+	if sit.lastReturned == nil || *sit.lastReturned != result {
+		sit.lastReturned = &result
 		return result, true
 	}
 
-	// Otherwise try again.
+	// Duplicate symbol, try next one.
 	goto again
 }
 
@@ -105,7 +103,7 @@ func heapifySymbols(files []*symbolsFile, ix int) {
 	heapify(len(files), ix, func(i, j int) bool {
 		return files[i].peek() < files[j].peek()
 	}, func(i, j int) {
-		files[i], files[j] = files[j], files[j]
+		files[i], files[j] = files[j], files[i]
 	})
 }
 
@@ -113,8 +111,8 @@ type symbolsFile struct {
 	f   *os.File
 	dec *gob.Decoder
 
-	next   bool
-	symbol string
+	next       bool
+	nextSymbol string
 }
 
 func newSymbolsFile(f *os.File) *symbolsFile {
@@ -146,7 +144,7 @@ func (sf *symbolsFile) hasNext() (bool, error) {
 	}
 
 	sf.next = true
-	sf.symbol = s
+	sf.nextSymbol = s
 	return true, nil
 }
 
@@ -155,14 +153,14 @@ func (sf *symbolsFile) peek() string {
 		panic("no next symbol")
 	}
 
-	return sf.symbol
+	return sf.nextSymbol
 }
 
-func (sf *symbolsFile) advance() string {
+func (sf *symbolsFile) pop() string {
 	if !sf.next {
 		panic("no next symbol")
 	}
 
 	sf.next = false
-	return sf.symbol
+	return sf.nextSymbol
 }

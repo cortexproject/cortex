@@ -50,7 +50,7 @@ func (sit *seriesIterator) buildHeap() {
 	}
 }
 
-// Advances iterator forward, and returns next element. If there is no next element, returns false.
+// Next advances iterator forward, and returns next element. If there is no next element, returns false.
 func (sit *seriesIterator) Next() (series, bool) {
 	if sit.errs.Err() != nil {
 		return series{}, false
@@ -60,7 +60,7 @@ func (sit *seriesIterator) Next() (series, bool) {
 		return series{}, false
 	}
 
-	result := sit.files[0].advance()
+	result := sit.files[0].pop()
 
 	hasNext, err := sit.files[0].hasNext()
 	sit.errs.Add(err)
@@ -102,8 +102,8 @@ type seriesFile struct {
 	f   *os.File
 	dec *gob.Decoder
 
-	next bool
-	ser  series
+	next       bool
+	nextSeries series
 }
 
 func newSeriesFile(f *os.File) *seriesFile {
@@ -135,7 +135,7 @@ func (sf *seriesFile) hasNext() (bool, error) {
 	}
 
 	sf.next = true
-	sf.ser = s
+	sf.nextSeries = s
 	return true, nil
 }
 
@@ -144,14 +144,14 @@ func (sf *seriesFile) peek() series {
 		panic("no next symbol")
 	}
 
-	return sf.ser
+	return sf.nextSeries
 }
 
-func (sf *seriesFile) advance() series {
+func (sf *seriesFile) pop() series {
 	if !sf.next {
 		panic("no next symbol")
 	}
 
 	sf.next = false
-	return sf.ser
+	return sf.nextSeries
 }

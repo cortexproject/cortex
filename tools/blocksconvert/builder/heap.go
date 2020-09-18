@@ -1,0 +1,26 @@
+package builder
+
+// Heap is a binary tree where parent node is "lower" than its children nodes.
+// Heap is stored in a slice, where children nodes for node at position ix are at positions 2*ix and 2*ix+1.
+// Heapify will maintain the heap property for node "ix".
+// Building the heap for the first time must go from the latest element (last leaf) towards the element 0 (root of the tree).
+// Once built, first element is the smallest.
+// If element is fully consumed, it can be removed by moving last element to the element 0, and shrinking the heap [+ heapifying from 0].
+func heapify(length int, ix int, less func(i, j int) bool, swap func(i, j int)) {
+	smallest := ix
+	left := 2*ix + 1
+	right := 2*ix + 2
+
+	if left < length && less(left, smallest) {
+		smallest = left
+	}
+
+	if right < length && less(right, smallest) {
+		smallest = right
+	}
+
+	if smallest != ix {
+		swap(ix, smallest)
+		heapify(length, ix, less, swap)
+	}
+}

@@ -24,12 +24,15 @@ func newSeriesIterator(files []*seriesFile) *seriesIterator {
 }
 
 func (sit *seriesIterator) buildHeap() {
+	// All files on the heap must have at least one element, so that "heapify" can order them.
+	// Here we verify that, and remove files with no more elements.
 	for ix := 0; ix < len(sit.files); {
 		f := sit.files[ix]
 		next, err := f.hasNext()
 
 		if err != nil {
 			sit.errs.Add(err)
+			return
 		}
 
 		if !next {
@@ -41,6 +44,7 @@ func (sit *seriesIterator) buildHeap() {
 		ix++
 	}
 
+	// Build heap, start with leaf nodes, and work towards to root. See comment at heapify for more details.
 	for ix := len(sit.files) - 1; ix >= 0; ix-- {
 		heapifySeries(sit.files, ix)
 	}
@@ -86,24 +90,12 @@ func (sit *seriesIterator) Close() error {
 	return errs.Err()
 }
 
-// heapify series at given index. root is the minimum (only labels are compared)
 func heapifySeries(files []*seriesFile, ix int) {
-	smallest := ix
-	left := 2*ix + 1
-	right := 2*ix + 2
-
-	if left < len(files) && labels.Compare(files[left].peek().Metric, files[smallest].peek().Metric) < 0 {
-		smallest = left
-	}
-
-	if right < len(files) && labels.Compare(files[right].peek().Metric, files[smallest].peek().Metric) < 0 {
-		smallest = right
-	}
-
-	if smallest != ix {
-		files[ix], files[smallest] = files[smallest], files[ix]
-		heapifySeries(files, smallest)
-	}
+	heapify(len(files), ix, func(i, j int) bool {
+		return labels.Compare(files[i].peek().Metric, files[j].peek().Metric) < 0
+	}, func(i, j int) {
+		files[i], files[j] = files[j], files[i]
+	})
 }
 
 type seriesFile struct {

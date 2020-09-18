@@ -25,8 +25,8 @@ type series struct {
 
 // Keeps series in memory until limit is reached. Then series are sorted, and written to the file.
 // Each batch goes to different file.
-// When series are iterated, all files are merged (which is each to do, as they are already sorted).
-// Symbols are written to different set of files.
+// When series are iterated, all files are merged (which is easy to do, as they are already sorted).
+// Symbols are written to different set of files, they are also sorted, merged and deduplicated on iteration.
 type seriesList struct {
 	limit int
 	dir   string

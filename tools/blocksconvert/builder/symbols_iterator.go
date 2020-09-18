@@ -27,12 +27,15 @@ func newSymbolsIterator(files []*symbolsFile) *symbolsIterator {
 }
 
 func (sit *symbolsIterator) buildHeap() {
+	// All files on the heap must have at least one element, so that "heapify" can order them.
+	// Here we verify that, and remove files with no more elements.
 	for ix := 0; ix < len(sit.files); {
 		f := sit.files[ix]
 		next, err := f.hasNext()
 
 		if err != nil {
 			sit.errs.Add(err)
+			return
 		}
 
 		if !next {
@@ -44,6 +47,7 @@ func (sit *symbolsIterator) buildHeap() {
 		ix++
 	}
 
+	// Build heap, start with leaf nodes, and work towards to root. See comment at heapify for more details.
 	for ix := len(sit.files) - 1; ix >= 0; ix-- {
 		heapifySymbols(sit.files, ix)
 	}
@@ -97,24 +101,12 @@ func (sit *symbolsIterator) Close() error {
 	return errs.Err()
 }
 
-// heapify symbols at given index. root is the minimum.
 func heapifySymbols(files []*symbolsFile, ix int) {
-	smallest := ix
-	left := 2*ix + 1
-	right := 2*ix + 2
-
-	if left < len(files) && files[left].peek() < files[smallest].peek() {
-		smallest = left
-	}
-
-	if right < len(files) && files[right].peek() < files[smallest].peek() {
-		smallest = right
-	}
-
-	if smallest != ix {
-		files[ix], files[smallest] = files[smallest], files[ix]
-		heapifySymbols(files, smallest)
-	}
+	heapify(len(files), ix, func(i, j int) bool {
+		return files[i].peek() < files[j].peek()
+	}, func(i, j int) {
+		files[i], files[j] = files[j], files[j]
+	})
 }
 
 type symbolsFile struct {

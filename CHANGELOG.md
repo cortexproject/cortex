@@ -4,6 +4,7 @@
 
 ## 1.4.0-rc.0 / 2020-09-15
 
+* [CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. #3198
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
 * [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180 #3201
   - `-experimental.blocks-storage.*` flags renamed to `-blocks-storage.*`

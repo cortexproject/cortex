@@ -101,6 +101,9 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 		require.NoError(t, err)
 	}
 
+	// Wait until both workers connect to the query frontend
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(2), "cortex_query_frontend_connected_clients"))
+
 	wg := sync.WaitGroup{}
 
 	// Run all queries concurrently to get better distribution of requests between queriers.

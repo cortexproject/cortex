@@ -517,9 +517,9 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 - **`dns+`**<br />
   The domain name after the prefix is looked up as an A/AAAA query. For example: `dns+memcached.local:11211`
 - **`dnssrv+`**<br />
-  The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: `dnssrv+memcached.namespace.svc.cluster.local`
+  The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: `dnssrv+_memcached._tcp.memcached.namespace.svc.cluster.local`
 - **`dnssrvnoa+`**<br />
-  The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+memcached.namespace.svc.cluster.local`
+  The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local`
 
 ## Logging of IP of reverse proxy
 

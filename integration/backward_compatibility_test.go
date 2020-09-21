@@ -27,15 +27,7 @@ var (
 		// 0.7.0 used 204 status code for all components
 		"quay.io/cortexproject/cortex:v0.7.0": preCortex10Flags,
 
-		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
-			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-				"-store-gateway.sharding-enabled":              "",
-				"-store-gateway.sharding-ring.store":           "",
-				"-store-gateway.sharding-ring.consul.hostname": "",
-				"-store-gateway.replication-factor":            "",
-			})
-		},
-
+		"quay.io/cortexproject/cortex:v1.0.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
@@ -44,24 +36,24 @@ var (
 
 func preCortex10Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                          "",
-		"-config-yaml":                                 flags["-schema-config-file"],
-		"-table-manager.poll-interval":                 "",
-		"-dynamodb.poll-interval":                      flags["-table-manager.poll-interval"],
-		"-store-gateway.sharding-enabled":              "",
-		"-store-gateway.sharding-ring.store":           "",
-		"-store-gateway.sharding-ring.consul.hostname": "",
-		"-store-gateway.replication-factor":            "",
+		"-schema-config-file":                             "",
+		"-config-yaml":                                    flags["-schema-config-file"],
+		"-table-manager.poll-interval":                    "",
+		"-dynamodb.poll-interval":                         flags["-table-manager.poll-interval"],
+		"-store-gateway.sharding-enabled":                 "",
+		"-store-gateway.sharding-ring.store":              "",
+		"-store-gateway.sharding-ring.consul.hostname":    "",
+		"-store-gateway.sharding-ring.replication-factor": "",
 	})
 }
 
 func preCortex14Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
 		// Blocks storage CLI flags removed the "experimental" prefix in 1.4.
-		"-store-gateway.sharding-enabled":              "",
-		"-store-gateway.sharding-ring.store":           "",
-		"-store-gateway.sharding-ring.consul.hostname": "",
-		"-store-gateway.replication-factor":            "",
+		"-store-gateway.sharding-enabled":                 "",
+		"-store-gateway.sharding-ring.store":              "",
+		"-store-gateway.sharding-ring.consul.hostname":    "",
+		"-store-gateway.sharding-ring.replication-factor": "",
 	})
 }
 

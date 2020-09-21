@@ -3655,12 +3655,12 @@ sharding_ring:
 
   # The replication factor to use when sharding blocks. This option needs be set
   # both on the store-gateway and querier when running in microservices mode.
-  # CLI flag: -store-gateway.replication-factor
+  # CLI flag: -store-gateway.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
   # File path where tokens are stored. If empty, tokens are not stored at
   # shutdown and restored at startup.
-  # CLI flag: -store-gateway.tokens-file-path
+  # CLI flag: -store-gateway.sharding-ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.

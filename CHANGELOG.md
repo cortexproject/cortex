@@ -84,6 +84,7 @@
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
 * [BUGFIX] Limit errors on ranged queries (`api/v1/query_range`) no longer return a status code `500` but `422` instead. #3167
+* [BUGFIX] Handle hash-collisions in the query path. #3192
 
 ## 1.3.0 / 2020-08-21
 

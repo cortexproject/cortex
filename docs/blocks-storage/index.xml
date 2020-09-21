@@ -1485,6 +1485,7 @@ All tools also start gRPC server (&lt;code>-server.grpc*&lt;/code> options), but
 &lt;li>&lt;code>-scanner.allowed-users&lt;/code> – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.&lt;/li>
 &lt;li>&lt;code>-scanner.ignore-users-regex&lt;/code> - If plans for all users are generated (&lt;code>-scanner.allowed-users&lt;/code> is not set), then users matching this non-empty regular expression will be skipped.&lt;/li>
 &lt;li>&lt;code>-scanner.tables-limit&lt;/code> – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.&lt;/li>
+&lt;li>&lt;code>-scanner.tables&lt;/code> – Comma-separated list of tables to be scanned. Can be used to scan specific tables only. Note that schema is still used to find all tables first, and then this list is consulted to select only specified tables.&lt;/li>
 &lt;/ul>
 &lt;p>Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
 For each table, it will fully read the table and generate a plan for each user and day stored in the table.

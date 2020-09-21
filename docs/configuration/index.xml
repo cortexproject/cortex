@@ -4337,4 +4337,5 @@ and development.&lt;/p>
 &lt;li>Shuffle-sharding of queriers in the query-frontend (i.e. use of &lt;code>-frontend.max-queriers-per-user&lt;/code> flag with non-zero value).&lt;/li>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
 &lt;li>TLS configuration in Etcd client.&lt;/li>
+&lt;li>Blocksconvert tools&lt;/li>
 &lt;/ul></description></item></channel></rss>

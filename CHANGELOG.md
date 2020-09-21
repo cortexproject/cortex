@@ -15,6 +15,7 @@
 * [BUGFIX] Handle hash-collisions in the query path. #3192
 * [BUGFIX] Check for postgres rows errors. #3197
 * [BUGFIX] Ruler Experimental API: Don't allow rule groups without names or empty rule groups. #3210
+* [BUGFIX] Experimental Alertmanager API: Do not allow empty Alertmanager configurations or bad template filenames to be submitted through the configuration API. #3185
 
 ## 1.4.0-rc.0 in progress
 

@@ -76,6 +76,7 @@ type Frontend struct {
 	connectedClients *atomic.Int32
 
 	// Metrics.
+	numClients    prometheus.GaugeFunc
 	queueDuration prometheus.Histogram
 	queueLength   *prometheus.GaugeVec
 }
@@ -92,6 +93,7 @@ type request struct {
 
 // New creates a new frontend.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+	connectedClients := atomic.NewInt32(0)
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
@@ -108,7 +110,12 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 			Name:      "query_frontend_queue_length",
 			Help:      "Number of queries in the queue.",
 		}, []string{"user"}),
-		connectedClients: atomic.NewInt32(0),
+		numClients: promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "query_frontend_connected_clients",
+			Help:      "Number of worker clients currently connected to the frontend.",
+		}, func() float64 { return float64(connectedClients.Load()) }),
+		connectedClients: connectedClients,
 	}
 	f.cond = sync.NewCond(&f.mtx)
 

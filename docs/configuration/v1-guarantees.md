@@ -48,3 +48,4 @@ Currently experimental features are:
 - Querier support for querying chunks and blocks store at the same time.
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
+- Blocksconvert tools

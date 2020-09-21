@@ -528,6 +528,10 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
+	if fn != filepath.Base(fn) {
+		return false, fmt.Errorf("template file name '%s' is not not valid", fn)
+	}
+
 	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {

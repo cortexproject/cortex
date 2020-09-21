@@ -3,10 +3,10 @@ package alertmanager
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -14,30 +14,82 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/yaml.v2"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {
 	testCases := []struct {
-		cfg    UserConfig
-		hasErr bool
+		name     string
+		cfg      string
+		response string
+		err      error
 	}{
 		{
-			cfg: UserConfig{
-				AlertmanagerConfig: `
-route:
-  receiver: 'default-receiver'
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  group_by: [cluster, alertname]
+			name: "It is not a valid payload without receivers",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
 `,
-			},
-			hasErr: true,
+			err: fmt.Errorf("error validating Alertmanager config: undefined receiver \"default-receiver\" used in route"),
 		},
 		{
-			cfg: UserConfig{
-				AlertmanagerConfig: `
+			name: "It is valid",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+`,
+		},
+		{
+			name: "It is not valid with paths in the template",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+template_files:
+  "good.tpl": "good-templ"
+  "not/very/good.tpl": "bad-template"
+`,
+			err: fmt.Errorf("error validating Alertmanager config: unable to create template file 'not/very/good.tpl'"),
+		},
+		{
+			name: "It is not valid with .",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+template_files:
+  "good.tpl": "good-templ"
+  ".": "bad-template"
+`,
+			err: fmt.Errorf("error validating Alertmanager config: unable to create template file '.'"),
+		},
+		{
+			name: "It is not valid if the config is empty due to wrong indendatation",
+			cfg: `
+alertmanager_config: |
 route:
   receiver: 'default-receiver'
   group_wait: 30s
@@ -46,28 +98,29 @@ route:
   group_by: [cluster, alertname]
 receivers:
   - name: default-receiver
+template_files:
+  "good.tpl": "good-templ"
+  "not/very/good.tpl": "bad-template"
 `,
-			},
-			hasErr: false,
+			err: fmt.Errorf("error validating Alertmanager config: configuration provided is empty, if you'd like to remove your configuration please use the delete configuration endpoint"),
 		},
 		{
-			cfg: UserConfig{
-				AlertmanagerConfig: `
-route:
-  receiver: 'default-receiver'
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  group_by: [cluster, alertname]
-receivers:
-  - name: default-receiver
+			name: "It is not valid if the config is empty due to wrong key",
+			cfg: `
+XWRONGalertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+template_files:
+  "good.tpl": "good-templ"
+  "not/very/good.tpl": "bad-template"
 `,
-				TemplateFiles: map[string]string{
-					"good.tpl":          "good-template",
-					"not/very/good.tpl": "bad-template", // Paths are not allowed in templates.
-				},
-			},
-			hasErr: true,
+			err: fmt.Errorf("error validating Alertmanager config: configuration provided is empty, if you'd like to remove your configuration please use the delete configuration endpoint"),
 		},
 	}
 
@@ -76,27 +129,28 @@ receivers:
 		logger: util.Logger,
 	}
 	for _, tc := range testCases {
-		payload, err := yaml.Marshal(&tc.cfg)
-		require.NoError(t, err)
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader([]byte(tc.cfg)))
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, "testing")
+			require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
+			w := httptest.NewRecorder()
+			am.SetUserConfig(w, req)
+			resp := w.Result()
 
-		req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader(payload))
-		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, "testing")
-		require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
-		w := httptest.NewRecorder()
-		am.SetUserConfig(w, req)
-
-		resp := w.Result()
-		if tc.hasErr {
-			require.Equal(t, 400, resp.StatusCode)
-			respBody, err := ioutil.ReadAll(resp.Body)
+			body, err := ioutil.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.True(t, strings.Contains(string(respBody), "error validating Alertmanager config"))
-		} else {
-			require.Equal(t, 201, resp.StatusCode)
-		}
-	}
 
+			if tc.err == nil {
+				require.Equal(t, http.StatusCreated, resp.StatusCode)
+				require.Equal(t, "", string(body))
+			} else {
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+				require.Equal(t, tc.err.Error()+"\n", string(body))
+			}
+
+		})
+	}
 }
 
 type noopAlertStore struct{}

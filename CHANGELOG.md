@@ -14,6 +14,7 @@
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
 * [BUGFIX] Check for postgres rows errors. #3197
+* [BUGFIX] Experimental Alertmanager API: Do not allow empty Alertmanager configurations or bad template filenames to be submitted through the configuration API. #3185
 
 ## 1.4.0-rc.0 in progress
 

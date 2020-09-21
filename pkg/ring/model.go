@@ -444,9 +444,8 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {
 			return Equal
-		} else {
-			return Different
 		}
+		return Different
 	}
 	if o == nil {
 		if len(d.Ingesters) == 0 {
@@ -496,9 +495,8 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 
 	if equalStatesAndTimestamps {
 		return Equal
-	} else {
-		return EqualIngestersAndTokens
 	}
+	return EqualIngestersAndTokens
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

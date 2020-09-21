@@ -28,12 +28,13 @@ import (
 )
 
 type Config struct {
-	TableName   string
+	TableNames  string
 	TablesLimit int
 
 	OutputDirectory string
 	Concurrency     int
 
+	VerifyPlans bool
 	UploadFiles bool
 	KeepFiles   bool
 
@@ -42,7 +43,7 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
+	f.StringVar(&cfg.TableNames, "scanner.tables", "", "Comma-separated tables to generate plan files from. If not used, all tables found via schema and scanning of Index store will be used.")
 	f.StringVar(&cfg.OutputDirectory, "scanner.output-dir", "", "Local directory used for storing temporary plan files (will be created if missing).")
 	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
@@ -50,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
 	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
 	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
+	f.BoolVar(&cfg.VerifyPlans, "scanner.verify-plans", true, "Verify plans before uploading to bucket. Enabled by default for extra check. Requires extra memory for large plans.")
 }
 
 type Scanner struct {
@@ -204,27 +206,32 @@ func (s *Scanner) running(ctx context.Context) error {
 
 	level.Info(s.logger).Log("msg", "total found tables", "count", len(allTables))
 
+	if s.cfg.TableNames != "" {
+		// Find tables from parameter.
+		tableNames := map[string]bool{}
+		for _, t := range strings.Split(s.cfg.TableNames, ",") {
+			tableNames[strings.TrimSpace(t)] = true
+		}
+
+		for ix := 0; ix < len(allTables); {
+			t := allTables[ix]
+			if !tableNames[t.table] {
+				// remove table.
+				allTables = append(allTables[:ix], allTables[ix+1:]...)
+				continue
+			}
+			ix++
+		}
+
+		level.Error(s.logger).Log("msg", "applied tables filter", "selected", len(allTables))
+	}
+
 	// Recent tables go first.
 	sort.Slice(allTables, func(i, j int) bool {
 		return allTables[i].start.After(allTables[j].start)
 	})
 
-	if s.cfg.TableName != "" {
-		// Find single table.
-		foundIx := -1
-		for ix := 0; ix < len(allTables); ix++ {
-			if allTables[ix].table == s.cfg.TableName {
-				foundIx = ix
-				break
-			}
-		}
-		if foundIx >= 0 {
-			allTables = allTables[foundIx : foundIx+1]
-		} else {
-			level.Error(s.logger).Log("msg", "specified table not found", "table", s.cfg.TableName)
-			allTables = nil
-		}
-	} else if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
+	if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
 		level.Info(s.logger).Log("msg", "applied tables limit", "limit", s.cfg.TablesLimit)
 		allTables = allTables[:s.cfg.TablesLimit]
 	}
@@ -310,9 +317,11 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 
 	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", strings.Join(ignoredUsers, ","))
 
-	err = verifyPlanFiles(ctx, dir, tableLog)
-	if err != nil {
-		return errors.Wrap(err, "failed to verify plans")
+	if s.cfg.VerifyPlans {
+		err = verifyPlanFiles(ctx, dir, tableLog)
+		if err != nil {
+			return errors.Wrap(err, "failed to verify plans")
+		}
 	}
 
 	if s.bucket != nil {

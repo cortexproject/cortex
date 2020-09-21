@@ -19,15 +19,15 @@ import (
 
 type PlanEntry struct {
 	// Header
-	User     string `json:"user"`
-	DayIndex int    `json:"day_index"`
+	User     string `json:"user,omitempty"`
+	DayIndex int    `json:"day_index,omitempty"`
 
 	// Entries
-	SeriesID string   `json:"sid"`
-	Chunks   []string `json:"cs"`
+	SeriesID string   `json:"sid,omitempty"`
+	Chunks   []string `json:"cs,omitempty"`
 
 	// Footer
-	Complete bool `json:"complete"`
+	Complete bool `json:"complete,omitempty"`
 }
 
 func (pe *PlanEntry) Reset() {

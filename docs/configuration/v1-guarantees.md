@@ -50,3 +50,4 @@ Currently experimental features are:
 - Shuffle-sharding of queriers in the query-frontend (i.e. use of `-frontend.max-queriers-per-user` flag with non-zero value).
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
+- Blocksconvert tools

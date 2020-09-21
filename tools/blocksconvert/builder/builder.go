@@ -92,8 +92,9 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	if cfg.OutputDirectory == "" {
 		return nil, errors.New("no output directory")
 	}
-	if err := os.MkdirAll(cfg.OutputDirectory, os.FileMode(0700)); err != nil {
-		return nil, errors.Wrap(err, "failed to create output directory")
+	plansDir := filepath.Join(cfg.OutputDirectory, "plans")
+	if err := os.MkdirAll(plansDir, os.FileMode(0700)); err != nil {
+		return nil, errors.Wrap(err, "failed to create plans directory")
 	}
 
 	b := &Builder{
@@ -104,6 +105,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		chunksCache:   chunksCache,
 		schemaConfig:  scfg.SchemaConfig,
 		storageConfig: scfg.StorageConfig,
+		plansDir:      plansDir,
 
 		fetchedChunks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_builder_fetched_chunks_total",
@@ -164,6 +166,7 @@ type Builder struct {
 	chunksCache   cache.Cache
 	schemaConfig  chunk.SchemaConfig
 	storageConfig storage.Config
+	plansDir      string
 
 	fetchedChunks     prometheus.Counter
 	fetchedChunksSize prometheus.Counter
@@ -196,6 +199,21 @@ func (b *Builder) cleanup(_ context.Context) error {
 			if err != nil {
 				return errors.Wrapf(err, "removing %s", toRemove)
 			}
+		}
+	}
+
+	files, err = ioutil.ReadDir(b.plansDir)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		toRemove := filepath.Join(b.plansDir, f.Name())
+
+		level.Info(b.log).Log("msg", "deleting unfinished local plan file", "file", toRemove)
+		err = os.Remove(toRemove)
+		if err != nil {
+			return errors.Wrapf(err, "removing %s", toRemove)
 		}
 	}
 
@@ -291,6 +309,7 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	defer b.planFileSize.Set(0)
 	defer b.planFileReadPosition.Set(0)
 	defer b.currentPlanStartTime.Set(0)
+	defer b.seriesInMemory.Set(0)
 
 	planLog := log.With(b.log, "plan", planFile)
 
@@ -308,15 +327,18 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 		return errors.Wrap(err, "failed to start heartbeating")
 	}
 
-	attr, err := b.bucketClient.Attributes(ctx, planFile)
+	localPlanFile := filepath.Join(b.plansDir, filepath.Base(planFile))
+	planSize, err := downloadPlanFile(ctx, b.bucketClient, planFile, localPlanFile)
 	if err != nil {
-		return errors.Wrapf(err, "failed to read plan file %s", planFile)
+		return errors.Wrapf(err, "failed to download plan file %s to %s", planFile, localPlanFile)
 	}
-	b.planFileSize.Set(float64(attr.Size))
+	level.Info(planLog).Log("msg", "downloaded plan file", "localPlanFile", localPlanFile, "size", planSize)
 
-	f, err := b.bucketClient.Get(ctx, planFile)
+	b.planFileSize.Set(float64(planSize))
+
+	f, err := os.Open(localPlanFile)
 	if err != nil {
-		return errors.Wrapf(err, "failed to read plan file %s", planFile)
+		return errors.Wrapf(err, "failed to read local plan file %s", localPlanFile)
 	}
 	defer func() {
 		_ = f.Close()
@@ -381,13 +403,13 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 	}
 
 	blockDir := filepath.Join(b.cfg.OutputDirectory, ulid.String())
-	size, err := getBlockSize(blockDir)
+	blockSize, err := getBlockSize(blockDir)
 	if err != nil {
 		return errors.Wrap(err, "block size")
 	}
 
-	level.Info(planLog).Log("msg", "successfully built block for a plan", "ulid", ulid.String(), "size", size)
-	b.blocksSize.Add(float64(size))
+	level.Info(planLog).Log("msg", "successfully built block for a plan", "ulid", ulid.String(), "size", blockSize)
+	b.blocksSize.Add(float64(blockSize))
 
 	if b.cfg.UploadBlock {
 		userBucket := cortex_tsdb.NewUserBucketClient(userID, b.bucketClient)
@@ -399,9 +421,14 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 		if b.cfg.DeleteLocalBlock {
 			if err := os.RemoveAll(blockDir); err != nil {
-				level.Warn(planLog).Log("msg", "failed to delete local block")
+				level.Warn(planLog).Log("msg", "failed to delete local block", "err", err)
 			}
 		}
+	}
+
+	err = os.Remove(localPlanFile)
+	if err != nil {
+		level.Warn(planLog).Log("msg", "failed to delete local plan file", "err", err)
 	}
 
 	// Upload finished status file
@@ -419,6 +446,29 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	// All OK
 	return nil
+}
+
+func downloadPlanFile(ctx context.Context, bucket objstore.Bucket, planFile string, localPlanFile string) (int64, error) {
+	f, err := os.Create(localPlanFile)
+	if err != nil {
+		return 0, err
+	}
+
+	r, err := bucket.Get(ctx, planFile)
+	if err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+	// Copy will read `r` until EOF, or error is returned. Any possible error from Close is irrelevant.
+	defer func() { _ = r.Close() }()
+
+	n, err := io.Copy(f, r)
+	if err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+
+	return n, f.Close()
 }
 
 func getBlockSize(dir string) (int64, error) {

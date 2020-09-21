@@ -34,6 +34,7 @@ type Config struct {
 	OutputDirectory string
 	Concurrency     int
 
+	VerifyPlans bool
 	UploadFiles bool
 	KeepFiles   bool
 
@@ -50,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
 	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
 	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
+	f.BoolVar(&cfg.VerifyPlans, "scanner.verify-plans", true, "Verify plans before uploading to bucket. Enabled by default for extra check. Requires extra memory for large plans.")
 }
 
 type Scanner struct {
@@ -315,9 +317,11 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 
 	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", strings.Join(ignoredUsers, ","))
 
-	err = verifyPlanFiles(ctx, dir, tableLog)
-	if err != nil {
-		return errors.Wrap(err, "failed to verify plans")
+	if s.cfg.VerifyPlans {
+		err = verifyPlanFiles(ctx, dir, tableLog)
+		if err != nil {
+			return errors.Wrap(err, "failed to verify plans")
+		}
 	}
 
 	if s.bucket != nil {

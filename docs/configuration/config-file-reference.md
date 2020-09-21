@@ -817,6 +817,11 @@ results_cache:
     # The CLI flags prefix for this block config is: frontend
     [fifocache: <fifo_cache_config>]
 
+  # Use compression in results cache. Supported values are: 'snappy' and ''
+  # (disable compression).
+  # CLI flag: -frontend.compression
+  [compression: <string> | default = ""]
+
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]

@@ -41,12 +41,14 @@ type CacheGenNumberLoader interface {
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
 	CacheConfig cache.Config `yaml:"cache"`
+	Compression string       `yaml:"compression"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
+	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
 }
 
@@ -139,6 +141,9 @@ func NewResultsCacheMiddleware(
 	c, err := cache.New(cfg.CacheConfig, reg, logger)
 	if err != nil {
 		return nil, nil, err
+	}
+	if cfg.Compression == "snappy" {
+		c = cache.NewSnappy(c, logger)
 	}
 
 	if cacheGenNumberLoader != nil {

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
+	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
@@ -102,7 +103,7 @@ func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	storage, err := NewRuleStorage(cfg.StoreConfig)
+	storage, err := NewRuleStorage(cfg.StoreConfig, promRules.FileLoader{})
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()

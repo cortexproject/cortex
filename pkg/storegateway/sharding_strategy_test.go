@@ -35,9 +35,10 @@ func TestDefaultShardingStrategy(t *testing.T) {
 	block4Hash := cortex_tsdb.HashBlockID(block4)
 
 	tests := map[string]struct {
-		replicationFactor int
-		setupRing         func(*ring.Desc)
-		expectedBlocks    map[string][]ulid.ULID
+		replicationFactor    int
+		zoneAwarenessEnabled bool
+		setupRing            func(*ring.Desc)
+		expectedBlocks       map[string][]ulid.ULID
 	}{
 		"one ACTIVE instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
@@ -92,6 +93,20 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				"127.0.0.1": {block1, block3 /* replicated: */, block2, block4},
 				"127.0.0.2": {block2 /* replicated: */, block1},
 				"127.0.0.3": {block4 /* replicated: */, block3},
+			},
+		},
+		"multiple ACTIVE instances in the ring with replication factor = 2 and zone-awareness enabled": {
+			replicationFactor:    2,
+			zoneAwarenessEnabled: true,
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-2", "127.0.0.2", "zone-a", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-3", "127.0.0.3", "zone-b", []uint32{block4Hash + 1}, ring.ACTIVE)
+			},
+			expectedBlocks: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block3, block4},
+				"127.0.0.2": {block2},
+				"127.0.0.3": {block1, block2, block3, block4},
 			},
 		},
 		"one unhealthy instance in the ring with replication factor = 1": {
@@ -235,8 +250,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			}))
 
 			cfg := ring.Config{
-				ReplicationFactor: testData.replicationFactor,
-				HeartbeatTimeout:  time.Minute,
+				ReplicationFactor:    testData.replicationFactor,
+				HeartbeatTimeout:     time.Minute,
+				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
 			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})

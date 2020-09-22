@@ -963,7 +963,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		addr := fmt.Sprintf("%d", i)
 		ingesterDescs[addr] = ring.IngesterDesc{
 			Addr:      addr,
-			Zone:      addr,
+			Zone:      "",
 			State:     ring.ACTIVE,
 			Timestamp: time.Now().Unix(),
 			Tokens:    []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)},

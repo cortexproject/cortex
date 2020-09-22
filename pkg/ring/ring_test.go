@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
 	strconv "strconv"
 	"testing"
 	"time"
@@ -124,16 +123,129 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
 
+func TestRing_Get_ZoneAwareness(t *testing.T) {
+	// Number of tests to run.
+	const testCount = 10000
+
+	tests := map[string]struct {
+		numIngesters         int
+		numZones             int
+		replicationFactor    int
+		zoneAwarenessEnabled bool
+		expectedErr          string
+		expectedIngesters    int
+	}{
+		"should succeed if there are enough ingesters per zone on RF = 3": {
+			numIngesters:         16,
+			numZones:             3,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedIngesters:    3,
+		},
+		"should fail if there are ingesters in 1 zone only on RF = 3": {
+			numIngesters:         16,
+			numZones:             1,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedErr:          "at least 2 live replicas required across different availability zones, could only find 1",
+		},
+		"should succeed if there are ingesters in 2 zones on RF = 3": {
+			numIngesters:         16,
+			numZones:             2,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedIngesters:    2,
+		},
+		"should succeed if there are ingesters in 1 zone only on RF = 3 but zone-awareness is disabled": {
+			numIngesters:         16,
+			numZones:             1,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: false,
+			expectedIngesters:    3,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Add ingesters to the ring.
+			r := NewDesc()
+			var prevTokens []uint32
+			for i := 0; i < testData.numIngesters; i++ {
+				name := fmt.Sprintf("ing%v", i)
+				ingTokens := GenerateTokens(128, prevTokens)
+
+				r.AddIngester(name, fmt.Sprintf("127.0.0.%d", i), fmt.Sprintf("zone-%v", i%testData.numZones), ingTokens, ACTIVE)
+
+				prevTokens = append(prevTokens, ingTokens...)
+			}
+
+			// Create a ring with the ingesters
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ReplicationFactor:    testData.replicationFactor,
+					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
+				},
+				ringDesc:         r,
+				ringTokens:       r.getTokens(),
+				ringTokensByZone: r.getTokensByZone(),
+				ringZones:        getZones(r.getTokensByZone()),
+				strategy:         &DefaultReplicationStrategy{},
+			}
+
+			ingesters := make([]IngesterDesc, 0, len(r.GetIngesters()))
+			for _, v := range r.GetIngesters() {
+				ingesters = append(ingesters, v)
+			}
+
+			// Use the GenerateTokens to get an array of random uint32 values.
+			testValues := GenerateTokens(testCount, nil)
+
+			var set ReplicationSet
+			var err error
+			for i := 0; i < testCount; i++ {
+				set, err = ring.Get(testValues[i], Write, ingesters)
+				if testData.expectedErr != "" {
+					require.EqualError(t, err, testData.expectedErr)
+				} else {
+					require.NoError(t, err)
+				}
+
+				// Skip the rest of the assertions if we were expecting an error.
+				if testData.expectedErr != "" {
+					continue
+				}
+
+				// Check that we have the expected number of ingesters for replication.
+				assert.Equal(t, testData.expectedIngesters, len(set.Ingesters))
+
+				// Ensure all ingesters are in a different zone (only if zone-awareness is enabled).
+				if testData.zoneAwarenessEnabled {
+					zones := make(map[string]struct{})
+					for i := 0; i < len(set.Ingesters); i++ {
+						if _, ok := zones[set.Ingesters[i].Zone]; ok {
+							t.Fatal("found multiple ingesters in the same zone")
+						}
+						zones[set.Ingesters[i].Zone] = struct{}{}
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestRing_ShuffleShard(t *testing.T) {
 	tests := map[string]struct {
 		ringInstances        map[string]IngesterDesc
 		shardSize            int
+		zoneAwarenessEnabled bool
 		expectedSize         int
 		expectedDistribution []int
 	}{
 		"empty ring": {
 			ringInstances:        nil,
 			shardSize:            2,
+			zoneAwarenessEnabled: true,
 			expectedSize:         0,
 			expectedDistribution: []int{},
 		},
@@ -143,6 +255,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
 			shardSize:            3,
+			zoneAwarenessEnabled: true,
 			expectedSize:         2,
 			expectedDistribution: []int{2},
 		},
@@ -153,6 +266,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
 			shardSize:            2,
+			zoneAwarenessEnabled: true,
 			expectedSize:         2,
 			expectedDistribution: []int{2},
 		},
@@ -163,6 +277,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			shardSize:            2,
+			zoneAwarenessEnabled: true,
 			expectedSize:         3,
 			expectedDistribution: []int{1, 1, 1},
 		},
@@ -176,6 +291,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			shardSize:            3,
+			zoneAwarenessEnabled: true,
 			expectedSize:         3,
 			expectedDistribution: []int{1, 1, 1},
 		},
@@ -189,8 +305,22 @@ func TestRing_ShuffleShard(t *testing.T) {
 				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			shardSize:            4,
+			zoneAwarenessEnabled: true,
 			expectedSize:         6,
 			expectedDistribution: []int{2, 2, 2},
+		},
+		"multiple zones, shard size NOT divisible by num zones, but zone awareness is disabled": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+			},
+			shardSize:            4,
+			zoneAwarenessEnabled: false,
+			expectedSize:         4,
 		},
 	}
 
@@ -205,7 +335,10 @@ func TestRing_ShuffleShard(t *testing.T) {
 			}
 
 			ring := Ring{
-				cfg:              Config{HeartbeatTimeout: time.Hour},
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
+				},
 				ringDesc:         ringDesc,
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
@@ -217,23 +350,25 @@ func TestRing_ShuffleShard(t *testing.T) {
 			assert.Equal(t, testData.expectedSize, shardRing.IngesterCount())
 
 			// Compute the actual distribution of instances across zones.
-			var actualDistribution []int
+			if testData.zoneAwarenessEnabled {
+				var actualDistribution []int
 
-			if shardRing.IngesterCount() > 0 {
-				all, err := shardRing.GetAll(Read)
-				require.NoError(t, err)
+				if shardRing.IngesterCount() > 0 {
+					all, err := shardRing.GetAll(Read)
+					require.NoError(t, err)
 
-				countByZone := map[string]int{}
-				for _, instance := range all.Ingesters {
-					countByZone[instance.Zone]++
+					countByZone := map[string]int{}
+					for _, instance := range all.Ingesters {
+						countByZone[instance.Zone]++
+					}
+
+					for _, count := range countByZone {
+						actualDistribution = append(actualDistribution, count)
+					}
 				}
 
-				for _, count := range countByZone {
-					actualDistribution = append(actualDistribution, count)
-				}
+				assert.ElementsMatch(t, testData.expectedDistribution, actualDistribution)
 			}
-
-			assert.ElementsMatch(t, testData.expectedDistribution, actualDistribution)
 		})
 	}
 }
@@ -251,7 +386,10 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 	// Initialise the ring.
 	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
 	ring := Ring{
-		cfg:              Config{HeartbeatTimeout: time.Hour},
+		cfg: Config{
+			HeartbeatTimeout:     time.Hour,
+			ZoneAwarenessEnabled: true,
+		},
 		ringDesc:         ringDesc,
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
@@ -314,7 +452,10 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	// Initialise the ring.
 	ringDesc := &Desc{Ingesters: instances}
 	ring := Ring{
-		cfg:              Config{HeartbeatTimeout: time.Hour},
+		cfg: Config{
+			HeartbeatTimeout:     time.Hour,
+			ZoneAwarenessEnabled: true,
+		},
 		ringDesc:         ringDesc,
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
@@ -409,7 +550,10 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// Initialise the ring.
 			ringDesc := &Desc{Ingesters: generateRingInstances(s.numInstances, s.numZones)}
 			ring := Ring{
-				cfg:              Config{HeartbeatTimeout: time.Hour},
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ZoneAwarenessEnabled: true,
+				},
 				ringDesc:         ringDesc,
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
@@ -465,7 +609,10 @@ func BenchmarkRing_ShuffleShard(b *testing.B) {
 					// Initialise the ring.
 					ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
 					ring := Ring{
-						cfg:              Config{HeartbeatTimeout: time.Hour},
+						cfg: Config{
+							HeartbeatTimeout:     time.Hour,
+							ZoneAwarenessEnabled: true,
+						},
 						ringDesc:         ringDesc,
 						ringTokens:       ringDesc.getTokens(),
 						ringTokensByZone: ringDesc.getTokensByZone(),
@@ -482,229 +629,6 @@ func BenchmarkRing_ShuffleShard(b *testing.B) {
 			}
 		}
 	}
-}
-
-func TestSubring(t *testing.T) {
-	r := NewDesc()
-
-	n := 16 // number of ingesters in ring
-	var prevTokens []uint32
-	for i := 0; i < n; i++ {
-		name := fmt.Sprintf("ing%v", i)
-		ingTokens := GenerateTokens(128, prevTokens)
-
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
-
-		prevTokens = append(prevTokens, ingTokens...)
-	}
-
-	// Create a ring with the ingesters
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout: time.Hour,
-		},
-		ringDesc:         r,
-		ringTokens:       r.getTokens(),
-		ringTokensByZone: r.getTokensByZone(),
-		ringZones:        getZones(r.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-
-	// Generate a sub ring for all possible valid ranges
-	for i := 1; i < n+2; i++ {
-		subr := ring.Subring(rand.Uint32(), i)
-		subringSize := i
-		if i > n {
-			subringSize = n
-		}
-		require.Equal(t, subringSize, len(subr.(*Ring).ringDesc.Ingesters))
-		require.Equal(t, subringSize*128, len(subr.(*Ring).ringTokens))
-		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {
-			return subr.(*Ring).ringTokens[i].Token < subr.(*Ring).ringTokens[j].Token
-		}))
-
-		// Obtain a replication slice
-		size := i - 1
-		if size <= 0 {
-			size = 1
-		}
-		subr.(*Ring).cfg.ReplicationFactor = size
-		set, err := subr.Get(rand.Uint32(), Write, nil)
-		require.NoError(t, err)
-		require.Equal(t, size, len(set.Ingesters))
-	}
-}
-
-func TestStableSubring(t *testing.T) {
-	r := NewDesc()
-
-	n := 16 // number of ingesters in ring
-	var prevTokens []uint32
-	for i := 0; i < n; i++ {
-		name := fmt.Sprintf("ing%v", i)
-		ingTokens := GenerateTokens(128, prevTokens)
-
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), strconv.Itoa(i), ingTokens, ACTIVE)
-
-		prevTokens = append(prevTokens, ingTokens...)
-	}
-
-	// Create a ring with the ingesters
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout: time.Hour,
-		},
-		ringDesc:         r,
-		ringTokens:       r.getTokens(),
-		ringTokensByZone: r.getTokensByZone(),
-		ringZones:        getZones(r.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-
-	// Generate the same subring multiple times
-	var subrings [][]TokenDesc
-	key := rand.Uint32()
-	subringsize := 4
-	for i := 1; i < 4; i++ {
-		subr := ring.Subring(key, subringsize)
-		require.Equal(t, subringsize, len(subr.(*Ring).ringDesc.Ingesters))
-		require.Equal(t, subringsize*128, len(subr.(*Ring).ringTokens))
-		require.True(t, sort.SliceIsSorted(subr.(*Ring).ringTokens, func(i, j int) bool {
-			return subr.(*Ring).ringTokens[i].Token < subr.(*Ring).ringTokens[j].Token
-		}))
-
-		subrings = append(subrings, subr.(*Ring).ringTokens)
-	}
-
-	// Validate that the same subring is produced each time from the same ring
-	for i := 0; i < len(subrings); i++ {
-		next := i + 1
-		if next >= len(subrings) {
-			next = 0
-		}
-		require.Equal(t, subrings[i], subrings[next])
-	}
-}
-
-func TestZoneAwareIngesterAssignmentSucccess(t *testing.T) {
-
-	// runs a series of Get calls on the ring to ensure Ingesters' zone values are taken into
-	// consideration when assigning a set for a given token.
-
-	r := NewDesc()
-
-	n := 16 // number of ingesters in ring
-	z := 3  // number of availability zones.
-
-	testCount := 1000000 // number of key tests to run.
-
-	var prevTokens []uint32
-	for i := 0; i < n; i++ {
-		name := fmt.Sprintf("ing%v", i)
-		ingTokens := GenerateTokens(128, prevTokens)
-
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), fmt.Sprintf("zone-%v", i%z), ingTokens, ACTIVE)
-
-		prevTokens = append(prevTokens, ingTokens...)
-	}
-
-	// Create a ring with the ingesters
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout:  time.Hour,
-			ReplicationFactor: 3,
-		},
-		ringDesc:         r,
-		ringTokens:       r.getTokens(),
-		ringTokensByZone: r.getTokensByZone(),
-		ringZones:        getZones(r.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-	// use the GenerateTokens to get an array of random uint32 values
-	testValues := make([]uint32, testCount)
-	testValues = GenerateTokens(testCount, testValues)
-	ing := r.GetIngesters()
-	ingesters := make([]IngesterDesc, 0, len(ing))
-	for _, v := range ing {
-		ingesters = append(ingesters, v)
-	}
-	var set ReplicationSet
-	var e error
-	for i := 0; i < testCount; i++ {
-		set, e = ring.Get(testValues[i], Write, ingesters)
-		if e != nil {
-			t.Fail()
-			return
-		}
-
-		// check that we have the expected number of ingesters for replication.
-		require.Equal(t, 3, len(set.Ingesters))
-
-		// ensure all ingesters are in a different zone.
-		zones := make(map[string]struct{})
-		for i := 0; i < len(set.Ingesters); i++ {
-			if _, ok := zones[set.Ingesters[i].Zone]; ok {
-				t.Fail()
-			}
-			zones[set.Ingesters[i].Zone] = struct{}{}
-		}
-	}
-
-}
-
-func TestZoneAwareIngesterAssignmentFailure(t *testing.T) {
-
-	// This test ensures that when there are not ingesters in enough distinct zones
-	// an error will occur when attempting to get a replication set for a token.
-
-	r := NewDesc()
-
-	n := 16 // number of ingesters in ring
-	z := 1  // number of availability zones.
-
-	testCount := 10 // number of key tests to run.
-
-	var prevTokens []uint32
-	for i := 0; i < n; i++ {
-		name := fmt.Sprintf("ing%v", i)
-		ingTokens := GenerateTokens(128, prevTokens)
-
-		r.AddIngester(name, fmt.Sprintf("addr%v", i), fmt.Sprintf("zone-%v", i%z), ingTokens, ACTIVE)
-
-		prevTokens = append(prevTokens, ingTokens...)
-	}
-
-	// Create a ring with the ingesters
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout:  time.Hour,
-			ReplicationFactor: 3,
-		},
-		ringDesc:         r,
-		ringTokens:       r.getTokens(),
-		ringTokensByZone: r.getTokensByZone(),
-		ringZones:        getZones(r.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-	// use the GenerateTokens to get an array of random uint32 values
-	testValues := make([]uint32, testCount)
-	testValues = GenerateTokens(testCount, testValues)
-	ing := r.GetIngesters()
-	ingesters := make([]IngesterDesc, 0, len(ing))
-	for _, v := range ing {
-		ingesters = append(ingesters, v)
-	}
-
-	for i := 0; i < testCount; i++ {
-		// Since there is only 1 zone assigned, we are expecting an error here.
-		_, e := ring.Get(testValues[i], Write, ingesters)
-		if e != nil {
-			require.Equal(t, "at least 2 live replicas required, could only find 1", e.Error())
-			continue
-		}
-		t.Fail()
-	}
-
 }
 
 // generateTokensLinear returns tokens with a linear distribution.

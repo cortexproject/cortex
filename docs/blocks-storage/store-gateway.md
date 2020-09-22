@@ -56,6 +56,16 @@ To protect from this, when an healthy store-gateway instance finds another insta
 
 This feature is called **auto-forget** and is built into the store-gateway.
 
+### Zone-awareness
+
+The store-gateway replication optionally supports [zone-awareness](../guides/zone-replication.md). When zone-aware replication is enabled and the blocks replication factor is > 1, each block is guaranteed to be replicated across store-gateway instances running in different availability zones.
+
+**To enable** the zone-aware replication for the store-gateways you should:
+
+1. Configure the availability zone for each store-gateway via the `-store-gateway.sharding-ring.instance-availability-zone` CLI flag (or its respective YAML config option)
+2. Enable blocks zone-aware replication via the `-store-gateway.sharding-ring.zone-awareness-enabled` CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to store-gateways, queriers and rulers.
+3. Rollout store-gateways, queriers and rulers to apply the new configuration
+
 ## Caching
 
 The store-gateway supports the following caches:
@@ -206,6 +216,16 @@ store_gateway:
     # shutdown and restored at startup.
     # CLI flag: -store-gateway.sharding-ring.tokens-file-path
     [tokens_file_path: <string> | default = ""]
+
+    # True to enable zone-awareness and replicate blocks across different
+    # availability zones.
+    # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
+    [zone_awareness_enabled: <boolean> | default = false]
+
+    # The availability zone where this instance is running. Required if
+    # zone-awareness is enabled.
+    # CLI flag: -store-gateway.sharding-ring.instance-availability-zone
+    [instance_availability_zone: <string> | default = ""]
 
   # The sharding strategy to use. Supported values are: default,
   # shuffle-sharding.

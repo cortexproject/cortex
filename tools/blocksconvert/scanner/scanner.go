@@ -78,6 +78,9 @@ type Scanner struct {
 	indexReaderRowsRead           prometheus.Counter
 	indexReaderParsedIndexEntries prometheus.Counter
 	ignoredEntries                prometheus.Counter
+	foundTables                   prometheus.Counter
+	processedTables               prometheus.Counter
+	remainingRanges               prometheus.Gauge
 
 	schema       chunk.SchemaConfig
 	ignoredUsers *regexp.Regexp
@@ -140,6 +143,10 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_bigtable_parsed_index_entries_total",
 			Help: "Number of parsed index entries",
 		}),
+		remainingRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_remaining_ranges",
+			Help: "Number of remaining ranges to scan from current table.",
+		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_scanner_series_written_total",
@@ -158,6 +165,15 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		ignoredEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_scanner_ignored_index_entries_total",
 			Help: "Number of ignored index entries because of ignoring users.",
+		}),
+
+		foundTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_found_tables_total",
+			Help: "Number of tables found for processing.",
+		}),
+		processedTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_processed_tables_total",
+			Help: "Number of processed tables so far.",
 		}),
 	}
 
@@ -189,7 +205,7 @@ func (s *Scanner) running(ctx context.Context) error {
 				continue
 			}
 
-			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries)
+			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.remainingRanges)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue
@@ -257,10 +273,13 @@ func (s *Scanner) running(ctx context.Context) error {
 		allTables = allTables[:s.cfg.TablesLimit]
 	}
 
+	s.foundTables.Add(float64(len(allTables)))
+
 	for _, t := range allTables {
 		if err := s.processTable(ctx, t.table, t.reader); err != nil {
 			return errors.Wrapf(err, "failed to process table %s", t.table)
 		}
+		s.processedTables.Inc()
 	}
 
 	// All good, just wait until context is done, to avoid restarts.

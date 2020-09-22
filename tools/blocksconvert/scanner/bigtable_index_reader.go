@@ -25,9 +25,10 @@ type bigtableIndexReader struct {
 
 	rowsRead           prometheus.Counter
 	parsedIndexEntries prometheus.Counter
+	remainingRanges    prometheus.Gauge
 }
 
-func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead prometheus.Counter, parsedIndexEntries prometheus.Counter) *bigtableIndexReader {
+func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead prometheus.Counter, parsedIndexEntries prometheus.Counter, remainingRanges prometheus.Gauge) *bigtableIndexReader {
 	return &bigtableIndexReader{
 		log:      l,
 		project:  project,
@@ -35,6 +36,7 @@ func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead pro
 
 		rowsRead:           rowsRead,
 		parsedIndexEntries: parsedIndexEntries,
+		remainingRanges:    remainingRanges,
 	}
 }
 
@@ -92,6 +94,8 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 		close(rangesCh)
 	}
 
+	r.remainingRanges.Set(float64(len(rangesCh)))
+
 	g, gctx := errgroup.WithContext(ctx)
 
 	for ix := range processors {
@@ -99,6 +103,8 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 
 		g.Go(func() error {
 			for rng := range rangesCh {
+				r.remainingRanges.Set(float64(len(rangesCh)))
+
 				var innerErr error
 
 				level.Info(r.log).Log("msg", "reading rows", "range", rng)

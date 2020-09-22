@@ -260,7 +260,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get rules back.
-	rls, err := store.ListAllRuleGroups(ctx)
+	rls, err := store.LoadAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(rls[userID]))
 
@@ -274,7 +274,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	//Verify we only have the second rule group
-	rls, err = store.ListAllRuleGroups(ctx)
+	rls, err = store.LoadAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(rls[userID]))
 	require.Equal(t, r2, rls[userID][0])

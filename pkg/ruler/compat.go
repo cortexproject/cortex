@@ -72,10 +72,10 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
-// RulesLimits is the one function we need from limits.Overrides, and
-// is here to limit coupling.
+// RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
-	EvaluationDelay(usedID string) time.Duration
+	EvaluationDelay(userID string) time.Duration
+	RulerTenantShardSize(userID string) int
 }
 
 // engineQueryFunc returns a new query function using the rules.EngineQueryFunc function

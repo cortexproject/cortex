@@ -165,7 +165,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.ChunkStore.Validate(); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
 	}
-	if err := c.Ruler.Validate(); err != nil {
+	if err := c.Ruler.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
 	if err := c.BlocksStorage.Validate(); err != nil {

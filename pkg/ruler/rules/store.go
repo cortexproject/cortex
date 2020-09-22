@@ -21,7 +21,13 @@ var (
 
 // RuleStore is used to store and retrieve rules
 type RuleStore interface {
-	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
+	ListAllUsers(ctx context.Context) ([]string, error)
+
+	// Returns all rule groups for this user.
+	LoadRuleGroupsForUser(ctx context.Context, userID string) (RuleGroupList, error)
+
+	// Returns all rule groups, and loads rules for each group.
+	LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
 	ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
@@ -63,9 +69,26 @@ func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
 	}
 }
 
-// ListAllRuleGroups implements RuleStore
-func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
+func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	m, err := c.LoadAllRuleGroups(ctx)
 
+	// TODO: this should be optimized, if possible.
+	result := []string(nil)
+	for u := range m {
+		result = append(result, u)
+	}
+
+	return result, err
+}
+
+func (c *ConfigRuleStore) LoadRuleGroupsForUser(ctx context.Context, userID string) (RuleGroupList, error) {
+	// TODO: this should be optimized, if possible.
+	r, err := c.LoadAllRuleGroups(ctx)
+	return r[userID], err
+}
+
+// ListAllRuleGroups implements RuleStore
+func (c *ConfigRuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
 	configs, err := c.configClient.GetRules(ctx, c.since)
 
 	if err != nil {
@@ -88,10 +111,6 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]Rul
 			}
 		}
 		c.ruleGroupList[user] = userRules
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	c.since = getLatestConfigID(configs, c.since)

@@ -115,18 +115,34 @@ func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 	}
 }
 
-func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	copy := make(map[string]rules.RuleGroupList)
+	var result []string
+	for u, _ := range m.rules {
+		result = append(result, u)
+	}
+	return result, nil
+}
+
+func (m *mockRuleStore) LoadRuleGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	return append(rules.RuleGroupList(nil), m.rules[userID]...), nil
+}
+
+func (m *mockRuleStore) LoadAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	result := make(map[string]rules.RuleGroupList)
 	for k, v := range m.rules {
-		rgl := make(rules.RuleGroupList, 0, len(v))
-		rgl = append(rgl, v...)
-		copy[k] = rgl
+		result[k] = append(rules.RuleGroupList(nil), v...)
 	}
 
-	return copy, nil
+	return result, nil
 }
 
 func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {

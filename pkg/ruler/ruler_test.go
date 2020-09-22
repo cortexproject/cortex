@@ -58,10 +58,17 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 	return cfg, cleanup
 }
 
-type ruleLimits time.Duration
+type ruleLimits struct {
+	evalDelay   time.Duration
+	tenantShard int
+}
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
-	return time.Duration(r)
+	return r.evalDelay
+}
+
+func (r ruleLimits) RulerTenantShardSize(_ string) int {
+	return r.tenantShard
 }
 
 func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
@@ -90,7 +97,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, ruleLimits(0), cleanup
+	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0}, cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
@@ -117,6 +124,7 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 		reg,
 		logger,
 		storage,
+		overrides,
 	)
 	require.NoError(t, err)
 

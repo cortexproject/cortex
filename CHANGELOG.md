@@ -8,7 +8,7 @@
 * [CHANGE] Fixed store-gateway CLI flags inconsistencies. #3201
   - `-store-gateway.replication-factor` flag renamed to `-store-gateway.sharding-ring.replication-factor`
   - `-store-gateway.tokens-file-path` flag renamed to `store-gateway.sharding-ring.tokens-file-path`
-* [BUGFIX] Handle hash-collisions in the query path. #3192
+* [BUGFIX] Handle hash-collisions in the query path. Before this fix, Cortex could occasionally mix up two different series in a query, leading to invalid results, when `-querier.ingester-streaming` was used. #3192
 
 ## 1.4.0-rc.0 / 2020-09-15
 

@@ -82,18 +82,30 @@ server_address: localhost:6666
 &lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
 &lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
-&lt;p>In a default configuration, time-series written to ingesters are replicated based on the container/pod name of the ingester instances. It is completely possible that all the replicas for the given time-series are held with in the same availability zone, even if the cortex infrastructure spans multiple zones within the region. Storing multiple replicas for a given time-series poses a risk for data loss if there is an outage affecting various nodes within a zone or a total outage.&lt;/p>
-&lt;h2 id="configuration">Configuration&lt;/h2>
-&lt;p>Cortex can be configured to consider an availability zone value in its replication system. Doing so mitigates risks associated with losing multiple nodes within the same availability zone. The availability zone for an ingester can be defined on the command line of the ingester using the &lt;code>ingester.availability-zone&lt;/code> flag or using the yaml configuration:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">ingester&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">lifecycler&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">availability_zone&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;zone-3&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="zone-replication-considerations">Zone Replication Considerations&lt;/h2>
-&lt;p>Enabling availability zone awareness helps mitigate risks regarding data loss within a single zone, some items need consideration by an operator if they are thinking of enabling this feature.&lt;/p>
-&lt;h3 id="minimum-number-of-zones">Minimum number of Zones&lt;/h3>
-&lt;p>For cortex to function correctly, there must be at least the same number of availability zones as there is replica count. So by default, a cortex cluster should be spread over 3 zones as the default replica count is 3. It is safe to have more zones than the replica count, but it cannot be less. Having fewer availability zones than replica count causes a replica write to be missed, and in some cases, the write fails if the availability zone count is too low.&lt;/p>
-&lt;h3 id="cost">Cost&lt;/h3>
-&lt;p>Depending on the existing cortex infrastructure being used, this may cause an increase in running costs as most cloud providers charge for cross availability zone traffic. The most significant change would be for a cortex cluster currently running in a singular zone.&lt;/p></description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/kubernetes/</guid><description>
+&lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
+&lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
+&lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>
+&lt;p>The Cortex services supporting &lt;strong>zone-aware replication&lt;/strong> are:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>&lt;a href="#distributors-and-ingesters-time-series-replication">Distributors and Ingesters&lt;/a>&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>&lt;a href="#store-gateways-blocks-replication">Store-gateways&lt;/a>&lt;/strong> (&lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> only)&lt;/li>
+&lt;/ul>
+&lt;h2 id="distributors--ingesters-time-series-replication">Distributors / Ingesters: time-series replication&lt;/h2>
+&lt;p>The Cortex time-series replication is used to hold multiple (typically 3) replicas of each time series in the &lt;strong>ingesters&lt;/strong>.&lt;/p>
+&lt;p>&lt;strong>To enable&lt;/strong> the zone-aware replication for the ingesters you should:&lt;/p>
+&lt;ol>
+&lt;li>Configure the availability zone for each ingester via the &lt;code>-ingester.availability-zone&lt;/code> CLI flag (or its respective YAML config option)&lt;/li>
+&lt;li>Rollout ingesters to apply the configured zone&lt;/li>
+&lt;li>Enable time-series zone-aware replication via the &lt;code>-distributor.zone-awareness-enabled&lt;/code> CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to distributors, queriers and rulers.&lt;/li>
+&lt;/ol>
+&lt;h2 id="store-gateways-blocks-replication">Store-gateways: blocks replication&lt;/h2>
+&lt;p>The Cortex &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> (used only when Cortex is running with the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>) supports blocks sharding, used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.&lt;/p>
+&lt;p>To enable the zone-aware replication for the store-gateways, please refer to the &lt;a href="/docs/blocks-storage/store-gateway/#zone-awareness">store-gateway&lt;/a> documentation.&lt;/p>
+&lt;h2 id="minimum-number-of-zones">Minimum number of zones&lt;/h2>
+&lt;p>For Cortex to function correctly, there must be at least the same number of availability zones as the replication factor. For example, if the replication factor is configured to 3 (default for time-series replication), the Cortex cluster should be spread at least over 3 availability zones.&lt;/p>
+&lt;p>It is safe to have more zones than the replication factor, but it cannot be less. Having fewer availability zones than replication factor causes a replica write to be missed, and in some cases, the write fails if the availability zones count is too low.&lt;/p>
+&lt;h2 id="impact-on-costs">Impact on costs&lt;/h2>
+&lt;p>Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.&lt;/p></description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/kubernetes/</guid><description>
 &lt;p>Because Cortex is designed to run multiple instances of each component
 (ingester, querier, etc.), you probably want to automate the placement
 and shepherding of these instances. Most users choose Kubernetes to do

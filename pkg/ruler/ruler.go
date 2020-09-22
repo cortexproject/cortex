@@ -302,19 +302,13 @@ func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 func (r *Ruler) ownsRule(hash uint32) (bool, error) {
 	rlrs, err := r.ring.Get(hash, ring.Read, []ring.IngesterDesc{})
 	if err != nil {
-		level.Warn(r.logger).Log("msg", "error reading ring to verify rule group ownership", "err", err)
 		ringCheckErrors.Inc()
-		return false, err
+		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
 	localAddr := r.lifecycler.GetInstanceAddr()
 
-	if rlrs.Ingesters[0].Addr == localAddr {
-		level.Debug(r.logger).Log("msg", "rule group owned", "owner_addr", rlrs.Ingesters[0].Addr, "addr", localAddr)
-		return true, nil
-	}
-	level.Debug(r.logger).Log("msg", "rule group not owned, address does not match", "owner_addr", rlrs.Ingesters[0].Addr, "addr", localAddr)
-	return false, nil
+	return rlrs.Ingesters[0].Addr == localAddr, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -359,12 +353,35 @@ func (r *Ruler) run(ctx context.Context) error {
 }
 
 func (r *Ruler) loadRules(ctx context.Context) {
+	var configs map[string]rules.RuleGroupList
+	var err error
+
+	switch {
+	case !r.cfg.EnableSharding:
+		configs, err = r.loadRulesNoSharding(ctx)
+
+	default:
+		configs, err = r.loadRulesShardingDefault(ctx)
+	}
+
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
+		return
+	}
+
+	r.manager.SyncRuleGroups(ctx, configs)
+}
+
+func (r *Ruler) loadRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	return r.store.ListAllRuleGroups(ctx)
+}
+
+func (r *Ruler) loadRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	ringHasher := fnv.New32a()
 
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
-		return
+		return nil, err
 	}
 
 	// Iterate through each users configuration and determine if the on-disk
@@ -373,33 +390,29 @@ func (r *Ruler) loadRules(ctx context.Context) {
 	for userID, cfg := range configs {
 		filteredConfigs[userID] = store.RuleGroupList{}
 
-		// If sharding is enabled, prune the rule group to only contain rules
-		// this ruler is responsible for.
-		if r.cfg.EnableSharding {
-			for _, g := range cfg {
-				id := g.User + "/" + g.Namespace + "/" + g.Name
-				ringHasher.Reset()
-				_, err = ringHasher.Write([]byte(id))
-				if err != nil {
-					level.Error(r.logger).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
-					continue
-				}
-				hash := ringHasher.Sum32()
-				owned, err := r.ownsRule(hash)
-				if err != nil {
-					level.Error(r.logger).Log("msg", "unable to verify rule group ownership ownership, will retry on the next poll", "err", err)
-					return
-				}
-				if owned {
-					filteredConfigs[userID] = append(filteredConfigs[userID], g)
-				}
+		// Prune the rule group to only contain rules that this ruler is responsible for.
+		for _, g := range cfg {
+			id := g.User + "/" + g.Namespace + "/" + g.Name
+			ringHasher.Reset()
+			_, err = ringHasher.Write([]byte(id))
+			if err != nil {
+				level.Error(r.logger).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				continue
 			}
-		} else {
-			filteredConfigs[userID] = cfg
+			hash := ringHasher.Sum32()
+			owned, err := r.ownsRule(hash)
+			if err != nil {
+				return nil, errors.Wrap(err, "unable to verify rule group ownership ownership, will retry on the next poll")
+			}
+			if owned {
+				level.Debug(r.logger).Log("msg", "rule group owned", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+				filteredConfigs[userID] = append(filteredConfigs[userID], g)
+			} else {
+				level.Debug(r.logger).Log("msg", "rule group not owned, ignoring", "user", g.User, "namespace", g.Namespace, "name", g.Name)
+			}
 		}
 	}
-
-	r.manager.SyncRuleGroups(ctx, filteredConfigs)
+	return filteredConfigs, nil
 }
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if

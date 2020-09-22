@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
-	strings "strings"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
@@ -203,12 +203,12 @@ func (o *RuleStore) loadRuleGroupsConcurrently(ctx context.Context, rgObjects []
 	return result, err
 }
 
-func generateRuleObjectKey(id, namespace, name string) string {
-	if id == "" {
+func generateRuleObjectKey(userID, namespace, name string) string {
+	if userID == "" {
 		return rulePrefix
 	}
 
-	prefix := rulePrefix + id + "/"
+	prefix := rulePrefix + userID + "/"
 	if namespace == "" {
 		return prefix
 	}

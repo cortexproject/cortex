@@ -848,17 +848,17 @@ func TestRingUpdates(t *testing.T) {
 	require.Equal(t, 0, ring.IngesterCount())
 
 	lc1 := startLifecycler(t, cfg, 1, 3)
-	test.Poll(t, 200*time.Millisecond, 1, func() interface{} {
+	test.Poll(t, 1*time.Second, 1, func() interface{} {
 		return ring.IngesterCount()
 	})
 
 	lc2 := startLifecycler(t, cfg, 2, 3)
-	test.Poll(t, 200*time.Millisecond, 2, func() interface{} {
+	test.Poll(t, 1*time.Second, 2, func() interface{} {
 		return ring.IngesterCount()
 	})
 
 	lc3 := startLifecycler(t, cfg, 3, 3)
-	test.Poll(t, 200*time.Millisecond, 3, func() interface{} {
+	test.Poll(t, 1*time.Second, 3, func() interface{} {
 		return ring.IngesterCount()
 	})
 
@@ -876,17 +876,17 @@ func TestRingUpdates(t *testing.T) {
 	}
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))
-	test.Poll(t, 200*time.Millisecond, 2, func() interface{} {
+	test.Poll(t, 1*time.Second, 2, func() interface{} {
 		return ring.IngesterCount()
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc1))
-	test.Poll(t, 200*time.Millisecond, 1, func() interface{} {
+	test.Poll(t, 1*time.Second, 1, func() interface{} {
 		return ring.IngesterCount()
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc3))
-	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
+	test.Poll(t, 1*time.Second, 0, func() interface{} {
 		return ring.IngesterCount()
 	})
 }
@@ -939,7 +939,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	for i := 0; i < numLifecyclers; i++ {
 		lc := startLifecycler(t, cfg, i, 3)
 
-		test.Poll(t, time.Second, ACTIVE, func() interface{} {
+		test.Poll(t, 5*time.Second, ACTIVE, func() interface{} {
 			return lc.GetState()
 		})
 
@@ -975,7 +975,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
 	}
 
-	test.Poll(t, time.Second, numLifecyclers-numLifecyclers/3, func() interface{} {
+	test.Poll(t, 5*time.Second, numLifecyclers-numLifecyclers/3, func() interface{} {
 		return ring.IngesterCount()
 	})
 

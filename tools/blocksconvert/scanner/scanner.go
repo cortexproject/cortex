@@ -23,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
@@ -30,6 +31,9 @@ import (
 type Config struct {
 	TableNames  string
 	TablesLimit int
+
+	PeriodStart flagext.DayValue
+	PeriodEnd   flagext.DayValue
 
 	OutputDirectory string
 	Concurrency     int
@@ -52,6 +56,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
 	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
 	f.BoolVar(&cfg.VerifyPlans, "scanner.verify-plans", true, "Verify plans before uploading to bucket. Enabled by default for extra check. Requires extra memory for large plans.")
+	f.Var(&cfg.PeriodStart, "scanner.scan-period-start", "If specified, this is lower end of time period to scan. Specified date is included in the range. (format: \"2006-01-02\")")
+	f.Var(&cfg.PeriodEnd, "scanner.scan-period-end", "If specified, this is upper end of time period to scan. Specified date is not included in the range. (format: \"2006-01-02\")")
 }
 
 type Scanner struct {
@@ -231,6 +237,21 @@ func (s *Scanner) running(ctx context.Context) error {
 		return allTables[i].start.After(allTables[j].start)
 	})
 
+	for ix := 0; ix < len(allTables); {
+		t := allTables[ix]
+		if s.cfg.PeriodStart.IsSet() && !t.end.IsZero() && t.end.Unix() <= s.cfg.PeriodStart.Unix() {
+			level.Info(s.logger).Log("msg", "table ends before period-start, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_start", s.cfg.PeriodStart.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
+		}
+		if s.cfg.PeriodEnd.IsSet() && t.start.Unix() >= s.cfg.PeriodEnd.Unix() {
+			level.Info(s.logger).Log("msg", "table starts after period-end, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_end", s.cfg.PeriodEnd.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
+		}
+		ix++
+	}
+
 	if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
 		level.Info(s.logger).Log("msg", "applied tables limit", "limit", s.cfg.TablesLimit)
 		allTables = allTables[:s.cfg.TablesLimit]
@@ -252,6 +273,7 @@ type tableToProcess struct {
 	table  string
 	reader IndexReader
 	start  time.Time
+	end    time.Time // Will not be set for non-periodic tables. Exclusive.
 }
 
 func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
@@ -286,6 +308,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 				table:  t,
 				reader: indexReader,
 				start:  start,
+				end:    start.Add(tablesConfig.Period),
 			}
 		}
 

@@ -129,7 +129,7 @@ type Ring struct {
 	ringZones []string
 
 	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
-	// If set to nil, no caching is done.
+	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*Ring
 
 	memberOwnershipDesc *prometheus.Desc

@@ -631,8 +631,6 @@ func BenchmarkRing_ShuffleShardCached(b *testing.B) {
 
 func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize int, cache bool) {
 	// Initialise the ring.
-	now := time.Now()
-
 	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
 	ring := Ring{
 		cfg:                Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true},
@@ -641,8 +639,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize in
 		ringTokensByZone:   ringDesc.getTokensByZone(),
 		ringZones:          getZones(ringDesc.getTokensByZone()),
 		strategy:           &DefaultReplicationStrategy{},
-		lastRingChange:     now,
-		lastTopologyChange: now,
+		lastTopologyChange: time.Now(),
 	}
 
 	if cache {
@@ -750,8 +747,7 @@ func TestRingUpdates(t *testing.T) {
 
 	now := time.Now()
 	for _, ing := range rs.Ingesters {
-		diff := now.Sub(time.Unix(ing.Timestamp, 0))
-		require.True(t, diff <= time.Second, diff)
+		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0), float64(1500*time.Millisecond.Nanoseconds()))
 	}
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))
@@ -784,6 +780,12 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 
 	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, nil)
 	require.NoError(t, err)
+
+	lc.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
+		t.Log("lifecycler", lifecyclerID, "failed:", failure)
+		t.Fail()
+	}))
+
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lc))
 
 	t.Cleanup(func() {
@@ -819,10 +821,6 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	lcs := []*Lifecycler(nil)
 	for i := 0; i < numLifecyclers; i++ {
 		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
-		lc.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
-			t.Log("lifecycler failed:", failure)
-			t.Fail()
-		}))
 
 		test.Poll(t, 5*time.Second, ACTIVE, func() interface{} {
 			return lc.GetState()
@@ -843,7 +841,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	sleep := (2 * time.Second) / iters
 	for i := 0; i < iters; i++ {
 		newSubring := ring.ShuffleShard(user, shardSize)
-		require.True(t, subring == newSubring)
+		require.True(t, subring == newSubring, "cached subring reused")
 		require.Equal(t, shardSize, subring.IngesterCount())
 		time.Sleep(sleep)
 	}

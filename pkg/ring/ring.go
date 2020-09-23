@@ -119,8 +119,6 @@ type Ring struct {
 	ringTokens       []TokenDesc
 	ringTokensByZone map[string][]TokenDesc
 
-	// When did the ring change last time?
-	lastRingChange time.Time
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
 
@@ -228,7 +226,6 @@ func (r *Ring) loop(ctx context.Context) error {
 			// when watching the ring for updates).
 			r.mtx.Lock()
 			r.ringDesc = ringDesc
-			r.lastRingChange = time.Now()
 			r.mtx.Unlock()
 			return true
 		}
@@ -244,7 +241,6 @@ func (r *Ring) loop(ctx context.Context) error {
 		r.ringTokens = ringTokens
 		r.ringTokensByZone = ringTokensByZone
 		r.ringZones = ringZones
-		r.lastRingChange = now
 		r.lastTopologyChange = now
 		if r.shuffledSubringCache != nil {
 			// Invalidate all cached subrings.
@@ -574,7 +570,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
-		lastRingChange:     r.lastRingChange,
 	}
 
 	return result
@@ -618,10 +613,6 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	cached.mtx.Lock()
 	defer cached.mtx.Unlock()
 
-	if cached.lastRingChange.Equal(r.lastRingChange) {
-		return cached
-	}
-
 	// Update instance states and timestamps. We know that the topology is the same,
 	// so zones and tokens are equal.
 	for name, cachedIng := range cached.ringDesc.Ingesters {
@@ -630,7 +621,6 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 		cachedIng.Timestamp = ing.Timestamp
 		cached.ringDesc.Ingesters[name] = cachedIng
 	}
-	cached.lastRingChange = r.lastRingChange
 	return cached
 }
 

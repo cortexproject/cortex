@@ -5029,7 +5029,7 @@ sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
 ...
 sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
 )
-&lt;/code>&lt;/pre>&lt;p>When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the &lt;code>config-yaml&lt;/code> CLI flag). This is the same schema config the queriers consume.
+&lt;/code>&lt;/pre>&lt;p>When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the &lt;code>-schema-config-file&lt;/code> CLI flag). This is the same schema config the queriers consume.
 It&amp;rsquo;s also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>querier.max-outstanding-requests-per-tenant&lt;/code>&lt;/li>

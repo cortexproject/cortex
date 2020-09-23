@@ -436,7 +436,7 @@ type CompareResult int
 const (
 	Equal                   CompareResult = iota // Both rings contain same instances, tokens, states and timestamps.
 	EqualInstancesAndTokens                      // Both rings contain the same instances and tokens, but states and timestamps differ.
-	Different                                    // Rings have different set of instances, or their tokens don't match.
+	Different                                    // Rings have different set of instances, or their information don't match.
 )
 
 // RingCompare compares this ring against another one and returns one of Equal, EqualInstancesAndTokens or Different.

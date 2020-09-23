@@ -303,7 +303,7 @@ func TestDesc_RingsCompare(t *testing.T) {
 		},
 		"same number of instances, using different IDs": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
-			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
 			expected: Different,
 		},
 	}

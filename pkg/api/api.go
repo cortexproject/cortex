@@ -173,9 +173,9 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config")
 
-	a.RegisterRoute("/config", configHandler(cfg), false)
-	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false)
-	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false)
+	a.RegisterRoute("/config", configHandler(cfg), false, "GET")
+	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
+	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.
@@ -185,13 +185,13 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")
 
-	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
-	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false)
+	a.RegisterRoute("/distributor/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
+	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 
 	// Legacy Routes
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
-	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false)
-	a.RegisterRoute("/ha-tracker", d.HATracker, false)
+	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
+	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service
@@ -267,10 +267,10 @@ func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 // RegisterRing registers the ring UI page associated with the distributor for writes.
 func (a *API) RegisterRing(r *ring.Ring) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/ingester/ring", "Ingester Ring Status")
-	a.RegisterRoute("/ingester/ring", r, false)
+	a.RegisterRoute("/ingester/ring", r, false, "GET", "POST")
 
 	// Legacy Route
-	a.RegisterRoute("/ring", r, false)
+	a.RegisterRoute("/ring", r, false, "GET", "POST")
 }
 
 // RegisterStoreGateway registers the ring UI page associated with the store-gateway.
@@ -278,13 +278,13 @@ func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
 	storegatewaypb.RegisterStoreGatewayServer(a.server.GRPC, s)
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/store-gateway/ring", "Store Gateway Ring")
-	a.RegisterRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false)
+	a.RegisterRoute("/store-gateway/ring", http.HandlerFunc(s.RingHandler), false, "GET", "POST")
 }
 
 // RegisterCompactor registers the ring UI page associated with the compactor.
 func (a *API) RegisterCompactor(c *compactor.Compactor) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status")
-	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false)
+	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
 }
 
 // RegisterQuerier registers the Prometheus routes supported by the
@@ -322,11 +322,11 @@ func (a *API) RegisterQuerier(
 	)
 
 	// these routes are always registered to the default server
-	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
-	a.RegisterRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true)
+	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
+	a.RegisterRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true, "GET")
 
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true)
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/chunks", querier.ChunksHandler(queryable), true)
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/chunks", querier.ChunksHandler(queryable), true, "GET")
 
 	// these routes are either registered the default server OR to an internal mux.  The internal mux is
 	// for use in a single binary mode when both the query frontend and the querier would attempt to claim these routes
@@ -424,5 +424,5 @@ func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
 // or a future module manager #2291
 func (a *API) RegisterServiceMapHandler(handler http.Handler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/services", "Service Status")
-	a.RegisterRoute("/services", handler, false)
+	a.RegisterRoute("/services", handler, false, "GET")
 }

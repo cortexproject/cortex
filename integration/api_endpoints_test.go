@@ -8,12 +8,35 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
+
+func TestIndexAPIEndpoint(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start Cortex in single binary mode, reading the config from file.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+
+	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex1))
+
+	// GET / should succeed
+	res, err := e2e.GetRequest(fmt.Sprintf("http://%s", cortex1.Endpoint(9009)))
+	require.NoError(t, err)
+	assert.Equal(t, 200, res.StatusCode)
+
+	// POST / should fail
+	res, err = e2e.PostRequest(fmt.Sprintf("http://%s", cortex1.Endpoint(9009)))
+	require.NoError(t, err)
+	assert.Equal(t, 405, res.StatusCode)
+}
 
 func TestConfigAPIEndpoint(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)

@@ -8,9 +8,8 @@ import (
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
-	sd_config "github.com/prometheus/prometheus/discovery/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,9 +37,13 @@ func TestBuildNotifierConfig(t *testing.T) {
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{
-								Targets: []model.LabelSet{{"__address__": "alertmanager.default.svc.cluster.local"}},
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager.default.svc.cluster.local"}},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -60,12 +63,14 @@ func TestBuildNotifierConfig(t *testing.T) {
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{DNSSDConfigs: []*dns.SDConfig{{
-								Names:           []string{"_http._tcp.alertmanager.default.svc.cluster.local"},
-								RefreshInterval: 60,
-								Type:            "SRV",
-								Port:            0,
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								&dns.SDConfig{
+									Names:           []string{"_http._tcp.alertmanager.default.svc.cluster.local"},
+									RefreshInterval: 60,
+									Type:            "SRV",
+									Port:            0,
+								},
+							},
 						},
 					},
 				},
@@ -91,17 +96,23 @@ func TestBuildNotifierConfig(t *testing.T) {
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{
-								Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{{
+									Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
+								},
+								},
+							},
 						},
 						{
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{
-								Targets: []model.LabelSet{{"__address__": "alertmanager-1.default.svc.cluster.local"}},
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{{
+									Targets: []model.LabelSet{{"__address__": "alertmanager-1.default.svc.cluster.local"}},
+								},
+								},
+							},
 						},
 					},
 				},
@@ -121,23 +132,27 @@ func TestBuildNotifierConfig(t *testing.T) {
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{DNSSDConfigs: []*dns.SDConfig{{
-								Names:           []string{"_http._tcp.alertmanager-0.default.svc.cluster.local"},
-								RefreshInterval: 60,
-								Type:            "SRV",
-								Port:            0,
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								&dns.SDConfig{
+									Names:           []string{"_http._tcp.alertmanager-0.default.svc.cluster.local"},
+									RefreshInterval: 60,
+									Type:            "SRV",
+									Port:            0,
+								},
+							},
 						},
 						{
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{DNSSDConfigs: []*dns.SDConfig{{
-								Names:           []string{"_http._tcp.alertmanager-1.default.svc.cluster.local"},
-								RefreshInterval: 60,
-								Type:            "SRV",
-								Port:            0,
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								&dns.SDConfig{
+									Names:           []string{"_http._tcp.alertmanager-1.default.svc.cluster.local"},
+									RefreshInterval: 60,
+									Type:            "SRV",
+									Port:            0,
+								},
+							},
 						},
 					},
 				},
@@ -158,9 +173,13 @@ func TestBuildNotifierConfig(t *testing.T) {
 							APIVersion: "v1",
 							Scheme:     "http",
 							PathPrefix: "/alertmanager",
-							ServiceDiscoveryConfig: sd_config.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{
-								Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
-							}}},
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
+									},
+								},
+							},
 						},
 					},
 				},

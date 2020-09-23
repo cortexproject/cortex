@@ -263,7 +263,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 		return errors.New("function to get user states not initialised")
 	}
 
-	_, lastSegment, err := w.wal.Segments()
+	_, lastSegment, err := wal.Segments(w.wal.Dir())
 	if err != nil {
 		return err
 	}
@@ -284,7 +284,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 			return err
 		}
 
-		_, lastSegment, err = w.wal.Segments()
+		_, lastSegment, err = wal.Segments(w.wal.Dir())
 		if err != nil {
 			return err
 		}

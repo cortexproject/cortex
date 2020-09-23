@@ -439,8 +439,9 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				Interval:  interval,
 				User:      userID,
 			},
-			EvaluationTimestamp: group.GetEvaluationTimestamp(),
-			EvaluationDuration:  group.GetEvaluationDuration(),
+
+			EvaluationTimestamp: group.GetLastEvaluation(),
+			EvaluationDuration:  group.GetEvaluationTime(),
 		}
 		for _, r := range group.Rules() {
 			lastError := ""

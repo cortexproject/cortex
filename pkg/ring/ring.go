@@ -121,7 +121,7 @@ type Ring struct {
 
 	// When did the ring change last time?
 	lastRingChange time.Time
-	// When did a set of ingesters change last time (ingester changing state or heartbeat is ignored for this timestamp).
+	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
 
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
@@ -222,21 +222,17 @@ func (r *Ring) loop(ctx context.Context) error {
 		r.mtx.RUnlock()
 
 		rc := prevRing.RingCompare(ringDesc)
-		if rc == Equal {
-			return true
-		}
-
-		now := time.Now()
-		if rc == EqualIngestersAndTokens {
+		if rc == Equal || rc == EqualInstancesAndTokens {
 			// No need to update tokens or zones. Only states and timestamps
 			// have changed.
 			r.mtx.Lock()
 			r.ringDesc = ringDesc
-			r.lastRingChange = now
+			r.lastRingChange = time.Now()
 			r.mtx.Unlock()
 			return true
 		}
 
+		now := time.Now()
 		ringTokens := ringDesc.getTokens()
 		ringTokensByZone := ringDesc.getTokensByZone()
 		ringZones := getZones(ringTokensByZone)
@@ -612,7 +608,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	// if shuffledSubringCache map is nil, reading it returns default value (nil)
+	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
 	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
 	if cached == nil {
 		return nil
@@ -625,7 +621,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 		return cached
 	}
 
-	// Update ingester states and timestamps. We know that the topology is the same,
+	// Update instance states and timestamps. We know that the topology is the same,
 	// so zones and tokens are equal.
 	for name, cachedIng := range cached.ringDesc.Ingesters {
 		ing := r.ringDesc.Ingesters[name]

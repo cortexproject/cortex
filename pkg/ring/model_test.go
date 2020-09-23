@@ -261,27 +261,27 @@ func TestDesc_RingsCompare(t *testing.T) {
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{}},
 			expected: Equal,
 		},
-		"same single ingester": {
+		"same single instance": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
 			expected: Equal,
 		},
-		"same single ingester, different timestamp": {
+		"same single instance, different timestamp": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
-			expected: EqualIngestersAndTokens,
+			expected: EqualInstancesAndTokens,
 		},
-		"same single ingester, different state": {
+		"same single instance, different state": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: JOINING}}},
-			expected: EqualIngestersAndTokens,
+			expected: EqualInstancesAndTokens,
 		},
-		"ingester in different zone": {
+		"instance in different zone": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "one"}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
 			expected: Different,
 		},
-		"more ingesters in one ring": {
+		"more instances in one ring": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}, "ing2": {Addr: "ing2"}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
 			expected: Different,

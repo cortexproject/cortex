@@ -281,6 +281,11 @@ func TestDesc_RingsCompare(t *testing.T) {
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
 			expected: Different,
 		},
+		"same instance, different address": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr2"}}},
+			expected: Different,
+		},
 		"more instances in one ring": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}, "ing2": {Addr: "ing2"}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1"}}},
@@ -294,6 +299,11 @@ func TestDesc_RingsCompare(t *testing.T) {
 		"different tokens 2": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			expected: Different,
+		},
+		"same number of instances, using different IDs": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
 			expected: Different,
 		},
 	}

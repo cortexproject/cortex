@@ -80,7 +80,8 @@ type Scanner struct {
 	ignoredEntries                prometheus.Counter
 	foundTables                   prometheus.Counter
 	processedTables               prometheus.Counter
-	remainingRanges               prometheus.Gauge
+	currentTableRanges            prometheus.Gauge
+	currentTableScannedRanges     prometheus.Gauge
 
 	schema       chunk.SchemaConfig
 	ignoredUsers *regexp.Regexp
@@ -143,9 +144,13 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_bigtable_parsed_index_entries_total",
 			Help: "Number of parsed index entries",
 		}),
-		remainingRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_blocksconvert_scanner_bigtable_remaining_ranges",
-			Help: "Number of remaining ranges to scan from current table.",
+		currentTableRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_ranges_in_current_table",
+			Help: "Number of ranges to scan from current table.",
+		}),
+		currentTableScannedRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_scanned_ranges_from_current_table",
+			Help: "Number of scanned ranges from current table. (Goes from 0 on each new table)",
 		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -205,7 +210,7 @@ func (s *Scanner) running(ctx context.Context) error {
 				continue
 			}
 
-			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.remainingRanges)
+			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue

@@ -494,19 +494,9 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	// This deferred function will store newly computed ring into cache.
 	// This needs to happen *after* releasing Read lock (otherwise we get a deadlock).
 	defer func() {
-		if result == nil {
-			return
-		}
-
-		r.mtx.Lock()
-		defer r.mtx.Unlock()
-
-		// Only cache if *this* ring hasn't changed since computing result
-		// (which can happen between releasing the read lock and getting read-write lock).
-		// Note that shuffledSubringCache can be only nil when set by test.
-		if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(result.lastTopologyChange) {
-			r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = result
-		}
+		// We cannot defer setCachedShuffledSubring directly, as result is still nil at this point,
+		// and that would be passed to the function, instead of updated value.
+		r.setCachedShuffledSubring(identifier, size, result)
 	}()
 
 	r.mtx.RLock()
@@ -631,11 +621,6 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	cached.mtx.Lock()
 	defer cached.mtx.Unlock()
 
-	if !cached.lastTopologyChange.Equal(r.lastTopologyChange) {
-		// ingesters changed since cached ring was created, cannot be reused.
-		return nil
-	}
-
 	if cached.lastRingChange.Equal(r.lastRingChange) {
 		return cached
 	}
@@ -650,4 +635,20 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	}
 	cached.lastRingChange = r.lastRingChange
 	return cached
+}
+
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
+	if subring == nil {
+		return
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// Only cache if *this* ring hasn't changed since computing result
+	// (which can happen between releasing the read lock and getting read-write lock).
+	// Note that shuffledSubringCache can be only nil when set by test.
+	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+	}
 }

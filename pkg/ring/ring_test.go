@@ -769,7 +769,7 @@ func TestRingUpdates(t *testing.T) {
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
 	lcCfg := LifecyclerConfig{
 		RingConfig:      cfg,
-		NumTokens:       128,
+		NumTokens:       16,
 		HeartbeatPeriod: heartbeat,
 		ObservePeriod:   0,
 		JoinAfter:       0,
@@ -822,12 +822,20 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	for i := 0; i < numLifecyclers; i++ {
 		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
 
-		test.Poll(t, 5*time.Second, ACTIVE, func() interface{} {
-			return lc.GetState()
-		})
-
 		lcs = append(lcs, lc)
 	}
+
+	// Wait until all instances in the ring are ACTIVE.
+	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
+		active := 0
+		rs, _ := ring.GetAll(Read)
+		for _, ing := range rs.Ingesters {
+			if ing.State == ACTIVE {
+				active++
+			}
+		}
+		return active
+	})
 
 	// Use shardSize = zones, to get one ingester from each zone.
 	const shardSize = zones
@@ -841,7 +849,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	sleep := (2 * time.Second) / iters
 	for i := 0; i < iters; i++ {
 		newSubring := ring.ShuffleShard(user, shardSize)
-		require.True(t, subring == newSubring, "cached subring reused")
+		require.True(t, subring == newSubring, "cached subring reused, iter=%d,\nsubring=%s\nnew subring=%s\nring=%s\n", i, subring.(*Ring).ringDesc.String(), newSubring.(*Ring).ringDesc.String(), ring.ringDesc.String())
 		require.Equal(t, shardSize, subring.IngesterCount())
 		time.Sleep(sleep)
 	}

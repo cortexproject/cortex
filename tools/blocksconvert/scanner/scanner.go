@@ -23,6 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
@@ -30,6 +31,9 @@ import (
 type Config struct {
 	TableNames  string
 	TablesLimit int
+
+	PeriodStart flagext.DayValue
+	PeriodEnd   flagext.DayValue
 
 	OutputDirectory string
 	Concurrency     int
@@ -52,6 +56,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
 	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
 	f.BoolVar(&cfg.VerifyPlans, "scanner.verify-plans", true, "Verify plans before uploading to bucket. Enabled by default for extra check. Requires extra memory for large plans.")
+	f.Var(&cfg.PeriodStart, "scanner.scan-period-start", "If specified, this is lower end of time period to scan. Specified date is included in the range. (format: \"2006-01-02\")")
+	f.Var(&cfg.PeriodEnd, "scanner.scan-period-end", "If specified, this is upper end of time period to scan. Specified date is not included in the range. (format: \"2006-01-02\")")
 }
 
 type Scanner struct {
@@ -72,6 +78,10 @@ type Scanner struct {
 	indexReaderRowsRead           prometheus.Counter
 	indexReaderParsedIndexEntries prometheus.Counter
 	ignoredEntries                prometheus.Counter
+	foundTables                   prometheus.Counter
+	processedTables               prometheus.Counter
+	currentTableRanges            prometheus.Gauge
+	currentTableScannedRanges     prometheus.Gauge
 
 	schema       chunk.SchemaConfig
 	ignoredUsers *regexp.Regexp
@@ -134,6 +144,14 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_bigtable_parsed_index_entries_total",
 			Help: "Number of parsed index entries",
 		}),
+		currentTableRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_ranges_in_current_table",
+			Help: "Number of ranges to scan from current table.",
+		}),
+		currentTableScannedRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_scanned_ranges_from_current_table",
+			Help: "Number of scanned ranges from current table. Resets to 0 every time a table is getting scanned or its scan has completed.",
+		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_scanner_series_written_total",
@@ -152,6 +170,15 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		ignoredEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_scanner_ignored_index_entries_total",
 			Help: "Number of ignored index entries because of ignoring users.",
+		}),
+
+		foundTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_found_tables_total",
+			Help: "Number of tables found for processing.",
+		}),
+		processedTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_processed_tables_total",
+			Help: "Number of processed tables so far.",
 		}),
 	}
 
@@ -183,7 +210,7 @@ func (s *Scanner) running(ctx context.Context) error {
 				continue
 			}
 
-			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries)
+			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue
@@ -231,15 +258,33 @@ func (s *Scanner) running(ctx context.Context) error {
 		return allTables[i].start.After(allTables[j].start)
 	})
 
+	for ix := 0; ix < len(allTables); {
+		t := allTables[ix]
+		if s.cfg.PeriodStart.IsSet() && !t.end.IsZero() && t.end.Unix() <= s.cfg.PeriodStart.Unix() {
+			level.Info(s.logger).Log("msg", "table ends before period-start, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_start", s.cfg.PeriodStart.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
+		}
+		if s.cfg.PeriodEnd.IsSet() && t.start.Unix() >= s.cfg.PeriodEnd.Unix() {
+			level.Info(s.logger).Log("msg", "table starts after period-end, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_end", s.cfg.PeriodEnd.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
+		}
+		ix++
+	}
+
 	if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
 		level.Info(s.logger).Log("msg", "applied tables limit", "limit", s.cfg.TablesLimit)
 		allTables = allTables[:s.cfg.TablesLimit]
 	}
 
+	s.foundTables.Add(float64(len(allTables)))
+
 	for _, t := range allTables {
 		if err := s.processTable(ctx, t.table, t.reader); err != nil {
 			return errors.Wrapf(err, "failed to process table %s", t.table)
 		}
+		s.processedTables.Inc()
 	}
 
 	// All good, just wait until context is done, to avoid restarts.
@@ -252,6 +297,7 @@ type tableToProcess struct {
 	table  string
 	reader IndexReader
 	start  time.Time
+	end    time.Time // Will not be set for non-periodic tables. Exclusive.
 }
 
 func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
@@ -286,6 +332,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 				table:  t,
 				reader: indexReader,
 				start:  start,
+				end:    start.Add(tablesConfig.Period),
 			}
 		}
 

@@ -8,6 +8,7 @@
   * `user_subring_size` limit YAML config option renamed to `ingestion_tenant_shard_size`
 * [CHANGE] Dropped "blank Alertmanager configuration; using fallback" message from Info to Debug level. #3205
 * [CHANGE] Zone-awareness replication for time-series now should be explicitly enabled in the distributor via the `-distributor.zone-awareness-enabled` CLI flag (or its respective YAML config option). Before, zone-aware replication was implicitly enabled if a zone was set on ingesters. #3200
+* [CHANGE] The metric `cortex_consul_request_duration_seconds` is renamed to `cortex_kv_request_duration_seconds`, to avoid confusion when an in-memory kv is in use. ##
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-user` globally, or using per-user limit `max_queriers_per_user`), each user's requests will be handled by different set of queriers. #3113
 * [ENHANCEMENT] Added `cortex_query_frontend_connected_clients` metric to show the number of workers currently connected to the frontend. #3207
 * [ENHANCEMENT] Shuffle sharding: improved shuffle sharding in the write path. Shuffle sharding now should be explicitly enabled via `-distributor.sharding-strategy` CLI flag (or its respective YAML config option) and guarantees stability, consistency, shuffling and balanced zone-awareness properties. #3090

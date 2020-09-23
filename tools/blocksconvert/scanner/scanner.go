@@ -150,7 +150,7 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		}),
 		currentTableScannedRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_scanner_bigtable_scanned_ranges_from_current_table",
-			Help: "Number of scanned ranges from current table. (Goes from 0 on each new table)",
+			Help: "Number of scanned ranges from current table. Resets to 0 every time a table is getting scanned or its scan has completed.",
 		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{

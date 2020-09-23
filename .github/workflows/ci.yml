@@ -13,15 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     container: quay.io/cortexproject/build-image:share-traffic-mirroring-with-envoy-2af1da4d8-WIP
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with: 
-          fetch-depth: 0
-          
       - name: Install Go
         uses: actions/setup-go@v2
         with:
           go-version: 1.14
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        # with:
+        #   fetch-depth: 0
+
 
       - name: Install Docker client
         run: |

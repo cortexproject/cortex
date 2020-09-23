@@ -101,11 +101,17 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	return api, nil
 }
 
-func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, methods ...string) {
-	a.registerRouteWithRouter(a.server.HTTP, path, handler, auth, methods...)
+// RegisterRoute registers a single route enforcing HTTP methods. A single
+// route is expected to be specific about which HTTP methods are supported.
+func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method string, methods ...string) {
+	a.registerRouteWithRouter(a.server.HTTP, path, handler, auth, method, methods...)
 }
 
-func (a *API) registerRouteWithRouter(router *mux.Router, path string, handler http.Handler, auth bool, methods ...string) {
+// RegisterRoute registers a single route to a router, enforcing HTTP methods. A single
+// route is expected to be specific about which HTTP methods are supported.
+func (a *API) registerRouteWithRouter(router *mux.Router, path string, handler http.Handler, auth bool, method string, methods ...string) {
+	methods = append([]string{method}, methods...)
+
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
 	if auth {
 		handler = a.authMiddleware.Wrap(handler)
@@ -148,7 +154,7 @@ func fakeRemoteAddr(handler http.Handler) http.Handler {
 func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
 	// Ensure this route is registered before the prefixed AM route
-	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false)
+	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false, "GET")
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
 	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
@@ -157,7 +163,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
 	// the component routed API.
 	if target {
-		a.RegisterRoute("/status", am.GetStatusHandler(), false)
+		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
 		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
 	}
 
@@ -180,7 +186,7 @@ func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
 
 // RegisterDistributor registers the endpoints associated with the distributor.
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
-	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
+	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true, "POST")
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")
@@ -189,7 +195,7 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/distributor/ha_tracker", d.HATracker, false, "GET")
 
 	// Legacy Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true)
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true, "POST")
 	a.RegisterRoute("/all_user_stats", http.HandlerFunc(d.AllUserStatsHandler), false, "GET")
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
@@ -200,14 +206,14 @@ func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Conf
 
 	a.indexPage.AddLink(SectionDangerous, "/ingester/flush", "Trigger a Flush of data from Ingester to storage")
 	a.indexPage.AddLink(SectionDangerous, "/ingester/shutdown", "Trigger Ingester Shutdown (Dangerous)")
-	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false)
-	a.RegisterRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/ingester/flush", http.HandlerFunc(i.FlushHandler), false, "GET", "POST")
+	a.RegisterRoute("/ingester/shutdown", http.HandlerFunc(i.ShutdownHandler), false, "GET", "POST")
+	a.RegisterRoute("/ingester/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
 
 	// Legacy Routes
-	a.RegisterRoute("/flush", http.HandlerFunc(i.FlushHandler), false)
-	a.RegisterRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false)
-	a.RegisterRoute("/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true) // For testing and debugging.
+	a.RegisterRoute("/flush", http.HandlerFunc(i.FlushHandler), false, "GET", "POST")
+	a.RegisterRoute("/shutdown", http.HandlerFunc(i.ShutdownHandler), false, "GET", "POST")
+	a.RegisterRoute("/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
 }
 
 // RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
@@ -230,10 +236,10 @@ func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPerio
 // API is not enabled only the ring route is registered.
 func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/ruler/ring", "Ruler Ring Status")
-	a.RegisterRoute("/ruler/ring", r, false)
+	a.RegisterRoute("/ruler/ring", r, false, "GET", "POST")
 
 	// Legacy Ring Route
-	a.RegisterRoute("/ruler_ring", r, false)
+	a.RegisterRoute("/ruler_ring", r, false, "GET", "POST")
 
 	if apiEnabled {
 		// Prometheus Rule API Routes

@@ -224,7 +224,8 @@ func (r *Ring) loop(ctx context.Context) error {
 		rc := prevRing.RingCompare(ringDesc)
 		if rc == Equal || rc == EqualInstancesAndTokens {
 			// No need to update tokens or zones. Only states and timestamps
-			// have changed.
+			// have changed. (If Equal, nothing has changed, but that doesn't happen
+			// when watching the ring for updates).
 			r.mtx.Lock()
 			r.ringDesc = ringDesc
 			r.lastRingChange = time.Now()

@@ -14,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/types"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
@@ -50,6 +51,17 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
+}
+
+func (cfg *ResultsCacheConfig) Validate() error {
+	switch cfg.Compression {
+	case "snappy", "":
+		// valid
+	default:
+		return errors.Errorf("unsupported compression type: %s", cfg.Compression)
+	}
+
+	return cfg.CacheConfig.Validate()
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.

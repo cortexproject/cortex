@@ -726,17 +726,17 @@ func TestRingUpdates(t *testing.T) {
 
 	require.Equal(t, 0, ring.IngesterCount())
 
-	lc1 := startLifecycler(t, cfg, 1, 3)
+	lc1 := startLifecycler(t, cfg, 100*time.Millisecond, 1, 3)
 	test.Poll(t, 1*time.Second, 1, func() interface{} {
 		return ring.IngesterCount()
 	})
 
-	lc2 := startLifecycler(t, cfg, 2, 3)
+	lc2 := startLifecycler(t, cfg, 100*time.Millisecond, 2, 3)
 	test.Poll(t, 1*time.Second, 2, func() interface{} {
 		return ring.IngesterCount()
 	})
 
-	lc3 := startLifecycler(t, cfg, 3, 3)
+	lc3 := startLifecycler(t, cfg, 100*time.Millisecond, 3, 3)
 	test.Poll(t, 1*time.Second, 3, func() interface{} {
 		return ring.IngesterCount()
 	})
@@ -770,11 +770,11 @@ func TestRingUpdates(t *testing.T) {
 	})
 }
 
-func startLifecycler(t *testing.T, cfg Config, lifecyclerID int, zones int) *Lifecycler {
+func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
 	lcCfg := LifecyclerConfig{
 		RingConfig:      cfg,
 		NumTokens:       128,
-		HeartbeatPeriod: 100 * time.Millisecond,
+		HeartbeatPeriod: heartbeat,
 		ObservePeriod:   0,
 		JoinAfter:       0,
 		Zone:            fmt.Sprintf("zone-%d", lifecyclerID%zones),
@@ -818,9 +818,9 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 	lcs := []*Lifecycler(nil)
 	for i := 0; i < numLifecyclers; i++ {
-		lc := startLifecycler(t, cfg, i, zones)
+		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
 		lc.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
-			t.Log("lifecycler failed", failure)
+			t.Log("lifecycler failed:", failure)
 			t.Fail()
 		}))
 
@@ -855,8 +855,8 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 		now := time.Now()
 		for _, ing := range rs.Ingesters {
-			// Lifecyclers use 100ms refresh, but timestamps use 1s resolution, so we better give it some extra buffer.
-			assert.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
+			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so we better give it some extra buffer.
+			assert.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
 		}
 	}
 

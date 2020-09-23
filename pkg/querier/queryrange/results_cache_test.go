@@ -261,7 +261,7 @@ func TestShouldCache(t *testing.T) {
 	}
 }
 
-func TestPartiton(t *testing.T) {
+func TestPartition(t *testing.T) {
 	for i, tc := range []struct {
 		input                  Request
 		prevCachedResponse     []Extent

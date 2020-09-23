@@ -12,3 +12,9 @@ website/content/en/docs
 e2e_integration_test*
 active-query-tracker
 dist/
+
+# Binaries built from ./cmd
+blocksconvert
+cortex
+query-tee
+test-exporter

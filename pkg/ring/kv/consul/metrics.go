@@ -10,8 +10,8 @@ import (
 
 var consulRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Namespace: "cortex",
-	Name:      "consul_request_duration_seconds",
-	Help:      "Time spent on consul requests.",
+	Name:      "kv_request_duration_seconds",
+	Help:      "Time spent on kv store requests.",
 	Buckets:   prometheus.DefBuckets,
 }, []string{"operation", "status_code"}))
 

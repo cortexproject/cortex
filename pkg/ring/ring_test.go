@@ -747,7 +747,7 @@ func TestRingUpdates(t *testing.T) {
 
 	now := time.Now()
 	for _, ing := range rs.Ingesters {
-		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0), float64(1500*time.Millisecond.Nanoseconds()))
+		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
 	}
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))

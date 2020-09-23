@@ -14,7 +14,7 @@ The supported backends for the blocks storage are:
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 * [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
-_Internally, this storage engine is based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
+_Internally, some components are based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
 
 ## Architecture
 
@@ -30,7 +30,7 @@ The **[store-gateway](./store-gateway.md)** is responsible to query blocks and i
 
 The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. The compactor is optional but highly recommended.
 
-Finally, the **table-manager** is not used by the blocks storage.
+Finally, the **table-manager** and the [**schema**](../configuration/schema-config-reference.md) configuration are **not used** by the blocks storage.
 
 ### The write path
 

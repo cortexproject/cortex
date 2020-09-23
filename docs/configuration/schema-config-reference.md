@@ -5,9 +5,15 @@ weight: 4
 slug: schema-configuration
 ---
 
-Cortex uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.
+Cortex chunks storage uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.
+
+The schema configuration is used only by the chunks storage, while it's not used by the [blocks storage](../blocks-storage/_index.md) engine.
+
+## Schema versions
 
 Currently there are 11 schemas that are used in production but we recommend running with the **v9 schema** for most use cases and **v10 schema** if you expect to have very high cardinality metrics. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.
+
+## Configuration
 
 You can configure the schemas using a YAML config file, that you can point to using the `-schema-config-file` flag. It has the following YAML spec:
 

@@ -123,8 +123,6 @@ type Ring struct {
 	lastRingChange time.Time
 	// When did a set of ingesters change last time (ingester changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
-	// Size used for computing shuffle shard. Only used for cache invalidation.
-	ringShardSize int
 
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
@@ -132,13 +130,18 @@ type Ring struct {
 
 	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
 	// If set to nil, no caching is done.
-	shuffledSubringCache map[string]*Ring
+	shuffledSubringCache map[subringCacheKey]*Ring
 
 	memberOwnershipDesc *prometheus.Desc
 	numMembersDesc      *prometheus.Desc
 	totalTokensDesc     *prometheus.Desc
 	numTokensDesc       *prometheus.Desc
 	oldestTimestampDesc *prometheus.Desc
+}
+
+type subringCacheKey struct {
+	identifier string
+	shardSize  int
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -168,7 +171,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		KVClient:             store,
 		strategy:             strategy,
 		ringDesc:             &Desc{},
-		shuffledSubringCache: map[string]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
 		memberOwnershipDesc: prometheus.NewDesc(
 			"cortex_ring_member_ownership_percent",
 			"The percent ownership of the ring by member",
@@ -248,7 +251,7 @@ func (r *Ring) loop(ctx context.Context) error {
 		r.lastTopologyChange = now
 		if r.shuffledSubringCache != nil {
 			// Invalidate all cached subrings.
-			r.shuffledSubringCache = make(map[string]*Ring)
+			r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
 		}
 		return true
 	})
@@ -502,7 +505,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		// (which can happen between releasing the read lock and getting read-write lock).
 		// Note that shuffledSubringCache can be only nil when set by test.
 		if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(result.lastTopologyChange) {
-			r.shuffledSubringCache[identifier] = result
+			r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = result
 		}
 	}()
 
@@ -585,7 +588,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
 		lastRingChange:     r.lastRingChange,
-		ringShardSize:      size,
 	}
 
 	return result
@@ -620,22 +622,14 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.lastTopologyChange.IsZero() || r.lastRingChange.IsZero() {
-		// Don't do any caching if this ring has no updates yet.
-		return nil
-	}
-
-	cached := r.shuffledSubringCache[identifier]
+	// if shuffledSubringCache map is nil, reading it returns default value (nil)
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
 	if cached == nil {
 		return nil
 	}
 
 	cached.mtx.Lock()
 	defer cached.mtx.Unlock()
-
-	if cached.ringShardSize != size {
-		return nil
-	}
 
 	if !cached.lastTopologyChange.Equal(r.lastTopologyChange) {
 		// ingesters changed since cached ring was created, cannot be reused.

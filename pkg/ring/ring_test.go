@@ -646,7 +646,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize in
 	}
 
 	if cache {
-		ring.shuffledSubringCache = map[string]*Ring{}
+		ring.shuffledSubringCache = map[subringCacheKey]*Ring{}
 	}
 
 	b.ResetTimer()

@@ -79,7 +79,7 @@ _The shard size can be overridden on a per-tenant basis in the limits overrides 
 
 The Cortex query-frontend, by default, executes the received queries across all running queriers.
 
-When shuffle sharding is **enabled** setting `-frontend.max-queriers-per-user` (or its respective YAML config option) to a value higher than 0 and lower than the available queriers, the query-frontend will execute each tenant queries across a subset of queriers.
+When shuffle sharding is **enabled** by setting `-frontend.max-queriers-per-user` (or its respective YAML config option) to a value higher than 0 and lower than the available queriers, the query-frontend will execute each tenant's queries across a subset of queriers.
 
 _The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration._
 

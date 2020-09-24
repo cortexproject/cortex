@@ -5,7 +5,9 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,52 +76,81 @@ func TestFSObjectClient_List(t *testing.T) {
 		require.NoError(t, os.RemoveAll(fsObjectsDir))
 	}()
 
-	foldersWithFiles := make(map[string][]string)
-	foldersWithFiles["folder1"] = []string{"file1", "file2"}
-	foldersWithFiles["folder2"] = []string{"file3", "file4", "file5"}
+	allFiles := []string{
+		"outer-file1",
+		"outer-file2",
+		"folder1/file1",
+		"folder1/file2",
+		"folder2/file3",
+		"folder2/file4",
+		"folder2/file5",
+		"deeply/nested/folder/a",
+		"deeply/nested/folder/b",
+		"deeply/nested/folder/c",
+	}
 
-	for folder, files := range foldersWithFiles {
-		for _, filename := range files {
-			err := bucketClient.PutObject(context.Background(), filepath.Join(folder, filename), bytes.NewReader([]byte(filename)))
-			require.NoError(t, err)
+	topLevelFolders := map[string]bool{}
+	topLevelFiles := map[string]bool{}
+	filesInTopLevelFolders := map[string]map[string]bool{}
+
+	for _, f := range allFiles {
+		require.NoError(t, bucketClient.PutObject(context.Background(), f, bytes.NewReader([]byte(f))))
+
+		s := strings.Split(f, "/")
+		if len(s) > 1 {
+			topLevelFolders[s[0]] = true
+		} else {
+			topLevelFiles[s[0]] = true
+		}
+
+		if len(s) == 2 {
+			if filesInTopLevelFolders[s[0]] == nil {
+				filesInTopLevelFolders[s[0]] = map[string]bool{}
+			}
+			filesInTopLevelFolders[s[0]][s[1]] = true
 		}
 	}
 
 	// create an empty directory which should get excluded from the list
 	require.NoError(t, util.EnsureDirectory(filepath.Join(fsObjectsDir, "empty-folder")))
 
-	files := []string{"outer-file1", "outer-file2"}
-
-	for _, fl := range files {
-		err := bucketClient.PutObject(context.Background(), fl, bytes.NewReader([]byte(fl)))
-		require.NoError(t, err)
-	}
-
 	storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), "", "/")
 	require.NoError(t, err)
 
-	require.Len(t, storageObjects, len(files))
-	for i := range storageObjects {
-		require.Equal(t, storageObjects[i].Key, files[i])
+	require.Len(t, storageObjects, len(topLevelFiles))
+	for _, so := range storageObjects {
+		require.True(t, topLevelFiles[so.Key])
 	}
 
-	require.Len(t, commonPrefixes, len(foldersWithFiles))
+	require.Len(t, commonPrefixes, len(topLevelFolders))
 	for _, commonPrefix := range commonPrefixes {
-		_, ok := foldersWithFiles[string(commonPrefix)[:len(commonPrefix)-len(bucketClient.PathSeparator())]]
-		require.True(t, ok)
+		require.True(t, topLevelFolders[string(commonPrefix)[:len(commonPrefix)-1]]) // 1 to remove "/" separator.
 	}
 
-	for folder, files := range foldersWithFiles {
+	for folder, files := range filesInTopLevelFolders {
 		storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), folder, "/")
 		require.NoError(t, err)
 
 		require.Len(t, storageObjects, len(files))
-		for i := range storageObjects {
-			require.Equal(t, storageObjects[i].Key, filepath.Join(folder, files[i]))
+		for _, so := range storageObjects {
+			require.True(t, strings.HasPrefix(so.Key, folder+"/"))
+			require.True(t, files[path.Base(so.Key)])
 		}
 
 		require.Len(t, commonPrefixes, 0)
 	}
+
+	// List everything from the top, recursively.
+	storageObjects, commonPrefixes, err = bucketClient.List(context.Background(), "", "")
+
+	// Since delimiter is empty, there are no commonPrefixes.
+	require.Empty(t, commonPrefixes)
+
+	var storageObjectPaths []string
+	for _, so := range storageObjects {
+		storageObjectPaths = append(storageObjectPaths, so.Key)
+	}
+	require.ElementsMatch(t, allFiles, storageObjectPaths)
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {
@@ -140,7 +171,7 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 
 	for folder, files := range foldersWithFiles {
 		for _, filename := range files {
-			err := bucketClient.PutObject(context.Background(), filepath.Join(folder, filename), bytes.NewReader([]byte(filename)))
+			err := bucketClient.PutObject(context.Background(), path.Join(folder, filename), bytes.NewReader([]byte(filename)))
 			require.NoError(t, err)
 		}
 	}
@@ -151,7 +182,7 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.Len(t, commonPrefixes, len(foldersWithFiles))
 
 	// let us delete file1 from folder1 and check that file1 is gone but folder1 with file2 is still there
-	require.NoError(t, bucketClient.DeleteObject(context.Background(), filepath.Join("folder1", "file1")))
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), path.Join("folder1", "file1")))
 	_, err = os.Stat(filepath.Join(fsObjectsDir, filepath.Join("folder1", "file1")))
 	require.True(t, os.IsNotExist(err))
 
@@ -159,7 +190,7 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	require.NoError(t, err)
 
 	// let us delete second file as well and check that folder1 also got removed
-	require.NoError(t, bucketClient.DeleteObject(context.Background(), filepath.Join("folder1", "file2")))
+	require.NoError(t, bucketClient.DeleteObject(context.Background(), path.Join("folder1", "file2")))
 	_, err = os.Stat(filepath.Join(fsObjectsDir, "folder1"))
 	require.True(t, os.IsNotExist(err))
 

@@ -44,6 +44,7 @@ github.com/Azure/azure-sdk-for-go v43.0.0+incompatible/go.mod h1:9XXNKU+eRnpl9mo
 github.com/Azure/azure-sdk-for-go v44.0.0+incompatible/go.mod h1:9XXNKU+eRnpl9moKnB4QOLf1HestfXbmab5FXxiDBjc=
 github.com/Azure/azure-sdk-for-go v44.2.0+incompatible h1:d0WY8HTXhnurVBAkLXzv4bRpd+P5r3U/W17Z88PJWiI=
 github.com/Azure/azure-sdk-for-go v44.2.0+incompatible/go.mod h1:9XXNKU+eRnpl9moKnB4QOLf1HestfXbmab5FXxiDBjc=
+github.com/Azure/azure-sdk-for-go v45.1.0+incompatible h1:kxtaPD8n2z5Za+9e3sKsYG2IX6PG2R6VXtgS7gAbh3A=
 github.com/Azure/azure-sdk-for-go v45.1.0+incompatible/go.mod h1:9XXNKU+eRnpl9moKnB4QOLf1HestfXbmab5FXxiDBjc=
 github.com/Azure/azure-storage-blob-go v0.8.0 h1:53qhf0Oxa0nOjgbDeeYPUeyiNmafAFEY95rZLK0Tj6o=
 github.com/Azure/azure-storage-blob-go v0.8.0/go.mod h1:lPI3aLPpuLTeUwh1sViKXFxwl2B6teiRqI0deQUvsw0=
@@ -57,6 +58,7 @@ github.com/Azure/go-autorest/autorest v0.9.3-0.20191028180845-3492b2aff503/go.mo
 github.com/Azure/go-autorest/autorest v0.10.2/go.mod h1:/FALq9T/kS7b5J5qsQ+RSTUdAmGFqi0vUdVNNx8q630=
 github.com/Azure/go-autorest/autorest v0.11.2 h1:BR5GoSGobeiMwGOOIxXuvNKNPy+HMGdteKB8kJUDnBE=
 github.com/Azure/go-autorest/autorest v0.11.2/go.mod h1:JFgpikqFJ/MleTTxwepExTKnFUKKszPS8UavbQYUMuw=
+github.com/Azure/go-autorest/autorest v0.11.4 h1:iWJqGEvip7mjibEqC/srXNdo+4wLEPiwlP/7dZLtoPc=
 github.com/Azure/go-autorest/autorest v0.11.4/go.mod h1:JFgpikqFJ/MleTTxwepExTKnFUKKszPS8UavbQYUMuw=
 github.com/Azure/go-autorest/autorest/adal v0.5.0/go.mod h1:8Z9fGy2MpX0PvDjB1pEgQTmVqjGhiHBW7RJJEciWzS0=
 github.com/Azure/go-autorest/autorest/adal v0.8.1-0.20191028180845-3492b2aff503/go.mod h1:Z6vX6WXXuyieHAXwMj0S6HY6e6wcHn37qQMBQlvY3lc=
@@ -64,6 +66,7 @@ github.com/Azure/go-autorest/autorest/adal v0.8.2/go.mod h1:ZjhuQClTqx435SRJ2iMl
 github.com/Azure/go-autorest/autorest/adal v0.8.3/go.mod h1:ZjhuQClTqx435SRJ2iMlOxPYt3d2C/T/7TiQCVZSn3Q=
 github.com/Azure/go-autorest/autorest/adal v0.9.0 h1:SigMbuFNuKgc1xcGhaeapbh+8fgsu+GxgDRFyg7f5lM=
 github.com/Azure/go-autorest/autorest/adal v0.9.0/go.mod h1:/c022QCutn2P7uY+/oQWWNcK9YU+MH96NgK+jErpbcg=
+github.com/Azure/go-autorest/autorest/adal v0.9.2 h1:Aze/GQeAN1RRbGmnUJvUj+tFGBzFdIg3293/A9rbxC4=
 github.com/Azure/go-autorest/autorest/adal v0.9.2/go.mod h1:/3SMAM86bP6wC9Ev35peQDUeqFZBMH07vvUOmg4z/fE=
 github.com/Azure/go-autorest/autorest/date v0.1.0/go.mod h1:plvfp3oPSKwf2DNjlBjWF/7vwR+cUD/ELuzDCXwHUVA=
 github.com/Azure/go-autorest/autorest/date v0.2.0/go.mod h1:vcORJHLJEh643/Ioh9+vPmf1Ij9AEBM5FuBIXLmIy0g=
@@ -74,6 +77,7 @@ github.com/Azure/go-autorest/autorest/mocks v0.2.0/go.mod h1:OTyCOPRA2IgIlWxVYxB
 github.com/Azure/go-autorest/autorest/mocks v0.3.0/go.mod h1:a8FDP3DYzQ4RYfVAxAN3SVSiiO77gL2j2ronKKP0syM=
 github.com/Azure/go-autorest/autorest/mocks v0.4.0 h1:z20OWOSG5aCye0HEkDp6TPmP17ZcfeMxPi6HnSALa8c=
 github.com/Azure/go-autorest/autorest/mocks v0.4.0/go.mod h1:LTp+uSrOhSkaKrUy935gNZuuIPPVsHlr9DSOxSayd+k=
+github.com/Azure/go-autorest/autorest/mocks v0.4.1 h1:K0laFcLE6VLTOwNgSxaGbUcLPuGXlNkbVvq4cW4nIHk=
 github.com/Azure/go-autorest/autorest/mocks v0.4.1/go.mod h1:LTp+uSrOhSkaKrUy935gNZuuIPPVsHlr9DSOxSayd+k=
 github.com/Azure/go-autorest/autorest/to v0.3.0/go.mod h1:MgwOyqaIuKdG4TL/2ywSsIWKAfJfgHDo8ObuUk3t5sA=
 github.com/Azure/go-autorest/autorest/to v0.3.1-0.20191028180845-3492b2aff503 h1:2McfZNaDqGPjv2pddK547PENIk4HV+NT7gvqRq4L0us=
@@ -260,6 +264,7 @@ github.com/digitalocean/godo v1.37.0/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2x
 github.com/digitalocean/godo v1.38.0/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2xcz76ulEJRU=
 github.com/digitalocean/godo v1.42.0 h1:xQlEFLhQ1zZUryJAfiWb8meLPPCWnLO901U5Imhh0Mc=
 github.com/digitalocean/godo v1.42.0/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2xcz76ulEJRU=
+github.com/digitalocean/godo v1.42.1 h1:SJ/XMVsp5CZmyQal8gLlOl9jSl1i3FaN20LlgtK5ZMs=
 github.com/digitalocean/godo v1.42.1/go.mod h1:p7dOjjtSBqCTUksqtA5Fd3uaKs9kyTq2xcz76ulEJRU=
 github.com/docker/distribution v2.7.0+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
 github.com/docker/distribution v2.7.1+incompatible h1:a5mlkVzth6W5A4fOsS3D2EO5BUmsJpcB+cRlLU7cSug=
@@ -598,6 +603,7 @@ github.com/hashicorp/consul/sdk v0.3.0/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyN
 github.com/hashicorp/consul/sdk v0.4.0/go.mod h1:fY08Y9z5SvJqevyZNy6WWPXiG3KwBPAvlcdx16zZ0fM=
 github.com/hashicorp/consul/sdk v0.5.0 h1:WC4594Wp/LkEeML/OdQKEC1yqBmEYkRp6i7X5u0zDAs=
 github.com/hashicorp/consul/sdk v0.5.0/go.mod h1:fY08Y9z5SvJqevyZNy6WWPXiG3KwBPAvlcdx16zZ0fM=
+github.com/hashicorp/consul/sdk v0.6.0 h1:FfhMEkwvQl57CildXJyGHnwGGM4HMODGyfjGwNM1Vdw=
 github.com/hashicorp/consul/sdk v0.6.0/go.mod h1:fY08Y9z5SvJqevyZNy6WWPXiG3KwBPAvlcdx16zZ0fM=
 github.com/hashicorp/errwrap v1.0.0 h1:hLrqtEDnRye3+sgx6z4qVLNuviH3MR5aQ0ykNJa/UYA=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
@@ -653,6 +659,7 @@ github.com/hashicorp/serf v0.9.0 h1:+Zd/16AJ9lxk9RzfTDyv/TLhZ8UerqYS0/+JGCIDaa0=
 github.com/hashicorp/serf v0.9.0/go.mod h1:YL0HO+FifKOW2u1ke99DGVu1zhcpZzNwrLIqBC7vbYU=
 github.com/hashicorp/serf v0.9.3 h1:AVF6JDQQens6nMHT9OGERBvK0f8rPrAGILnsKLr6lzM=
 github.com/hashicorp/serf v0.9.3/go.mod h1:UWDWwZeL5cuWDJdl0C6wrvrUwEqtQ4ZKBKKENpqIUyk=
+github.com/hetznercloud/hcloud-go v1.21.1 h1:LWNozxiZhKmeMqYbAS7KsAcPcxg47afCnTeLKmN+n7w=
 github.com/hetznercloud/hcloud-go v1.21.1/go.mod h1:xng8lbDUg+xM1dgc0yGHX5EeqbwIq7UYlMWMTx3SQVg=
 github.com/hodgesds/perf-utils v0.0.8/go.mod h1:F6TfvsbtrF88i++hou29dTXlI2sfsJv+gRZDtmTJkAs=
 github.com/hpcloud/tail v1.0.0 h1:nfCOvKYfkgYP8hkirhJocXT2+zOD8yUNjXaWfTlyFKI=
@@ -1617,6 +1624,7 @@ k8s.io/api v0.18.3/go.mod h1:UOaMwERbqJMfeeeHc8XJKawj4P9TgDRnViIqqBeH2QA=
 k8s.io/api v0.18.5/go.mod h1:tN+e/2nbdGKOAH55NMV8oGrMG+3uRlA9GaRfvnCCSNk=
 k8s.io/api v0.18.6 h1:osqrAXbOQjkKIWDTjrqxWQ3w0GkKb1KA1XkUGHHYpeE=
 k8s.io/api v0.18.6/go.mod h1:eeyxr+cwCjMdLAmr2W3RyDI0VvTawSg/3RFFBEnmZGI=
+k8s.io/api v0.18.8 h1:aIKUzJPb96f3fKec2lxtY7acZC9gQNDLVhfSGpxBAC4=
 k8s.io/api v0.18.8/go.mod h1:d/CXqwWv+Z2XEG1LgceeDmHQwpUJhROPx16SlxJgERY=
 k8s.io/apimachinery v0.0.0-20190809020650-423f5d784010/go.mod h1:Waf/xTS2FGRrgXCkO5FP3XxTOWh0qLf2QhL1qFZZ/R8=
 k8s.io/apimachinery v0.0.0-20191115015347-3c7067801da2/go.mod h1:dXFS2zaQR8fyzuvRdJDHw2Aerij/yVGJSre0bZQSVJA=
@@ -1624,6 +1632,7 @@ k8s.io/apimachinery v0.18.3/go.mod h1:OaXp26zu/5J7p0f92ASynJa1pZo06YlV9fG7BoWbCk
 k8s.io/apimachinery v0.18.5/go.mod h1:OaXp26zu/5J7p0f92ASynJa1pZo06YlV9fG7BoWbCko=
 k8s.io/apimachinery v0.18.6 h1:RtFHnfGNfd1N0LeSrKCUznz5xtUP1elRGvHJbL3Ntag=
 k8s.io/apimachinery v0.18.6/go.mod h1:OaXp26zu/5J7p0f92ASynJa1pZo06YlV9fG7BoWbCko=
+k8s.io/apimachinery v0.18.8 h1:jimPrycCqgx2QPearX3to1JePz7wSbVLq+7PdBTTwQ0=
 k8s.io/apimachinery v0.18.8/go.mod h1:6sQd+iHEqmOtALqOFjSWp2KZ9F0wlU/nWm0ZgsYWMig=
 k8s.io/client-go v0.18.3 h1:QaJzz92tsN67oorwzmoB0a9r9ZVHuD5ryjbCKP0U22k=
 k8s.io/client-go v0.18.3/go.mod h1:4a/dpQEvzAhT1BbuWW09qvIaGw6Gbu1gZYiQZIi1DMw=

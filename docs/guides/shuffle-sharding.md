@@ -52,7 +52,7 @@ Cortex currently supports shuffle sharding in the following services:
 - [Query-frontend](#query-frontend-shuffle-sharding)
 - [Store-gateway](#store-gateway-shuffle-sharding)
 
-Shuffle sharding is **disabled by default** and need to be explicitly enabled in the configuration.
+Shuffle sharding is **disabled by default** and needs to be explicitly enabled in the configuration.
 
 ### Guaranteed properties
 

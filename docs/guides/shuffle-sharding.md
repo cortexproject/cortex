@@ -85,7 +85,7 @@ _The maximum number of queriers can be overridden on a per-tenant basis in the l
 
 ### Store-gateway shuffle sharding
 
-The Cortex store-gateway -- used by the [blocks storage](../blocks-storage/_index.md) -- by default spreads each tenant blocks across all running store-gateways.
+The Cortex store-gateway -- used by the [blocks storage](../blocks-storage/_index.md) -- by default spreads each tenant's blocks across all running store-gateways.
 
 When shuffle sharding is **enabled** via `-store-gateway.sharding-strategy=shuffle-sharding` (or its respective YAML config option), each tenant blocks will be sharded across a subset of `-store-gateway.tenant-shard-size` store-gateway instances.
 

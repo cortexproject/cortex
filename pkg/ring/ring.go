@@ -209,7 +209,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
-			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
+			level.Info(util.Logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
 		}
 

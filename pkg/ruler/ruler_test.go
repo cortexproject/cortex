@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -72,7 +74,7 @@ func (r ruleLimits) RulerTenantShardSize(_ string) int {
 }
 
 func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
-	dir, err := ioutil.TempDir("", t.Name())
+	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
 	testutil.Ok(t, err)
 	cleanup := func() {
 		os.RemoveAll(dir)
@@ -136,7 +138,7 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
-	ruler.loadRules(context.Background())
+	ruler.syncRules(context.Background())
 
 	return ruler, cleanup
 }
@@ -222,5 +224,195 @@ func compareRuleGroupDescToStateDesc(t *testing.T, expected *rules.RuleGroupDesc
 	for i := range got.ActiveRules {
 		require.Equal(t, expected.Rules[i].Record, got.ActiveRules[i].Rule.Record)
 		require.Equal(t, expected.Rules[i].Alert, got.ActiveRules[i].Rule.Alert)
+	}
+}
+
+func TestSharding(t *testing.T) {
+	user1Group1 := &rules.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first"}
+	user1Group2 := &rules.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second"}
+	user2Group1 := &rules.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first"}
+	user3Group1 := &rules.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "first"}
+
+	// Must be distinct for test to work.
+	user1Group1Token := tokenForGroup(user1Group1)
+	user1Group2Token := tokenForGroup(user1Group2)
+	user2Group1Token := tokenForGroup(user2Group1)
+	user3Group1Token := tokenForGroup(user3Group1)
+
+	allRules := map[string]rules.RuleGroupList{
+		"user1": {user1Group1, user1Group2},
+		"user2": {user2Group1},
+		"user3": {user3Group1},
+	}
+
+	type testCase struct {
+		sharding         bool
+		shardingStrategy string
+		setupRing        func(*ring.Desc)
+
+		expectedRulesForFuler1 map[string]rules.RuleGroupList
+	}
+
+	testCases := map[string]testCase{
+		"no sharding": {
+			sharding:               false,
+			expectedRulesForFuler1: allRules,
+		},
+
+		"default sharding, single ruler": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{0}, ring.ACTIVE)
+			},
+			expectedRulesForFuler1: allRules,
+		},
+
+		"default sharding, multiple ACTIVE rulers": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.ACTIVE)
+				desc.AddIngester("ruler-2", "2.2.2.2:9999", "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.ACTIVE)
+			},
+
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+				"user1": {user1Group1},
+				"user2": {user2Group1},
+			},
+		},
+
+		"default sharding, unhealthy ACTIVE ruler": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.ACTIVE)
+				desc.Ingesters["ruler-2"] = ring.IngesterDesc{
+					Addr:      "2.2.2.2:9999",
+					Timestamp: time.Now().Add(-time.Hour).Unix(),
+					State:     ring.ACTIVE,
+					Tokens:    []uint32{user1Group2Token + 1, user3Group1Token + 1},
+				}
+			},
+
+			// This ruler doesn't rulers from unhealthy ruler (RF=1).
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+				"user1": {user1Group1},
+				"user2": {user2Group1},
+			},
+		},
+
+		"default sharding, LEAVING ruler-1": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.LEAVING)
+				desc.AddIngester("ruler-2", "2.2.2.2:9999", "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.ACTIVE)
+			},
+
+			// LEAVING still has its rules.
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+				"user1": {user1Group1},
+				"user2": {user2Group1},
+			},
+		},
+
+		"default sharding, LEAVING ruler-2": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.ACTIVE)
+				desc.AddIngester("ruler-2", "2.2.2.2:9999", "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.LEAVING)
+			},
+
+			// No extra rules from LEAVING.
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+				"user1": {user1Group1},
+				"user2": {user2Group1},
+			},
+		},
+
+		"default sharding, JOINING ruler-1": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.JOINING)
+				desc.AddIngester("ruler-2", "2.2.2.2:9999", "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.ACTIVE)
+			},
+
+			// JOINING ruler has no rules yet.
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{},
+		},
+
+		"default sharding, JOINING ruler-2": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyDefault,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("ruler-1", "1.1.1.1:9999", "", []uint32{user1Group1Token + 1, user2Group1Token + 1}, ring.ACTIVE)
+				desc.AddIngester("ruler-2", "2.2.2.2:9999", "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.JOINING)
+			},
+
+			// JOINING ruler will get the rules.
+			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+				"user1": {user1Group1},
+				"user2": {user2Group1},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+
+			cfg := Config{
+				StoreConfig:      RuleStoreConfig{mock: newMockRuleStore(allRules)},
+				EnableSharding:   tc.sharding,
+				ShardingStrategy: tc.shardingStrategy,
+				Ring: RingConfig{
+					InstanceID:   "ruler-1",
+					InstanceAddr: "1.1.1.1",
+					InstancePort: 9999,
+					KVStore: kv.Config{
+						Mock: kvStore,
+					},
+					HeartbeatTimeout: 1 * time.Minute,
+				},
+				FlushCheckPeriod: 0,
+			}
+
+			r, cleanup := newRuler(t, cfg)
+			t.Cleanup(cleanup)
+
+			// We start ruler's ring, but nothing else (not even lifecycler).
+			if r.ring != nil {
+				require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
+				t.Cleanup(r.ring.StopAsync)
+			}
+
+			if tc.setupRing != nil {
+				err := kvStore.CAS(context.Background(), ring.RulerRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+					d, _ := in.(*ring.Desc)
+					if d == nil {
+						d = ring.NewDesc()
+					}
+
+					tc.setupRing(d)
+
+					return d, true, nil
+				})
+				require.NoError(t, err)
+				// Wait a bit to make sure ruler's ring is updated.
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			loaded, err := r.loadRules(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedRulesForFuler1, loaded)
+		})
 	}
 }

@@ -151,6 +151,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // MultiTenantManager is the interface of interaction with a Manager that is tenant aware.
 type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
+	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
 	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
@@ -327,16 +328,23 @@ func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 	}
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
+var sep = []byte("/")
+
+func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 	ringHasher := fnv.New32a()
 
-	id := g.User + "/" + g.Namespace + "/" + g.Name
-	_, err := ringHasher.Write([]byte(id))
-	if err != nil {
-		return false, errors.Wrap(err, "error hashing rule group to verify rule group ownership")
-	}
+	// Hasher never returns err.
+	_, _ = ringHasher.Write([]byte(g.User))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Namespace))
+	_, _ = ringHasher.Write(sep)
+	_, _ = ringHasher.Write([]byte(g.Name))
 
-	hash := ringHasher.Sum32()
+	return ringHasher.Sum32()
+}
+
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
+	hash := tokenForGroup(g)
 
 	rlrs, err := r.Get(hash, ring.Read, []ring.IngesterDesc{})
 	if err != nil {
@@ -376,41 +384,42 @@ func (r *Ruler) run(ctx context.Context) error {
 	tick := time.NewTicker(r.cfg.PollInterval)
 	defer tick.Stop()
 
-	r.loadRules(ctx)
+	r.syncRules(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
-			r.loadRules(ctx)
+			r.syncRules(ctx)
 		}
 	}
 }
 
-func (r *Ruler) loadRules(ctx context.Context) {
-	var configs map[string]rules.RuleGroupList
-	var err error
-
-	switch {
-	case !r.cfg.EnableSharding:
-		configs, err = r.loadRulesNoSharding(ctx)
-
-	case r.cfg.ShardingStrategy == ShardingStrategyDefault:
-		configs, err = r.loadRulesShardingDefault(ctx)
-
-	case r.cfg.ShardingStrategy == ShardingStrategyShuffle:
-		configs, err = r.loadRulesShuffleSharding(ctx)
-
-	default:
-		err = errors.New("invalid sharding configuration")
-	}
+func (r *Ruler) syncRules(ctx context.Context) {
+	configs, err := r.loadRules(ctx)
 
 	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to poll for rules", "err", err)
+		level.Error(r.logger).Log("msg", "unable to load rules", "err", err)
 		return
 	}
 
 	r.manager.SyncRuleGroups(ctx, configs)
+}
+
+func (r *Ruler) loadRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	switch {
+	case !r.cfg.EnableSharding:
+		return r.loadRulesNoSharding(ctx)
+
+	case r.cfg.ShardingStrategy == ShardingStrategyDefault:
+		return r.loadRulesShardingDefault(ctx)
+
+	case r.cfg.ShardingStrategy == ShardingStrategyShuffle:
+		return r.loadRulesShuffleSharding(ctx)
+
+	default:
+		return nil, errors.New("invalid sharding configuration")
+	}
 }
 
 func (r *Ruler) loadRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
@@ -427,7 +436,10 @@ func (r *Ruler) loadRulesShardingDefault(ctx context.Context) (map[string]rules.
 	// configurations need to be updated
 	filteredConfigs := make(map[string]rules.RuleGroupList)
 	for userID, groups := range configs {
-		filteredConfigs[userID] = filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		if len(filtered) > 0 {
+			filteredConfigs[userID] = filtered
+		}
 	}
 	return filteredConfigs, nil
 }
@@ -462,7 +474,10 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 			return nil, errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 		}
 
-		result[userID] = filterRuleGroups(userID, groups, subring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRuleGroups(userID, groups, subring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		if len(filtered) > 0 {
+			result[userID] = filtered
+		}
 	}
 
 	return result, nil
@@ -470,11 +485,11 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instance string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rules.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instance)
+		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
 			level.Error(log).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)

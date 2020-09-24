@@ -130,7 +130,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 	}
 
 	if update {
-		level.Debug(r.logger).Log("msg", "updating rules", "user", "user")
+		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
 		manager, exists := r.userManagers[user]
 		if !exists {

@@ -59,7 +59,7 @@ Shuffle sharding is **disabled by default** and needs to be explicitly enabled i
 The Cortex shuffle sharding implementation guarantees the following properties:
 
 - **Stability**<br />
-  Given a consistent state of the hash ring, the shuffle sharding algorithm always select the same instances for a given tenant, even across different machines.
+  Given a consistent state of the hash ring, the shuffle sharding algorithm always selects the same instances for a given tenant, even across different machines.
 - **Consistency**<br />
   Adding or removing 1 instance from the hash ring leads to only 1 instance changed at most, in each tenant's shard.
 - **Shuffling**<br />

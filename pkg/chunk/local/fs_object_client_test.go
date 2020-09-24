@@ -95,7 +95,7 @@ func TestFSObjectClient_List(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), "")
+	storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), "", "/")
 	require.NoError(t, err)
 
 	require.Len(t, storageObjects, len(files))
@@ -110,7 +110,7 @@ func TestFSObjectClient_List(t *testing.T) {
 	}
 
 	for folder, files := range foldersWithFiles {
-		storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), folder)
+		storageObjects, commonPrefixes, err := bucketClient.List(context.Background(), folder, "/")
 		require.NoError(t, err)
 
 		require.Len(t, storageObjects, len(files))
@@ -146,7 +146,7 @@ func TestFSObjectClient_DeleteObject(t *testing.T) {
 	}
 
 	// let us check if we have right folders created
-	_, commonPrefixes, err := bucketClient.List(context.Background(), "")
+	_, commonPrefixes, err := bucketClient.List(context.Background(), "", "/")
 	require.NoError(t, err)
 	require.Len(t, commonPrefixes, len(foldersWithFiles))
 

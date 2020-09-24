@@ -425,7 +425,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 	return nil
 }
 
-func (m *MockStorage) List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error) {
+func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

@@ -65,9 +65,13 @@ type ReadBatchIterator interface {
 type ObjectClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
-	List(ctx context.Context, prefix string) ([]StorageObject, []StorageCommonPrefix, error)
+
+	// List objects with given prefix.
+	// If delimiter is empty, all objects are returned, even if they are in "subdirectories".
+	// If delimiter is not empty, it is used to compute common prefixes ("subdirectories"),
+	// and objects containing delimiter in the name will not be returned in the result.
+	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
-	PathSeparator() string
 	Stop()
 }
 

@@ -95,8 +95,8 @@ func (f *FSObjectClient) PutObject(ctx context.Context, objectKey string, object
 	return fl.Close()
 }
 
-// List objects and common-prefixes i.e directories from the store non-recursively
-func (f *FSObjectClient) List(ctx context.Context, prefix string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
+// TODO: support for delimiter.
+func (f *FSObjectClient) List(ctx context.Context, prefix, _ string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 

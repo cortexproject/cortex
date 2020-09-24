@@ -456,8 +456,8 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
 			subRing := r.ring.ShuffleShard(u, shardSize)
 
-			// Include the user only if it belongs to this store-gateway shard.
-			if subRing.HasInstance(r.lifecycler.GetInstanceAddr()) {
+			// Include the user only if it belongs to this ruler shard.
+			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
 				userRings[u] = subRing
 			}
 		} else {

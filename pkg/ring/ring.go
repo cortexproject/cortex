@@ -442,6 +442,16 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 	)
 }
 
+func ShuffleShardSeed(identifier string) int64 {
+	// Use the identifier to compute an hash we'll use to seed the random.
+	hasher := md5.New()
+	hasher.Write([]byte(identifier)) // nolint:errcheck
+	checksum := hasher.Sum(nil)
+
+	// Generate the seed based on the first 64 bits of the checksum.
+	return int64(binary.BigEndian.Uint64(checksum))
+}
+
 // ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
 // and size (number of instances). The size is expected to be a multiple of the
 // number of zones and the returned subring will contain the same number of
@@ -471,16 +481,8 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return cached
 	}
 
-	// Use the identifier to compute an hash we'll use to seed the random.
-	hasher := md5.New()
-	hasher.Write([]byte(identifier)) // nolint:errcheck
-	checksum := hasher.Sum(nil)
-
-	// Generate the seed based on the first 64 bits of the checksum.
-	seed := int64(binary.BigEndian.Uint64(checksum))
-
 	// Initialise the random generator used to select instances in the ring.
-	random := rand.New(rand.NewSource(seed))
+	random := rand.New(rand.NewSource(ShuffleShardSeed(identifier)))
 
 	var result *Ring
 

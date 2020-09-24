@@ -9,7 +9,7 @@ Cortex leverages on sharding techniques to horizontally scale both single and mu
 
 ## Background
 
-The **default sharding strategy** employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path each tenant series are sharded across all ingesters, regardless how many active series the tenant has or how many different tenants are in the cluster.
+The **default sharding strategy** employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path each tenant's series are sharded across all ingesters, regardless how many active series the tenant has or how many different tenants are in the cluster.
 
 The default strategy allows to have a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximise these resources across the cluster.
 

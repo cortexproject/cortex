@@ -16,7 +16,7 @@ The default strategy allows to have a fair balance on the resources consumed by 
 However, in a **multi-tenant** cluster this approach also introduces some **downsides**:
 
 1. An outage affects all tenants
-1. A mishaving tenant (eg. causing out of memory) could affect all other tenants
+1. A misbehaving tenant (eg. causing out of memory) could affect all other tenants
 
 The goal of **shuffle sharding** is to provide an alternative sharding strategy to reduce the blast radius of an outage and better isolate tenants.
 

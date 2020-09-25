@@ -152,6 +152,17 @@ func TestFSObjectClient_List(t *testing.T) {
 		storageObjectPaths = append(storageObjectPaths, so.Key)
 	}
 	require.ElementsMatch(t, allFiles, storageObjectPaths)
+
+	storageObjects, commonPrefixes, err = bucketClient.List(context.Background(), "doesnt_exist", "")
+	require.NoError(t, err)
+	require.Empty(t, storageObjects)
+	require.Empty(t, commonPrefixes)
+
+	storageObjects, commonPrefixes, err = bucketClient.List(context.Background(), "outer-file1", "")
+	require.NoError(t, err)
+	require.Len(t, storageObjects, 1)
+	require.Equal(t, "outer-file1", storageObjects[0].Key)
+	require.Empty(t, commonPrefixes)
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {

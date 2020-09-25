@@ -101,11 +101,24 @@ func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 		return nil, nil, fmt.Errorf("unsupported delimiter: %q", delimiter)
 	}
 
+	folderPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(prefix))
+
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	if !info.IsDir() {
+		// When listing single file, return this file only.
+		return []chunk.StorageObject{{Key: info.Name(), ModifiedAt: info.ModTime()}}, nil, nil
+	}
+
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
-	folderPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(prefix))
-	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -81,9 +82,10 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	for _, p := range prefixes {
 		s := string(p)
 
-		if strings.HasPrefix(s, rulePrefix) {
-			s = s[len(rulePrefix):]
+		if !strings.HasPrefix(s, rulePrefix) {
+			return nil, fmt.Errorf("unexpected result when listing bucket, no prefix: %q", s)
 		}
+		s = s[len(rulePrefix):]
 		if strings.HasSuffix(s, delim) {
 			s = s[:len(s)-len(delim)]
 		}

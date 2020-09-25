@@ -72,7 +72,8 @@ type ObjectClient interface {
 	// For example, if the prefix is "notes/" and the delimiter is a slash (/) as in "notes/summer/july", the common prefix is "notes/summer/".
 	// Common prefixes will always end with passed delimiter.
 	//
-	// Keys of returned storage objects have given prefix.	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
+	// Keys of returned storage objects have given prefix.
+	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
 	Stop()
 }

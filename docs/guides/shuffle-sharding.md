@@ -63,7 +63,7 @@ The Cortex shuffle sharding implementation guarantees the following properties:
 - **Consistency**<br />
   Adding or removing 1 instance from the hash ring leads to only 1 instance changed at most, in each tenant's shard.
 - **Shuffling**<br />
-  Probabilistically and for a large enough cluster, it ensures every tenant gets a different set of instances, with a reduced number of overlapping instances between two tenants to improve failure isolation.
+  Probabilistically and for a large enough cluster, it ensures that every tenant gets a different set of instances, with a reduced number of overlapping instances between two tenants to improve failure isolation.
 - **Zone-awareness**<br />
   When [zone-aware replication](./zone-replication.md) is enabled, the subset of instances selected for each tenant contains a balanced number of instances for each availability zone.
 

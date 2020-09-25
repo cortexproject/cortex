@@ -61,6 +61,8 @@ func main() {
 		eventSampleRate      int
 		ballastBytes         int
 		mutexProfileFraction int
+		printVersion         bool
+		printModules         bool
 	)
 
 	configFile, expandENV := parseConfigFileParameter(os.Args[1:])
@@ -86,6 +88,8 @@ func main() {
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
 	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction at which mutex profile vents will be reported, 0 to disable")
+	flag.BoolVar(&printVersion, "version", false, "Print Cortex version and exit.")
+	flag.BoolVar(&printModules, "modules", false, "List available values that can be used as target.")
 
 	usage := flag.CommandLine.Usage
 	flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
@@ -106,6 +110,11 @@ func main() {
 		}
 	}
 
+	if printVersion {
+		fmt.Fprintln(os.Stdout, version.Print("Cortex"))
+		return
+	}
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	err = cfg.Validate(util.Logger)
@@ -118,7 +127,7 @@ func main() {
 
 	// Continue on if -modules flag is given. Code handling the
 	// -modules flag will not start cortex.
-	if testMode && !cfg.ListModules {
+	if testMode && !printModules {
 		DumpYaml(&cfg)
 		return
 	}
@@ -151,7 +160,7 @@ func main() {
 	t, err := cortex.New(cfg)
 	util.CheckFatal("initializing cortex", err)
 
-	if t.Cfg.ListModules {
+	if printModules {
 		allDeps := t.ModuleManager.DependenciesForModule(cortex.All)
 
 		for _, m := range t.ModuleManager.UserVisibleModuleNames() {
@@ -167,12 +176,7 @@ func main() {
 
 		fmt.Fprintln(os.Stdout)
 		fmt.Fprintln(os.Stdout, "Modules marked with * are included in target All.")
-
-		// in test mode we cannot call os.Exit, it will stop to whole test process.
-		if testMode {
-			return
-		}
-		os.Exit(2)
+		return
 	}
 
 	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())

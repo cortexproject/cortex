@@ -160,7 +160,7 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
 			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
 
-			# HELP cortex_bucket_store_cached_series_fetch_duration_seconds Time it takes to fetch series from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.
+			# HELP cortex_bucket_store_cached_series_fetch_duration_seconds Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
 			# TYPE cortex_bucket_store_cached_series_fetch_duration_seconds histogram
 			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.001"} 0
 			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.01"} 0
@@ -180,7 +180,7 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_cached_series_fetch_duration_seconds_sum 1.306102e+06
 			cortex_bucket_store_cached_series_fetch_duration_seconds_count 3
 
-			# HELP cortex_bucket_store_cached_postings_fetch_duration_seconds Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.
+			# HELP cortex_bucket_store_cached_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
 			# TYPE cortex_bucket_store_cached_postings_fetch_duration_seconds histogram
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.001"} 0
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.01"} 0

@@ -35,11 +35,11 @@ For example, given a Cortex cluster running **50 ingesters** and assigning **eac
 
 Randomly picking two different tenants we have the:
 
-- 71% of chances they will not share any instance
-- 26% of chances they will share only 1 instance
-- 2.7% of chances they will share 2 instances
-- 0.08% of chances they will share 3 instances
-- Only the 0.0004% of chances their instances will fully overlap
+- 71% chance that they will not share any instance
+- 26% chance that they will share only 1 instance
+- 2.7% chance that they will share 2 instances
+- 0.08% chance that they will share 3 instances
+- Only a 0.0004% chance that their instances will fully overlap
 
 ![Shuffle sharding probability](/images/guides/shuffle-sharding-probability.png)
 <!-- Chart source at https://docs.google.com/spreadsheets/d/1FXbiWTXi6bdERtamH-IfmpgFq1fNL4GP_KX_yJvbRi4/edit -->

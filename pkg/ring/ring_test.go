@@ -814,8 +814,8 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		_ = services.StartAndAwaitRunning(context.Background(), ring)
 	})
 
-	// We will stop one third of ingesters later, to see that subring is recomputed.
-	const numLifecyclers = 9
+	// We will stop <number of zones> ingesters later, to see that subring is recomputed.
+	const numLifecyclers = 6
 	const zones = 3
 
 	lcs := []*Lifecycler(nil)
@@ -876,15 +876,14 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	})
 
 	// Change of ingesters -> new subring needed.
-	newSubring := ring.ShuffleShard("user", 3)
+	newSubring := ring.ShuffleShard("user", zones)
 	require.False(t, subring == newSubring)
-	require.Equal(t, 3, subring.IngesterCount())
+	require.Equal(t, zones, subring.IngesterCount())
 
 	// Change of shard size -> new subring needed.
 	subring = newSubring
-	newSubring = ring.ShuffleShard("user", 4)
+	newSubring = ring.ShuffleShard("user", 1)
 	require.False(t, subring == newSubring)
-	// Why 6? We have 3 zones each with 2 ingesters. Zone-aware shuffle-shard gives all zones the same number of
-	// ingesters, so 6 ingesters in total.
-	require.Equal(t, 6, newSubring.IngesterCount())
+	// Zone-aware shuffle-shard gives all zones the same number of ingesters (at least one).
+	require.Equal(t, zones, newSubring.IngesterCount())
 }

@@ -69,7 +69,7 @@ The Cortex shuffle sharding implementation guarantees the following properties:
 
 ### Ingesters shuffle sharding
 
-The Cortex distributor, by default, spreads the received series across all running ingesters.
+By default the Cortex distributor spreads the received series across all running ingesters.
 
 When shuffle sharding is **enabled** via `-distributor.sharding-strategy=shuffle-sharding` (or its respective YAML config option), the distributor spreads each tenant series across `-distributor.ingestion-tenant-shard-size` number of ingesters.
 

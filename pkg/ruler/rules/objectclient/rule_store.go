@@ -69,7 +69,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 
 // ListAllRuleGroups returns all the active rule groups
 func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""))
+	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""), "")
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.Rul
 
 // ListRuleGroups returns all the active rule groups for a user
 func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
-	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""))
+	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespac
 
 // DeleteNamespace deletes all the rule groups in the specified namespace
 func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
-	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""))
+	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return err
 	}

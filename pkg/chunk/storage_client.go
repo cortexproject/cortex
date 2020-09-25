@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-// DirDelim is the delimiter used to model a directory structure in an object store.
-const DirDelim = "/"
-
 var (
 	// ErrStorageObjectNotFound when object storage does not have requested object
 	ErrStorageObjectNotFound = errors.New("object not found in storage")
@@ -67,10 +64,15 @@ type ObjectClient interface {
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error)
 
 	// List objects with given prefix.
-	// If delimiter is empty, all objects are returned, even if they are in "subdirectories".
+	//
+	// If delimiter is empty, all objects are returned, even if they are in nested in "subdirectories".
 	// If delimiter is not empty, it is used to compute common prefixes ("subdirectories"),
 	// and objects containing delimiter in the name will not be returned in the result.
-	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
+	//
+	// For example, if the prefix is "notes/" and the delimiter is a slash (/) as in "notes/summer/july", the common prefix is "notes/summer/".
+	// Common prefixes will always end with passed delimiter.
+	//
+	// Keys of returned storage objects have given prefix.	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
 	Stop()
 }
@@ -82,5 +84,4 @@ type StorageObject struct {
 }
 
 // StorageCommonPrefix represents a common prefix aka a synthetic directory in Object Store.
-// It is guaranteed to always end with DirDelim
 type StorageCommonPrefix string

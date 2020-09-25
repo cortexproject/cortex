@@ -442,10 +442,6 @@ func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]Sto
 	return storageObjects, []StorageCommonPrefix{}, nil
 }
 
-func (m *MockStorage) PathSeparator() string {
-	return DirDelim
-}
-
 type mockWriteBatch struct {
 	inserts []struct {
 		tableName, hashValue string

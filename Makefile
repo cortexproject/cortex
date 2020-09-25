@@ -10,6 +10,8 @@ GOPROXY_VALUE=$(shell go env GOPROXY)
 IMAGE_PREFIX ?= quay.io/cortexproject/
 # Use CIRCLE_TAG if present for releases.
 IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
+# Use GITHUB_SHA if present for releases.
+IMAGE_TAG ?= $(if $(GITHUB_SHA),$(GITHUB_SHA),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 UPTODATE := .uptodate

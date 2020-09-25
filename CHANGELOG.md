@@ -9,6 +9,34 @@
 * [CHANGE] Dropped "blank Alertmanager configuration; using fallback" message from Info to Debug level. #3205
 * [CHANGE] Zone-awareness replication for time-series now should be explicitly enabled in the distributor via the `-distributor.zone-awareness-enabled` CLI flag (or its respective YAML config option). Before, zone-aware replication was implicitly enabled if a zone was set on ingesters. #3200
 * [CHANGE] Removed the deprecated CLI flag `-config-yaml`. You should use `-schema-config-file` instead. #3225
+* [CHANGE] Enforced the HTTP method required by some API endpoints which did (incorrectly) allow any method before that. #3228
+  - `GET /`
+  - `GET /config`
+  - `GET /debug/fgprof`
+  - `GET /distributor/all_user_stats`
+  - `GET /distributor/ha_tracker`
+  - `GET /all_user_stats`
+  - `GET /ha-tracker`
+  - `GET /api/v1/user_stats`
+  - `GET /api/v1/chunks`
+  - `GET <legacy-http-prefix>/user_stats`
+  - `GET <legacy-http-prefix>/chunks`
+  - `GET /services`
+  - `GET /multitenant_alertmanager/status`
+  - `GET /status` (alertmanager microservice)
+  - `GET|POST /ingester/ring`
+  - `GET|POST /ring`
+  - `GET|POST /store-gateway/ring`
+  - `GET|POST /compactor/ring`
+  - `GET|POST /ingester/flush`
+  - `GET|POST /ingester/shutdown`
+  - `GET|POST /flush`
+  - `GET|POST /shutdown`
+  - `GET|POST /ruler/ring`
+  - `POST /api/v1/push`
+  - `POST <legacy-http-prefix>/push`
+  - `POST /push`
+  - `POST /ingester/push`
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-user` globally, or using per-user limit `max_queriers_per_user`), each user's requests will be handled by different set of queriers. #3113
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
 * [ENHANCEMENT] Added `cortex_query_frontend_connected_clients` metric to show the number of workers currently connected to the frontend. #3207

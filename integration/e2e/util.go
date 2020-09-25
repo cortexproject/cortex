@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -67,6 +68,13 @@ func GetRequest(url string) (*http.Response, error) {
 
 	client := &http.Client{Timeout: timeout}
 	return client.Get(url)
+}
+
+func PostRequest(url string) (*http.Response, error) {
+	const timeout = 1 * time.Second
+
+	client := &http.Client{Timeout: timeout}
+	return client.Post(url, "", strings.NewReader(""))
 }
 
 // timeToMilliseconds returns the input time as milliseconds, using the same

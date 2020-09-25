@@ -126,17 +126,17 @@ func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 			if delimiter == "" {
 				// Go into directory
 				return nil
-			} else {
-				empty, err := isDirEmpty(path)
-				if err != nil {
-					return err
-				}
-
-				if !empty {
-					commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(relPath+delimiter))
-				}
-				return filepath.SkipDir
 			}
+
+			empty, err := isDirEmpty(path)
+			if err != nil {
+				return err
+			}
+
+			if !empty {
+				commonPrefixes = append(commonPrefixes, chunk.StorageCommonPrefix(relPath+delimiter))
+			}
+			return filepath.SkipDir
 		}
 
 		storageObjects = append(storageObjects, chunk.StorageObject{Key: relPath, ModifiedAt: info.ModTime()})

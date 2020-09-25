@@ -142,6 +142,7 @@ func TestFSObjectClient_List(t *testing.T) {
 
 	// List everything from the top, recursively.
 	storageObjects, commonPrefixes, err = bucketClient.List(context.Background(), "", "")
+	require.NoError(t, err)
 
 	// Since delimiter is empty, there are no commonPrefixes.
 	require.Empty(t, commonPrefixes)

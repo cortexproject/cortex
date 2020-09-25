@@ -287,6 +287,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 	})
 }
 
+// List implements chunk.ObjectClient.
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix

@@ -95,6 +95,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 	return fl.Close()
 }
 
+// List implements chunk.ObjectClient.
 // FSObjectClient assumes that prefix is a directory, and only supports "" and "/" delimiters.
 func (f *FSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	if delimiter != "" && delimiter != "/" {

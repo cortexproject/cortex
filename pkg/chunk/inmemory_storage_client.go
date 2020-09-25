@@ -425,6 +425,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 	return nil
 }
 
+// List implements chunk.ObjectClient.
 func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()

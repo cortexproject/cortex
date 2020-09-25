@@ -194,6 +194,7 @@ func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
 	}), nil
 }
 
+// List implements chunk.ObjectClient.
 func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix

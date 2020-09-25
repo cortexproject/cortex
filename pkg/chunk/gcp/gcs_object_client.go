@@ -105,6 +105,7 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return nil
 }
 
+// List implements chunk.ObjectClient.
 func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]chunk.StorageObject, []chunk.StorageCommonPrefix, error) {
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix

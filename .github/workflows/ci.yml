@@ -18,8 +18,9 @@ jobs:
         with:
           go-version: 1.14
 
-      # - name: print image tag
-      #   run: ${GITHUB_REF:10}
+      - name: print image tag
+        run: echo ${GITHUB_REF:10}
+        shell: bash
 
       - name: Checkout code
         uses: actions/checkout@v2

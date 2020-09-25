@@ -48,6 +48,8 @@ The **`shuffle-sharding`** strategy spreads the blocks of a tenant across a subs
 
 The shuffle sharding strategy can be enabled via `-store-gateway.sharding-strategy=shuffle-sharding` and requires the `-store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
 
+_Please check out the [shuffle sharding documentation](../guides/shuffle-sharding.md) for more information about how it works._
+
 ### Auto-forget
 
 When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.

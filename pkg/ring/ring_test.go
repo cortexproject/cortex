@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	strconv "strconv"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -606,28 +610,46 @@ func BenchmarkRing_ShuffleShard(b *testing.B) {
 		for _, numZones := range []int{1, 3} {
 			for _, shardSize := range []int{3, 10, 30} {
 				b.Run(fmt.Sprintf("num instances = %d, num zones = %d, shard size = %d", numInstances, numZones, shardSize), func(b *testing.B) {
-					// Initialise the ring.
-					ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
-					ring := Ring{
-						cfg: Config{
-							HeartbeatTimeout:     time.Hour,
-							ZoneAwarenessEnabled: true,
-						},
-						ringDesc:         ringDesc,
-						ringTokens:       ringDesc.getTokens(),
-						ringTokensByZone: ringDesc.getTokensByZone(),
-						ringZones:        getZones(ringDesc.getTokensByZone()),
-						strategy:         &DefaultReplicationStrategy{},
-					}
-
-					b.ResetTimer()
-
-					for n := 0; n < b.N; n++ {
-						ring.ShuffleShard("tenant-1", shardSize)
-					}
+					benchmarkShuffleSharding(b, numInstances, numZones, shardSize, false)
 				})
 			}
 		}
+	}
+}
+
+func BenchmarkRing_ShuffleShardCached(b *testing.B) {
+	for _, numInstances := range []int{50, 100, 1000} {
+		for _, numZones := range []int{1, 3} {
+			for _, shardSize := range []int{3, 10, 30} {
+				b.Run(fmt.Sprintf("num instances = %d, num zones = %d, shard size = %d", numInstances, numZones, shardSize), func(b *testing.B) {
+					benchmarkShuffleSharding(b, numInstances, numZones, shardSize, true)
+				})
+			}
+		}
+	}
+}
+
+func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize int, cache bool) {
+	// Initialise the ring.
+	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
+	ring := Ring{
+		cfg:                Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true},
+		ringDesc:           ringDesc,
+		ringTokens:         ringDesc.getTokens(),
+		ringTokensByZone:   ringDesc.getTokensByZone(),
+		ringZones:          getZones(ringDesc.getTokensByZone()),
+		strategy:           &DefaultReplicationStrategy{},
+		lastTopologyChange: time.Now(),
+	}
+
+	if cache {
+		ring.shuffledSubringCache = map[subringCacheKey]*Ring{}
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		ring.ShuffleShard("tenant-1", shardSize)
 	}
 }
 
@@ -680,4 +702,189 @@ func compareReplicationSets(first, second ReplicationSet) (added, removed []stri
 	}
 
 	return
+}
+
+// This test verifies that ring is getting updates, even after extending check in the loop method.
+func TestRingUpdates(t *testing.T) {
+	inmem := consul.NewInMemoryClient(GetCodec())
+
+	cfg := Config{
+		KVStore:           kv.Config{Mock: inmem},
+		HeartbeatTimeout:  1 * time.Minute,
+		ReplicationFactor: 3,
+	}
+
+	ring, err := New(cfg, "test", "test", nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
+	t.Cleanup(func() {
+		_ = services.StartAndAwaitRunning(context.Background(), ring)
+	})
+
+	require.Equal(t, 0, ring.IngesterCount())
+
+	lc1 := startLifecycler(t, cfg, 100*time.Millisecond, 1, 3)
+	test.Poll(t, 1*time.Second, 1, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	lc2 := startLifecycler(t, cfg, 100*time.Millisecond, 2, 3)
+	test.Poll(t, 1*time.Second, 2, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	lc3 := startLifecycler(t, cfg, 100*time.Millisecond, 3, 3)
+	test.Poll(t, 1*time.Second, 3, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	// Sleep for a few seconds (ring timestamp resolution is 1 second, so to verify that ring is updated in the background,
+	// sleep for 2 seconds)
+	time.Sleep(2 * time.Second)
+
+	rs, err := ring.GetAll(Read)
+	require.NoError(t, err)
+
+	now := time.Now()
+	for _, ing := range rs.Ingesters {
+		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
+	}
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))
+	test.Poll(t, 1*time.Second, 2, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc1))
+	test.Poll(t, 1*time.Second, 1, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc3))
+	test.Poll(t, 1*time.Second, 0, func() interface{} {
+		return ring.IngesterCount()
+	})
+}
+
+func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
+	lcCfg := LifecyclerConfig{
+		RingConfig:      cfg,
+		NumTokens:       16,
+		HeartbeatPeriod: heartbeat,
+		ObservePeriod:   0,
+		JoinAfter:       0,
+		Zone:            fmt.Sprintf("zone-%d", lifecyclerID%zones),
+		Addr:            fmt.Sprintf("addr-%d", lifecyclerID),
+		ID:              fmt.Sprintf("ingester-%d", lifecyclerID),
+	}
+
+	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, nil)
+	require.NoError(t, err)
+
+	lc.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
+		t.Log("lifecycler", lifecyclerID, "failed:", failure)
+		t.Fail()
+	}))
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lc))
+
+	t.Cleanup(func() {
+		_ = services.StartAndAwaitRunning(context.Background(), lc)
+	})
+
+	return lc
+}
+
+// This test checks if shuffle-sharded ring can be reused, and whether it receives
+// updates from "main" ring.
+func TestShuffleShardWithCaching(t *testing.T) {
+	inmem := consul.NewInMemoryClient(GetCodec())
+
+	cfg := Config{
+		KVStore:              kv.Config{Mock: inmem},
+		HeartbeatTimeout:     1 * time.Minute,
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	ring, err := New(cfg, "test", "test", nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
+	t.Cleanup(func() {
+		_ = services.StartAndAwaitRunning(context.Background(), ring)
+	})
+
+	// We will stop one third of ingesters later, to see that subring is recomputed.
+	const numLifecyclers = 9
+	const zones = 3
+
+	lcs := []*Lifecycler(nil)
+	for i := 0; i < numLifecyclers; i++ {
+		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
+
+		lcs = append(lcs, lc)
+	}
+
+	// Wait until all instances in the ring are ACTIVE.
+	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
+		active := 0
+		rs, _ := ring.GetAll(Read)
+		for _, ing := range rs.Ingesters {
+			if ing.State == ACTIVE {
+				active++
+			}
+		}
+		return active
+	})
+
+	// Use shardSize = zones, to get one ingester from each zone.
+	const shardSize = zones
+	const user = "user"
+
+	// This subring should be cached, and reused.
+	subring := ring.ShuffleShard(user, shardSize)
+
+	// Do 100 iterations over two seconds. Make sure we get the same subring.
+	const iters = 100
+	sleep := (2 * time.Second) / iters
+	for i := 0; i < iters; i++ {
+		newSubring := ring.ShuffleShard(user, shardSize)
+		require.True(t, subring == newSubring, "cached subring reused")
+		require.Equal(t, shardSize, subring.IngesterCount())
+		time.Sleep(sleep)
+	}
+
+	// Make sure subring has up-to-date timestamps.
+	{
+		rs, err := subring.GetAll(Read)
+		require.NoError(t, err)
+
+		now := time.Now()
+		for _, ing := range rs.Ingesters {
+			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so we better give it some extra buffer.
+			assert.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
+		}
+	}
+
+	// Now stop one lifecycler from each zone. Subring needs to be recomputed.
+	for i := 0; i < zones; i++ {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
+	}
+
+	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() interface{} {
+		return ring.IngesterCount()
+	})
+
+	// Change of ingesters -> new subring needed.
+	newSubring := ring.ShuffleShard("user", 3)
+	require.False(t, subring == newSubring)
+	require.Equal(t, 3, subring.IngesterCount())
+
+	// Change of shard size -> new subring needed.
+	subring = newSubring
+	newSubring = ring.ShuffleShard("user", 4)
+	require.False(t, subring == newSubring)
+	// Why 6? We have 3 zones each with 2 ingesters. Zone-aware shuffle-shard gives all zones the same number of
+	// ingesters, so 6 ingesters in total.
+	require.Equal(t, 6, newSubring.IngesterCount())
 }

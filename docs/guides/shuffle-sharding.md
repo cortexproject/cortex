@@ -27,7 +27,7 @@ Shuffle sharding is a technique used to isolate different tenant's workloads and
 The idea is to assign each tenant a shard composed by a subset of the Cortex service instances, aiming to minimize the overlapping instances between two different tenants. Shuffle sharding brings the following **benefits** over the default sharding strategy:
 
 - An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.
-- A misbehaving tenant will affect only its shard instances. Due to the low overlapping of instances between different tenants, it's statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.
+- A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it's statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.
 
 ### Low overlapping instances probability
 

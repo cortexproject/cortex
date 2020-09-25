@@ -81,7 +81,69 @@ server_address: localhost:6666
 &lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
 &lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
-&lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Shuffle Sharding</title><link>/docs/guides/shuffle-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/shuffle-sharding/</guid><description>
+&lt;p>Cortex leverages on sharding techniques to horizontally scale both single and multi-tenant clusters beyond the capacity of a single node.&lt;/p>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>The &lt;strong>default sharding strategy&lt;/strong> employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path each tenant&amp;rsquo;s series are sharded across all ingesters, regardless how many active series the tenant has or how many different tenants are in the cluster.&lt;/p>
+&lt;p>The default strategy allows to have a fair balance on the resources consumed by each instance (ie. CPU and memory) and to maximise these resources across the cluster.&lt;/p>
+&lt;p>However, in a &lt;strong>multi-tenant&lt;/strong> cluster this approach also introduces some &lt;strong>downsides&lt;/strong>:&lt;/p>
+&lt;ol>
+&lt;li>An outage affects all tenants&lt;/li>
+&lt;li>A misbehaving tenant (eg. causing out of memory) could affect all other tenants&lt;/li>
+&lt;/ol>
+&lt;p>The goal of &lt;strong>shuffle sharding&lt;/strong> is to provide an alternative sharding strategy to reduce the blast radius of an outage and better isolate tenants.&lt;/p>
+&lt;h2 id="what-is-shuffle-sharding">What is shuffle sharding&lt;/h2>
+&lt;p>Shuffle sharding is a technique used to isolate different tenant&amp;rsquo;s workloads and to give each tenant a single-tenant experience even if they&amp;rsquo;re running in a shared cluster. This technique has been publicly shared and clearly explained by AWS in their &lt;a href="https://aws.amazon.com/builders-library/workload-isolation-using-shuffle-sharding/">builders&amp;rsquo; library&lt;/a> and a reference implementation has been shown in the &lt;a href="https://github.com/awslabs/route53-infima/blob/master/src/main/java/com/amazonaws/services/route53/infima/SimpleSignatureShuffleSharder.java">Route53 Infima library&lt;/a>.&lt;/p>
+&lt;p>The idea is to assign each tenant a shard composed by a subset of the Cortex service instances, aiming to minimize the overlapping instances between two different tenants. Shuffle sharding brings the following &lt;strong>benefits&lt;/strong> over the default sharding strategy:&lt;/p>
+&lt;ul>
+&lt;li>An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.&lt;/li>
+&lt;li>A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it&amp;rsquo;s statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.&lt;/li>
+&lt;/ul>
+&lt;h3 id="low-overlapping-instances-probability">Low overlapping instances probability&lt;/h3>
+&lt;p>For example, given a Cortex cluster running &lt;strong>50 ingesters&lt;/strong> and assigning &lt;strong>each tenant 4&lt;/strong> out of 50 ingesters, shuffling instances between each tenant, we get &lt;strong>230K possible combinations&lt;/strong>.&lt;/p>
+&lt;p>Randomly picking two different tenants we have the:&lt;/p>
+&lt;ul>
+&lt;li>71% chance that they will not share any instance&lt;/li>
+&lt;li>26% chance that they will share only 1 instance&lt;/li>
+&lt;li>2.7% chance that they will share 2 instances&lt;/li>
+&lt;li>0.08% chance that they will share 3 instances&lt;/li>
+&lt;li>Only a 0.0004% chance that their instances will fully overlap&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="/images/guides/shuffle-sharding-probability.png" alt="Shuffle sharding probability">&lt;/p>
+&lt;!-- Chart source at https://docs.google.com/spreadsheets/d/1FXbiWTXi6bdERtamH-IfmpgFq1fNL4GP_KX_yJvbRi4/edit -->
+&lt;h2 id="cortex-shuffle-sharding">Cortex shuffle sharding&lt;/h2>
+&lt;p>Cortex currently supports shuffle sharding in the following services:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#ingesters-shuffle-sharding">Ingesters&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#query-frontend-shuffle-sharding">Query-frontend&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#store-gateway-shuffle-sharding">Store-gateway&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>Shuffle sharding is &lt;strong>disabled by default&lt;/strong> and needs to be explicitly enabled in the configuration.&lt;/p>
+&lt;h3 id="guaranteed-properties">Guaranteed properties&lt;/h3>
+&lt;p>The Cortex shuffle sharding implementation guarantees the following properties:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Stability&lt;/strong>&lt;br />
+Given a consistent state of the hash ring, the shuffle sharding algorithm always selects the same instances for a given tenant, even across different machines.&lt;/li>
+&lt;li>&lt;strong>Consistency&lt;/strong>&lt;br />
+Adding or removing 1 instance from the hash ring leads to only 1 instance changed at most, in each tenant&amp;rsquo;s shard.&lt;/li>
+&lt;li>&lt;strong>Shuffling&lt;/strong>&lt;br />
+Probabilistically and for a large enough cluster, it ensures that every tenant gets a different set of instances, with a reduced number of overlapping instances between two tenants to improve failure isolation.&lt;/li>
+&lt;li>&lt;strong>Zone-awareness&lt;/strong>&lt;br />
+When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt;/a> is enabled, the subset of instances selected for each tenant contains a balanced number of instances for each availability zone.&lt;/li>
+&lt;/ul>
+&lt;h3 id="ingesters-shuffle-sharding">Ingesters shuffle sharding&lt;/h3>
+&lt;p>By default the Cortex distributor spreads the received series across all running ingesters.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), the distributor spreads each tenant series across &lt;code>-distributor.ingestion-tenant-shard-size&lt;/code> number of ingesters.&lt;/p>
+&lt;p>&lt;em>The shard size can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
+&lt;h3 id="query-frontend-shuffle-sharding">Query-frontend shuffle sharding&lt;/h3>
+&lt;p>By default all Cortex queriers can execute received queries for given tenant.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-user&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant. Note that this distribution happens in query-frontend. When not using query-frontend, this option is not available.&lt;/p>
+&lt;p>&lt;em>The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
+&lt;h3 id="store-gateway-shuffle-sharding">Store-gateway shuffle sharding&lt;/h3>
+&lt;p>The Cortex store-gateway &amp;ndash; used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> &amp;ndash; by default spreads each tenant&amp;rsquo;s blocks across all running store-gateways.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances.&lt;/p>
+&lt;p>&lt;em>The shard size can be overridden on a per-tenant basis setting &lt;code>store_gateway_tenant_shard_size&lt;/code> in the limits overrides configuration.&lt;/em>&lt;/p>
+&lt;p>&lt;em>Please check out the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
 &lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>

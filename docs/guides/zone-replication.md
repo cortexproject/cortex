@@ -38,6 +38,12 @@ For Cortex to function correctly, there must be at least the same number of avai
 
 It is safe to have more zones than the replication factor, but it cannot be less. Having fewer availability zones than replication factor causes a replica write to be missed, and in some cases, the write fails if the availability zones count is too low.
 
+## Impact on unbalanced zones
+
+**Cortex requires that each zone runs the same number of instances** of a given service for which the zone-aware replication is enabled. This guarantees a fair split of the workload across zones.
+
+On the contrary, if zones are unbalanced, the zones with a lower number of instances would have an higher pressure on resources utilization (eg. CPU and memory) compared to zones with an higher number of instances.
+
 ## Impact on costs
 
 Depending on the underlying infrastructure being used, deploying Cortex across multiple availability zones may cause an increase in running costs as most cloud providers charge for inter availability zone networking. The most significant change would be for a Cortex cluster currently running in a single zone.

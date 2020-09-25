@@ -20,8 +20,8 @@ jobs:
 
       - name: print image tag
         run: |
-          echo ${GITHUB_REF:10}4
-          
+          echo ${GITHUB_REF:10}
+
       - name: Checkout code
         uses: actions/checkout@v2
         # with:

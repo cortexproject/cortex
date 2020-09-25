@@ -798,7 +798,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	inmem := consul.NewInMemoryClient(GetCodec())
+	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{CASRetries: 50})
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},

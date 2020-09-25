@@ -41,6 +41,9 @@ type Config struct {
 	ConsistentReads   bool          `yaml:"consistent_reads"`
 	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
 	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+
+	// How many times to retry CAS operation. Exposed for tests with many clients using inmemory KV.
+	CASRetries int `yaml:"-"`
 }
 
 type kv interface {
@@ -119,8 +122,13 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	var (
 		index   = uint64(0)
-		retries = 10
+		retries = c.cfg.CASRetries
 	)
+
+	if retries == 0 {
+		retries = 10
+	}
+
 	for i := 0; i < retries; i++ {
 		options := &consul.QueryOptions{
 			AllowStale:        !c.cfg.ConsistentReads,

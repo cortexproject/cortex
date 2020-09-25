@@ -16,6 +16,10 @@
 * [ENHANCEMENT] Ingester: added new metric `cortex_ingester_active_series` to track active series more accurately. Also added options to control whether active series tracking is enabled (`-ingester.active-series-enabled`, defaults to false), and how often this metric is updated (`-ingester.active-series-update-period`) and max idle time for series to be considered inactive (`-ingester.active-series-idle-timeout`). #3153
 * [ENHANCEMENT] Blocksconvert – Builder: download plan file locally before processing it. #3209
 * [ENHANCEMENT] Store-gateway: added zone-aware replication support to blocks replication in the store-gateway. #3200
+* [ENHANCEMENT] Store-gateway: exported new metrics. #3231
+  - `cortex_bucket_store_cached_series_fetch_duration_seconds`
+  - `cortex_bucket_store_cached_postings_fetch_duration_seconds`
+  - `cortex_bucket_stores_gate_queries_max`
 * [ENHANCEMENT] Added `-version` flag to Cortex. #3233
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195

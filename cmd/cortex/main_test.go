@@ -80,6 +80,11 @@ func TestFlagParsing(t *testing.T) {
 			stderrMessage: "the Querier configuration in YAML has been specified as an empty YAML node",
 		},
 
+		"version": {
+			arguments:     []string{"-version"},
+			stdoutMessage: "Cortex, version",
+		},
+
 		// we cannot test the happy path, as cortex would then fully start
 	} {
 		t.Run(name, func(t *testing.T) {

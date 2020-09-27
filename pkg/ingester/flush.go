@@ -251,13 +251,15 @@ func (i *Ingester) flushLoop(j int) {
 	}()
 
 	for {
-		_ = i.flushRateLimiter.Wait(context.Background())
 		o := i.flushQueues[j].Dequeue()
 		if o == nil {
 			return
 		}
 		op := o.(*flushOp)
 
+		if !op.immediate {
+			_ = i.flushRateLimiter.Wait(context.Background())
+		}
 		outcome, err := i.flushUserSeries(j, op.userID, op.fp, op.immediate)
 		i.metrics.seriesDequeuedOutcome.WithLabelValues(outcome.String()).Inc()
 		if err != nil {

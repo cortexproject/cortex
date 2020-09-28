@@ -26,7 +26,8 @@ type RuleStore interface {
 	// Returns all rule groups, and loads rules for each group.
 	LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
 
-	// LoadRuleGroupsForUserAndNamespace returns all the active rule groups for a user. If namespace is empty, groups from all namespaces are returned.
+	// LoadRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
+	// If namespace is empty, groups from all namespaces are returned.
 	LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error

@@ -139,7 +139,7 @@ func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
-	ruler.syncRules(context.Background())
+	ruler.syncRules(context.Background(), rulerSyncReasonInitial)
 
 	return ruler, cleanup
 }
@@ -546,7 +546,7 @@ func TestSharding(t *testing.T) {
 
 // User shuffle shard token.
 func userToken(user string, skip int) uint32 {
-	r := rand.New(rand.NewSource(ring.ShuffleShardSeed(user)))
+	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user)))
 
 	for ; skip > 0; skip-- {
 		_ = r.Uint32()

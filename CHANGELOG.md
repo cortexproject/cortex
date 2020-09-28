@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+* [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
+  - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
+  - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.
 * [CHANGE] Improved shuffle sharding support in the write path. This work introduced some config changes: #3090
   * Introduced `-distributor.sharding-strategy` CLI flag (and its respective `sharding_strategy` YAML config option) to explicitly specify which sharding strategy should be used in the write path
   * `-experimental.distributor.user-subring-size` flag renamed to `-distributor.ingestion-tenant-shard-size`
@@ -39,6 +42,10 @@
   - `POST /ingester/push`
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-user` globally, or using per-user limit `max_queriers_per_user`), each user's requests will be handled by different set of queriers. #3113
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
+* [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
+  - `-blocks-storage.s3.http.idle-conn-timeout`
+  - `-blocks-storage.s3.http.response-header-timeout`
+  - `-blocks-storage.s3.http.insecure-skip-verify`
 * [ENHANCEMENT] Added `cortex_query_frontend_connected_clients` metric to show the number of workers currently connected to the frontend. #3207
 * [ENHANCEMENT] Shuffle sharding: improved shuffle sharding in the write path. Shuffle sharding now should be explicitly enabled via `-distributor.sharding-strategy` CLI flag (or its respective YAML config option) and guarantees stability, consistency, shuffling and balanced zone-awareness properties. #3090 #3214
 * [ENHANCEMENT] Ingester: added new metric `cortex_ingester_active_series` to track active series more accurately. Also added options to control whether active series tracking is enabled (`-ingester.active-series-enabled`, defaults to false), and how often this metric is updated (`-ingester.active-series-update-period`) and max idle time for series to be considered inactive (`-ingester.active-series-idle-timeout`). #3153

@@ -68,10 +68,6 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-func (l *Client) LoadRuleGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
-	return l.loadAllRulesGroupsForUser(ctx, userID)
-}
-
 // ListAllRuleGroups implements RuleStore
 func (l *Client) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	users, err := l.ListAllUsers(ctx)
@@ -92,8 +88,8 @@ func (l *Client) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	return lists, nil
 }
 
-// ListRuleGroups implements RuleStore
-func (l *Client) ListRuleGroups(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+// LoadRuleGroupsForUserAndNamespace implements RuleStore
+func (l *Client) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	if namespace != "" {
 		return l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}

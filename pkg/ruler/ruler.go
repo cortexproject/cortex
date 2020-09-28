@@ -493,7 +493,7 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	for i := 0; i < loadRulesConcurrency; i++ {
 		g.Go(func() error {
 			for userID := range userCh {
-				groups, err := r.store.LoadRuleGroupsForUser(gctx, userID)
+				groups, err := r.store.LoadRuleGroupsForUserAndNamespace(gctx, userID, "")
 				if err != nil {
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}

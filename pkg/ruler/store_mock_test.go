@@ -126,13 +126,6 @@ func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	return result, nil
 }
 
-func (m *mockRuleStore) LoadRuleGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	return append(rules.RuleGroupList(nil), m.rules[userID]...), nil
-}
-
 func (m *mockRuleStore) LoadAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -145,7 +138,7 @@ func (m *mockRuleStore) LoadAllRuleGroups(_ context.Context) (map[string]rules.R
 	return result, nil
 }
 
-func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (m *mockRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

@@ -23,12 +23,11 @@ var (
 type RuleStore interface {
 	ListAllUsers(ctx context.Context) ([]string, error)
 
-	// Returns all rule groups for this user.
-	LoadRuleGroupsForUser(ctx context.Context, userID string) (RuleGroupList, error)
-
 	// Returns all rule groups, and loads rules for each group.
 	LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
-	ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+
+	// LoadRuleGroupsForUserAndNamespace returns all the active rule groups for a user. If namespace is empty, groups from all namespaces are returned.
+	LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
@@ -81,12 +80,6 @@ func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, err
 }
 
-func (c *ConfigRuleStore) LoadRuleGroupsForUser(ctx context.Context, userID string) (RuleGroupList, error) {
-	// TODO: this should be optimized, if possible.
-	r, err := c.LoadAllRuleGroups(ctx)
-	return r[userID], err
-}
-
 // ListAllRuleGroups implements RuleStore
 func (c *ConfigRuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
 	configs, err := c.configClient.GetRules(ctx, c.since)
@@ -130,9 +123,27 @@ func getLatestConfigID(cfgs map[string]userconfig.VersionedRulesConfig, latest u
 	return ret
 }
 
-// ListRuleGroups is not implemented
-func (c *ConfigRuleStore) ListRuleGroups(ctx context.Context, userID string, namespace string) (RuleGroupList, error) {
-	return nil, errors.New("not implemented by the config service rule store")
+func (c *ConfigRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error) {
+	r, err := c.LoadAllRuleGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if namespace == "" {
+		return r[userID], nil
+	}
+
+	list := r[userID]
+	for ix := 0; ix < len(list); {
+		g := list[ix]
+		if g.Namespace != namespace {
+			list = append(list[:ix], list[ix+1:]...)
+		} else {
+			ix++
+		}
+	}
+
+	return list, nil
 }
 
 // GetRuleGroup is not implemented

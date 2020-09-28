@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"fmt"
 	"io/ioutil"
 	"strings"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -82,37 +81,12 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	for _, p := range prefixes {
 		s := string(p)
 
-		if !strings.HasPrefix(s, rulePrefix) {
-			return nil, fmt.Errorf("unexpected result when listing bucket, no prefix: %q", s)
-		}
-		s = s[len(rulePrefix):]
-		if strings.HasSuffix(s, delim) {
-			s = s[:len(s)-len(delim)]
-		}
+		s = strings.TrimPrefix(s, rulePrefix)
+		s = strings.TrimSuffix(s, delim)
 
 		if s != "" {
 			result = append(result, s)
 		}
-	}
-
-	return result, nil
-}
-
-func (o *RuleStore) LoadRuleGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
-	// Get list of all rule groups in all namespaces for user.
-	objs, _, err := o.client.List(ctx, generateRuleObjectKey(userID, "", ""), "")
-	if err != nil {
-		return nil, err
-	}
-
-	var result rules.RuleGroupList
-	for _, obj := range objs {
-		rg, err := o.getRuleGroup(ctx, obj.Key)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, rg)
 	}
 
 	return result, nil
@@ -133,8 +107,7 @@ func (o *RuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]rules.Rul
 	return o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
 }
 
-// ListRuleGroups returns all the active rule groups for a user
-func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (o *RuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err

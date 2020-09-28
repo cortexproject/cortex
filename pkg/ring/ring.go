@@ -72,6 +72,8 @@ const (
 
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
 	BlocksRead
+
+	Ruler // Used for distributing rule groups between rulers.
 )
 
 var (

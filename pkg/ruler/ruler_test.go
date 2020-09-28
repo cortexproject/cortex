@@ -258,7 +258,7 @@ func TestSharding(t *testing.T) {
 		shuffleShardSize int
 		setupRing        func(*ring.Desc)
 
-		expectedRulesForFuler1 map[string]rules.RuleGroupList
+		expectedRulesForRuler1 map[string]rules.RuleGroupList
 	}
 
 	const (
@@ -277,7 +277,7 @@ func TestSharding(t *testing.T) {
 	testCases := map[string]testCase{
 		"no sharding": {
 			sharding:               false,
-			expectedRulesForFuler1: allRules,
+			expectedRulesForRuler1: allRules,
 		},
 
 		"default sharding, single ruler": {
@@ -286,7 +286,7 @@ func TestSharding(t *testing.T) {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE)
 			},
-			expectedRulesForFuler1: allRules,
+			expectedRulesForRuler1: allRules,
 		},
 
 		"default sharding, multiple ACTIVE rulers": {
@@ -297,7 +297,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1},
 				user2: {user2Group1},
 			},
@@ -317,8 +317,8 @@ func TestSharding(t *testing.T) {
 				}
 			},
 
-			// This ruler doesn't rulers from unhealthy ruler (RF=1).
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			// This ruler doesn't get rules from unhealthy ruler (RF=1).
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1},
 				user2: {user2Group1},
 			},
@@ -333,11 +333,8 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.ACTIVE)
 			},
 
-			// LEAVING still has its rules.
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
-				user1: {user1Group1},
-				user2: {user2Group1},
-			},
+			// LEAVING ruler doesn't get any rules.
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{},
 		},
 
 		"default sharding, LEAVING ruler-2": {
@@ -349,11 +346,8 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.LEAVING)
 			},
 
-			// No extra rules from LEAVING.
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
-				user1: {user1Group1},
-				user2: {user2Group1},
-			},
+			// All rules from LEAVING ruler-2 go to ruler-1.
+			expectedRulesForRuler1: allRules,
 		},
 
 		"default sharding, JOINING ruler-1": {
@@ -366,7 +360,7 @@ func TestSharding(t *testing.T) {
 			},
 
 			// JOINING ruler has no rules yet.
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{},
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{},
 		},
 
 		"default sharding, JOINING ruler-2": {
@@ -378,11 +372,8 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group2Token + 1, user3Group1Token + 1}, ring.JOINING)
 			},
 
-			// JOINING ruler will get the rules.
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
-				user1: {user1Group1},
-				user2: {user2Group1},
-			},
+			// ACTIVE ruler receives all rules that will eventually belong to JOINING ruler.
+			expectedRulesForRuler1: allRules,
 		},
 
 		"shuffle sharding, single ruler": {
@@ -393,7 +384,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: allRules,
+			expectedRulesForRuler1: allRules,
 		},
 
 		"shuffle sharding, multiple rulers, shard size 1": {
@@ -406,7 +397,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{0}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: allRules,
+			expectedRulesForRuler1: allRules,
 		},
 
 		"shuffle sharding, multiple rulers, shard size 1, distributed users": {
@@ -419,7 +410,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1, user1Group2},
 			},
 		},
@@ -434,7 +425,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler3, ruler3Addr, "", []uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1},
 			},
 		},
@@ -449,7 +440,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler3, ruler3Addr, "", []uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1, user1Group2},
 			},
 		},
@@ -464,7 +455,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler3, ruler3Addr, "", []uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1},
 				user2: {user2Group1},
 			},
@@ -480,7 +471,7 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler3, ruler3Addr, "", []uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
 			},
 
-			expectedRulesForFuler1: map[string]rules.RuleGroupList{
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{
 				user1: {user1Group1, user1Group2},
 			},
 		},
@@ -534,7 +525,7 @@ func TestSharding(t *testing.T) {
 
 			loaded, err := r.loadRules(context.Background())
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedRulesForFuler1, loaded)
+			require.Equal(t, tc.expectedRulesForRuler1, loaded)
 		})
 	}
 }

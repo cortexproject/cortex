@@ -162,6 +162,9 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	case BlocksRead:
 		healthy = i.State == ACTIVE
+
+	case Ruler:
+		healthy = i.State == ACTIVE
 	}
 
 	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout

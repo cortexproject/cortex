@@ -203,7 +203,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		limits:           limits,
 		chunkStore:       chunkStore,
 		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		flushRateLimiter: rate.NewLimiter(minFlushRate, 1),
+		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
 		usersMetadata:    map[string]*userMetricsMetadata{},
 		registerer:       registerer,
 	}

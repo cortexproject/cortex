@@ -20,8 +20,8 @@ const (
 	// Backoff for retrying 'immediate' flushes. Only counts for queue
 	// position, not wallclock time.
 	flushBackoff = 1 * time.Second
-	// Slowest per-second we will rate-limit flush calls to the chunk store
-	minFlushRate = 10
+	// Lower bound on flushes per check period for rate-limiter
+	minFlushes = 100
 )
 
 // Flush triggers a flush of all the chunks and closes the flush queues.
@@ -111,8 +111,8 @@ func (i *Ingester) setFlushRate() {
 	const fudge = 1.05 // aim to finish a little bit before the end of the period
 	flushesPerSecond := float64(totalQueueLength) / i.cfg.FlushCheckPeriod.Seconds() * fudge
 	// Avoid going very slowly with tiny queues
-	if flushesPerSecond < minFlushRate {
-		flushesPerSecond = minFlushRate
+	if flushesPerSecond*i.cfg.FlushCheckPeriod.Seconds() < minFlushes {
+		flushesPerSecond = minFlushes / i.cfg.FlushCheckPeriod.Seconds()
 	}
 	level.Debug(util.Logger).Log("msg", "computed flush rate", "rate", flushesPerSecond)
 	i.flushRateLimiter.SetLimit(rate.Limit(flushesPerSecond))

@@ -463,7 +463,7 @@ func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *cortex_tsd
 			return nil
 		}
 
-		level.Warn(planLog).Log("msg", "failed to upload block, will retry", "err", err)
+		level.Warn(planLog).Log("msg", "failed to upload block", "err", err)
 		boff.Wait()
 	}
 

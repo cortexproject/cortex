@@ -22,7 +22,7 @@ type HTTPConfig struct {
 func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The time an idle connection will remain idle before closing.")
 	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 2*time.Minute, "The amount of time the client will wait for a servers response headers.")
-	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "If enabled, the client will accept any certificate and hostname.")
+	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "If the client connects to S3 via HTTPS and this option is enabled, the client will accept any certificate and hostname.")
 }
 
 // Config holds the config options for an S3 backend
@@ -33,7 +33,7 @@ type Config struct {
 	AccessKeyID     string         `yaml:"access_key_id"`
 	Insecure        bool           `yaml:"insecure"`
 
-	HTTP HTTPConfig `yaml:"http_config"`
+	HTTP HTTPConfig `yaml:"http"`
 }
 
 // RegisterFlags registers the flags for TSDB s3 storage with the provided prefix

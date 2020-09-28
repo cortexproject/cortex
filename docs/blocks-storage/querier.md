@@ -210,17 +210,17 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    http_config:
-      # If set, the time an idle connection will remain idle before closing.
+    http:
+      # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
-      [idle_conn_timeout: <duration> | default = 0s]
+      [idle_conn_timeout: <duration> | default = 1m30s]
 
-      # If set, it specifies the amount of time the client will wait for a
-      # servers response headers.
+      # The amount of time the client will wait for a servers response headers.
       # CLI flag: -blocks-storage.s3.http.response-header-timeout
-      [response_header_timeout: <duration> | default = 0s]
+      [response_header_timeout: <duration> | default = 2m]
 
-      # If enabled, the client will accept any certificate and hostname.
+      # If the client connects to S3 via HTTPS and this option is enabled, the
+      # client will accept any certificate and hostname.
       # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 

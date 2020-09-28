@@ -120,7 +120,7 @@ func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	defer m.mtx.Unlock()
 
 	var result []string
-	for u, _ := range m.rules {
+	for u := range m.rules {
 		result = append(result, u)
 	}
 	return result, nil

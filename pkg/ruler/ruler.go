@@ -490,7 +490,7 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
-	for i := 0; i < loadRulesConcurrency; i++ {
+	for i := 0; i < concurrency; i++ {
 		g.Go(func() error {
 			for userID := range userCh {
 				groups, err := r.store.LoadRuleGroupsForUserAndNamespace(gctx, userID, "")

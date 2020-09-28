@@ -129,11 +129,12 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	if update {
+	manager, exists := r.userManagers[user]
+	if !exists || update {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		manager, exists := r.userManagers[user]
 		if !exists {
+			level.Debug(r.logger).Log("msg", "creating rule manager for user", "user", user)
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
 				r.lastReloadSuccessful.WithLabelValues(user).Set(0)

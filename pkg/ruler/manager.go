@@ -110,6 +110,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
+			r.userManagerMetrics.DeleteUserRegistry(userID)
 			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
 		}
 	}

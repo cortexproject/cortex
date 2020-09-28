@@ -99,8 +99,17 @@ func NewManagerMetrics() *ManagerMetrics {
 // AddUserRegistry adds a Prometheus registry to the struct
 func (m *ManagerMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
 	m.regsMu.Lock()
+	defer m.regsMu.Unlock()
+
 	m.regs[user] = reg
-	m.regsMu.Unlock()
+}
+
+// DeleteUserRegistry removes user-specific Prometheus registry.
+func (m *ManagerMetrics) DeleteUserRegistry(user string) {
+	m.regsMu.Lock()
+	defer m.regsMu.Unlock()
+
+	delete(m.regs, user)
 }
 
 // Registries returns a map of prometheus registries managed by the struct

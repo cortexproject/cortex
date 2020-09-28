@@ -432,6 +432,7 @@ func (r *Ruler) run(ctx context.Context) error {
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) {
+	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 
 	configs, err := r.loadRules(ctx)

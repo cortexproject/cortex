@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
-func TestClient_ListAllRuleGroups(t *testing.T) {
+func TestClient_LoadAllRuleGroups(t *testing.T) {
 	user1 := "user"
 	user2 := "second-user"
 

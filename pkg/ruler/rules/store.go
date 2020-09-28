@@ -81,7 +81,7 @@ func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, err
 }
 
-// ListAllRuleGroups implements RuleStore
+// LoadAllRuleGroups implements RuleStore
 func (c *ConfigRuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error) {
 	configs, err := c.configClient.GetRules(ctx, c.since)
 

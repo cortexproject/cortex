@@ -92,7 +92,7 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// ListAllRuleGroups returns all the active rule groups. Rules for each group are fetched.
+// LoadAllRuleGroups implements rules.RuleStore.
 func (o *RuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	// No delimiter to get *all* rule groups for all users and namespaces.
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""), "")

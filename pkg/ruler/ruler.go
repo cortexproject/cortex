@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -21,6 +22,7 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -47,6 +49,8 @@ const (
 	// Supported sharding strategies.
 	ShardingStrategyDefault = "default"
 	ShardingStrategyShuffle = "shuffle-sharding"
+
+	loadRulesConcurrency = 10
 )
 
 // Config is the configuration for the recording rules server.
@@ -467,20 +471,48 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 		}
 	}
 
-	result := map[string]rules.RuleGroupList{}
-	for userID, subring := range userRings {
-		groups, err := r.store.LoadRuleGroupsForUser(ctx, userID)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
-		}
-
-		filtered := filterRuleGroups(userID, groups, subring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
-		if len(filtered) > 0 {
-			result[userID] = filtered
-		}
+	if len(userRings) == 0 {
+		return nil, nil
 	}
 
-	return result, nil
+	userCh := make(chan string, len(userRings))
+	for u := range userRings {
+		userCh <- u
+	}
+	close(userCh)
+
+	mu := sync.Mutex{}
+	result := map[string]rules.RuleGroupList{}
+
+	concurrency := loadRulesConcurrency
+	if len(userRings) < concurrency {
+		concurrency = len(userRings)
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	for i := 0; i < loadRulesConcurrency; i++ {
+		g.Go(func() error {
+			for userID := range userCh {
+				groups, err := r.store.LoadRuleGroupsForUser(gctx, userID)
+				if err != nil {
+					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
+				}
+
+				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				if len(filtered) == 0 {
+					continue
+				}
+
+				mu.Lock()
+				result[userID] = filtered
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	err = g.Wait()
+	return result, err
 }
 
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,

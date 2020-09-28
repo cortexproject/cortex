@@ -413,7 +413,9 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	if b.cfg.UploadBlock {
 		userBucket := cortex_tsdb.NewUserBucketClient(userID, b.bucketClient)
-		if err := block.Upload(ctx, planLog, userBucket, blockDir); err != nil {
+
+		err := uploadBlock(ctx, planLog, userBucket, blockDir)
+		if err != nil {
 			return errors.Wrap(err, "uploading block")
 		}
 
@@ -446,6 +448,26 @@ func (b *Builder) processPlanFile(ctx context.Context, planFile, planBaseName, l
 
 	// All OK
 	return nil
+}
+
+func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *cortex_tsdb.UserBucketClient, blockDir string) error {
+	boff := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 5 * time.Second,
+		MaxRetries: 5,
+	})
+
+	for boff.Ongoing() {
+		err := block.Upload(ctx, planLog, userBucket, blockDir)
+		if err == nil {
+			return nil
+		}
+
+		level.Warn(planLog).Log("msg", "failed to upload block", "err", err)
+		boff.Wait()
+	}
+
+	return boff.Err()
 }
 
 func downloadPlanFile(ctx context.Context, bucket objstore.Bucket, planFile string, localPlanFile string) (int64, error) {

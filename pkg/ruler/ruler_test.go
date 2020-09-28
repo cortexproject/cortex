@@ -394,10 +394,24 @@ func TestSharding(t *testing.T) {
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
-				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{0}, ring.ACTIVE)
+				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}, ring.ACTIVE)
 			},
 
 			expectedRulesForRuler1: allRules,
+		},
+
+		// Same test as previous one, but with shard size=2. Second ruler gets all the rules.
+		"shuffle sharding, multiple rulers, shard size 2": {
+			sharding:         true,
+			shardingStrategy: ShardingStrategyShuffle,
+			shuffleShardSize: 2,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}, ring.ACTIVE)
+				desc.AddIngester(ruler2, ruler2Addr, "", []uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}, ring.ACTIVE)
+			},
+
+			expectedRulesForRuler1: map[string]rules.RuleGroupList{},
 		},
 
 		"shuffle sharding, multiple rulers, shard size 1, distributed users": {

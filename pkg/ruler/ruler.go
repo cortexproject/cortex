@@ -51,6 +51,10 @@ const (
 	ShardingStrategyShuffle = "shuffle-sharding"
 
 	loadRulesConcurrency = 10
+
+	rulerSyncReasonInitial    = "initial"
+	rulerSyncReasonPeriodic   = "periodic"
+	rulerSyncReasonRingChange = "ring-change"
 )
 
 // Config is the configuration for the recording rules server.
@@ -99,6 +103,8 @@ type Config struct {
 	FlushCheckPeriod time.Duration `yaml:"flush_period"`
 
 	EnableAPI bool `yaml:"enable_api"`
+
+	RingCheckPeriod time.Duration `yaml:"-"`
 }
 
 // Validate config and returns error on failure
@@ -150,6 +156,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
+
+	cfg.RingCheckPeriod = 5 * time.Second
 }
 
 // MultiTenantManager is the interface of interaction with a Manager that is tenant aware.
@@ -203,6 +211,7 @@ type Ruler struct {
 	limits      RulesLimits
 
 	ringCheckErrors prometheus.Counter
+	rulerSync       *prometheus.CounterVec
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -219,10 +228,14 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		limits:   limits,
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "ruler_ring_check_errors_total",
-			Help:      "Number of errors that have occurred when checking the ring for ownership",
+			Name: "cortex_ruler_ring_check_errors_total",
+			Help: "Number of errors that have occurred when checking the ring for ownership",
 		}),
+
+		rulerSync: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_sync_rules_total",
+			Help: "Total number of times the ruler sync operation triggered.",
+		}, []string{"reason"}),
 	}
 
 	if cfg.EnableSharding {
@@ -388,18 +401,39 @@ func (r *Ruler) run(ctx context.Context) error {
 	tick := time.NewTicker(r.cfg.PollInterval)
 	defer tick.Stop()
 
-	r.syncRules(ctx)
+	var ringTickerChan <-chan time.Time
+	var ringLastState ring.ReplicationSet
+
+	if r.cfg.EnableSharding {
+		ringLastState, _ = r.ring.GetAll(ring.Ruler)
+		ringTicker := time.NewTicker(util.DurationWithJitter(r.cfg.RingCheckPeriod, 0.2))
+		defer ringTicker.Stop()
+		ringTickerChan = ringTicker.C
+	}
+
+	r.syncRules(ctx, rulerSyncReasonInitial)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
-			r.syncRules(ctx)
+			r.syncRules(ctx, rulerSyncReasonPeriodic)
+		case <-ringTickerChan:
+			// We ignore the error because in case of error it will return an empty
+			// replication set which we use to compare with the previous state.
+			currRingState, _ := r.ring.GetAll(ring.Ruler)
+
+			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
+				ringLastState = currRingState
+				r.syncRules(ctx, rulerSyncReasonRingChange)
+			}
 		}
 	}
 }
 
-func (r *Ruler) syncRules(ctx context.Context) {
+func (r *Ruler) syncRules(ctx context.Context, reason string) {
+	r.rulerSync.WithLabelValues(reason).Inc()
+
 	configs, err := r.loadRules(ctx)
 
 	if err != nil {

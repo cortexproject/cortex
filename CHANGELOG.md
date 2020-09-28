@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+* [CHANGE] Update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
+  - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
+  - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.
 * [CHANGE] Improved shuffle sharding support in the write path. This work introduced some config changes: #3090
   * Introduced `-distributor.sharding-strategy` CLI flag (and its respective `sharding_strategy` YAML config option) to explicitly specify which sharding strategy should be used in the write path
   * `-experimental.distributor.user-subring-size` flag renamed to `-distributor.ingestion-tenant-shard-size`

@@ -20,8 +20,8 @@ type HTTPConfig struct {
 
 // RegisterFlagsWithPrefix registers the flags for TSDB s3 storage with the provided prefix
 func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 0, "If set, the time an idle connection will remain idle before closing.")
-	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If set, it specifies the amount of time the client will wait for a servers response headers.")
+	f.DurationVar(&cfg.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The time an idle connection will remain idle before closing.")
+	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 2*time.Minute, "The amount of time the client will wait for a servers response headers.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "If enabled, the client will accept any certificate and hostname.")
 }
 

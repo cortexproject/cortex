@@ -136,8 +136,7 @@ func (c *ConfigRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context,
 
 	list := r[userID]
 	for ix := 0; ix < len(list); {
-		g := list[ix]
-		if g.Namespace != namespace {
+		if list[ix].GetNamespace() != namespace {
 			list = append(list[:ix], list[ix+1:]...)
 		} else {
 			ix++

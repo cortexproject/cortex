@@ -113,6 +113,12 @@ type IngesterDesc struct {
 	// Unix timestamp (with seconds precision) of when the instance has been registered
 	// to the ring. This field has not been called "joined_timestamp" intentionally, in order
 	// to not introduce any misunderstanding with the instance's "joining" state.
+	//
+	// This timestamp should be 0 if registration time is unknown. It's important to note that
+	// when an instance is already registered in the ring with a value of 0 it's NOT safe to
+	// update the timestamp to "now" because it would break the contract, given the instance
+	// was already registered before "now". If unknown (0), it should be left as is, and the
+	// Cortex code will properly deal with that.
 	RegisteredTimestamp int64 `protobuf:"varint,8,opt,name=registered_timestamp,json=registeredTimestamp,proto3" json:"registered_timestamp,omitempty"`
 }
 

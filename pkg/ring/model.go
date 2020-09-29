@@ -136,7 +136,7 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
 // or a zero value if unknown.
 func (i *IngesterDesc) GetRegisteredAt() time.Time {
-	if i == nil {
+	if i == nil || i.RegisteredTimestamp == 0 {
 		return time.Time{}
 	}
 
@@ -450,12 +450,12 @@ func (d *Desc) getTokensByZone() map[string][]TokenDesc {
 type CompareResult int
 
 const (
-	Equal                          CompareResult = iota // Both rings contain same exact instances.
-	EqualUnlessStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).
-	Different                                           // Rings have different set of instances, or their information don't match.
+	Equal                       CompareResult = iota // Both rings contain same exact instances.
+	EqualButStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).
+	Different                                        // Rings have different set of instances, or their information don't match.
 )
 
-// RingCompare compares this ring against another one and returns one of Equal, EqualUnlessStatesAndTimestamps or Different.
+// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps or Different.
 func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {
@@ -516,7 +516,7 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if equalStatesAndTimestamps {
 		return Equal
 	}
-	return EqualUnlessStatesAndTimestamps
+	return EqualButStatesAndTimestamps
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

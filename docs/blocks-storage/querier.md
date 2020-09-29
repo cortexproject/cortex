@@ -173,6 +173,14 @@ querier:
   # Default value 0 means secondary store is always queried.
   # CLI flag: -querier.use-second-store-before-time
   [use_second_store_before_time: <time> | default = 0]
+
+  # When distributor's sharding strategy is shuffle-sharding and this setting is
+  # > 0, queriers fetch in-memory series from the minimum set of required
+  # ingesters, selecting only ingesters which may have received series since
+  # 'now - lookback period'. If this setting is 0, queriers always query all
+  # ingesters.
+  # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
+  [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 ```
 
 ### `blocks_storage_config`

@@ -33,7 +33,7 @@ type DefaultMultiTenantManager struct {
 	// Structs for holding per-user Prometheus rules Managers
 	// and a corresponding metrics struct
 	userManagerMtx     sync.Mutex
-	userManagers       map[string]*promRules.Manager
+	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
@@ -65,7 +65,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		managerFactory:     managerFactory,
 		notifiers:          map[string]*rulerNotifier{},
 		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]*promRules.Manager{},
+		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
@@ -161,7 +161,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
-func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID string) (*promRules.Manager, error) {
+func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID string) (RulesManager, error) {
 	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
@@ -241,7 +241,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	for user, manager := range r.userManagers {
 		level.Debug(r.logger).Log("msg", "shutting down user  manager", "user", user)
 		wg.Add(1)
-		go func(manager *promRules.Manager, user string) {
+		go func(manager RulesManager, user string) {
 			manager.Stop()
 			wg.Done()
 			level.Debug(r.logger).Log("msg", "user manager shut down", "user", user)

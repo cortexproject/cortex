@@ -16,10 +16,19 @@ message IngesterDesc {
 	reserved 4, 5; // old, deprecated fields
 
 	string addr = 1;
-	int64 timestamp = 2; // unix timestamp
+
+	// Unix timestamp (with seconds precision) of the last heartbeat sent
+	// by this instance.
+	int64 timestamp = 2;
+
 	IngesterState state = 3;
 	repeated uint32 tokens = 6;
 	string zone = 7;
+
+	// Unix timestamp (with seconds precision) of when the instance has been registered
+	// to the ring. This field has not been called "joined_timestamp" intentionally, in order
+	// to not introduce any misunderstanding with the instance's "joining" state.
+	int64 registered_timestamp = 8;
 }
 
 enum IngesterState {

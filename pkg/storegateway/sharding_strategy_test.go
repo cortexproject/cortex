@@ -34,6 +34,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 	block3Hash := cortex_tsdb.HashBlockID(block3)
 	block4Hash := cortex_tsdb.HashBlockID(block4)
 
+	registeredAt := time.Now()
+
 	tests := map[string]struct {
 		replicationFactor    int
 		zoneAwarenessEnabled bool
@@ -43,7 +45,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"one ACTIVE instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block2, block3, block4},
@@ -53,8 +55,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"two ACTIVE instances in the ring with replication factor = 1": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block3},
@@ -64,7 +66,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"one ACTIVE instance in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block2, block3, block4},
@@ -74,8 +76,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"two ACTIVE instances in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block2, block3, block4},
@@ -85,9 +87,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"multiple ACTIVE instances in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block3 /* replicated: */, block2, block4},
@@ -99,9 +101,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			replicationFactor:    2,
 			zoneAwarenessEnabled: true,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "zone-a", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "zone-b", []uint32{block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "zone-a", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "zone-a", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "zone-b", []uint32{block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block3, block4},
@@ -112,8 +114,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"one unhealthy instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -132,8 +134,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"one unhealthy instance in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -151,7 +153,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"two unhealthy instances in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-2"] = ring.IngesterDesc{
 					Addr:      "127.0.0.2",
@@ -178,8 +180,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"two unhealthy instances in the ring with replication factor = 3": {
 			replicationFactor: 3,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -207,9 +209,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"LEAVING instance in the ring should continue to keep its shard blocks but they should also be replicated to another instance": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block3 /* replicated: */, block4},
@@ -220,9 +222,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		"JOINING instance in the ring should get its shard blocks but they should also be replicated to another instance": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.JOINING)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.JOINING, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
 				"127.0.0.1": {block1, block3 /* replicated: */, block4},
@@ -308,6 +310,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 	block4Hash := cortex_tsdb.HashBlockID(block4)
 
 	userID := "user-A"
+	registeredAt := time.Now()
 
 	type usersExpectation struct {
 		instanceID   string
@@ -332,7 +335,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 1},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -347,7 +350,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 1},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -362,7 +365,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -377,8 +380,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 1},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -393,8 +396,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -409,8 +412,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 2,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 1},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -425,8 +428,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 2,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -441,9 +444,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 2,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 3},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -460,8 +463,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 3},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -486,8 +489,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 2,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 3},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -511,8 +514,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 2,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block4Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
 				r.Ingesters["instance-3"] = ring.IngesterDesc{
 					Addr:      "127.0.0.3",
@@ -536,9 +539,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -555,9 +558,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.JOINING)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.JOINING, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
@@ -574,8 +577,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 0},
 			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE)
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 			},
 			expectedUsers: []usersExpectation{
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},

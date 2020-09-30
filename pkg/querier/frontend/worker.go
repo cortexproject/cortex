@@ -43,6 +43,7 @@ func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
 
+// Validate the WorkerConfig.
 func (cfg *WorkerConfig) Validate(log log.Logger) error {
 	return cfg.GRPCClientConfig.Validate(log)
 }

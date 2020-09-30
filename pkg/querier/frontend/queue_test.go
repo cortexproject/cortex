@@ -51,9 +51,9 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	for i := 0; i < config.MaxOutstandingPerTenant; i++ {
 		var err error
 		if i%5 == 0 {
-			err = f.queueRequest(ctx, testReq(ctx))
+			_, err = f.Enqueue(ctx, testReq(ctx))
 		} else {
-			err = f.queueRequest(ctx, testReq(expired))
+			_, err = f.Enqueue(ctx, testReq(expired))
 		}
 
 		require.Nil(t, err)
@@ -73,7 +73,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 
 	// add one request to a second tenant queue
 	ctx2 := user.InjectOrgID(context.Background(), userID2)
-	err = f.queueRequest(ctx2, testReq(ctx2))
+	_, err = f.Enqueue(ctx2, testReq(ctx2))
 	require.Nil(t, err)
 
 	// there should be no more unexpired requests in queue until the second tenant enqueues one.
@@ -104,7 +104,7 @@ func TestRoundRobinQueues(t *testing.T) {
 		userID := fmt.Sprint(i / 10)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
-		err = f.queueRequest(ctx, testReq(ctx))
+		_, err = f.Enqueue(ctx, testReq(ctx))
 		require.NoError(t, err)
 	}
 
@@ -150,7 +150,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 				userID := strconv.Itoa(j)
 				ctx := user.InjectOrgID(context.Background(), userID)
 
-				err = f.queueRequest(ctx, testReq(ctx))
+				_, err = f.Enqueue(ctx, testReq(ctx))
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -222,7 +222,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
-				err := frontends[n].queueRequest(contexts[j], requests[j])
+				_, err := frontends[n].Enqueue(contexts[j], requests[j])
 				if err != nil {
 					b.Fatal(err)
 				}

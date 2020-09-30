@@ -53,8 +53,10 @@ func (Type) EnumDescriptor() ([]byte, []int) {
 }
 
 type FrontendToClient struct {
-	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
-	Type        Type                  `protobuf:"varint,2,opt,name=type,proto3,enum=frontend.Type" json:"type,omitempty"`
+	HttpRequest     *httpgrpc.HTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	Type            Type                  `protobuf:"varint,2,opt,name=type,proto3,enum=frontend.Type" json:"type,omitempty"`
+	Id              int64                 `protobuf:"varint,3,opt,name=id,proto3" json:"id,omitempty"`
+	FrontendAddress string                `protobuf:"bytes,4,opt,name=frontendAddress,proto3" json:"frontendAddress,omitempty"`
 }
 
 func (m *FrontendToClient) Reset()      { *m = FrontendToClient{} }
@@ -103,9 +105,24 @@ func (m *FrontendToClient) GetType() Type {
 	return HTTP_REQUEST
 }
 
+func (m *FrontendToClient) GetId() int64 {
+	if m != nil {
+		return m.Id
+	}
+	return 0
+}
+
+func (m *FrontendToClient) GetFrontendAddress() string {
+	if m != nil {
+		return m.FrontendAddress
+	}
+	return ""
+}
+
 type ClientToFrontend struct {
 	HttpResponse *httpgrpc.HTTPResponse `protobuf:"bytes,1,opt,name=httpResponse,proto3" json:"httpResponse,omitempty"`
 	ClientID     string                 `protobuf:"bytes,2,opt,name=clientID,proto3" json:"clientID,omitempty"`
+	Id           int64                  `protobuf:"varint,3,opt,name=id,proto3" json:"id,omitempty"`
 }
 
 func (m *ClientToFrontend) Reset()      { *m = ClientToFrontend{} }
@@ -154,39 +171,276 @@ func (m *ClientToFrontend) GetClientID() string {
 	return ""
 }
 
+func (m *ClientToFrontend) GetId() int64 {
+	if m != nil {
+		return m.Id
+	}
+	return 0
+}
+
+type EnqueueRequest struct {
+	Id              int64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	HttpRequest     *httpgrpc.HTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	Type            Type                  `protobuf:"varint,3,opt,name=type,proto3,enum=frontend.Type" json:"type,omitempty"`
+	FrontendAddress string                `protobuf:"bytes,4,opt,name=frontendAddress,proto3" json:"frontendAddress,omitempty"`
+}
+
+func (m *EnqueueRequest) Reset()      { *m = EnqueueRequest{} }
+func (*EnqueueRequest) ProtoMessage() {}
+func (*EnqueueRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{2}
+}
+func (m *EnqueueRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *EnqueueRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_EnqueueRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *EnqueueRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_EnqueueRequest.Merge(m, src)
+}
+func (m *EnqueueRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *EnqueueRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_EnqueueRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_EnqueueRequest proto.InternalMessageInfo
+
+func (m *EnqueueRequest) GetId() int64 {
+	if m != nil {
+		return m.Id
+	}
+	return 0
+}
+
+func (m *EnqueueRequest) GetHttpRequest() *httpgrpc.HTTPRequest {
+	if m != nil {
+		return m.HttpRequest
+	}
+	return nil
+}
+
+func (m *EnqueueRequest) GetType() Type {
+	if m != nil {
+		return m.Type
+	}
+	return HTTP_REQUEST
+}
+
+func (m *EnqueueRequest) GetFrontendAddress() string {
+	if m != nil {
+		return m.FrontendAddress
+	}
+	return ""
+}
+
+type EnqueueResponse struct {
+}
+
+func (m *EnqueueResponse) Reset()      { *m = EnqueueResponse{} }
+func (*EnqueueResponse) ProtoMessage() {}
+func (*EnqueueResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{3}
+}
+func (m *EnqueueResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *EnqueueResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_EnqueueResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *EnqueueResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_EnqueueResponse.Merge(m, src)
+}
+func (m *EnqueueResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *EnqueueResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_EnqueueResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_EnqueueResponse proto.InternalMessageInfo
+
+type CancelRequest struct {
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+}
+
+func (m *CancelRequest) Reset()      { *m = CancelRequest{} }
+func (*CancelRequest) ProtoMessage() {}
+func (*CancelRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{4}
+}
+func (m *CancelRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CancelRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CancelRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CancelRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CancelRequest.Merge(m, src)
+}
+func (m *CancelRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *CancelRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CancelRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CancelRequest proto.InternalMessageInfo
+
+func (m *CancelRequest) GetId() int64 {
+	if m != nil {
+		return m.Id
+	}
+	return 0
+}
+
+type CancelResponse struct {
+}
+
+func (m *CancelResponse) Reset()      { *m = CancelResponse{} }
+func (*CancelResponse) ProtoMessage() {}
+func (*CancelResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{5}
+}
+func (m *CancelResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CancelResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CancelResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CancelResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CancelResponse.Merge(m, src)
+}
+func (m *CancelResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *CancelResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CancelResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CancelResponse proto.InternalMessageInfo
+
+type ResponseResponse struct {
+}
+
+func (m *ResponseResponse) Reset()      { *m = ResponseResponse{} }
+func (*ResponseResponse) ProtoMessage() {}
+func (*ResponseResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eca3873955a29cfe, []int{6}
+}
+func (m *ResponseResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ResponseResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ResponseResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ResponseResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ResponseResponse.Merge(m, src)
+}
+func (m *ResponseResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *ResponseResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ResponseResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ResponseResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterEnum("frontend.Type", Type_name, Type_value)
 	proto.RegisterType((*FrontendToClient)(nil), "frontend.FrontendToClient")
 	proto.RegisterType((*ClientToFrontend)(nil), "frontend.ClientToFrontend")
+	proto.RegisterType((*EnqueueRequest)(nil), "frontend.EnqueueRequest")
+	proto.RegisterType((*EnqueueResponse)(nil), "frontend.EnqueueResponse")
+	proto.RegisterType((*CancelRequest)(nil), "frontend.CancelRequest")
+	proto.RegisterType((*CancelResponse)(nil), "frontend.CancelResponse")
+	proto.RegisterType((*ResponseResponse)(nil), "frontend.ResponseResponse")
 }
 
 func init() { proto.RegisterFile("frontend.proto", fileDescriptor_eca3873955a29cfe) }
 
 var fileDescriptor_eca3873955a29cfe = []byte{
-	// 362 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x91, 0xb1, 0x4e, 0x2a, 0x41,
-	0x14, 0x86, 0x67, 0x6e, 0x08, 0x97, 0x3b, 0x10, 0xb2, 0x99, 0xe4, 0xde, 0x90, 0x2d, 0x26, 0x64,
-	0x73, 0x0b, 0x62, 0xe2, 0xae, 0x41, 0x13, 0x13, 0x0b, 0x0b, 0x05, 0x91, 0x0e, 0x97, 0xb1, 0xb1,
-	0x21, 0xb2, 0x0e, 0x0b, 0x2a, 0x7b, 0xd6, 0xdd, 0x41, 0x42, 0xe7, 0x23, 0xf8, 0x18, 0x3e, 0x8a,
-	0x25, 0x25, 0xa5, 0x0c, 0x8d, 0x25, 0x8f, 0x60, 0x98, 0x85, 0x15, 0xe9, 0xce, 0x9f, 0xff, 0x3f,
-	0xe7, 0x3b, 0x33, 0x87, 0x14, 0x7b, 0x11, 0x04, 0x52, 0x04, 0x77, 0x76, 0x18, 0x81, 0x04, 0x9a,
-	0xdb, 0x68, 0x73, 0xdf, 0x1f, 0xc8, 0xfe, 0xa8, 0x6b, 0x7b, 0x30, 0x74, 0x7c, 0xf0, 0xc1, 0xd1,
-	0x81, 0xee, 0xa8, 0xa7, 0x95, 0x16, 0xba, 0x4a, 0x1a, 0xcd, 0xa3, 0xad, 0xf8, 0x58, 0xdc, 0x3e,
-	0x8b, 0x31, 0x44, 0x0f, 0xb1, 0xe3, 0xc1, 0x70, 0x08, 0x81, 0xd3, 0x97, 0x32, 0xf4, 0xa3, 0xd0,
-	0x4b, 0x8b, 0xa4, 0xcb, 0x02, 0x62, 0x5c, 0xac, 0x81, 0x1c, 0xce, 0x1f, 0x07, 0x22, 0x90, 0xf4,
-	0x98, 0xe4, 0x57, 0x29, 0x57, 0x3c, 0x8d, 0x44, 0x2c, 0x4b, 0xb8, 0x8c, 0x2b, 0xf9, 0xea, 0x5f,
-	0x3b, 0xed, 0xbc, 0xe4, 0xbc, 0xb5, 0x36, 0xdd, 0xed, 0x24, 0xb5, 0x48, 0x46, 0x4e, 0x42, 0x51,
-	0xfa, 0x55, 0xc6, 0x95, 0x62, 0xb5, 0x68, 0xa7, 0x4f, 0xe3, 0x93, 0x50, 0xb8, 0xda, 0xb3, 0xee,
-	0x89, 0x91, 0x60, 0x38, 0x6c, 0xc0, 0xf4, 0x84, 0x14, 0x92, 0x31, 0x71, 0x08, 0x41, 0x2c, 0xd6,
-	0xc4, 0x7f, 0xbb, 0xc4, 0xc4, 0x75, 0x7f, 0x64, 0xa9, 0x49, 0x72, 0x9e, 0x9e, 0xd7, 0xac, 0x69,
-	0xee, 0x1f, 0x37, 0xd5, 0x7b, 0xff, 0x49, 0x66, 0x45, 0xa6, 0x06, 0x29, 0xac, 0x26, 0x74, 0xdc,
-	0xfa, 0xd5, 0x75, 0xbd, 0xcd, 0x0d, 0x44, 0x09, 0xc9, 0x36, 0xea, 0xbc, 0xd3, 0xac, 0x19, 0xb8,
-	0xda, 0x26, 0xb9, 0x74, 0x93, 0x06, 0xf9, 0xdd, 0x8a, 0xc0, 0x13, 0x71, 0x4c, 0xcd, 0xef, 0xf5,
-	0x77, 0x17, 0x36, 0xb7, 0xbc, 0xdd, 0xdf, 0xb3, 0x50, 0x05, 0x1f, 0xe0, 0xb3, 0xd3, 0xe9, 0x9c,
-	0xa1, 0xd9, 0x9c, 0xa1, 0xe5, 0x9c, 0xe1, 0x17, 0xc5, 0xf0, 0x9b, 0x62, 0xf8, 0x5d, 0x31, 0x3c,
-	0x55, 0x0c, 0x7f, 0x28, 0x86, 0x3f, 0x15, 0x43, 0x4b, 0xc5, 0xf0, 0xeb, 0x82, 0xa1, 0xe9, 0x82,
-	0xa1, 0xd9, 0x82, 0xa1, 0x9b, 0xf4, 0xf8, 0xdd, 0xac, 0x3e, 0xcf, 0xe1, 0x57, 0x00, 0x00, 0x00,
-	0xff, 0xff, 0x14, 0x4d, 0x19, 0x1d, 0x1f, 0x02, 0x00, 0x00,
+	// 527 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0x3d, 0x6f, 0xd3, 0x50,
+	0x14, 0xf5, 0x4d, 0xa2, 0x34, 0xb9, 0x2d, 0xae, 0x79, 0x12, 0x60, 0x3c, 0x3c, 0x22, 0x8b, 0xc1,
+	0x42, 0x22, 0x41, 0x06, 0x09, 0x09, 0x09, 0x04, 0x34, 0xa1, 0x74, 0x2b, 0x8e, 0x61, 0x60, 0xa9,
+	0x1a, 0xfb, 0x35, 0x89, 0x48, 0xfc, 0x5c, 0x7f, 0x50, 0x95, 0x89, 0x1f, 0xc0, 0xc0, 0xbf, 0x00,
+	0xfe, 0x09, 0x63, 0xc6, 0x8e, 0xc4, 0x59, 0x18, 0xfb, 0x13, 0x50, 0xfc, 0xf1, 0x92, 0x9a, 0x0f,
+	0x95, 0xc9, 0xef, 0xfa, 0x9c, 0x7b, 0x7d, 0xce, 0xb9, 0xb6, 0x51, 0x3e, 0x0a, 0xb8, 0x17, 0x31,
+	0xcf, 0x6d, 0xfb, 0x01, 0x8f, 0x38, 0x69, 0x14, 0xb5, 0x76, 0x77, 0x38, 0x8e, 0x46, 0xf1, 0xa0,
+	0xed, 0xf0, 0x69, 0x67, 0xc8, 0x87, 0xbc, 0x93, 0x12, 0x06, 0xf1, 0x51, 0x5a, 0xa5, 0x45, 0x7a,
+	0xca, 0x1a, 0xb5, 0x07, 0x6b, 0xf4, 0x13, 0x76, 0xf8, 0x9e, 0x9d, 0xf0, 0xe0, 0x5d, 0xd8, 0x71,
+	0xf8, 0x74, 0xca, 0xbd, 0xce, 0x28, 0x8a, 0xfc, 0x61, 0xe0, 0x3b, 0xe2, 0x90, 0x75, 0xe9, 0xdf,
+	0x00, 0x95, 0x17, 0xf9, 0x13, 0x6d, 0xbe, 0x33, 0x19, 0x33, 0x2f, 0x22, 0x0f, 0x71, 0x73, 0x49,
+	0xb3, 0xd8, 0x71, 0xcc, 0xc2, 0x48, 0x85, 0x16, 0x18, 0x9b, 0xe6, 0xb5, 0xb6, 0x68, 0x7d, 0x69,
+	0xdb, 0xfb, 0x39, 0x68, 0xad, 0x33, 0x89, 0x8e, 0xb5, 0xe8, 0xd4, 0x67, 0x6a, 0xa5, 0x05, 0x86,
+	0x6c, 0xca, 0x6d, 0xe1, 0xcd, 0x3e, 0xf5, 0x99, 0x95, 0x62, 0x44, 0xc6, 0xca, 0xd8, 0x55, 0xab,
+	0x2d, 0x30, 0xaa, 0x56, 0x65, 0xec, 0x12, 0x03, 0xb7, 0x0b, 0xda, 0x33, 0xd7, 0x0d, 0x58, 0x18,
+	0xaa, 0xb5, 0x16, 0x18, 0x4d, 0xab, 0x7c, 0x5b, 0xff, 0x80, 0x4a, 0x26, 0xd0, 0xe6, 0x85, 0x64,
+	0xf2, 0x08, 0xb7, 0x32, 0x01, 0xa1, 0xcf, 0xbd, 0x90, 0xe5, 0x5a, 0xaf, 0x97, 0xb5, 0x66, 0xa8,
+	0x75, 0x81, 0x4b, 0x34, 0x6c, 0x38, 0xe9, 0xbc, 0xbd, 0x6e, 0xaa, 0xb8, 0x69, 0x89, 0xba, 0xac,
+	0x52, 0xff, 0x02, 0x28, 0xf7, 0xbc, 0xe3, 0x98, 0xc5, 0xac, 0x30, 0x9b, 0x51, 0x40, 0x18, 0x29,
+	0xa5, 0x56, 0xf9, 0xef, 0xd4, 0xaa, 0xff, 0x48, 0xed, 0xf2, 0x29, 0x5d, 0xc5, 0x6d, 0x21, 0x34,
+	0x33, 0xaa, 0xdf, 0xc2, 0x2b, 0x3b, 0x87, 0x9e, 0xc3, 0x26, 0x7f, 0x91, 0xae, 0x2b, 0x28, 0x17,
+	0x84, 0xbc, 0x85, 0xa0, 0x22, 0x52, 0xcb, 0xaf, 0x77, 0x6e, 0x63, 0x6d, 0xa9, 0x88, 0x28, 0xb8,
+	0xb5, 0xf4, 0x72, 0x60, 0xf5, 0x5e, 0xbd, 0xee, 0xf5, 0x6d, 0x45, 0x22, 0x88, 0xf5, 0xdd, 0x9e,
+	0x7d, 0xb0, 0xd7, 0x55, 0xc0, 0xec, 0x63, 0x43, 0x6c, 0x67, 0x17, 0x37, 0xf6, 0x03, 0xee, 0xb0,
+	0x30, 0x24, 0xda, 0xca, 0x56, 0x79, 0x89, 0xda, 0x1a, 0x56, 0x7e, 0x17, 0x75, 0xc9, 0x80, 0x7b,
+	0x60, 0x5a, 0x88, 0x05, 0xf2, 0xc6, 0x24, 0x5d, 0x6c, 0xac, 0x96, 0x78, 0xb9, 0xb9, 0x65, 0x33,
+	0xba, 0x64, 0x7e, 0x02, 0x6c, 0xf6, 0x9d, 0x11, 0x73, 0xe3, 0x09, 0x0b, 0xc8, 0x53, 0xdc, 0xc8,
+	0x63, 0x23, 0xea, 0xaa, 0xed, 0xe2, 0xca, 0xb5, 0x9b, 0x7f, 0x40, 0x8a, 0x79, 0xe4, 0x31, 0xd6,
+	0xb3, 0x10, 0xc9, 0x8d, 0x35, 0x4d, 0xeb, 0xb9, 0x6b, 0xea, 0xef, 0x40, 0xd1, 0xfe, 0xfc, 0xc9,
+	0x6c, 0x4e, 0xa5, 0xb3, 0x39, 0x95, 0xce, 0xe7, 0x14, 0x3e, 0x26, 0x14, 0xbe, 0x26, 0x14, 0xbe,
+	0x27, 0x14, 0x66, 0x09, 0x85, 0x1f, 0x09, 0x85, 0x9f, 0x09, 0x95, 0xce, 0x13, 0x0a, 0x9f, 0x17,
+	0x54, 0x9a, 0x2d, 0xa8, 0x74, 0xb6, 0xa0, 0xd2, 0x5b, 0xf1, 0xbb, 0x18, 0xd4, 0xd3, 0x0f, 0xfa,
+	0xfe, 0xaf, 0x00, 0x00, 0x00, 0xff, 0xff, 0x34, 0x30, 0x76, 0x86, 0x51, 0x04, 0x00, 0x00,
 }
 
 func (x Type) String() string {
@@ -221,6 +475,12 @@ func (this *FrontendToClient) Equal(that interface{}) bool {
 	if this.Type != that1.Type {
 		return false
 	}
+	if this.Id != that1.Id {
+		return false
+	}
+	if this.FrontendAddress != that1.FrontendAddress {
+		return false
+	}
 	return true
 }
 func (this *ClientToFrontend) Equal(that interface{}) bool {
@@ -248,18 +508,143 @@ func (this *ClientToFrontend) Equal(that interface{}) bool {
 	if this.ClientID != that1.ClientID {
 		return false
 	}
+	if this.Id != that1.Id {
+		return false
+	}
+	return true
+}
+func (this *EnqueueRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*EnqueueRequest)
+	if !ok {
+		that2, ok := that.(EnqueueRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Id != that1.Id {
+		return false
+	}
+	if !this.HttpRequest.Equal(that1.HttpRequest) {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	if this.FrontendAddress != that1.FrontendAddress {
+		return false
+	}
+	return true
+}
+func (this *EnqueueResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*EnqueueResponse)
+	if !ok {
+		that2, ok := that.(EnqueueResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
+func (this *CancelRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CancelRequest)
+	if !ok {
+		that2, ok := that.(CancelRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Id != that1.Id {
+		return false
+	}
+	return true
+}
+func (this *CancelResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CancelResponse)
+	if !ok {
+		that2, ok := that.(CancelResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
+func (this *ResponseResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ResponseResponse)
+	if !ok {
+		that2, ok := that.(ResponseResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
 	return true
 }
 func (this *FrontendToClient) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 8)
 	s = append(s, "&frontend.FrontendToClient{")
 	if this.HttpRequest != nil {
 		s = append(s, "HttpRequest: "+fmt.Sprintf("%#v", this.HttpRequest)+",\n")
 	}
 	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
+	s = append(s, "FrontendAddress: "+fmt.Sprintf("%#v", this.FrontendAddress)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -267,12 +652,65 @@ func (this *ClientToFrontend) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 7)
 	s = append(s, "&frontend.ClientToFrontend{")
 	if this.HttpResponse != nil {
 		s = append(s, "HttpResponse: "+fmt.Sprintf("%#v", this.HttpResponse)+",\n")
 	}
 	s = append(s, "ClientID: "+fmt.Sprintf("%#v", this.ClientID)+",\n")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *EnqueueRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&frontend.EnqueueRequest{")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
+	if this.HttpRequest != nil {
+		s = append(s, "HttpRequest: "+fmt.Sprintf("%#v", this.HttpRequest)+",\n")
+	}
+	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	s = append(s, "FrontendAddress: "+fmt.Sprintf("%#v", this.FrontendAddress)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *EnqueueResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&frontend.EnqueueResponse{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CancelRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&frontend.CancelRequest{")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CancelResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&frontend.CancelResponse{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ResponseResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&frontend.ResponseResponse{")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -297,6 +735,7 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type FrontendClient interface {
+	// Querier <-> Scheduler API; called Frontend for legacy reasons.
 	// After calling this method, client enters a loop, in which it waits for
 	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error)
@@ -343,6 +782,7 @@ func (x *frontendProcessClient) Recv() (*FrontendToClient, error) {
 
 // FrontendServer is the server API for Frontend service.
 type FrontendServer interface {
+	// Querier <-> Scheduler API; called Frontend for legacy reasons.
 	// After calling this method, client enters a loop, in which it waits for
 	// a "FrontendToClient" message and replies with single "ClientToFrontend" message.
 	Process(Frontend_ProcessServer) error
@@ -401,6 +841,190 @@ var _Frontend_serviceDesc = grpc.ServiceDesc{
 	Metadata: "frontend.proto",
 }
 
+// FrontendV2Client is the client API for FrontendV2 service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type FrontendV2Client interface {
+	// Quierier -> Frontend API.
+	Response(ctx context.Context, in *ClientToFrontend, opts ...grpc.CallOption) (*ResponseResponse, error)
+}
+
+type frontendV2Client struct {
+	cc *grpc.ClientConn
+}
+
+func NewFrontendV2Client(cc *grpc.ClientConn) FrontendV2Client {
+	return &frontendV2Client{cc}
+}
+
+func (c *frontendV2Client) Response(ctx context.Context, in *ClientToFrontend, opts ...grpc.CallOption) (*ResponseResponse, error) {
+	out := new(ResponseResponse)
+	err := c.cc.Invoke(ctx, "/frontend.FrontendV2/Response", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// FrontendV2Server is the server API for FrontendV2 service.
+type FrontendV2Server interface {
+	// Quierier -> Frontend API.
+	Response(context.Context, *ClientToFrontend) (*ResponseResponse, error)
+}
+
+// UnimplementedFrontendV2Server can be embedded to have forward compatible implementations.
+type UnimplementedFrontendV2Server struct {
+}
+
+func (*UnimplementedFrontendV2Server) Response(ctx context.Context, req *ClientToFrontend) (*ResponseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Response not implemented")
+}
+
+func RegisterFrontendV2Server(s *grpc.Server, srv FrontendV2Server) {
+	s.RegisterService(&_FrontendV2_serviceDesc, srv)
+}
+
+func _FrontendV2_Response_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClientToFrontend)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FrontendV2Server).Response(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/frontend.FrontendV2/Response",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FrontendV2Server).Response(ctx, req.(*ClientToFrontend))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _FrontendV2_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "frontend.FrontendV2",
+	HandlerType: (*FrontendV2Server)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Response",
+			Handler:    _FrontendV2_Response_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "frontend.proto",
+}
+
+// SchedulerClient is the client API for Scheduler service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type SchedulerClient interface {
+	// Frontend -> Scheduler API.
+	Enqueue(ctx context.Context, in *EnqueueRequest, opts ...grpc.CallOption) (*EnqueueResponse, error)
+	Cancel(ctx context.Context, in *CancelRequest, opts ...grpc.CallOption) (*CancelResponse, error)
+}
+
+type schedulerClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewSchedulerClient(cc *grpc.ClientConn) SchedulerClient {
+	return &schedulerClient{cc}
+}
+
+func (c *schedulerClient) Enqueue(ctx context.Context, in *EnqueueRequest, opts ...grpc.CallOption) (*EnqueueResponse, error) {
+	out := new(EnqueueResponse)
+	err := c.cc.Invoke(ctx, "/frontend.Scheduler/Enqueue", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *schedulerClient) Cancel(ctx context.Context, in *CancelRequest, opts ...grpc.CallOption) (*CancelResponse, error) {
+	out := new(CancelResponse)
+	err := c.cc.Invoke(ctx, "/frontend.Scheduler/Cancel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SchedulerServer is the server API for Scheduler service.
+type SchedulerServer interface {
+	// Frontend -> Scheduler API.
+	Enqueue(context.Context, *EnqueueRequest) (*EnqueueResponse, error)
+	Cancel(context.Context, *CancelRequest) (*CancelResponse, error)
+}
+
+// UnimplementedSchedulerServer can be embedded to have forward compatible implementations.
+type UnimplementedSchedulerServer struct {
+}
+
+func (*UnimplementedSchedulerServer) Enqueue(ctx context.Context, req *EnqueueRequest) (*EnqueueResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Enqueue not implemented")
+}
+func (*UnimplementedSchedulerServer) Cancel(ctx context.Context, req *CancelRequest) (*CancelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Cancel not implemented")
+}
+
+func RegisterSchedulerServer(s *grpc.Server, srv SchedulerServer) {
+	s.RegisterService(&_Scheduler_serviceDesc, srv)
+}
+
+func _Scheduler_Enqueue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnqueueRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServer).Enqueue(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/frontend.Scheduler/Enqueue",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServer).Enqueue(ctx, req.(*EnqueueRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Scheduler_Cancel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchedulerServer).Cancel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/frontend.Scheduler/Cancel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchedulerServer).Cancel(ctx, req.(*CancelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Scheduler_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "frontend.Scheduler",
+	HandlerType: (*SchedulerServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Enqueue",
+			Handler:    _Scheduler_Enqueue_Handler,
+		},
+		{
+			MethodName: "Cancel",
+			Handler:    _Scheduler_Cancel_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "frontend.proto",
+}
+
 func (m *FrontendToClient) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -421,6 +1045,18 @@ func (m *FrontendToClient) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.FrontendAddress) > 0 {
+		i -= len(m.FrontendAddress)
+		copy(dAtA[i:], m.FrontendAddress)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.FrontendAddress)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Id != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.Type != 0 {
 		i = encodeVarintFrontend(dAtA, i, uint64(m.Type))
 		i--
@@ -461,6 +1097,11 @@ func (m *ClientToFrontend) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Id != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.ClientID) > 0 {
 		i -= len(m.ClientID)
 		copy(dAtA[i:], m.ClientID)
@@ -480,6 +1121,155 @@ func (m *ClientToFrontend) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0xa
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *EnqueueRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *EnqueueRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *EnqueueRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.FrontendAddress) > 0 {
+		i -= len(m.FrontendAddress)
+		copy(dAtA[i:], m.FrontendAddress)
+		i = encodeVarintFrontend(dAtA, i, uint64(len(m.FrontendAddress)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Type != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Type))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.HttpRequest != nil {
+		{
+			size, err := m.HttpRequest.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintFrontend(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Id != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *EnqueueResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *EnqueueResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *EnqueueResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *CancelRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CancelRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CancelRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Id != 0 {
+		i = encodeVarintFrontend(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CancelResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CancelResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CancelResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *ResponseResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ResponseResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ResponseResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
 	return len(dAtA) - i, nil
 }
 
@@ -507,6 +1297,13 @@ func (m *FrontendToClient) Size() (n int) {
 	if m.Type != 0 {
 		n += 1 + sovFrontend(uint64(m.Type))
 	}
+	if m.Id != 0 {
+		n += 1 + sovFrontend(uint64(m.Id))
+	}
+	l = len(m.FrontendAddress)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
 	return n
 }
 
@@ -524,6 +1321,71 @@ func (m *ClientToFrontend) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovFrontend(uint64(l))
 	}
+	if m.Id != 0 {
+		n += 1 + sovFrontend(uint64(m.Id))
+	}
+	return n
+}
+
+func (m *EnqueueRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Id != 0 {
+		n += 1 + sovFrontend(uint64(m.Id))
+	}
+	if m.HttpRequest != nil {
+		l = m.HttpRequest.Size()
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	if m.Type != 0 {
+		n += 1 + sovFrontend(uint64(m.Type))
+	}
+	l = len(m.FrontendAddress)
+	if l > 0 {
+		n += 1 + l + sovFrontend(uint64(l))
+	}
+	return n
+}
+
+func (m *EnqueueResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *CancelRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Id != 0 {
+		n += 1 + sovFrontend(uint64(m.Id))
+	}
+	return n
+}
+
+func (m *CancelResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *ResponseResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	return n
 }
 
@@ -540,6 +1402,8 @@ func (this *FrontendToClient) String() string {
 	s := strings.Join([]string{`&FrontendToClient{`,
 		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
 		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
+		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -551,6 +1415,57 @@ func (this *ClientToFrontend) String() string {
 	s := strings.Join([]string{`&ClientToFrontend{`,
 		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.HTTPResponse", 1) + `,`,
 		`ClientID:` + fmt.Sprintf("%v", this.ClientID) + `,`,
+		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *EnqueueRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&EnqueueRequest{`,
+		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *EnqueueResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&EnqueueResponse{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CancelRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CancelRequest{`,
+		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CancelResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CancelResponse{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ResponseResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ResponseResponse{`,
 		`}`,
 	}, "")
 	return s
@@ -647,6 +1562,57 @@ func (m *FrontendToClient) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FrontendAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FrontendAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFrontend(dAtA[iNdEx:])
@@ -768,6 +1734,415 @@ func (m *ClientToFrontend) Unmarshal(dAtA []byte) error {
 			}
 			m.ClientID = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *EnqueueRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: EnqueueRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: EnqueueRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HttpRequest", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.HttpRequest == nil {
+				m.HttpRequest = &httpgrpc.HTTPRequest{}
+			}
+			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			m.Type = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Type |= Type(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FrontendAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FrontendAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *EnqueueResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: EnqueueResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: EnqueueResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CancelRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CancelRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CancelRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowFrontend
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Id |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CancelResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CancelResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CancelResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipFrontend(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthFrontend
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ResponseResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowFrontend
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ResponseResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ResponseResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipFrontend(dAtA[iNdEx:])

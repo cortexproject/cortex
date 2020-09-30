@@ -11,9 +11,21 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 service Frontend {
+  // Querier <-> Scheduler API; called Frontend for legacy reasons.
   // After calling this method, client enters a loop, in which it waits for
   // a "FrontendToClient" message and replies with single "ClientToFrontend" message.
   rpc Process(stream ClientToFrontend) returns (stream FrontendToClient) {};
+}
+
+service FrontendV2 {
+  // Quierier -> Frontend API.
+  rpc Response(ClientToFrontend) returns (ResponseResponse) {};
+}
+
+service Scheduler {
+  // Frontend -> Scheduler API.
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse) {};
+  rpc Cancel(CancelRequest) returns (CancelResponse) {};
 }
 
 enum Type {
@@ -24,9 +36,32 @@ enum Type {
 message FrontendToClient {
   httpgrpc.HTTPRequest httpRequest = 1;
   Type type = 2;
+  int64 id = 3;
+  string frontendAddress = 4;
 }
 
 message ClientToFrontend {
   httpgrpc.HTTPResponse httpResponse = 1;
   string clientID = 2;
+  int64 id = 3;
+}
+
+message EnqueueRequest {
+  int64 id = 1;
+  httpgrpc.HTTPRequest httpRequest = 2;
+  Type type = 3;
+  string frontendAddress = 4;
+}
+
+message EnqueueResponse {
+}
+
+message CancelRequest {
+  int64 id = 1;
+}
+
+message CancelResponse {
+}
+
+message ResponseResponse {
 }

@@ -421,7 +421,9 @@ func (a *API) registerQueryAPI(handler http.Handler) {
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the Querier.
 func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
-	frontend.RegisterFrontendServer(a.server.GRPC, f)
+	frontend.RegisterFrontendV2Server(a.server.GRPC, f)
+	frontend.RegisterFrontendServer(a.server.GRPC, f.Scheduler)
+	frontend.RegisterSchedulerServer(a.server.GRPC, f.Scheduler)
 	a.registerQueryAPI(f.Handler())
 }
 

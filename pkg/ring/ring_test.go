@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -837,9 +838,9 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				// Rollout instance-1.
 				{what: remove, instanceID: "instance-1"},
-				{what: test, shardSize: 1, expected: []string{"instance-2", "instance-3"}}, // TODO instance-3 is a side effect (investigate better)
+				{what: test, shardSize: 1, expected: []string{"instance-2" /* side effect: */, "instance-3"}},
 				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now)},
-				{what: test, shardSize: 1, expected: []string{"instance-1" /* lookback: */, "instance-2", "instance-3"}},
+				{what: test, shardSize: 1, expected: []string{"instance-1" /* lookback: */, "instance-2" /* side effect: */, "instance-3"}},
 			},
 		},
 		"single zone, shard size = 2, rollout with instances unregistered (removed and re-added one by one)": {
@@ -861,14 +862,14 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
 				// Rollout instance-2.
 				{what: remove, instanceID: "instance-2"},
-				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-3", "instance-4"}}, // TODO instance-4 is a side effect (investigate better)
+				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-3" /* side effect:*/, "instance-4"}},
 				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now)},
-				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3", "instance-4"}},
+				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
 				// Rollout instance-1.
 				{what: remove, instanceID: "instance-1"},
-				{what: test, shardSize: 2, expected: []string{"instance-2" /* lookback: */, "instance-3", "instance-4"}},
+				{what: test, shardSize: 2, expected: []string{"instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
 				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now)},
-				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3", "instance-4"}},
+				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
 			},
 		},
 		"single zone, increase shard size": {
@@ -977,7 +978,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
 				case test:
-					rs, err := ring.ShuffleShardWithLookback(userID, event.shardSize, lookbackPeriod).GetAll(Read)
+					rs, err := ring.ShuffleShardWithLookback(userID, event.shardSize, lookbackPeriod, time.Now()).GetAll(Read)
 					require.NoError(t, err)
 					assert.ElementsMatch(t, event.expected, rs.GetAddresses())
 				}
@@ -990,16 +991,28 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// The goal of this test is NOT to ensure that the minimum required number of instances
 	// are returned at any given time, BUT at least all required instances are returned.
 	var (
-		numInitialInstances = []int{9, 30, 60, 90}
-		numInitialZones     = []int{1, 3}
+		numInitialInstances = []int{9} // TODO , 30, 60, 90}
+		numInitialZones     = []int{3} // TODO, 1, 3}
 		numEvents           = 100
 		lookbackPeriod      = time.Hour
 		delayBetweenEvents  = 5 * time.Minute // 12 events / hour
 		userID              = "user-1"
-
-		// Make test execution reproducible.
-		entropy = rand.New(rand.NewSource(1))
 	)
+
+	// TODO randomise it but log the seed to have a way to reproduce tests if break
+	rand.Seed(2)
+
+	//printShard := func(rs ReplicationSet) {
+	//	fmt.Print("curr shard: ")
+	//
+	//	ingesters := rs.Ingesters
+	//	sort.Sort(ByZoneAddr(ingesters))
+	//
+	//	for _, i := range ingesters {
+	//		fmt.Print(i.Addr, "(", i.Zone, "), ")
+	//	}
+	//	fmt.Print("\n")
+	//}
 
 	for _, numInstances := range numInitialInstances {
 		for _, numZones := range numInitialZones {
@@ -1030,6 +1043,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				// Add the initial shard to the history.
 				rs, err := ring.ShuffleShard(userID, shardSize).GetAll(Read)
 				require.NoError(t, err)
+				//printShard(rs)
 
 				history := map[time.Time]ReplicationSet{
 					currTime: rs,
@@ -1038,25 +1052,42 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				// Simulate a progression of random events over the time and, at each iteration of the simuation,
 				// make sure the subring includes all non-removed instances picked from previous versions of the
 				// ring up until the lookback period.
+				nextIngesterID := len(ringDesc.Ingesters)
+
 				for i := 1; i <= numEvents; i++ {
+					//fmt.Println("")
+
 					currTime = currTime.Add(delayBetweenEvents)
 
-					switch r := entropy.Intn(100); {
+					switch r := rand.Intn(100); {
 					case r < 80:
 						// Scale up instances by 1.
-						id := len(ringDesc.Ingesters) + 1
-						instanceID := fmt.Sprintf("instance-%d", id)
-						zoneID := fmt.Sprintf("zone-%d", id%numZones)
+						instanceID := fmt.Sprintf("instance-%d", nextIngesterID)
+						zoneID := fmt.Sprintf("zone-%d", nextIngesterID%numZones)
+						nextIngesterID++
+
+						//fmt.Println(currTime.String(), "scale up", instanceID, "zone", zoneID)
+
 						ringDesc.Ingesters[instanceID] = generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(128, nil), currTime)
 
 						ring.ringTokens = ringDesc.getTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
 						ring.ringZones = getZones(ringDesc.getTokensByZone())
 					case r < 90:
-						// Scale down instances by 1.
-						idxToRemove := rand.Intn(len(ring.ringTokens))
-						idToRemove := ring.ringTokens[idxToRemove].Ingester
+						// Scale down instances by 1. To make tests reproducible we get the instance IDs, sort them
+						// and then get a random index (using the random generator initialized with a constant seed).
+						ingesterIDs := make([]string, 0, len(ringDesc.Ingesters))
+						for id := range ringDesc.Ingesters {
+							ingesterIDs = append(ingesterIDs, id)
+						}
+
+						sort.Strings(ingesterIDs)
+
+						idxToRemove := rand.Intn(len(ingesterIDs))
+						idToRemove := ingesterIDs[idxToRemove]
 						delete(ringDesc.Ingesters, idToRemove)
+
+						//fmt.Println(currTime.String(), "scale down", idToRemove)
 
 						ring.ringTokens = ringDesc.getTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
@@ -1078,15 +1109,18 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					default:
 						// Scale up shard size (keeping the per-zone balance).
 						shardSize += numZones
+
+						//fmt.Println(currTime.String(), "shard size scaled up to", shardSize)
 					}
 
 					// Add the current shard to the history.
 					rs, err = ring.ShuffleShard(userID, shardSize).GetAll(Read)
 					require.NoError(t, err)
 					history[currTime] = rs
+					//printShard(rs)
 
 					// Ensure the shard with lookback includes all instances from previous states of the ring.
-					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod).GetAll(Read)
+					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetAll(Read)
 					require.NoError(t, err)
 
 					for ringTime, ringState := range history {
@@ -1099,8 +1133,8 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						for _, expectedAddr := range ringState.GetAddresses() {
 							if !rsWithLookback.Includes(expectedAddr) {
 								t.Fatalf(
-									"subring generated after event %d is expected to include instance %s but it's missing (actual instances are: %s)",
-									i, expectedAddr, strings.Join(rsWithLookback.GetAddresses(), ", "))
+									"subring generated after event %d is expected to include instance %s from ring state at time %s but it's missing (actual instances are: %s)",
+									i, expectedAddr, ringTime.String(), strings.Join(rsWithLookback.GetAddresses(), ", "))
 							}
 						}
 					}

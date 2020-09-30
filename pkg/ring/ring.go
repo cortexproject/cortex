@@ -54,7 +54,7 @@ type ReadRing interface {
 
 	// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes
 	// all instances that have been part of the identifier's shard since "now - lookbackPeriod".
-	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration) ReadRing
+	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing
 
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
@@ -475,7 +475,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return cached
 	}
 
-	result := r.shuffleShard(identifier, size, 0)
+	result := r.shuffleShard(identifier, size, 0, time.Now())
 
 	r.setCachedShuffledSubring(identifier, size, result.(*Ring))
 	return result
@@ -488,17 +488,17 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 // operations (read only).
 //
 // This function doesn't support caching.
-func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration) ReadRing {
+func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
 	// Nothing to do if the shard size is not smaller then the actual ring.
 	if size <= 0 || r.IngesterCount() <= size {
 		return r
 	}
 
-	return r.shuffleShard(identifier, size, lookbackPeriod)
+	return r.shuffleShard(identifier, size, lookbackPeriod, now)
 }
 
-func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration) ReadRing {
-	lookbackUntil := time.Now().Add(-lookbackPeriod).Unix()
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
+	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	var result *Ring
 

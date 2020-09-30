@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -87,7 +88,7 @@ func (d *Distributor) getIngestersForQuery(ctx context.Context, matchers ...*lab
 		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
 
 		if shardSize > 0 && lookbackPeriod > 0 {
-			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod).GetAll(ring.Read)
+			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, time.Now()).GetAll(ring.Read)
 		}
 	}
 
@@ -115,7 +116,7 @@ func (d *Distributor) getIngestersForMetadata(ctx context.Context) (ring.Replica
 		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
 
 		if shardSize > 0 {
-			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod).GetAll(ring.Read)
+			return d.ingestersRing.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, time.Now()).GetAll(ring.Read)
 		}
 	}
 

@@ -411,6 +411,7 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
+				// Exact same tokens setup as previous test.
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE)
 				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE)
 			},
@@ -480,7 +481,7 @@ func TestSharding(t *testing.T) {
 				ruler1: map[string]rules.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
-				ruler2: noRules, // It does user2's group token, but it doen's "own" user2 at all.
+				ruler2: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
 				ruler3: map[string]rules.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},

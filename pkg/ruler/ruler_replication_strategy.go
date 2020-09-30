@@ -21,7 +21,6 @@ func (r rulerReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.
 		}
 	}
 
-	// Each rule group is loaded to *exactly* one ruler, no matter the RF.
 	if len(instances) == 0 {
 		return nil, 0, errors.New("no healthy ruler instance found for the replication set")
 	}

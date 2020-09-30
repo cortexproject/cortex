@@ -160,7 +160,7 @@ func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
 	panic("should not be called")
 }
 
-func TestRingRestart(t *testing.T) {
+func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
 	c := GetCodec()
@@ -184,21 +184,26 @@ func TestRingRestart(t *testing.T) {
 		return checkNormalised(d, "ing1")
 	})
 
-	token := l1.tokens[0]
+	expectedTokens := l1.getTokens()
+	expectedRegisteredAt := l1.getRegisteredAt()
+
+	// Wait 1 second because the registered timestamp has second precision. Without waiting
+	// we wouldn't have the guarantee the previous registered timestamp is preserved.
+	time.Sleep(time.Second)
 
 	// Add a second ingester with the same settings, so it will think it has restarted
 	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
 
-	// Check the new ingester picked up the same token
+	// Check the new ingester picked up the same tokens and registered timestamp.
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 		require.NoError(t, err)
-		l2Tokens := l2.getTokens()
+
 		return checkNormalised(d, "ing1") &&
-			len(l2Tokens) == 1 &&
-			l2Tokens[0] == token
+			expectedTokens.Equals(l2.getTokens()) &&
+			expectedRegisteredAt.Unix() == l2.getRegisteredAt().Unix()
 	})
 }
 
@@ -428,17 +433,21 @@ func TestJoinInJoiningState(t *testing.T) {
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
 	cfg.NumTokens = 2
 	cfg.MinReadyDuration = 1 * time.Nanosecond
+	instance1RegisteredAt := time.Now().Add(-1 * time.Hour)
+	instance2RegisteredAt := time.Now().Add(-2 * time.Hour)
 
 	// Set state as JOINING
 	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (interface{}, bool, error) {
 		r := &Desc{
 			Ingesters: map[string]IngesterDesc{
 				"ing1": {
-					State:  JOINING,
-					Tokens: []uint32{1, 4},
+					State:               JOINING,
+					Tokens:              []uint32{1, 4},
+					RegisteredTimestamp: instance1RegisteredAt.Unix(),
 				},
 				"ing2": {
-					Tokens: []uint32{2, 3},
+					Tokens:              []uint32{2, 3},
+					RegisteredTimestamp: instance2RegisteredAt.Unix(),
 				},
 			},
 		}
@@ -461,7 +470,9 @@ func TestJoinInJoiningState(t *testing.T) {
 			len(desc.Ingesters) == 2 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
 			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
-			len(desc.Ingesters["ing2"].Tokens) == 2
+			len(desc.Ingesters["ing2"].Tokens) == 2 &&
+			desc.Ingesters["ing1"].RegisteredTimestamp == instance1RegisteredAt.Unix() &&
+			desc.Ingesters["ing2"].RegisteredTimestamp == instance2RegisteredAt.Unix()
 	})
 }
 

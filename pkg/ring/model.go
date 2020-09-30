@@ -44,17 +44,23 @@ func NewDesc() *Desc {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState) IngesterDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state IngesterState, registeredAt time.Time) IngesterDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]IngesterDesc{}
 	}
 
+	registeredTimestamp := int64(0)
+	if !registeredAt.IsZero() {
+		registeredTimestamp = registeredAt.Unix()
+	}
+
 	ingester := IngesterDesc{
-		Addr:      addr,
-		Timestamp: time.Now().Unix(),
-		State:     state,
-		Tokens:    tokens,
-		Zone:      zone,
+		Addr:                addr,
+		Timestamp:           time.Now().Unix(),
+		RegisteredTimestamp: registeredTimestamp,
+		State:               state,
+		Tokens:              tokens,
+		Zone:                zone,
 	}
 
 	d.Ingesters[id] = ingester
@@ -127,6 +133,16 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	return myTokens, takenTokens
 }
 
+// GetRegisteredAt returns the timestamp when the instance has been registered to the ring
+// or a zero value if unknown.
+func (i *IngesterDesc) GetRegisteredAt() time.Time {
+	if i == nil || i.RegisteredTimestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.RegisteredTimestamp, 0)
+}
+
 // IsHealthy checks whether the ingester appears to be alive and heartbeating
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
 	healthy := false
@@ -188,7 +204,7 @@ func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.
 
 	for name, oing := range otherIngesterMap {
 		ting := thisIngesterMap[name]
-		// firstIng.Timestamp will be 0, if there was no such ingester in our version
+		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
@@ -434,12 +450,12 @@ func (d *Desc) getTokensByZone() map[string][]TokenDesc {
 type CompareResult int
 
 const (
-	Equal                   CompareResult = iota // Both rings contain same instances, tokens, states and timestamps.
-	EqualInstancesAndTokens                      // Both rings contain the same instances and tokens, but states and timestamps differ.
-	Different                                    // Rings have different set of instances, or their information don't match.
+	Equal                       CompareResult = iota // Both rings contain same exact instances.
+	EqualButStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).
+	Different                                        // Rings have different set of instances, or their information don't match.
 )
 
-// RingCompare compares this ring against another one and returns one of Equal, EqualInstancesAndTokens or Different.
+// RingCompare compares this ring against another one and returns one of Equal, EqualButStatesAndTimestamps or Different.
 func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if d == nil {
 		if o == nil || len(o.Ingesters) == 0 {
@@ -474,6 +490,10 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 			return Different
 		}
 
+		if ing.RegisteredTimestamp != oing.RegisteredTimestamp {
+			return Different
+		}
+
 		if len(ing.Tokens) != len(oing.Tokens) {
 			return Different
 		}
@@ -496,7 +516,7 @@ func (d *Desc) RingCompare(o *Desc) CompareResult {
 	if equalStatesAndTimestamps {
 		return Equal
 	}
-	return EqualInstancesAndTokens
+	return EqualButStatesAndTimestamps
 }
 
 func GetOrCreateRingDesc(d interface{}) *Desc {

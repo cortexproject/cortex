@@ -86,6 +86,7 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 			assert.True(t, instanceExists)
 			assert.Equal(t, ACTIVE, instanceDesc.GetState())
 			assert.Equal(t, storedTokens, Tokens(instanceDesc.GetTokens()))
+			assert.True(t, instanceDesc.GetRegisteredAt().IsZero())
 
 			return instanceDesc.GetState(), instanceDesc.GetTokens()
 		},
@@ -102,6 +103,7 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 	assert.Equal(t, ACTIVE, lifecycler.GetState())
 	assert.Equal(t, storedTokens, lifecycler.GetTokens())
 	assert.True(t, lifecycler.IsRegistered())
+	assert.InDelta(t, time.Now().Unix(), lifecycler.GetRegisteredAt().Unix(), 2)
 
 	require.NoError(t, services.StopAndAwaitTerminated(ctx, lifecycler))
 
@@ -145,6 +147,9 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 			// Store some tokens to the file.
 			require.NoError(t, storedTokens.StoreToFile(tokensFile.Name()))
 
+			// We assume is already registered to the ring.
+			registeredAt := time.Now().Add(-time.Hour)
+
 			testDelegate := &mockDelegate{
 				onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
 					return instanceDesc.GetState(), instanceDesc.GetTokens()
@@ -162,7 +167,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 			// Add the instance to the ring.
 			require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				ringDesc := NewDesc()
-				ringDesc.AddIngester(cfg.ID, cfg.Addr, cfg.Zone, testData.initialTokens, testData.initialState)
+				ringDesc.AddIngester(cfg.ID, cfg.Addr, cfg.Zone, testData.initialTokens, testData.initialState, registeredAt)
 				return ringDesc, true, nil
 			}))
 
@@ -170,6 +175,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 			assert.Equal(t, testData.expectedState, lifecycler.GetState())
 			assert.Equal(t, testData.expectedTokens, lifecycler.GetTokens())
 			assert.True(t, lifecycler.IsRegistered())
+			assert.Equal(t, registeredAt.Unix(), lifecycler.GetRegisteredAt().Unix())
 		})
 	}
 }
@@ -222,6 +228,7 @@ func TestDelegatesChain(t *testing.T) {
 
 func TestAutoForgetDelegate(t *testing.T) {
 	const forgetPeriod = time.Minute
+	registeredAt := time.Now()
 
 	tests := map[string]struct {
 		setup             func(ringDesc *Desc)
@@ -229,13 +236,13 @@ func TestAutoForgetDelegate(t *testing.T) {
 	}{
 		"no unhealthy instance in the ring": {
 			setup: func(ringDesc *Desc) {
-				ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+				ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE, registeredAt)
 			},
 			expectedInstances: []string{testInstanceID, "instance-1"},
 		},
 		"unhealthy instance in the ring that has NOTreached the forget period yet": {
 			setup: func(ringDesc *Desc) {
-				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE, registeredAt)
 				i.Timestamp = time.Now().Add(-forgetPeriod).Add(5 * time.Second).Unix()
 				ringDesc.Ingesters["instance-1"] = i
 			},
@@ -243,7 +250,7 @@ func TestAutoForgetDelegate(t *testing.T) {
 		},
 		"unhealthy instance in the ring that has reached the forget period": {
 			setup: func(ringDesc *Desc) {
-				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE)
+				i := ringDesc.AddIngester("instance-1", "1.1.1.1", "", nil, ACTIVE, registeredAt)
 				i.Timestamp = time.Now().Add(-forgetPeriod).Add(-5 * time.Second).Unix()
 				ringDesc.Ingesters["instance-1"] = i
 			},

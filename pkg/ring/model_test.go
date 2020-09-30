@@ -117,6 +117,36 @@ func TestIngesterDesc_IsHealthy_ForStoreGatewayOperations(t *testing.T) {
 	}
 }
 
+func TestIngesterDesc_GetRegisteredAt(t *testing.T) {
+	tests := map[string]struct {
+		desc     *IngesterDesc
+		expected time.Time
+	}{
+		"should return zero value on nil desc": {
+			desc:     nil,
+			expected: time.Time{},
+		},
+		"should return zero value registered timestamp = 0": {
+			desc: &IngesterDesc{
+				RegisteredTimestamp: 0,
+			},
+			expected: time.Time{},
+		},
+		"should return timestamp parsed from desc": {
+			desc: &IngesterDesc{
+				RegisteredTimestamp: time.Unix(10000000, 0).Unix(),
+			},
+			expected: time.Unix(10000000, 0),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.True(t, testData.desc.GetRegisteredAt().Equal(testData.expected))
+		})
+	}
+}
+
 func normalizedSource() *Desc {
 	r := NewDesc()
 	r.Ingesters["first"] = IngesterDesc{
@@ -269,12 +299,17 @@ func TestDesc_RingsCompare(t *testing.T) {
 		"same single instance, different timestamp": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
-			expected: EqualInstancesAndTokens,
+			expected: EqualButStatesAndTimestamps,
 		},
 		"same single instance, different state": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
 			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: JOINING}}},
-			expected: EqualInstancesAndTokens,
+			expected: EqualButStatesAndTimestamps,
+		},
+		"same single instance, different registered timestamp": {
+			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 1}}},
+			r2:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2}}},
+			expected: Different,
 		},
 		"instance in different zone": {
 			r1:       &Desc{Ingesters: map[string]IngesterDesc{"ing1": {Addr: "addr1", Zone: "one"}}},

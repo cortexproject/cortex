@@ -43,7 +43,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	for i := 0; i < numIngester; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), strconv.Itoa(i), tokens, ACTIVE)
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), strconv.Itoa(i), tokens, ACTIVE, time.Now())
 	}
 
 	cfg := Config{}
@@ -102,12 +102,15 @@ func TestAddIngester(t *testing.T) {
 
 	const ingName = "ing1"
 
+	now := time.Now()
 	ing1Tokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ingName, "addr", "1", ing1Tokens, ACTIVE)
+	r.AddIngester(ingName, "addr", "1", ing1Tokens, ACTIVE, now)
 
-	require.Equal(t, "addr", r.Ingesters[ingName].Addr)
-	require.Equal(t, ing1Tokens, r.Ingesters[ingName].Tokens)
+	assert.Equal(t, "addr", r.Ingesters[ingName].Addr)
+	assert.Equal(t, ing1Tokens, r.Ingesters[ingName].Tokens)
+	assert.InDelta(t, time.Now().Unix(), r.Ingesters[ingName].Timestamp, 2)
+	assert.Equal(t, now.Unix(), r.Ingesters[ingName].RegisteredTimestamp)
 }
 
 func TestAddIngesterReplacesExistingTokens(t *testing.T) {
@@ -122,7 +125,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 
 	newTokens := GenerateTokens(128, nil)
 
-	r.AddIngester(ing1Name, "addr", "1", newTokens, ACTIVE)
+	r.AddIngester(ing1Name, "addr", "1", newTokens, ACTIVE, time.Now())
 
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
@@ -178,7 +181,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				name := fmt.Sprintf("ing%v", i)
 				ingTokens := GenerateTokens(128, prevTokens)
 
-				r.AddIngester(name, fmt.Sprintf("127.0.0.%d", i), fmt.Sprintf("zone-%v", i%testData.numZones), ingTokens, ACTIVE)
+				r.AddIngester(name, fmt.Sprintf("127.0.0.%d", i), fmt.Sprintf("zone-%v", i%testData.numZones), ingTokens, ACTIVE, time.Now())
 
 				prevTokens = append(prevTokens, ingTokens...)
 			}
@@ -445,11 +448,12 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	for i := 0; i < numInstances; i++ {
 		id := fmt.Sprintf("instance-%d", i)
 		instances[id] = IngesterDesc{
-			Addr:      fmt.Sprintf("127.0.0.%d", i),
-			Timestamp: time.Now().Unix(),
-			State:     ACTIVE,
-			Tokens:    generateTokensLinear(i, numInstances, 128),
-			Zone:      fmt.Sprintf("zone-%d", i%numZones),
+			Addr:                fmt.Sprintf("127.0.0.%d", i),
+			Timestamp:           time.Now().Unix(),
+			RegisteredTimestamp: time.Now().Unix(),
+			State:               ACTIVE,
+			Tokens:              generateTokensLinear(i, numInstances, 128),
+			Zone:                fmt.Sprintf("zone-%d", i%numZones),
 		}
 	}
 
@@ -679,11 +683,12 @@ func generateRingInstances(numInstances, numZones int) map[string]IngesterDesc {
 
 func generateRingInstance(id, zone int) (string, IngesterDesc) {
 	return fmt.Sprintf("instance-%d", id), IngesterDesc{
-		Addr:      fmt.Sprintf("127.0.0.%d", id),
-		Timestamp: time.Now().Unix(),
-		State:     ACTIVE,
-		Tokens:    GenerateTokens(128, nil),
-		Zone:      fmt.Sprintf("zone-%d", zone),
+		Addr:                fmt.Sprintf("127.0.0.%d", id),
+		Timestamp:           time.Now().Unix(),
+		RegisteredTimestamp: time.Now().Unix(),
+		State:               ACTIVE,
+		Tokens:              GenerateTokens(128, nil),
+		Zone:                fmt.Sprintf("zone-%d", zone),
 	}
 }
 

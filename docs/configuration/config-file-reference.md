@@ -568,6 +568,10 @@ lifecycler:
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
 
+# quantize ingested timestamps to within this tolerance
+# CLI flag: -ingester.timestamp-tolerance
+[timestampTolerance: <int> | default = 0]
+
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by
 # the chunks storage.

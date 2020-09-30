@@ -983,7 +983,7 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 			// There can be many out of order samples because of checkpoint and WAL overlap.
 			// Checking this beforehand avoids the allocation of lots of error messages.
 			if sp.Timestamp.After(series.lastTime) {
-				if err := series.add(sp); err != nil {
+				if err := series.add(sp, 0); err != nil {
 					errChan <- err
 					return
 				}

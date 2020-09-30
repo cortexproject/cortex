@@ -53,6 +53,9 @@ type Config struct {
 	WALConfig        WALConfig             `yaml:"walconfig"`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
+	// Config for ingestion
+	TimestampTolerance int `yaml:"timestampTolerance"`
+
 	// Config for transferring chunks. Zero or negative = no retries.
 	MaxTransferRetries int `yaml:"max_transfer_retries"`
 
@@ -92,6 +95,8 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
 	cfg.WALConfig.RegisterFlags(f)
+
+	f.IntVar(&cfg.TimestampTolerance, "ingester.timestamp-tolerance", 0, "quantize ingested timestamps to within this tolerance")
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over. This feature is supported only by the chunks storage.")
 
@@ -538,7 +543,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	if err := series.add(model.SamplePair{
 		Value:     value,
 		Timestamp: timestamp,
-	}); err != nil {
+	}, i.cfg.TimestampTolerance); err != nil {
 		if ve, ok := err.(*validationError); ok {
 			state.discardedSamples.WithLabelValues(ve.errorType).Inc()
 			if ve.noReport {

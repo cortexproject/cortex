@@ -53,7 +53,7 @@ func newMemorySeries(m labels.Labels, createdChunks prometheus.Counter) *memoryS
 
 // add adds a sample pair to the series, possibly creating a new chunk.
 // The caller must have locked the fingerprint of the series.
-func (s *memorySeries) add(v model.SamplePair) error {
+func (s *memorySeries) add(v model.SamplePair, timestampTolerance int) error {
 	// If sender has repeated the same timestamp, check more closely and perhaps return error.
 	if v.Timestamp == s.lastTime {
 		// If we don't know what the last sample value is, silently discard.
@@ -73,6 +73,15 @@ func (s *memorySeries) add(v model.SamplePair) error {
 	if v.Timestamp < s.lastTime {
 		return makeMetricValidationError(sampleOutOfOrder, s.metric,
 			fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", s.lastTime, v.Timestamp))
+	}
+	// If gap since last scrape is very close to an exact number of seconds, tighten it up
+	if s.lastTime != 0 {
+		gap := v.Timestamp - s.lastTime
+		seconds := ((gap + 500) / 1000)
+		diff := int(gap - seconds*1000)
+		if diff >= -timestampTolerance && diff <= timestampTolerance {
+			v.Timestamp = s.lastTime + seconds*1000
+		}
 	}
 
 	if len(s.chunkDescs) == 0 || s.headChunkClosed {

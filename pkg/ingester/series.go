@@ -75,7 +75,7 @@ func (s *memorySeries) add(v model.SamplePair, timestampTolerance int) error {
 			fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", s.lastTime, v.Timestamp))
 	}
 	// If gap since last scrape is very close to an exact number of seconds, tighten it up
-	if s.lastTime != 0 {
+	if s.lastTime != 0 && timestampTolerance != 0 {
 		gap := v.Timestamp - s.lastTime
 		seconds := ((gap + 500) / 1000)
 		diff := int(gap - seconds*1000)

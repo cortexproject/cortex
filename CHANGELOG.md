@@ -40,7 +40,7 @@
   - `POST <legacy-http-prefix>/push`
   - `POST /push`
   - `POST /ingester/push`
-* [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-user` globally, or using per-user limit `max_queriers_per_user`), each user's requests will be handled by different set of queriers. #3113
+* [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
 * [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
   - `-blocks-storage.s3.http.idle-conn-timeout`

@@ -256,7 +256,7 @@ func (s *Scheduler) NextPlan(ctx context.Context, req *blocksconvert.NextPlanReq
 
 	plan, progress := s.nextPlanNoRunningCheck(ctx)
 	if plan != "" {
-		level.Info(s.log).Log("msg", "sending plan file to builder", "plan", plan, "builder", req.BuilderName)
+		level.Info(s.log).Log("msg", "sending plan file", "plan", plan, "service", req.Name)
 	}
 	return &blocksconvert.NextPlanResponse{
 		PlanFile:     plan,

@@ -86,8 +86,8 @@ func IsProgressFilename(name string) (bool, string, time.Time) {
 	return true, m[1], time.Unix(ts, 0)
 }
 
-func FinishedFilename(planBaseName string, id ulid.ULID) string {
-	return fmt.Sprintf("%s.finished.%s", planBaseName, id.String())
+func FinishedFilename(planBaseName string, id string) string {
+	return fmt.Sprintf("%s.finished.%s", planBaseName, id)
 }
 
 var finished = regexp.MustCompile(`^(.+)\.finished\.([a-zA-Z0-9]+)$`)

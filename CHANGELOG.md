@@ -61,6 +61,8 @@
 * [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
+* [ENHANCEMENT] Experimental Ruler API: Fetch rule groups from object storage in parallel. #3218
+* [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192

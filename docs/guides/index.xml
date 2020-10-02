@@ -117,6 +117,7 @@ server_address: localhost:6666
 &lt;li>&lt;a href="#ingesters-shuffle-sharding">Ingesters&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#query-frontend-shuffle-sharding">Query-frontend&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#store-gateway-shuffle-sharding">Store-gateway&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#ruler-shuffle-sharding">Ruler&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;p>Shuffle sharding is &lt;strong>disabled by default&lt;/strong> and needs to be explicitly enabled in the configuration.&lt;/p>
 &lt;h3 id="guaranteed-properties">Guaranteed properties&lt;/h3>
@@ -143,7 +144,15 @@ When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt
 &lt;p>The Cortex store-gateway &amp;ndash; used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> &amp;ndash; by default spreads each tenant&amp;rsquo;s blocks across all running store-gateways.&lt;/p>
 &lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances.&lt;/p>
 &lt;p>&lt;em>The shard size can be overridden on a per-tenant basis setting &lt;code>store_gateway_tenant_shard_size&lt;/code> in the limits overrides configuration.&lt;/em>&lt;/p>
-&lt;p>&lt;em>Please check out the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+&lt;p>&lt;em>Please check out the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p>
+&lt;h3 id="ruler-shuffle-sharding">Ruler shuffle sharding&lt;/h3>
+&lt;p>Cortex ruler can run in three modes:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the ruler. It is activated by using &lt;code>-ruler.enable-sharding=false&lt;/code> (default) and works correctly only if single ruler is running. In this mode the Ruler loads all rules for all tenants.&lt;/li>
+&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=default&lt;/code> (default). In this mode rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it &amp;ldquo;owns&amp;rdquo;.&lt;/li>
+&lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
+&lt;/ol>
+&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
 &lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>

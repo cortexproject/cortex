@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -39,7 +40,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 		},
 		"should return series on success": {
 			series: &storepb.Series{
-				Labels: []storepb.Label{
+				Labels: []labelpb.Label{
 					{Name: "foo", Value: "bar"},
 				},
 				Chunks: []storepb.AggrChunk{
@@ -56,7 +57,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 		},
 		"should return error on failure while reading encoded chunk data": {
 			series: &storepb.Series{
-				Labels: []storepb.Label{{Name: "foo", Value: "bar"}},
+				Labels: []labelpb.Label{{Name: "foo", Value: "bar"}},
 				Chunks: []storepb.AggrChunk{
 					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: []byte{0, 1}}},
 				},
@@ -262,11 +263,11 @@ func createAggrChunk(minTime, maxTime int64, samples ...promql.Point) storepb.Ag
 	}
 }
 
-func mkLabels(s ...string) []storepb.Label {
-	result := []storepb.Label{}
+func mkLabels(s ...string) []labelpb.Label {
+	var result []labelpb.Label
 
 	for i := 0; i+1 < len(s); i = i + 2 {
-		result = append(result, storepb.Label{
+		result = append(result, labelpb.Label{
 			Name:  s[i],
 			Value: s[i+1],
 		})

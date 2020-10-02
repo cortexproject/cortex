@@ -27,10 +27,8 @@ import (
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
-// This is required because the prometheus api implementation does not pass a context to
-// the rule retrieval function.
-// https://github.com/prometheus/prometheus/blob/2aacd807b3ec6ddd90ae55f3a42f4cffed561ea9/web/api/v1/api.go#L108
-// https://github.com/prometheus/prometheus/pull/4999
+// This is required because the prometheus api implementation does not allow us to return errors
+// on rule lookups, which might fail in Cortex's case.
 
 type response struct {
 	Status    string       `json:"status"`

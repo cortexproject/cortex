@@ -53,7 +53,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
-	github.com/thanos-io/thanos v0.13.1-0.20200923175059-57035bf8f843
+	github.com/thanos-io/thanos v0.13.1-0.20201002105236-bb1662a1d13c
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099
 	github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da // indirect

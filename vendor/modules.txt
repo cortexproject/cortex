@@ -39,7 +39,6 @@ github.com/alecthomas/template/parse
 ## explicit
 github.com/alecthomas/units
 # github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a
-## explicit
 github.com/alicebob/gopher-json
 # github.com/alicebob/miniredis v2.5.0+incompatible
 ## explicit
@@ -650,7 +649,6 @@ github.com/weaveworks/promrus
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 github.com/xiang90/probing
 # github.com/yuin/gopher-lua v0.0.0-20200816102855-ee81675732da
-## explicit
 github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse

@@ -61,7 +61,7 @@
 * [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
-* [ENHANCEMENT] User Cortex as User Agent in http requests #3264
+* [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192

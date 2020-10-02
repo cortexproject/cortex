@@ -2,15 +2,7 @@
 
 ## master / unreleased
 
-## 1.4.0-rc.1 / 2020-09-21
-
-* [CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. #3198
-* [CHANGE] Fixed store-gateway CLI flags inconsistencies. #3201
-  - `-store-gateway.replication-factor` flag renamed to `-store-gateway.sharding-ring.replication-factor`
-  - `-store-gateway.tokens-file-path` flag renamed to `store-gateway.sharding-ring.tokens-file-path`
-* [BUGFIX] Handle hash-collisions in the query path. Before this fix, Cortex could occasionally mix up two different series in a query, leading to invalid results, when `-querier.ingester-streaming` was used. #3192
-
-## 1.4.0-rc.0 / 2020-09-15
+## 1.4.0 / 2020-10-02
 
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
 * [CHANGE] Blocks storage is now GA (stable). The `-experimental` prefix has been removed from all CLI flags related to the blocks storage (no YAML config changes). #3180
@@ -45,6 +37,10 @@
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed
    - `-redis.wait-on-pool-exhaustion` removed
+* [CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. #3198
+* [CHANGE] Fixed store-gateway CLI flags inconsistencies. #3201
+  - `-store-gateway.replication-factor` flag renamed to `-store-gateway.sharding-ring.replication-factor`
+  - `-store-gateway.tokens-file-path` flag renamed to `store-gateway.sharding-ring.tokens-file-path`
 * [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
 * [FEATURE] Blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
@@ -91,6 +87,7 @@
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
 * [BUGFIX] Limit errors on ranged queries (`api/v1/query_range`) no longer return a status code `500` but `422` instead. #3167
+* [BUGFIX] Handle hash-collisions in the query path. Before this fix, Cortex could occasionally mix up two different series in a query, leading to invalid results, when `-querier.ingester-streaming` was used. #3192
 
 ## 1.3.0 / 2020-08-21
 

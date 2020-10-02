@@ -265,5 +265,15 @@ func decomposeRuleObjectKey(objectKey string) (userID, namespace, groupName stri
 		return
 	}
 
-	return components[1], components[2], components[3]
+	ns, err := base64.URLEncoding.DecodeString(components[2])
+	if err != nil {
+		return
+	}
+
+	gr, err := base64.URLEncoding.DecodeString(components[3])
+	if err != nil {
+		return
+	}
+
+	return components[1], string(ns), string(gr)
 }

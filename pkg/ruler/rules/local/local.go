@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/pkg/errors"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -95,6 +96,29 @@ func (l *Client) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID s
 	}
 
 	return l.loadAllRulesGroupsForUser(ctx, userID)
+}
+
+// LoadRuleGroupsIfUpdatedAfter implements RuleStore.
+func (l *Client) LoadRuleGroupsIfUpdatedAfter(ctx context.Context, userID string, ts time.Time) (rules.RuleGroupList, error) {
+	root := filepath.Join(l.cfg.Directory, userID)
+	infos, err := ioutil.ReadDir(root)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to read dir %s", root)
+	}
+
+	updated := false
+	for _, finfo := range infos {
+		if finfo.ModTime().After(ts) {
+			updated = true
+			break
+		}
+	}
+
+	if updated {
+		return l.LoadRuleGroupsForUserAndNamespace(ctx, userID, "")
+	}
+
+	return nil, nil
 }
 
 // GetRuleGroup implements RuleStore

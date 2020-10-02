@@ -166,6 +166,10 @@ func (m *mockRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, u
 	return namespaceRules, nil
 }
 
+func (m *mockRuleStore) LoadRuleGroupsIfUpdatedAfter(ctx context.Context, userID string, ts time.Time) (rules.RuleGroupList, error) {
+	return m.LoadRuleGroupsForUserAndNamespace(ctx, userID, "")
+}
+
 func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

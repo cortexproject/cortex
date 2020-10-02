@@ -3,6 +3,7 @@ package rules
 import (
 	"context"
 	"errors"
+	time "time"
 
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 
@@ -29,6 +30,10 @@ type RuleStore interface {
 	// LoadRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
 	// If namespace is empty, groups from all namespaces are returned.
 	LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
+
+	// LoadRuleGroupsIfUpdatedAfter returns all the active rule groups for a user.
+	LoadRuleGroupsIfUpdatedAfter(ctx context.Context, userID string, ts time.Time) (RuleGroupList, error)
+
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
@@ -144,6 +149,13 @@ func (c *ConfigRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context,
 	}
 
 	return list, nil
+}
+
+// LoadRuleGroupsIfUpdatedAfter is not implemented.
+// The reason we dont return an error is because this function is called in the
+// read path and we should make this a nop instead of error.
+func (c *ConfigRuleStore) LoadRuleGroupsIfUpdatedAfter(ctx context.Context, userID string, ts time.Time) (RuleGroupList, error) {
+	return nil, nil
 }
 
 // GetRuleGroup is not implemented

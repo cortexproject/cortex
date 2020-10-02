@@ -165,6 +165,10 @@ type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
 	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
+	// SyncRuleGroupsForUser is used to sync the Manager with rules from the RuleStore but only for a single user.
+	SyncRuleGroupsForUser(ctx context.Context, ruleGroups store.RuleGroupList, userID string)
+	// GetLastUpdateTime returns the last config update the user has seen.
+	GetLastUpdateTime(userID string) time.Time
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
@@ -586,10 +590,20 @@ func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
 		return r.getShardedRules(ctx)
 	}
 
-	return r.getLocalRules(userID)
+	return r.getLocalRules(ctx, userID)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getLocalRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+	// Check if the list of rules locally is the same as remote.
+	lastUpdateTs := r.manager.GetLastUpdateTime(userID)
+	rgs, err := r.store.LoadRuleGroupsIfUpdatedAfter(ctx, userID, lastUpdateTs)
+	if err != nil {
+		return nil, err
+	}
+	if len(rgs) != 0 {
+		r.manager.SyncRuleGroupsForUser(ctx, rgs, userID)
+	}
+
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
@@ -716,7 +730,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID)
+	groupDescs, err := r.getLocalRules(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

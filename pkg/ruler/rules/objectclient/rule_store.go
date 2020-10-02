@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -119,6 +120,39 @@ func (o *RuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userI
 
 	groups, err := o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
 	return groups[userID], err
+}
+
+// LoadRuleGroupsIfUpdatedAfter will list the rule groups only if there are some updates since the time ts.
+func (o *RuleStore) LoadRuleGroupsIfUpdatedAfter(ctx context.Context, userID string, ts time.Time) (rules.RuleGroupList, error) {
+	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, "", ""), "")
+	if err != nil {
+		return nil, err
+	}
+	updated := false
+
+	for _, rgo := range ruleGroupObjects {
+		if rgo.ModifiedAt.After(ts) {
+			updated = true
+			break
+		}
+	}
+
+	if !updated {
+		return nil, nil
+	}
+
+	groups := []*rules.RuleGroupDesc{}
+	for _, obj := range ruleGroupObjects {
+		level.Debug(util.Logger).Log("msg", "listing rule group", "key", obj.Key)
+
+		rg, err := o.getRuleGroup(ctx, obj.Key)
+		if err != nil {
+			level.Error(util.Logger).Log("msg", "unable to retrieve rule group", "err", err, "key", obj.Key)
+			return nil, err
+		}
+		groups = append(groups, rg)
+	}
+	return groups, nil
 }
 
 // GetRuleGroup returns the requested rule group

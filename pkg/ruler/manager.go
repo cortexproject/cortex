@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -32,9 +33,10 @@ type DefaultMultiTenantManager struct {
 
 	// Structs for holding per-user Prometheus rules Managers
 	// and a corresponding metrics struct
-	userManagerMtx     sync.Mutex
-	userManagers       map[string]RulesManager
-	userManagerMetrics *ManagerMetrics
+	userManagerMtx          sync.Mutex
+	userManagers            map[string]RulesManager
+	userManagerLastUpdateTs map[string]time.Time
+	userManagerMetrics      *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -60,13 +62,14 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 	}
 
 	return &DefaultMultiTenantManager{
-		cfg:                cfg,
-		notifierCfg:        ncfg,
-		managerFactory:     managerFactory,
-		notifiers:          map[string]*rulerNotifier{},
-		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]RulesManager{},
-		userManagerMetrics: userManagerMetrics,
+		cfg:                     cfg,
+		notifierCfg:             ncfg,
+		managerFactory:          managerFactory,
+		notifiers:               map[string]*rulerNotifier{},
+		mapper:                  newMapper(cfg.RulePath, logger),
+		userManagers:            map[string]RulesManager{},
+		userManagerLastUpdateTs: map[string]time.Time{},
+		userManagerMetrics:      userManagerMetrics,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -107,6 +110,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 		if _, exists := ruleGroups[userID]; !exists {
 			go mngr.Stop()
 			delete(r.userManagers, userID)
+			delete(r.userManagerLastUpdateTs, userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
@@ -116,6 +120,15 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 	}
 
 	r.managersTotal.Set(float64(len(r.userManagers)))
+}
+
+func (r *DefaultMultiTenantManager) SyncRuleGroupsForUser(ctx context.Context, ruleGroups store.RuleGroupList, userID string) {
+	// A lock is taken to ensure if this function is called concurrently, then each call
+	// returns after the call map files and check for updates
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
+
+	r.syncRulesToManager(ctx, userID, ruleGroups)
 }
 
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
@@ -157,6 +170,16 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		r.lastReloadSuccessful.WithLabelValues(user).Set(1)
 		r.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
+
+	r.userManagerLastUpdateTs[user] = time.Now()
+}
+
+// GetLastUpdateTime implments ruler.MultiTenantManager
+func (r *DefaultMultiTenantManager) GetLastUpdateTime(userID string) time.Time {
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
+
+	return r.userManagerLastUpdateTs[userID]
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id

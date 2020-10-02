@@ -61,6 +61,7 @@
 * [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
+* [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264
 * [ENHANCEMENT] Experimental Ruler API: Fetch rule groups from object storage in parallel. #3218
 * [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235

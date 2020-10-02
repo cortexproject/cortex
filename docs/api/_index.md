@@ -639,6 +639,8 @@ alertmanager_config: |
   global:
     smtp_smarthost: 'localhost:25'
     smtp_from: 'youraddress@example.org'
+  templates:
+    - 'default_template'
   route:
     receiver: example-email
   receivers:
@@ -764,7 +766,16 @@ The following schema is used both when retrieving the current configs from the A
 - **`config.rules_files`**<br />
   The contents of a rules file should be as described [here](http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/), encoded as a single string to fit within the overall JSON payload.
 - **`config.template_files`**<br />
-  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload.
+  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload. These entries should match the `templates` entries in `alertmanager_config`. Example:
+  ```yaml
+  template_files:
+    myorg.tmpl: |
+      {{ define "__alertmanager" }}AlertManager{{ end }}
+      {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+  alertmanager_config: |
+    templates:
+      - 'myorg.tmpl'
+  ```
 
 ### Get rule files
 

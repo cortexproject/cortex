@@ -32,21 +32,19 @@ type PlanProcessor interface {
 }
 
 type Config struct {
+	// Exported config options.
 	Name              string
-	PlansDirectory    string
 	HeartbeatPeriod   time.Duration
 	SchedulerEndpoint string
 	NextPlanInterval  time.Duration
 	GrpcConfig        grpcclient.ConfigWithTLS
 
-	// Bucket client used for downloading plan files.
-	Bucket objstore.Bucket
+	// Additional settings required for PlanProcessorService.
 
-	// Cleanup function called on startup and after each build.
-	Cleanup func() error
-
-	// Factory for creating PlanProcessor. Called for each new plan.
-	Factory func(planLog log.Logger, userID string, dayStart, dayEnd time.Time) PlanProcessor
+	PlansDirectory string                                                                            // Where to store plan files.
+	Bucket         objstore.Bucket                                                                   // Bucket client used for downloading plan files.
+	Cleanup        func(logger log.Logger) error                                                     // Cleanup function called on startup and after each build.
+	Factory        func(planLog log.Logger, userID string, dayStart, dayEnd time.Time) PlanProcessor // Factory for creating PlanProcessor. Called for each new plan.
 }
 
 func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {
@@ -64,6 +62,10 @@ func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer
 		return nil, errors.New("no scheduler endpoint")
 	}
 
+	if cfg.Bucket == nil || cfg.Factory == nil {
+		return nil, errors.New("invalid config")
+	}
+
 	if cfg.PlansDirectory == "" {
 		return nil, errors.New("no directory for plans")
 	}
@@ -74,8 +76,6 @@ func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer
 	b := &PlanProcessorService{
 		cfg: cfg,
 		log: l,
-
-		bucketClient: cfg.Bucket,
 
 		currentPlanStartTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_plan_start_time_seconds",
@@ -94,13 +94,14 @@ func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer
 	return b, nil
 }
 
+// This service implements common behaviour for plan-processing: 1) wait for next plan, 2) download plan,
+// 3) process each plan entry, 4) delete local plan, 5) repeat. It gets plans from scheduler. During plan processing,
+// this service maintains "progress" status file, and when plan processing finishes, it uploads "finished" plan.
 type PlanProcessorService struct {
 	services.Service
 
 	cfg Config
 	log log.Logger
-
-	bucketClient objstore.Bucket
 
 	planFileReadPosition prometheus.Gauge
 	planFileSize         prometheus.Gauge
@@ -125,7 +126,7 @@ func (s *PlanProcessorService) cleanup(_ context.Context) error {
 	}
 
 	if s.cfg.Cleanup != nil {
-		return s.cfg.Cleanup()
+		return s.cfg.Cleanup(s.log)
 	}
 	return nil
 }
@@ -198,7 +199,7 @@ func (s *PlanProcessorService) running(ctx context.Context) error {
 				// If context is canceled (blocksconvert is shutting down, or due to hearbeating failure), don't upload error.
 				if !errors.Is(err, context.Canceled) {
 					errorFile := blocksconvert.ErrorFilename(planBaseName)
-					err = s.bucketClient.Upload(ctx, errorFile, strings.NewReader(err.Error()))
+					err = s.cfg.Bucket.Upload(ctx, errorFile, strings.NewReader(err.Error()))
 					if err != nil {
 						level.Error(s.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
 					}
@@ -227,7 +228,7 @@ func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, p
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	hb := NewHeartbeat(planLog, s.bucketClient, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
+	hb := NewHeartbeat(planLog, s.cfg.Bucket, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
 	hb.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
 		level.Error(planLog).Log("msg", "heartbeating failed, aborting build", "failure", failure)
 		cancel()
@@ -237,7 +238,7 @@ func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, p
 	}
 
 	localPlanFile := filepath.Join(s.cfg.PlansDirectory, filepath.Base(planFile))
-	planSize, err := downloadPlanFile(ctx, s.bucketClient, planFile, localPlanFile)
+	planSize, err := downloadPlanFile(ctx, s.cfg.Bucket, planFile, localPlanFile)
 	if err != nil {
 		return errors.Wrapf(err, "failed to download plan file %s to %s", planFile, localPlanFile)
 	}
@@ -299,7 +300,7 @@ func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, p
 
 	// Upload finished status file
 	finishedFile := blocksconvert.FinishedFilename(planBaseName, id)
-	if err := s.bucketClient.Upload(ctx, finishedFile, strings.NewReader(id)); err != nil {
+	if err := s.cfg.Bucket.Upload(ctx, finishedFile, strings.NewReader(id)); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}
 	level.Info(planLog).Log("msg", "uploaded finished file", "file", finishedFile)
@@ -335,28 +336,6 @@ func downloadPlanFile(ctx context.Context, bucket objstore.Bucket, planFile stri
 	}
 
 	return n, f.Close()
-}
-
-func getBlockSize(dir string) (int64, error) {
-	size := int64(0)
-
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() {
-			size += info.Size()
-		}
-
-		// Ignore directory with temporary series files.
-		if info.IsDir() && info.Name() == "series" {
-			return filepath.SkipDir
-		}
-
-		return nil
-	})
-	return size, err
 }
 
 func parsePlanHeader(dec *json.Decoder) (userID string, startTime, endTime time.Time, err error) {

@@ -75,7 +75,6 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 
 	b := &Builder{
 		cfg: cfg,
-		log: l,
 
 		bucketClient:  bucketClient,
 		schemaConfig:  scfg.SchemaConfig,
@@ -129,7 +128,6 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 
 type Builder struct {
 	cfg Config
-	log log.Logger
 
 	bucketClient  objstore.Bucket
 	schemaConfig  chunk.SchemaConfig
@@ -147,7 +145,7 @@ type Builder struct {
 	currentPlanStartTime prometheus.Gauge
 }
 
-func (b *Builder) cleanupFn() error {
+func (b *Builder) cleanupFn(log log.Logger) error {
 	files, err := ioutil.ReadDir(b.cfg.OutputDirectory)
 	if err != nil {
 		return err
@@ -158,7 +156,7 @@ func (b *Builder) cleanupFn() error {
 		if strings.HasSuffix(f.Name(), ".tmp") && f.IsDir() {
 			toRemove := filepath.Join(b.cfg.OutputDirectory, f.Name())
 
-			level.Info(b.log).Log("msg", "deleting unfinished block", "dir", toRemove)
+			level.Info(log).Log("msg", "deleting unfinished block", "dir", toRemove)
 
 			err := os.RemoveAll(toRemove)
 			if err != nil {

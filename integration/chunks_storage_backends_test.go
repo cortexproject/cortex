@@ -289,8 +289,8 @@ func newRuleGroup(userID, namespace, group string) *rules.RuleGroupDesc {
 		Namespace: namespace,
 		Rules: []*rules.RuleDesc{
 			{
-				Expr:   fmt.Sprintf(`{%s="bar"}`, name),
-				Record: name + ":bar",
+				Expr:   fmt.Sprintf(`{%s="bar"}`, group),
+				Record: group + ":bar",
 			},
 		},
 		User: userID,

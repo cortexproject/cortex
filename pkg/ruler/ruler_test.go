@@ -555,7 +555,7 @@ func TestSharding(t *testing.T) {
 			}
 
 			// Always add ruler1 to expected rulers, even if there is no ring (no sharding).
-			loadedRules1, err := r1.loadRules(context.Background())
+			loadedRules1, err := r1.listRules(context.Background())
 			require.NoError(t, err)
 
 			expected := expectedRulesMap{
@@ -565,7 +565,7 @@ func TestSharding(t *testing.T) {
 			addToExpected := func(id string, r *Ruler) {
 				// Only expect rules from other rulers when using ring, and they are present in the ring.
 				if r != nil && rulerRing != nil && rulerRing.HasInstance(id) {
-					loaded, err := r.loadRules(context.Background())
+					loaded, err := r.listRules(context.Background())
 					require.NoError(t, err)
 					// Normalize nil map to empty one.
 					if loaded == nil {

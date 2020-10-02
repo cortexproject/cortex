@@ -263,6 +263,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 	rls, err := store.ListAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(rls[userID]))
+	require.NoError(t, store.LoadRuleGroups(ctx, rls))
 
 	userRules := rls[userID]
 	sort.Slice(userRules, func(i, j int) bool { return userRules[i].Name < userRules[j].Name })
@@ -277,6 +278,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 	rls, err = store.ListAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(rls[userID]))
+	require.NoError(t, store.LoadRuleGroups(ctx, rls))
 	require.Equal(t, r2, rls[userID][0])
 }
 

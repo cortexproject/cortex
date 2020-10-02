@@ -51,6 +51,7 @@ Cortex currently supports shuffle sharding in the following services:
 - [Ingesters](#ingesters-shuffle-sharding)
 - [Query-frontend](#query-frontend-shuffle-sharding)
 - [Store-gateway](#store-gateway-shuffle-sharding)
+- [Ruler](#ruler-shuffle-sharding)
 
 Shuffle sharding is **disabled by default** and needs to be explicitly enabled in the configuration.
 
@@ -92,3 +93,13 @@ When shuffle sharding is **enabled** via `-store-gateway.sharding-strategy=shuff
 _The shard size can be overridden on a per-tenant basis setting `store_gateway_tenant_shard_size` in the limits overrides configuration._
 
 _Please check out the [store-gateway documentation](../blocks-storage/store-gateway.md) for more information about how it works._
+
+### Ruler shuffle sharding
+
+Cortex ruler can run in three modes:
+
+1. **No sharding at all.** This is the most basic mode of the ruler. It is activated by using `-ruler.enable-sharding=false` (default) and works correctly only if single ruler is running. In this mode the Ruler loads all rules for all tenants.
+2. **Default sharding**, activated by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy=default` (default). In this mode rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it "owns".
+3. **Shuffle sharding**, activated by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy=shuffle-sharding`. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (`-ruler.tenant-shard-size`, can also be set per tenant as `ruler_tenant_shard_size` in overrides).
+
+Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.

@@ -91,6 +91,8 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 
 	rc.KVStore = cfg.KVStore
 	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
+
+	// Each rule group is loaded to *exactly* one ruler.
 	rc.ReplicationFactor = 1
 
 	return rc

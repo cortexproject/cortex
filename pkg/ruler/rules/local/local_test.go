@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 )
 
-func TestClient_ListAllRuleGroups(t *testing.T) {
+func TestClient_LoadAllRuleGroups(t *testing.T) {
 	user1 := "user"
 	user2 := "second-user"
 
@@ -73,7 +73,7 @@ func TestClient_ListAllRuleGroups(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	userMap, err := client.ListAllRuleGroups(ctx)
+	userMap, err := client.LoadAllRuleGroups(ctx)
 	require.NoError(t, err)
 
 	for _, u := range []string{user1, user2} {

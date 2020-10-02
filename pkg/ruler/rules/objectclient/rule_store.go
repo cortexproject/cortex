@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
-	strings "strings"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/kit/log/level"
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -27,8 +27,8 @@ import (
 // across all backends
 
 const (
-	rulePrefix = "rules/"
-
+	delim                     = "/"
+	rulePrefix                = "rules" + delim
 	loadRuleGroupsConcurrency = 4
 )
 
@@ -54,7 +54,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
@@ -71,8 +71,30 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 	return rg, nil
 }
 
-// ListAllRuleGroups returns all the active rule groups
-func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	_, prefixes, err := o.client.List(ctx, rulePrefix, delim)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []string
+	for _, p := range prefixes {
+		s := string(p)
+
+		s = strings.TrimPrefix(s, rulePrefix)
+		s = strings.TrimSuffix(s, delim)
+
+		if s != "" {
+			result = append(result, s)
+		}
+	}
+
+	return result, nil
+}
+
+// LoadAllRuleGroups implements rules.RuleStore.
+func (o *RuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	// No delimiter to get *all* rule groups for all users and namespaces.
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""), "")
 	if err != nil {
 		return nil, err
@@ -85,8 +107,7 @@ func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.Rul
 	return o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
 }
 
-// ListRuleGroups returns all the active rule groups for a user
-func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (o *RuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
@@ -203,22 +224,22 @@ func (o *RuleStore) loadRuleGroupsConcurrently(ctx context.Context, rgObjects []
 	return result, err
 }
 
-func generateRuleObjectKey(id, namespace, name string) string {
-	if id == "" {
+func generateRuleObjectKey(userID, namespace, groupName string) string {
+	if userID == "" {
 		return rulePrefix
 	}
 
-	prefix := rulePrefix + id + "/"
+	prefix := rulePrefix + userID + delim
 	if namespace == "" {
 		return prefix
 	}
 
-	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + "/"
-	if name == "" {
+	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + delim
+	if groupName == "" {
 		return prefix + ns
 	}
 
-	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(name))
+	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(groupName))
 }
 
 func decomposeRuleObjectKey(handle string) string {

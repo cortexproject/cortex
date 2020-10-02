@@ -35,7 +35,7 @@ func Test_ConfigRuleStoreError(t *testing.T) {
 	}
 
 	store := NewConfigRuleStore(mock)
-	_, err := store.ListAllRuleGroups(context.Background())
+	_, err := store.LoadAllRuleGroups(context.Background())
 
 	assert.Equal(t, mock.err, err, "Unexpected error returned")
 }
@@ -54,7 +54,7 @@ func Test_ConfigRuleStoreReturn(t *testing.T) {
 	}
 
 	store := NewConfigRuleStore(mock)
-	rules, _ := store.ListAllRuleGroups(context.Background())
+	rules, _ := store.LoadAllRuleGroups(context.Background())
 
 	assert.Equal(t, 1, len(rules["user"]))
 	assert.Equal(t, id, store.since)
@@ -73,7 +73,7 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 	}
 
 	store := NewConfigRuleStore(mock)
-	_, _ = store.ListAllRuleGroups(context.Background())
+	_, _ = store.LoadAllRuleGroups(context.Background())
 
 	mock.cfgs["user"] = userconfig.VersionedRulesConfig{
 		ID:        1,
@@ -81,7 +81,7 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 		DeletedAt: time.Unix(0, 1),
 	}
 
-	rules, _ := store.ListAllRuleGroups(context.Background())
+	rules, _ := store.LoadAllRuleGroups(context.Background())
 
 	assert.Equal(t, 0, len(rules["user"]))
 }
@@ -99,7 +99,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 	}
 
 	store := NewConfigRuleStore(mock)
-	_, _ = store.ListAllRuleGroups(context.Background())
+	_, _ = store.LoadAllRuleGroups(context.Background())
 
 	delete(mock.cfgs, "user")
 	mock.cfgs["user2"] = userconfig.VersionedRulesConfig{
@@ -108,7 +108,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 		DeletedAt: zeroTime,
 	}
 
-	rules, _ := store.ListAllRuleGroups(context.Background())
+	rules, _ := store.LoadAllRuleGroups(context.Background())
 
 	assert.Equal(t, 2, len(rules))
 }
@@ -136,7 +136,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 	}
 
 	store := NewConfigRuleStore(mock)
-	_, _ = store.ListAllRuleGroups(context.Background())
+	_, _ = store.LoadAllRuleGroups(context.Background())
 	assert.Equal(t, userconfig.ID(100), store.since)
 
 	delete(mock.cfgs, "user")
@@ -147,7 +147,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 		DeletedAt: zeroTime,
 	}
 
-	_, _ = store.ListAllRuleGroups(context.Background())
+	_, _ = store.LoadAllRuleGroups(context.Background())
 	assert.Equal(t, userconfig.ID(100), store.since)
 
 	mock.cfgs["user2"] = userconfig.VersionedRulesConfig{
@@ -156,7 +156,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 		DeletedAt: zeroTime,
 	}
 
-	_, _ = store.ListAllRuleGroups(context.Background())
+	_, _ = store.LoadAllRuleGroups(context.Background())
 	assert.Equal(t, userconfig.ID(101), store.since)
 }
 

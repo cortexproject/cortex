@@ -4,8 +4,6 @@ package ring
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
@@ -72,6 +70,8 @@ const (
 
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
 	BlocksRead
+
+	Ruler // Used for distributing rule groups between rulers.
 )
 
 var (
@@ -209,7 +209,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
-			level.Info(util.Logger).Log("msg", "ring doesn't exist in consul yet")
+			level.Info(util.Logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
 		}
 
@@ -471,16 +471,8 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return cached
 	}
 
-	// Use the identifier to compute an hash we'll use to seed the random.
-	hasher := md5.New()
-	hasher.Write([]byte(identifier)) // nolint:errcheck
-	checksum := hasher.Sum(nil)
-
-	// Generate the seed based on the first 64 bits of the checksum.
-	seed := int64(binary.BigEndian.Uint64(checksum))
-
 	// Initialise the random generator used to select instances in the ring.
-	random := rand.New(rand.NewSource(seed))
+	random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier)))
 
 	var result *Ring
 

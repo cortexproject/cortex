@@ -40,16 +40,14 @@ func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, err
 	}, nil
 }
 
-// ListAllRuleGroups implements RuleStore
-func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	lists := make(map[string]rules.RuleGroupList)
-
+func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 	root := l.cfg.Directory
 	infos, err := ioutil.ReadDir(root)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to read dir %s", root)
 	}
 
+	var result []string
 	for _, info := range infos {
 		// After resolving link, info.Name() may be different than user, so keep original name.
 		user := info.Name()
@@ -62,11 +60,24 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 			}
 		}
 
-		if !info.IsDir() {
-			continue
+		if info.IsDir() {
+			result = append(result, user)
 		}
+	}
 
-		list, err := l.listAllRulesGroupsForUser(ctx, user)
+	return result, nil
+}
+
+// LoadAllRuleGroups implements rules.RuleStore
+func (l *Client) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	users, err := l.ListAllUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	lists := make(map[string]rules.RuleGroupList)
+	for _, user := range users {
+		list, err := l.loadAllRulesGroupsForUser(ctx, user)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to list rule groups for user %s", user)
 		}
@@ -77,13 +88,13 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	return lists, nil
 }
 
-// ListRuleGroups implements RuleStore
-func (l *Client) ListRuleGroups(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+// LoadRuleGroupsForUserAndNamespace implements rules.RuleStore
+func (l *Client) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	if namespace != "" {
 		return l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}
 
-	return l.listAllRulesGroupsForUser(ctx, userID)
+	return l.loadAllRulesGroupsForUser(ctx, userID)
 }
 
 // GetRuleGroup implements RuleStore
@@ -106,7 +117,7 @@ func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) 
 	return errors.New("DeleteNamespace unsupported in rule local store")
 }
 
-func (l *Client) listAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
+func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
 	var allLists rules.RuleGroupList
 
 	root := filepath.Join(l.cfg.Directory, userID)

@@ -179,8 +179,19 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-
 	startTime := time.Now()
+
+	// to parse form we need to be sure
+	// that roundtriper request gets not read reader
+	var buf bytes.Buffer
+	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
+	// Ensure the form has been parsed so all the parameters are present
+	err := r.ParseForm()
+	if err != nil {
+		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
+	}
+	r.Body = ioutil.NopCloser(&buf)
+
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
@@ -195,8 +206,13 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		io.Copy(w, resp.Body)
 	}
 
-	// If LogQueriesLongerThan is set to <0 we log every query, if it is set to 0 query logging
-	// is disabled
+	f.reportSlowQuery(queryResponseTime, r)
+}
+
+// reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, if it is set to 0 query logging
+// is disabled. This function shouldn't access request body as it will be already read by RoundTriper returning
+// no form values or reporting closed body warning
+func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request) {
 	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		logMessage := []interface{}{
 			"msg", "slow query detected",
@@ -204,12 +220,6 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 			"host", r.Host,
 			"path", r.URL.Path,
 			"time_taken", queryResponseTime.String(),
-		}
-
-		// Ensure the form has been parsed so all the parameters are present
-		err = r.ParseForm()
-		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
 		}
 
 		// Attempt to iterate through the Form to log any filled in values
@@ -234,6 +244,7 @@ func writeError(w http.ResponseWriter, err error) {
 
 // RoundTrip implement http.Transport.
 func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
+	defer r.Body.Close()
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err

@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	strconv "strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,8 +62,8 @@ func TestFrontend(t *testing.T) {
 		assert.Equal(t, "Hello World", string(body))
 	}
 
-	testFrontend(t, defaultFrontendConfig(), handler, test, false)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -108,8 +112,8 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
@@ -164,8 +168,8 @@ func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
 		assert.NotEqual(t, downstreamReqHost, addr)
 	}
 
-	testFrontend(t, config, nil, test, false)
-	testFrontend(t, config, nil, test, true)
+	testFrontend(t, config, nil, test, false, nil)
+	testFrontend(t, config, nil, test, true, nil)
 }
 
 // TestFrontendCancel ensures that when client requests are cancelled,
@@ -196,9 +200,9 @@ func TestFrontendCancel(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, int32(1), tries.Load())
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
 	tries.Store(0)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
 }
 
 func TestFrontendCancelStatusCode(t *testing.T) {
@@ -251,8 +255,74 @@ func TestFrontendCheckReady(t *testing.T) {
 	}
 }
 
-func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool) {
+func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
+	// Create an HTTP server listening locally. This server mocks the downstream
+	// Prometheus API-compatible server.
+	downstreamListen, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	downstreamServer := http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := w.Write([]byte(responseBody + responseBody + responseBody + responseBody + responseBody))
+			require.NoError(t, err)
+		}),
+	}
+
+	defer downstreamServer.Shutdown(context.Background()) //nolint:errcheck
+	go downstreamServer.Serve(downstreamListen)           //nolint:errcheck
+
+	// Configure the query-frontend with the mocked downstream server.
+	config := defaultFrontendConfig()
+	config.LogQueriesLongerThan = 1 * time.Microsecond
+	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte(responseBody + responseBody + responseBody + responseBody + responseBody))
+		time.Sleep(10 * time.Millisecond)
+		require.NoError(t, err)
+	})
+	var buf bytes.Buffer
+	l := log.NewLogfmtLogger(log.NewSyncWriter(&buf))
+
+	test := func(addr string) {
+		data := url.Values{}
+		data.Set("test", "form")
+		data.Set("issue", "3111")
+
+		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/", addr), strings.NewReader(data.Encode()))
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+
+		ctx := context.Background()
+		req = req.WithContext(ctx)
+		assert.NoError(t, err)
+		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		assert.NoError(t, err)
+
+		client := http.Client{
+			Transport: &nethttp.Transport{},
+		}
+
+		resp, err := client.Do(req)
+		b, err := ioutil.ReadAll(resp.Body)
+		defer resp.Body.Close()
+		assert.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode, string(b))
+
+		logs := buf.String()
+		assert.Contains(t, logs, "msg=\"slow query detected\"")
+		assert.Contains(t, logs, "param_issue=3111")
+		assert.Contains(t, logs, "param_test=form")
+	}
+
+	testFrontend(t, config, handler, test, false, l)
+}
+
+func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {
 	logger := log.NewNopLogger()
+	if l != nil {
+		logger = l
+	}
 
 	var (
 		workerConfig  WorkerConfig

@@ -135,7 +135,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 		t.Cfg.LimitsConfig.RulerEvaluationDelay = t.Cfg.Ruler.EvaluationDelay
 
 		// No need to report if this field isn't going to be used.
-		if t.ModuleManager.IsModuleRegistered(Ruler) {
+		if t.Cfg.Modules[Ruler] || t.Cfg.Modules[All] {
 			flagext.DeprecatedFlagsUsed.Inc()
 			level.Warn(util.Logger).Log("msg", "Using DEPRECATED YAML config field ruler.evaluation_delay_duration, please use limits.ruler_evaluation_delay_duration instead.")
 		}
@@ -173,7 +173,7 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
 	// ruler's dependency)
-	canJoinDistributorsRing := t.ModuleManager.IsModuleRegistered(Distributor)
+	canJoinDistributorsRing := t.Cfg.Modules[Distributor] || t.Cfg.Modules[All]
 
 	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -227,7 +227,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 
 	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
 	//  worker we will attempt an automatic configuration here
-	if t.Cfg.Worker.Address == "" && t.ModuleManager.IsModuleRegistered(All) {
+	if t.Cfg.Worker.Address == "" && t.Cfg.Modules[All] {
 		address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 		level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 		t.Cfg.Worker.Address = address

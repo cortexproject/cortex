@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+* [FEATURE] Implement an ability to load multiple Cortex modules using a comma-separated list. #3272
+  - Should be backwards compatible with the current behavior.
+  - Target list like 'all,compactor' can be used to load the single-binary modules plus some other modules.
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
   - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
   - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -71,10 +72,11 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      string `yaml:"target"`
-	AuthEnabled bool   `yaml:"auth_enabled"`
-	PrintConfig bool   `yaml:"-"`
-	HTTPPrefix  string `yaml:"http_prefix"`
+	Target      string          `yaml:"target"`
+	Modules     map[string]bool `yaml:"-"`
+	AuthEnabled bool            `yaml:"auth_enabled"`
+	PrintConfig bool            `yaml:"-"`
+	HTTPPrefix  string          `yaml:"http_prefix"`
 
 	API            api.Config               `yaml:"api"`
 	Server         server.Config            `yaml:"server"`
@@ -109,7 +111,11 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
-	f.StringVar(&c.Target, "target", All, "The Cortex module to run. Use \"-modules\" command line flag to get a list of available modules, and to see which modules are included in \"All\".")
+
+	f.StringVar(&c.Target, "target", All, "List of Cortex modules to load, comma separated. "+
+		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
+		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
+
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
@@ -277,6 +283,12 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
+	// Parse a comma-separated list of modules to load
+	cfg.Modules = map[string]bool{}
+	for _, n := range strings.Split(cfg.Target, ",") {
+		cfg.Modules[n] = true
+	}
+
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
 	//
@@ -305,19 +317,30 @@ func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
+// InitModules initializes required Cortex modules
+func (t *Cortex) InitModules() error {
+	for module := range t.Cfg.Modules {
+		if !t.ModuleManager.IsUserVisibleModule(module) {
+			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
+		}
+
+		err := t.ModuleManager.InitModuleServices(module)
+		if err != nil {
+			return err
+		}
+	}
+
+	t.ServiceMap = t.ModuleManager.GetServicesMap()
+	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
+
+	return nil
+}
+
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	if !t.ModuleManager.IsUserVisibleModule(t.Cfg.Target) {
-		level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", t.Cfg.Target)
-	}
-
-	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target)
-	if err != nil {
+	if err := t.InitModules(); err != nil {
 		return err
 	}
-
-	t.ServiceMap = serviceMap
-	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
 
 	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)

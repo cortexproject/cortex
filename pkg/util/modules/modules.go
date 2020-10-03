@@ -25,6 +25,12 @@ type module struct {
 // in the right order of dependencies.
 type Manager struct {
 	modules map[string]*module
+
+	// Modules that are already initialized
+	modulesLoaded map[string]bool
+
+	// Service map
+	servicesMap map[string]services.Service
 }
 
 // UserInvisibleModule is an option for `RegisterModule` that marks module not visible to user. Modules are user visible by default.
@@ -35,7 +41,9 @@ func UserInvisibleModule(m *module) {
 // NewManager creates a new Manager
 func NewManager() *Manager {
 	return &Manager{
-		modules: make(map[string]*module),
+		modules:       make(map[string]*module),
+		modulesLoaded: make(map[string]bool),
+		servicesMap:   make(map[string]services.Service),
 	}
 }
 
@@ -67,18 +75,21 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 // InitModuleServices initialises the target module by initialising all its dependencies
 // in the right order. Modules are wrapped in such a way that they start after their
 // dependencies have been started and stop before their dependencies are stopped.
-func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error) {
-	if _, ok := m.modules[target]; !ok {
-		return nil, fmt.Errorf("unrecognised module name: %s", target)
+func (m *Manager) InitModuleServices(name string) error {
+	if !m.IsModuleRegistered(name) {
+		return fmt.Errorf("unrecognised module name: %s", name)
 	}
 
-	servicesMap := map[string]services.Service{}
-
 	// initialize all of our dependencies first
-	deps := m.orderedDeps(target)
-	deps = append(deps, target) // lastly, initialize the requested module
+	deps := m.orderedDeps(name)
+	deps = append(deps, name) // lastly, initialize the requested module
 
 	for ix, n := range deps {
+		// Skip already loaded modules
+		if m.modulesLoaded[n] {
+			continue
+		}
+
 		mod := m.modules[n]
 
 		var serv services.Service
@@ -86,22 +97,24 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 		if mod.initFn != nil {
 			s, err := mod.initFn()
 			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
+				return errors.Wrap(err, fmt.Sprintf("error initialising module: %s", n))
 			}
 
 			if s != nil {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(m.servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 
 		if serv != nil {
-			servicesMap[n] = serv
+			m.servicesMap[n] = serv
 		}
+
+		m.modulesLoaded[n] = true
 	}
 
-	return servicesMap, nil
+	return nil
 }
 
 // UserVisibleModuleNames gets list of module names that are
@@ -119,6 +132,11 @@ func (m *Manager) UserVisibleModuleNames() []string {
 	return result
 }
 
+// GetServicesMap returns services map
+func (m *Manager) GetServicesMap() map[string]services.Service {
+	return m.servicesMap
+}
+
 // IsUserVisibleModule check if given module is public or not. Returns true
 // if and only if the given module is registered and is public.
 func (m *Manager) IsUserVisibleModule(mod string) bool {
@@ -129,6 +147,12 @@ func (m *Manager) IsUserVisibleModule(mod string) bool {
 	}
 
 	return false
+}
+
+// IsModuleRegistered returns true if given module was registered
+func (m *Manager) IsModuleRegistered(mod string) bool {
+	_, ok := m.modules[mod]
+	return ok
 }
 
 // listDeps recursively gets a list of dependencies for a passed moduleName

@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -10,7 +11,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func mockInitFunc() (services.Service, error) { return nil, nil }
+func mockInitFunc() (services.Service, error) { return services.NewIdleService(nil, nil), nil }
+
+func mockInitFuncFail() (services.Service, error) { return nil, errors.New("Error") }
 
 func TestDependencies(t *testing.T) {
 	var testModules = map[string]module{
@@ -24,6 +27,10 @@ func TestDependencies(t *testing.T) {
 
 		"serviceC": {
 			initFn: mockInitFunc,
+		},
+
+		"serviceD": {
+			initFn: mockInitFuncFail,
 		},
 	}
 
@@ -39,13 +46,24 @@ func TestDependencies(t *testing.T) {
 	require.Len(t, invDeps, 1)
 	assert.Equal(t, invDeps[0], "serviceB")
 
-	svcs, err := mm.InitModuleServices("serviceC")
-	assert.NotNil(t, svcs)
-	assert.NoError(t, err)
-
-	svcs, err = mm.InitModuleServices("service_unknown")
-	assert.Nil(t, svcs)
+	// Test unknown module
+	err := mm.InitModuleServices("service_unknown")
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
+	assert.Empty(t, mm.GetServicesMap())
+
+	// Test init failure
+	err = mm.InitModuleServices("serviceD")
+	assert.Error(t, err)
+	assert.Empty(t, mm.GetServicesMap())
+
+	err = mm.InitModuleServices("serviceC")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(mm.GetServicesMap()))
+
+	// Test loading of the module second time (should be noop)
+	err = mm.InitModuleServices("serviceC")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(mm.GetServicesMap()))
 }
 
 func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {

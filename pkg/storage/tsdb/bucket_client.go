@@ -32,6 +32,11 @@ func NewBucketClient(ctx context.Context, cfg BucketConfig, name string, logger 
 		return nil, err
 	}
 
+	// Wrap the client with any provided middleware
+	for _, wrap := range cfg.Middleware {
+		client = wrap(client)
+	}
+
 	return objstore.NewTracingBucket(bucketWithMetrics(client, name, reg)), nil
 }
 

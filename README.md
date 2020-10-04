@@ -140,5 +140,5 @@ in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/ove
 ### Grafana Cloud
 
 To use Cortex as part of Grafana Cloud, sign up for [Grafana Cloud](https://grafana.com/cloud)
-by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
-as part of the Starter and Basic Hosted Grafana plans.
+by clicking "Log In" in the top right and then "Sign Up Now". 
+Cortex is included as part of the Starter and Basic Hosted Grafana plans.

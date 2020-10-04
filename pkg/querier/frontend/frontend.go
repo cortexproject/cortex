@@ -179,8 +179,6 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-
 	// to parse form we need to be sure
 	// that roundtriper request gets not read reader
 	var buf bytes.Buffer
@@ -192,6 +190,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = ioutil.NopCloser(&buf)
 
+	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 

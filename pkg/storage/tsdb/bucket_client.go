@@ -33,7 +33,7 @@ func NewBucketClient(ctx context.Context, cfg BucketConfig, name string, logger 
 	}
 
 	// Wrap the client with any provided middleware
-	for _, wrap := range cfg.Middleware {
+	for _, wrap := range cfg.Middlewares {
 		client = wrap(client)
 	}
 

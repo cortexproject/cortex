@@ -68,7 +68,7 @@ type BucketConfig struct {
 
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
-	Middleware []func(objstore.Bucket) objstore.Bucket `yaml:"-"`
+	Middlewares []func(objstore.Bucket) objstore.Bucket `yaml:"-"`
 }
 
 // BlocksStorageConfig holds the config information for the blocks storage.

@@ -304,6 +304,7 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 		}
 
 		resp, err := client.Do(req)
+		assert.NoError(t, err)
 		b, err := ioutil.ReadAll(resp.Body)
 		defer resp.Body.Close()
 		assert.NoError(t, err)

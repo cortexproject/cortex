@@ -244,7 +244,6 @@ func writeError(w http.ResponseWriter, err error) {
 
 // RoundTrip implement http.Transport.
 func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
-	defer r.Body.Close()
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err

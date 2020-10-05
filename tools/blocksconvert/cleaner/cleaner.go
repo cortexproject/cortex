@@ -67,6 +67,10 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_cleaner_deleted_chunks_total",
 			Help: "Deleted chunks",
 		}),
+		deletedChunksMissing: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_cleaner_delete_chunks_missing_total",
+			Help: "Chunks that were missing when trying to delete them.",
+		}),
 		deletedChunksErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_cleaner_delete_chunks_errors_total",
 			Help: "Number of errors while deleting individual chunks.",
@@ -87,8 +91,9 @@ type Cleaner struct {
 	schemaConfig  chunk.SchemaConfig
 	storageConfig storage.Config
 
-	deletedChunks       prometheus.Counter
-	deletedChunksErrors prometheus.Counter
+	deletedChunks        prometheus.Counter
+	deletedChunksMissing prometheus.Counter
+	deletedChunksErrors  prometheus.Counter
 
 	deletedSeries       prometheus.Counter
 	deletedSeriesErrors prometheus.Counter
@@ -217,8 +222,12 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 
 		// Chunk may contain data from other time ranges. We don't care.
 		if err := chunkClient.DeleteChunk(ctx, cp.userID, cid); err != nil {
-			level.Warn(cp.log).Log("msg", "failed to delete chunk for series", "series", e.SeriesID, "chunk", cid, "err", err)
-			cp.cleaner.deletedChunksErrors.Inc()
+			if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+				cp.cleaner.deletedChunksMissing.Inc()
+			} else {
+				level.Warn(cp.log).Log("msg", "failed to delete chunk for series", "series", e.SeriesID, "chunk", cid, "err", err)
+				cp.cleaner.deletedChunksErrors.Inc()
+			}
 		} else {
 			cp.cleaner.deletedChunks.Inc()
 		}

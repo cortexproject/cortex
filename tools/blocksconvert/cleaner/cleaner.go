@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -161,6 +162,9 @@ func (cp *cleanerProcessor) fetchAndClean(ctx context.Context, input chan blocks
 }
 
 func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, e blocksconvert.PlanEntry) error {
+	// Interaction with chunks.Store needs this.
+	ctx = user.InjectOrgID(ctx, cp.userID)
+
 	fetcher := cp.cleaner.store.GetChunkFetcher(model.TimeFromUnixNano(cp.dayStart.UnixNano()))
 
 	var c *chunk.Chunk

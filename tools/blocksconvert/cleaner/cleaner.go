@@ -194,7 +194,9 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 
 	if c == nil {
 		cp.cleaner.deletedSeriesErrors.Inc()
-		level.Warn(cp.log).Log("msg", "no chunk found for series, unable to delete series", "series", e.SeriesID)
+		// This can happen also when cleaner is restarted. Chunks deleted previously cannot be found anymore,
+		// but index entries should not exist.
+		// level.Warn(cp.log).Log("msg", "no chunk found for series, unable to delete series", "series", e.SeriesID)
 		return nil
 	}
 

@@ -1,0 +1,29 @@
+name: test-build-deploy
+
+on:
+  push:
+    # branches: [master]
+    tags:
+      - /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+  pull_request:
+    tags:
+      - /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+    defaults:
+      working-directory: /go/src/github.com/cortexproject/cortex
+    steps:
+      - name: checkout rpeo
+        uses: actions/checkout@v2
+      - name: Lint
+        run: make BUILD_IN_CONTAINER=false lint
+      - name: Check protos are consistent.
+        run: make BUILD_IN_CONTAINER=false check-protos
+      - name: Check generated documentation is consistent.
+        run: make BUILD_IN_CONTAINER=false check-doc
+      - name: Check white noise.
+        run: make BUILD_IN_CONTAINER=false check-white-noise

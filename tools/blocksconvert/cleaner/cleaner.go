@@ -71,6 +71,10 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_cleaner_delete_chunks_missing_total",
 			Help: "Chunks that were missing when trying to delete them.",
 		}),
+		deletedChunksSkipped: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_cleaner_delete_chunks_skipped_total",
+			Help: "Number of skipped chunks during deletion.",
+		}),
 		deletedChunksErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_cleaner_delete_chunks_errors_total",
 			Help: "Number of errors while deleting individual chunks.",
@@ -92,6 +96,7 @@ type Cleaner struct {
 	storageConfig storage.Config
 
 	deletedChunks        prometheus.Counter
+	deletedChunksSkipped prometheus.Counter
 	deletedChunksMissing prometheus.Counter
 	deletedChunksErrors  prometheus.Counter
 
@@ -206,11 +211,17 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 	}
 
 	start := model.TimeFromUnixNano(cp.dayStart.UnixNano())
-	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano())
+	// End is inclusive in GetChunkWriteEntries, but we don't want to delete chunks from next day.
+	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano()) - 1
 
 	// With metric, we find out which index entries to remove.
 	batch := indexClient.NewWriteBatch()
 	for _, cid := range e.Chunks {
+		c, err := chunk.ParseExternalKey(cp.userID, cid)
+		if err != nil {
+			return errors.Wrap(err, "failed to parse chunk key")
+		}
+
 		ents, err := schema.GetChunkWriteEntries(start, end, cp.userID, metricName, metric, cid)
 		if err != nil {
 			return errors.Wrapf(err, "getting index entries to delete for chunkID=%s", cid)
@@ -218,6 +229,13 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 
 		for i := range ents {
 			batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
+		}
+
+		// Only delete this chunk if it *starts* in specified date-period.
+		if c.From < start || c.From > end {
+			cp.cleaner.deletedChunksSkipped.Inc()
+			// Index entries were already added, but we keep chunk.
+			continue
 		}
 
 		// Chunk may contain data from other time ranges. We don't care.

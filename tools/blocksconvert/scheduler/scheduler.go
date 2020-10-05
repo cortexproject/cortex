@@ -379,7 +379,7 @@ func scanForPlans(ctx context.Context, bucket objstore.Bucket, prefix string) (m
 			plans[base] = p
 		} else if ok, base, id := blocksconvert.IsFinishedFilename(filename); ok {
 			p := plans[base]
-			p.Blocks = append(p.Blocks, id)
+			p.Finished = append(p.Finished, id)
 			plans[base] = p
 		} else if ok, base := blocksconvert.IsErrorFilename(filename); ok {
 			p := plans[base]
@@ -434,7 +434,7 @@ var plansTemplate = template.Must(template.New("plans").Parse(`
 							<td>
 								{{ if .ErrorFile }} <strong>Error:</strong> {{ .ErrorFile }} <br />{{ end }}
 								{{ if .ProgressFiles }} <strong>Progress:</strong> {{ range $p, $t := .ProgressFiles }} {{ $p }} {{ end }} <br /> {{ end }}
-								{{ if .Blocks }} <strong>Blocks:</strong> {{ .Blocks }} <br />{{ end }}
+								{{ if .Finished }} <strong>Finished:</strong> {{ .Finished }} <br />{{ end }}
 							</td>
 						</tr>
 						{{ end }}

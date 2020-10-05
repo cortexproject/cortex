@@ -100,10 +100,6 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_builder_in_progress",
 			Help: "Build in progress",
 		}),
-		currentPlanStartTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_blocksconvert_builder_plan_start_time_seconds",
-			Help: "Start time of current plan's time range (unix timestamp).",
-		}),
 		chunksNotFound: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_builder_chunks_not_found_total",
 			Help: "Number of chunks that were not found on the storage.",
@@ -198,7 +194,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	}
 	defer chunkClient.Stop()
 
-	fetcher, err := blocksconvert.NewFetcher(p.userID, chunkClient, p.builder.fetchedChunks, p.builder.fetchedChunksSize)
+	fetcher, err := newFetcher(p.userID, chunkClient, p.builder.fetchedChunks, p.builder.fetchedChunksSize)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create chunk fetcher")
 	}
@@ -300,7 +296,7 @@ func getBlockSize(dir string) (int64, error) {
 	return size, err
 }
 
-func fetchAndBuild(ctx context.Context, f *blocksconvert.Fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
+func fetchAndBuild(ctx context.Context, f *Fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
 	b := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
@@ -360,8 +356,8 @@ func fetchAndBuild(ctx context.Context, f *blocksconvert.Fetcher, input chan blo
 	}
 }
 
-func fetchAndBuildSingleSeries(ctx context.Context, fetcher *blocksconvert.Fetcher, chunksIds []string) (labels.Labels, []chunk.Chunk, error) {
-	cs, err := fetcher.FetchChunks(ctx, chunksIds)
+func fetchAndBuildSingleSeries(ctx context.Context, fetcher *Fetcher, chunksIds []string) (labels.Labels, []chunk.Chunk, error) {
+	cs, err := fetcher.fetchChunks(ctx, chunksIds)
 	if err != nil && !errors.Is(err, chunk.ErrStorageObjectNotFound) {
 		return nil, nil, errors.Wrap(err, "fetching chunks")
 	}

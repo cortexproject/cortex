@@ -1,4 +1,4 @@
-package blocksconvert
+package builder
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type Fetcher struct {
 	fetchedChunksSize prometheus.Counter
 }
 
-func NewFetcher(userID string, client chunk.Client, fetchedChunks, fetchedChunksSize prometheus.Counter) (*Fetcher, error) {
+func newFetcher(userID string, client chunk.Client, fetchedChunks, fetchedChunksSize prometheus.Counter) (*Fetcher, error) {
 	return &Fetcher{
 		client:            client,
 		userID:            userID,
@@ -26,7 +26,7 @@ func NewFetcher(userID string, client chunk.Client, fetchedChunks, fetchedChunks
 	}, nil
 }
 
-func (f *Fetcher) FetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.Chunk, error) {
+func (f *Fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.Chunk, error) {
 	chunks := make([]chunk.Chunk, 0, len(chunkIDs))
 
 	for _, cid := range chunkIDs {

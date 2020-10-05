@@ -43,7 +43,7 @@ type Config struct {
 
 	PlansDirectory string                                                                            // Where to store plan files.
 	Bucket         objstore.Bucket                                                                   // Bucket client used for downloading plan files.
-	Cleanup        func(logger log.Logger) error                                                     // Cleanup function called on startup and after each build.
+	Cleanup        func(logger log.Logger) error                                                     // Cleanup function called on startup and after each build. Can be nil.
 	Factory        func(planLog log.Logger, userID string, dayStart, dayEnd time.Time) PlanProcessor // Factory for creating PlanProcessor. Called for each new plan.
 }
 

@@ -40,6 +40,7 @@ func main() {
 	cfg.ScannerConfig.RegisterFlags(flag.CommandLine)
 	cfg.BuilderConfig.RegisterFlags(flag.CommandLine)
 	cfg.SchedulerConfig.RegisterFlags(flag.CommandLine)
+	cfg.CleanerConfig.RegisterFlags(flag.CommandLine)
 	cfg.ServerConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 

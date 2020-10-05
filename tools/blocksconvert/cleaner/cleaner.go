@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -169,9 +168,6 @@ func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh 
 }
 
 func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema chunk.SeriesStoreSchema, chunkClient chunk.Client, indexClient chunk.IndexClient, e blocksconvert.PlanEntry) error {
-	// Interaction with chunks.Store needs this.
-	ctx = user.InjectOrgID(ctx, cp.userID)
-
 	var c *chunk.Chunk
 	var err error
 
@@ -214,6 +210,8 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 	// End is inclusive in GetChunkWriteEntries, but we don't want to delete chunks from next day.
 	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano()) - 1
 
+	var chunksToDelete []string
+
 	// With metric, we find out which index entries to remove.
 	batch := indexClient.NewWriteBatch()
 	for _, cid := range e.Chunks {
@@ -232,13 +230,24 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 		}
 
 		// Only delete this chunk if it *starts* in specified date-period.
-		if c.From < start || c.From > end {
+		if c.From >= start {
+			chunksToDelete = append(chunksToDelete, cid)
+		} else {
 			cp.cleaner.deletedChunksSkipped.Inc()
-			// Index entries were already added, but we keep chunk.
 			continue
 		}
+	}
 
-		// Chunk may contain data from other time ranges. We don't care.
+	// Delete index entries first. If we delete chunks first, and then cleaner is interrupted,
+	// chunks won't be find upon restart, and it won't be possible to clean up index entries.
+	if err := indexClient.BatchWrite(ctx, batch); err != nil {
+		level.Warn(cp.log).Log("msg", "failed to delete index entries for series", "series", e.SeriesID, "err", err)
+		cp.cleaner.deletedSeriesErrors.Inc()
+	} else {
+		cp.cleaner.deletedSeries.Inc()
+	}
+
+	for _, cid := range chunksToDelete {
 		if err := chunkClient.DeleteChunk(ctx, cp.userID, cid); err != nil {
 			if errors.Is(err, chunk.ErrStorageObjectNotFound) {
 				cp.cleaner.deletedChunksMissing.Inc()
@@ -249,13 +258,6 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 		} else {
 			cp.cleaner.deletedChunks.Inc()
 		}
-	}
-
-	if err := indexClient.BatchWrite(ctx, batch); err != nil {
-		level.Warn(cp.log).Log("msg", "failed to delete index entries for series", "series", e.SeriesID, "err", err)
-		cp.cleaner.deletedSeriesErrors.Inc()
-	} else {
-		cp.cleaner.deletedSeries.Inc()
 	}
 
 	return nil

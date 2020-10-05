@@ -62,6 +62,10 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 			Name: "cortex_blocksconvert_cleaner_delete_series_errors_total",
 			Help: "Number of errors while deleting series.",
 		}),
+		deletedIndexEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_cleaner_deleted_index_entries_total",
+			Help: "Deleted index entries",
+		}),
 		deletedChunks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_cleaner_deleted_chunks_total",
 			Help: "Deleted chunks",
@@ -99,6 +103,7 @@ type Cleaner struct {
 	deletedChunksMissing prometheus.Counter
 	deletedChunksErrors  prometheus.Counter
 
+	deletedIndexEntries prometheus.Counter
 	deletedSeries       prometheus.Counter
 	deletedSeriesErrors prometheus.Counter
 }
@@ -213,6 +218,8 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 
 	var chunksToDelete []string
 
+	indexEntries := 0
+
 	// With metric, we find out which index entries to remove.
 	batch := indexClient.NewWriteBatch()
 	for _, cid := range e.Chunks {
@@ -230,6 +237,8 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 		for i := range ents {
 			batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
 		}
+
+		indexEntries += len(ents)
 
 		// Only delete this chunk if it *starts* in plans' date-period. In general we process plans from most-recent
 		// to older, so if chunk starts in current plan's period, it was already removed in later plans.
@@ -249,6 +258,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 		cp.cleaner.deletedSeriesErrors.Inc()
 	} else {
 		cp.cleaner.deletedSeries.Inc()
+		cp.cleaner.deletedIndexEntries.Add(float64(indexEntries))
 	}
 
 	for _, cid := range chunksToDelete {

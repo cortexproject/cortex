@@ -105,7 +105,6 @@ type PlanProcessorService struct {
 
 	planFileReadPosition prometheus.Gauge
 	planFileSize         prometheus.Gauge
-	buildInProgress      prometheus.Gauge
 	currentPlanStartTime prometheus.Gauge
 }
 
@@ -215,8 +214,6 @@ func (s *PlanProcessorService) running(ctx context.Context) error {
 }
 
 func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
-	s.buildInProgress.Set(1)
-	defer s.buildInProgress.Set(0)
 	defer s.planFileSize.Set(0)
 	defer s.planFileReadPosition.Set(0)
 	defer s.currentPlanStartTime.Set(0)

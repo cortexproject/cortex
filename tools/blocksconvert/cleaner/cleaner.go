@@ -209,8 +209,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 	}
 
 	start := model.TimeFromUnixNano(cp.dayStart.UnixNano())
-	// End is inclusive in GetChunkWriteEntries, but we don't want to delete chunks from next day.
-	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano()) - 1
+	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano())
 
 	var chunksToDelete []string
 
@@ -222,7 +221,8 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 			return errors.Wrap(err, "failed to parse chunk key")
 		}
 
-		ents, err := schema.GetChunkWriteEntries(start, end, cp.userID, metricName, metric, cid)
+		// End is inclusive in GetChunkWriteEntries, but we don't want to delete chunks from next day.
+		ents, err := schema.GetChunkWriteEntries(start, end-1, cp.userID, metricName, metric, cid)
 		if err != nil {
 			return errors.Wrapf(err, "getting index entries to delete for chunkID=%s", cid)
 		}
@@ -231,7 +231,9 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 			batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
 		}
 
-		// Only delete this chunk if it *starts* in specified date-period.
+		// Only delete this chunk if it *starts* in plans' date-period. In general we process plans from most-recent
+		// to older, so if chunk starts in current plan's period, it was already removed in later plans.
+		// This breaks when running multiple cleaners or cleaner crashes.
 		if c.From >= start {
 			chunksToDelete = append(chunksToDelete, cid)
 		} else {

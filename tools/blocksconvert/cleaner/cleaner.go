@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -49,22 +48,12 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		return nil, err
 	}
 
-	// No registerer, to avoid problems with registering same metrics multiple times.
-	store, err := storage.NewStore(scfg.StorageConfig, chunk.StoreConfig{
-		ChunkCacheConfig:       cache.Config{Cache: noCache{}},
-		WriteDedupeCacheConfig: cache.Config{Cache: noCache{}},
-	}, scfg.SchemaConfig, cleanerStoreLimits{}, reg, nil, l)
-	if err != nil {
-		return nil, err
-	}
-
 	c := &Cleaner{
 		cfg: cfg,
 
 		bucketClient:  bucketClient,
 		schemaConfig:  scfg.SchemaConfig,
 		storageConfig: scfg.StorageConfig,
-		store:         store,
 
 		deletedSeries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_cleaner_deleted_series_total",
@@ -97,7 +86,6 @@ type Cleaner struct {
 	bucketClient  objstore.Bucket
 	schemaConfig  chunk.SchemaConfig
 	storageConfig storage.Config
-	store         chunk.Store
 
 	deletedChunks       prometheus.Counter
 	deletedChunksErrors prometheus.Counter
@@ -126,10 +114,39 @@ type cleanerProcessor struct {
 }
 
 func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh chan blocksconvert.PlanEntry) (string, error) {
+	schema, chunkClient, indexClient, err := cp.cleaner.createClientsForDay(cp.dayStart)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to create clients")
+	}
+
+	defer chunkClient.Stop()
+	defer indexClient.Stop()
+
+	seriesSchema, ok := schema.(chunk.SeriesStoreSchema)
+	if !ok || seriesSchema == nil {
+		return "", errors.Errorf("invalid schema, expected v9 or later")
+	}
+
 	g, gctx := errgroup.WithContext(ctx)
 	for i := 0; i < cp.cleaner.cfg.Concurrency; i++ {
 		g.Go(func() error {
-			return cp.fetchAndClean(gctx, planEntryCh)
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+
+				case e, ok := <-planEntryCh:
+					if !ok {
+						// End of input.
+						return nil
+					}
+
+					err := cp.deleteChunksForSeries(gctx, seriesSchema, chunkClient, indexClient, e)
+					if err != nil {
+						return err
+					}
+				}
+			}
 		})
 	}
 
@@ -141,31 +158,9 @@ func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh 
 	return "cleaned", nil
 }
 
-func (cp *cleanerProcessor) fetchAndClean(ctx context.Context, input chan blocksconvert.PlanEntry) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-
-		case e, ok := <-input:
-			if !ok {
-				// End of input.
-				return nil
-			}
-
-			err := cp.deleteChunksForSeries(ctx, e)
-			if err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, e blocksconvert.PlanEntry) error {
+func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema chunk.SeriesStoreSchema, chunkClient chunk.Client, indexClient chunk.IndexClient, e blocksconvert.PlanEntry) error {
 	// Interaction with chunks.Store needs this.
 	ctx = user.InjectOrgID(ctx, cp.userID)
-
-	fetcher := cp.cleaner.store.GetChunkFetcher(model.TimeFromUnixNano(cp.dayStart.UnixNano()))
 
 	var c *chunk.Chunk
 	var err error
@@ -176,7 +171,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, e blocksc
 		MaxRetries: 5,
 	})
 	for ; b.Ongoing(); b.Wait() {
-		c, err = fetchSingleChunk(ctx, cp.userID, fetcher, e.Chunks)
+		c, err = fetchSingleChunk(ctx, cp.userID, chunkClient, e.Chunks)
 		if err == nil {
 			break
 		}
@@ -197,42 +192,49 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, e blocksc
 		return nil
 	}
 
-	start := model.TimeFromUnixNano(cp.dayStart.UnixNano())
-	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano())
-
 	// All chunks belonging to the series use the same metric.
 	metric := c.Metric
 
+	metricName := metric.Get(model.MetricNameLabel)
+	if metricName == "" {
+		return errors.Errorf("cannot find metric name for series %s", metric.String())
+	}
+
+	start := model.TimeFromUnixNano(cp.dayStart.UnixNano())
+	end := model.TimeFromUnixNano(cp.dayEnd.UnixNano())
+
+	// With metric, we find out which index entries to remove.
+	batch := indexClient.NewWriteBatch()
 	for _, cid := range e.Chunks {
-		cleaned := false
-
-		for b.Reset(); b.Ongoing(); b.Wait() {
-			err = cp.cleaner.store.DeleteChunk(ctx, start, end, cp.userID, cid, metric, nil)
-			if err == nil {
-				cleaned = true
-				break
-			}
-
-			level.Warn(cp.log).Log("msg", "failed to delete chunk", "series", e.SeriesID, "chunk", cid, "err", err)
+		ents, err := schema.GetChunkWriteEntries(start, end, cp.userID, metricName, metric, cid)
+		if err != nil {
+			return errors.Wrapf(err, "getting index entries to delete for chunkID=%s", cid)
 		}
 
-		if cleaned {
-			cp.cleaner.deletedChunks.Inc()
-		} else {
+		for i := range ents {
+			batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
+		}
+
+		// Chunk may contain data from other time ranges. We don't care.
+		if err := chunkClient.DeleteChunk(ctx, cp.userID, cid); err != nil {
+			level.Warn(cp.log).Log("msg", "failed to delete chunk for series", "series", e.SeriesID, "chunk", cid, "err", err)
 			cp.cleaner.deletedChunksErrors.Inc()
+		} else {
+			cp.cleaner.deletedChunks.Inc()
 		}
 	}
 
-	if err := cp.cleaner.store.DeleteSeriesIDs(ctx, start, end, cp.userID, metric); err != nil {
+	if err := indexClient.BatchWrite(ctx, batch); err != nil {
+		level.Warn(cp.log).Log("msg", "failed to delete index entries for series", "series", e.SeriesID, "err", err)
 		cp.cleaner.deletedSeriesErrors.Inc()
-		level.Warn(cp.log).Log("msg", "failed to delete series", "series", e.SeriesID, "err", err)
 	} else {
 		cp.cleaner.deletedSeries.Inc()
 	}
+
 	return nil
 }
 
-func fetchSingleChunk(ctx context.Context, userID string, fetcher *chunk.Fetcher, chunksIds []string) (*chunk.Chunk, error) {
+func fetchSingleChunk(ctx context.Context, userID string, chunkClient chunk.Client, chunksIds []string) (*chunk.Chunk, error) {
 	// Fetch single chunk
 	for _, cid := range chunksIds {
 		c, err := chunk.ParseExternalKey(userID, cid)
@@ -240,7 +242,7 @@ func fetchSingleChunk(ctx context.Context, userID string, fetcher *chunk.Fetcher
 			return nil, errors.Wrap(err, "fetching chunks")
 		}
 
-		cs, err := fetcher.FetchChunks(ctx, []chunk.Chunk{c}, []string{cid})
+		cs, err := chunkClient.GetChunks(ctx, []chunk.Chunk{c})
 
 		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
 			continue
@@ -257,17 +259,41 @@ func fetchSingleChunk(ctx context.Context, userID string, fetcher *chunk.Fetcher
 	return nil, nil
 }
 
-type cleanerStoreLimits struct{}
+func (c *Cleaner) createClientsForDay(dayStart time.Time) (chunk.BaseSchema, chunk.Client, chunk.IndexClient, error) {
+	for ix, s := range c.schemaConfig.Configs {
+		if dayStart.Unix() < s.From.Unix() {
+			continue
+		}
 
-func (c cleanerStoreLimits) CardinalityLimit(_ string) int         { return 0 }
-func (c cleanerStoreLimits) MaxChunksPerQuery(_ string) int        { return 0 }
-func (c cleanerStoreLimits) MaxQueryLength(_ string) time.Duration { return 0 }
+		if ix+1 < len(c.schemaConfig.Configs) && dayStart.Unix() > c.schemaConfig.Configs[ix+1].From.Unix() {
+			continue
+		}
 
-type noCache struct{}
+		schema, err := s.CreateSchema()
+		if err != nil {
+			return nil, nil, nil, errors.Wrap(err, "failed to create schema")
+		}
 
-func (n noCache) Store(ctx context.Context, key []string, buf [][]byte) {}
-func (n noCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
-	return nil, nil, keys
+		// No registerer, to avoid problems with registering same metrics multiple times.
+		index, err := storage.NewIndexClient(s.IndexType, c.storageConfig, c.schemaConfig, nil)
+		if err != nil {
+			return nil, nil, nil, errors.Wrap(err, "error creating index client")
+		}
+
+		objectStoreType := s.ObjectType
+		if objectStoreType == "" {
+			objectStoreType = s.IndexType
+		}
+
+		// No registerer, to avoid problems with registering same metrics multiple times.
+		chunks, err := storage.NewChunkClient(objectStoreType, c.storageConfig, c.schemaConfig, nil)
+		if err != nil {
+			index.Stop()
+			return nil, nil, nil, errors.Wrap(err, "error creating object client")
+		}
+
+		return schema, chunks, index, nil
+	}
+
+	return nil, nil, nil, errors.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
 }
-
-func (n noCache) Stop() {}

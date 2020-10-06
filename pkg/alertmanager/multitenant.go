@@ -321,13 +321,13 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for user, cfg := range cfgs {
 		err := am.setConfig(cfg)
 		if err != nil {
-			am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(1))
+			am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(0))
 			am.multitenantMetrics.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 			level.Warn(am.logger).Log("msg", "error applying config", "err", err)
 			continue
 		}
 
-		am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(0))
+		am.multitenantMetrics.lastReloadSuccessful.WithLabelValues(user).Set(float64(1))
 	}
 
 	am.alertmanagersMtx.Lock()

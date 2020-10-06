@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -204,8 +205,9 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		},
 
 		Thanos: metadata.Thanos{
-			Labels: labels,
-			Source: metadata.SourceType(source),
+			Labels:       labels,
+			Source:       metadata.SourceType(source),
+			SegmentFiles: block.GetSegmentFiles(d.tmpBlockDir),
 		},
 	}
 

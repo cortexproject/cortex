@@ -68,10 +68,7 @@ func (s *GCSObjectClient) Stop() {
 // key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if s.cfg.RequestTimeout > 0 {
-		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, s.cfg.RequestTimeout)
-		defer cancel()
+		ctx, _ = context.WithTimeout(ctx, s.cfg.RequestTimeout)
 	}
 
 	reader, err := s.bucket.Object(objectKey).NewReader(ctx)

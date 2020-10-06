@@ -111,10 +111,7 @@ func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
 	if b.cfg.RequestTimeout > 0 {
-		// The context will be cancelled with the timeout or when the parent context is cancelled, whichever occurs first.
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
-		defer cancel()
+		ctx, _ = context.WithTimeout(ctx, b.cfg.RequestTimeout)
 	}
 
 	blockBlobURL, err := b.getBlobURL(objectKey)

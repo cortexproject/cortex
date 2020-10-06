@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -110,10 +111,26 @@ func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
+	var cancel context.CancelFunc
 	if b.cfg.RequestTimeout > 0 {
-		ctx, _ = context.WithTimeout(ctx, b.cfg.RequestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
 	}
 
+	rc, err := b.getObject(ctx, objectKey)
+	if cancel != nil {
+		if err != nil {
+			// cancel the context if there is an error.
+			cancel()
+			return nil, err
+		}
+		// else return a wrapped ReadCloser which cancels the context while closing the reader.
+		rc = chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel)
+	}
+
+	return rc, nil
+}
+
+func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {
 	blockBlobURL, err := b.getBlobURL(objectKey)
 	if err != nil {
 		return nil, err

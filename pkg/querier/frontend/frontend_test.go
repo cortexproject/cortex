@@ -263,7 +263,7 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 
 	downstreamServer := http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, err := w.Write([]byte(responseBody + responseBody + responseBody + responseBody + responseBody))
+			_, err := w.Write([]byte(responseBody))
 			require.NoError(t, err)
 		}),
 	}
@@ -276,11 +276,6 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 	config.LogQueriesLongerThan = 1 * time.Microsecond
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte(responseBody + responseBody + responseBody + responseBody + responseBody))
-		time.Sleep(10 * time.Millisecond)
-		require.NoError(t, err)
-	})
 	var buf bytes.Buffer
 	l := log.NewLogfmtLogger(log.NewSyncWriter(&buf))
 
@@ -306,17 +301,19 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 		resp, err := client.Do(req)
 		assert.NoError(t, err)
 		b, err := ioutil.ReadAll(resp.Body)
-		defer resp.Body.Close()
+		resp.Body.Close()
+
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode, string(b))
 
 		logs := buf.String()
+		assert.NotContains(t, logs, "unable to parse form for request")
 		assert.Contains(t, logs, "msg=\"slow query detected\"")
 		assert.Contains(t, logs, "param_issue=3111")
 		assert.Contains(t, logs, "param_test=form")
 	}
 
-	testFrontend(t, config, handler, test, false, l)
+	testFrontend(t, config, nil, test, false, l)
 }
 
 func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {

@@ -30,6 +30,8 @@ type RuleStore interface {
 	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
 
 	// LoadRuleGroups loads rules for each rule group in the map.
+	// Parameter with groups to load *MUST* be coming from one of the List methods.
+	// Reason is that some implementations don't do anything, since their List method already loads the rules.
 	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]RuleGroupList) error
 
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)

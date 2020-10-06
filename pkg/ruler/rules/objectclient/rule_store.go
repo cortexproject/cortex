@@ -45,6 +45,7 @@ func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
 	}
 }
 
+// If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
 func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
@@ -139,7 +140,7 @@ func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]
 				key := generateRuleObjectKey(user, namespace, group)
 
 				level.Debug(util.Logger).Log("msg", "loading rule group", "key", key, "user", user)
-				gr, err := o.getRuleGroup(gCtx, key, gr)
+				gr, err := o.getRuleGroup(gCtx, key, gr) // reuse group pointer from the map.
 				if err != nil {
 					level.Error(util.Logger).Log("msg", "failed to get rule group", "key", key, "user", user)
 					return err

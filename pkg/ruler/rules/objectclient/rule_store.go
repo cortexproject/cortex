@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"io/ioutil"
-	strings "strings"
+	"strings"
+	"sync"
 
 	"github.com/go-kit/kit/log/level"
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
@@ -25,7 +27,9 @@ import (
 // across all backends
 
 const (
-	rulePrefix = "rules/"
+	delim                     = "/"
+	rulePrefix                = "rules" + delim
+	loadRuleGroupsConcurrency = 4
 )
 
 // RuleStore allows cortex rules to be stored using an object store backend.
@@ -50,7 +54,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
@@ -67,54 +71,54 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 	return rg, nil
 }
 
-// ListAllRuleGroups returns all the active rule groups
-func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	_, prefixes, err := o.client.List(ctx, rulePrefix, delim)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []string
+	for _, p := range prefixes {
+		s := string(p)
+
+		s = strings.TrimPrefix(s, rulePrefix)
+		s = strings.TrimSuffix(s, delim)
+
+		if s != "" {
+			result = append(result, s)
+		}
+	}
+
+	return result, nil
+}
+
+// LoadAllRuleGroups implements rules.RuleStore.
+func (o *RuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	// No delimiter to get *all* rule groups for all users and namespaces.
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""), "")
 	if err != nil {
 		return nil, err
 	}
 
-	userGroupMap := map[string]rules.RuleGroupList{}
-	for _, obj := range ruleGroupObjects {
-
-		user := decomposeRuleObjectKey(obj.Key)
-		if user == "" {
-			continue
-		}
-
-		rg, err := o.getRuleGroup(ctx, obj.Key)
-		if err != nil {
-			return nil, err
-		}
-
-		if _, exists := userGroupMap[user]; !exists {
-			userGroupMap[user] = rules.RuleGroupList{}
-		}
-		userGroupMap[user] = append(userGroupMap[user], rg)
+	if len(ruleGroupObjects) == 0 {
+		return map[string]rules.RuleGroupList{}, nil
 	}
 
-	return userGroupMap, nil
+	return o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
 }
 
-// ListRuleGroups returns all the active rule groups for a user
-func (o *RuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (o *RuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
 	}
 
-	groups := []*rules.RuleGroupDesc{}
-	for _, obj := range ruleGroupObjects {
-		level.Debug(util.Logger).Log("msg", "listing rule group", "key", obj.Key)
-
-		rg, err := o.getRuleGroup(ctx, obj.Key)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to retrieve rule group", "err", err, "key", obj.Key)
-			return nil, err
-		}
-		groups = append(groups, rg)
+	if len(ruleGroupObjects) == 0 {
+		return rules.RuleGroupList{}, nil
 	}
-	return groups, nil
+
+	groups, err := o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
+	return groups[userID], err
 }
 
 // GetRuleGroup returns the requested rule group
@@ -172,22 +176,70 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	return nil
 }
 
-func generateRuleObjectKey(id, namespace, name string) string {
-	if id == "" {
+func (o *RuleStore) loadRuleGroupsConcurrently(ctx context.Context, rgObjects []chunk.StorageObject) (map[string]rules.RuleGroupList, error) {
+	ch := make(chan string, len(rgObjects))
+
+	for _, obj := range rgObjects {
+		ch <- obj.Key
+	}
+	close(ch)
+
+	mtx := sync.Mutex{}
+	result := map[string]rules.RuleGroupList{}
+
+	concurrency := loadRuleGroupsConcurrency
+	if loadRuleGroupsConcurrency < len(rgObjects) {
+		concurrency = len(rgObjects)
+	}
+
+	// Given we store one file per rule group. With this, we create a pool of workers that will
+	// download all rule groups in parallel. We limit the number of workers to avoid a
+	// particular user having too many rule groups rate limiting us with the object storage.
+	g, gCtx := errgroup.WithContext(ctx)
+	for i := 0; i < concurrency; i++ {
+		g.Go(func() error {
+			for key := range ch {
+				user := decomposeRuleObjectKey(key)
+				if user == "" {
+					continue
+				}
+
+				level.Debug(util.Logger).Log("msg", "listing rule group", "key", key, "user", user)
+				rg, err := o.getRuleGroup(gCtx, key)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to get rule group", "key", key, "user", user)
+					return err
+				}
+
+				mtx.Lock()
+				result[user] = append(result[user], rg)
+				mtx.Unlock()
+			}
+
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	return result, err
+}
+
+func generateRuleObjectKey(userID, namespace, groupName string) string {
+	if userID == "" {
 		return rulePrefix
 	}
 
-	prefix := rulePrefix + id + "/"
+	prefix := rulePrefix + userID + delim
 	if namespace == "" {
 		return prefix
 	}
 
-	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + "/"
-	if name == "" {
+	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + delim
+	if groupName == "" {
 		return prefix + ns
 	}
 
-	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(name))
+	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(groupName))
 }
 
 func decomposeRuleObjectKey(handle string) string {

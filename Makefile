@@ -1,3 +1,7 @@
+# Local settings (optional). See Makefile.local.example for an example.
+# WARNING: do not commit to a repository!
+-include Makefile.local
+
 .PHONY: all test clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 

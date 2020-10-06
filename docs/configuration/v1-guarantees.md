@@ -47,7 +47,7 @@ Currently experimental features are:
 - gRPC Store.
 - Querier support for querying chunks and blocks store at the same time.
 - Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)
-- Shuffle-sharding of queriers in the query-frontend (i.e. use of `-frontend.max-queriers-per-user` flag with non-zero value).
+- Shuffle-sharding of queriers in the query-frontend (i.e. use of `-frontend.max-queriers-per-tenant` flag with non-zero value).
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools

@@ -1,0 +1,5 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="TSDB Ruler-1" type="GoRemoteDebugConfigurationType" factoryName="Go Remote" port="18021">
+    <method v="2" />
+  </configuration>
+</component>

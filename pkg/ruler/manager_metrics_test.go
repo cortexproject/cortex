@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +20,9 @@ func TestManagerMetrics(t *testing.T) {
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
 	managerMetrics.AddUserRegistry("user3", populateManager(100))
+
+	managerMetrics.AddUserRegistry("user4", populateManager(1000))
+	managerMetrics.DeleteUserRegistry("user4")
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
@@ -206,4 +211,47 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 	}
 
 	return m
+}
+
+func TestMetricsArePerUser(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	managerMetrics := NewManagerMetrics()
+	mainReg.MustRegister(managerMetrics)
+	managerMetrics.AddUserRegistry("user1", populateManager(1))
+	managerMetrics.AddUserRegistry("user2", populateManager(10))
+	managerMetrics.AddUserRegistry("user3", populateManager(100))
+
+	ch := make(chan prometheus.Metric)
+
+	defer func() {
+		// drain the channel, so that collecting gouroutine can stop.
+		// This is useful if test fails.
+		for range ch {
+		}
+	}()
+
+	go func() {
+		managerMetrics.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		desc := m.Desc()
+
+		dtoM := &dto.Metric{}
+		err := m.Write(dtoM)
+
+		require.NoError(t, err)
+
+		foundUserLabel := false
+		for _, l := range dtoM.Label {
+			if l.GetName() == "user" {
+				foundUserLabel = true
+				break
+			}
+		}
+
+		assert.True(t, foundUserLabel, "user label not found for metric %s", desc.String())
+	}
 }

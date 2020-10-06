@@ -54,7 +54,7 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 
 	if sharding {
 		// Use only single querier for each user.
-		flags["-frontend.max-queriers-per-user"] = "1"
+		flags["-frontend.max-queriers-per-tenant"] = "1"
 	}
 
 	// Start Cortex components.

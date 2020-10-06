@@ -70,9 +70,19 @@ blocks_storage:
 ruler:
   enable_api: true
   storage:
-    type: configdb
-    configdb:
-      configs_api_url: http://configstore:80/
+    type: s3
+    s3:
+      bucketnames: cortex-ruler
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+  enable_sharding: true
+  ring:
+    heartbeat_period:   5s
+    heartbeat_timeout:  15s
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
 
 alertmanager:
   enable_api: true

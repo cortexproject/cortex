@@ -21,11 +21,6 @@ services:
   memcached:
     image: memcached:1.6
 
-  configstore:
-    image: nginx
-    volumes:
-      - .data-configstore:/usr/share/nginx/html/private:ro
-
   prometheus:
     image: prom/prometheus:v2.16.0
     command: ["--config.file=/etc/prometheus/prometheus.yaml"]
@@ -178,27 +173,6 @@ services:
     volumes:
       - ./config:/cortex/config
 
-  ruler:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18005 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8005 -server.grpc-listen-port=9005"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ruler
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8005:8005
-      - 18005:18005
-    volumes:
-      - ./config:/cortex/config
-
   compactor:
     build:
       context:    .
@@ -253,5 +227,47 @@ services:
     ports:
       - 8010:8010
       - 18010:18010
+    volumes:
+      - ./config:/cortex/config
+
+  ruler-1:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18021 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8021 -server.grpc-listen-port=9021"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ruler-1
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8021:8021
+      - 18021:18021
+    volumes:
+      - ./config:/cortex/config
+
+  ruler-2:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18022 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8022 -server.grpc-listen-port=9022"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=ruler-2
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8022:8022
+      - 18022:18022
     volumes:
       - ./config:/cortex/config

@@ -40,7 +40,7 @@
   - `POST <legacy-http-prefix>/push`
   - `POST /push`
   - `POST /ingester/push`
-* [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-user` globally, or using per-user limit `max_queriers_per_user`), each user's requests will be handled by different set of queriers. #3113
+* [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
 * [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
   - `-blocks-storage.s3.http.idle-conn-timeout`
@@ -61,6 +61,10 @@
 * [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
+* [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264
+* [ENHANCEMENT] Experimental Ruler API: Fetch rule groups from object storage in parallel. #3218
+* [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218
+* [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
@@ -68,8 +72,9 @@
 * [BUGFIX] Ruler Experimental API: Don't allow rule groups without names or empty rule groups. #3210
 * [BUGFIX] Experimental Alertmanager API: Do not allow empty Alertmanager configurations or bad template filenames to be submitted through the configuration API. #3185
 * [BUGFIX] Reduce failures to update heartbeat when using Consul. #3259
+* [BUGFIX] When using ruler sharding, moving all user rule groups from ruler to a different one and then back could end up with some user groups not being evaluated at all. #3235
 
-## 1.4.0-rc.0 in progress
+## 1.4.0 / 2020-10-02
 
 * [CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. #3198
 * [CHANGE] Cassandra backend support is now GA (stable). #3180
@@ -97,7 +102,6 @@
 * [CHANGE] `ruler.evaluation_delay_duration` field in YAML config has been moved and renamed to `limits.ruler_evaluation_delay_duration`. #3098
 * [CHANGE] Removed obsolete `results_cache.max_freshness` from YAML config (deprecated since Cortex 1.2). #3145
 * [CHANGE] Removed obsolete `-promql.lookback-delta` option (deprecated since Cortex 1.2, replaced with `-querier.lookback-delta`). #3144
-* [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
 * [CHANGE] Cache: added support for Redis Cluster and Redis Sentinel. #2961
   - The following changes have been made in Redis configuration:
    - `-redis.master_name` added
@@ -106,9 +110,15 @@
    - `-redis.max-conn-lifetime` changed to `-redis.max-connection-age`
    - `-redis.max-idle-conns` removed
    - `-redis.wait-on-pool-exhaustion` removed
+* [CHANGE] TLS configuration for gRPC, HTTP and etcd clients is now marked as experimental. These features are not yet fully baked, and we expect possible small breaking changes in Cortex 1.5. #3198
+* [CHANGE] Fixed store-gateway CLI flags inconsistencies. #3201
+  - `-store-gateway.replication-factor` flag renamed to `-store-gateway.sharding-ring.replication-factor`
+  - `-store-gateway.tokens-file-path` flag renamed to `store-gateway.sharding-ring.tokens-file-path`
+* [FEATURE] Logging of the source IP passed along by a reverse proxy is now supported by setting the `-server.log-source-ips-enabled`. For non standard headers the settings `-server.log-source-ips-header` and `-server.log-source-ips-regex` can be used. #2985
 * [FEATURE] Blocks storage: added shuffle sharding support to store-gateway blocks sharding. Added the following additional metrics to store-gateway: #3069
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`
+* [FEATURE] Experimental blocksconvert: introduce an experimental tool `blocksconvert` to migrate long-term storage chunks to blocks. #3092 #3122 #3127 #3162
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018
@@ -127,6 +137,8 @@
 * [ENHANCEMENT] Experimental Delete Series: Retry processing of Delete requests during failures. #2926
 * [ENHANCEMENT] Improve performance of QueryStream() in ingesters. #3177
 * [ENHANCEMENT] Modules included in "All" target are now visible in output of `-modules` CLI flag. #3155
+* [ENHANCEMENT] Added `/debug/fgprof` endpoint to debug running Cortex process using `fgprof`. This adds up to the existing `/debug/...` endpoints. #3131
+* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. (#2976)
 * [BUGFIX] Ruler: when loading rules from "local" storage, check for directory after resolving symlink. #3137
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013
@@ -148,6 +160,7 @@
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
 * [BUGFIX] Limit errors on ranged queries (`api/v1/query_range`) no longer return a status code `500` but `422` instead. #3167
+* [BUGFIX] Handle hash-collisions in the query path. Before this fix, Cortex could occasionally mix up two different series in a query, leading to invalid results, when `-querier.ingester-streaming` was used. #3192
 
 ## 1.3.0 / 2020-08-21
 

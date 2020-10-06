@@ -24,7 +24,7 @@ scrape_configs:
           namespace: 'tsdb-blocks-storage-s3'
   - job_name: tsdb-blocks-storage-s3/ruler
     static_configs:
-      - targets: ['ruler:8005']
+      - targets: ['ruler-1:8021', 'ruler-2:8022']
         labels:
           cluster: 'docker-compose'
           namespace: 'tsdb-blocks-storage-s3'

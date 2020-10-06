@@ -542,6 +542,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		prometheus.DefaultRegisterer,
 		util.Logger,
 		t.RulerStorage,
+		t.Overrides,
 	)
 	if err != nil {
 		return

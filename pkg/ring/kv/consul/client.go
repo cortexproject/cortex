@@ -122,10 +122,8 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 		retries = 10
 	)
 	for i := 0; i < retries; i++ {
-		options := &consul.QueryOptions{
-			AllowStale:        !c.cfg.ConsistentReads,
-			RequireConsistent: c.cfg.ConsistentReads,
-		}
+		// Get with default options - don't want stale data to compare with
+		options := &consul.QueryOptions{}
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "error getting key", "key", key, "err", err)

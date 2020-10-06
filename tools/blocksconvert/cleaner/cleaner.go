@@ -128,7 +128,7 @@ type cleanerProcessor struct {
 }
 
 func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh chan blocksconvert.PlanEntry) (string, error) {
-	schema, chunkClient, indexClient, err := cp.cleaner.createClientsForDay(cp.dayStart)
+	tableName, schema, chunkClient, indexClient, err := cp.cleaner.createClientsForDay(cp.dayStart)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create clients")
 	}
@@ -155,7 +155,7 @@ func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh 
 						return nil
 					}
 
-					err := cp.deleteChunksForSeries(gctx, seriesSchema, chunkClient, indexClient, e)
+					err := cp.deleteChunksForSeries(gctx, tableName, seriesSchema, chunkClient, indexClient, e)
 					if err != nil {
 						return err
 					}
@@ -172,7 +172,7 @@ func (cp *cleanerProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh 
 	return "cleaned", nil
 }
 
-func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema chunk.SeriesStoreSchema, chunkClient chunk.Client, indexClient chunk.IndexClient, e blocksconvert.PlanEntry) error {
+func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, tableName string, schema chunk.SeriesStoreSchema, chunkClient chunk.Client, indexClient chunk.IndexClient, e blocksconvert.PlanEntry) error {
 	var c *chunk.Chunk
 	var err error
 
@@ -228,20 +228,37 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, schema ch
 			return errors.Wrap(err, "failed to parse chunk key")
 		}
 
-		// End is inclusive in GetChunkWriteEntries, but we don't want to delete chunks from next day.
-		ents, err := schema.GetChunkWriteEntries(start, end-1, cp.userID, metricName, metric, cid)
+		// ChunkWriteEntries returns entries not only for this day-period, but all days that chunk covers.
+		// Since we process plans "backwards", more recent entries should already be cleaned up.
+		ents, err := schema.GetChunkWriteEntries(c.From, c.Through, cp.userID, metricName, metric, cid)
 		if err != nil {
 			return errors.Wrapf(err, "getting index entries to delete for chunkID=%s", cid)
 		}
-
 		for i := range ents {
-			batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
+			// To avoid deleting entries from older tables, we check for table. This can still delete entries
+			// from different buckets in the same table, but we just accept that.
+			if tableName == ents[i].TableName {
+				batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
+			}
 		}
-
 		indexEntries += len(ents)
 
+		// Label entries in v9, v10 and v11 don't use from/through in encoded values, so instead of chunk From/Through values,
+		// we only pass start/end for current day, to avoid deleting entries in other buckets.
+		// As "end" is inclusive, we make it exclusive by -1.
+		_, perKeyEnts, err := schema.GetCacheKeysAndLabelWriteEntries(start, end-1, cp.userID, metricName, metric, cid)
+		if err != nil {
+			return errors.Wrapf(err, "getting index entries to delete for chunkID=%s", cid)
+		}
+		for _, ents := range perKeyEnts {
+			for i := range ents {
+				batch.Delete(ents[i].TableName, ents[i].HashValue, ents[i].RangeValue)
+			}
+			indexEntries += len(ents)
+		}
+
 		// Only delete this chunk if it *starts* in plans' date-period. In general we process plans from most-recent
-		// to older, so if chunk starts in current plan's period, it was already removed in later plans.
+		// to older, so if chunk starts in current plan's period, its index entries were already removed in later plans.
 		// This breaks when running multiple cleaners or cleaner crashes.
 		if c.From >= start {
 			chunksToDelete = append(chunksToDelete, cid)
@@ -302,7 +319,7 @@ func fetchSingleChunk(ctx context.Context, userID string, chunkClient chunk.Clie
 	return nil, nil
 }
 
-func (c *Cleaner) createClientsForDay(dayStart time.Time) (chunk.BaseSchema, chunk.Client, chunk.IndexClient, error) {
+func (c *Cleaner) createClientsForDay(dayStart time.Time) (string, chunk.BaseSchema, chunk.Client, chunk.IndexClient, error) {
 	for ix, s := range c.schemaConfig.Configs {
 		if dayStart.Unix() < s.From.Unix() {
 			continue
@@ -312,15 +329,17 @@ func (c *Cleaner) createClientsForDay(dayStart time.Time) (chunk.BaseSchema, chu
 			continue
 		}
 
+		tableName := s.IndexTables.TableFor(model.TimeFromUnixNano(dayStart.UnixNano()))
+
 		schema, err := s.CreateSchema()
 		if err != nil {
-			return nil, nil, nil, errors.Wrap(err, "failed to create schema")
+			return "", nil, nil, nil, errors.Wrap(err, "failed to create schema")
 		}
 
 		// No registerer, to avoid problems with registering same metrics multiple times.
 		index, err := storage.NewIndexClient(s.IndexType, c.storageConfig, c.schemaConfig, nil)
 		if err != nil {
-			return nil, nil, nil, errors.Wrap(err, "error creating index client")
+			return "", nil, nil, nil, errors.Wrap(err, "error creating index client")
 		}
 
 		objectStoreType := s.ObjectType
@@ -332,11 +351,11 @@ func (c *Cleaner) createClientsForDay(dayStart time.Time) (chunk.BaseSchema, chu
 		chunks, err := storage.NewChunkClient(objectStoreType, c.storageConfig, c.schemaConfig, nil)
 		if err != nil {
 			index.Stop()
-			return nil, nil, nil, errors.Wrap(err, "error creating object client")
+			return "", nil, nil, nil, errors.Wrap(err, "error creating object client")
 		}
 
-		return schema, chunks, index, nil
+		return tableName, schema, chunks, index, nil
 	}
 
-	return nil, nil, nil, errors.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
+	return "", nil, nil, nil, errors.Errorf("no schema for day %v", dayStart.Format("2006-01-02"))
 }

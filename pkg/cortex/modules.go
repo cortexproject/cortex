@@ -547,8 +547,13 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		return
 	}
 
-	// Expose HTTP endpoints.
-	t.API.RegisterRuler(t.Ruler, t.Cfg.Ruler.EnableAPI)
+	// Expose HTTP/GRPC endpoints for the Ruler service
+	t.API.RegisterRuler(t.Ruler)
+
+	// If the API is enabled, register the Ruler API
+	if t.Cfg.Ruler.EnableAPI {
+		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, t.RulerStorage))
+	}
 
 	return t.Ruler, nil
 }

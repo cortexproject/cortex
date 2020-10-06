@@ -232,42 +232,42 @@ func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPerio
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 }
 
-// RegisterRuler registers routes associated with the Ruler service. If the
-// API is not enabled only the ring route is registered.
-func (a *API) RegisterRuler(r *ruler.Ruler, apiEnabled bool) {
+// RegisterRuler registers routes associated with the Ruler service.
+func (a *API) RegisterRuler(r *ruler.Ruler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/ruler/ring", "Ruler Ring Status")
 	a.RegisterRoute("/ruler/ring", r, false, "GET", "POST")
 
 	// Legacy Ring Route
 	a.RegisterRoute("/ruler_ring", r, false, "GET", "POST")
 
-	if apiEnabled {
-		// Prometheus Rule API Routes
-		a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-		a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	ruler.RegisterRulerServer(a.server.GRPC, r)
+}
 
-		ruler.RegisterRulerServer(a.server.GRPC, r)
+// RegisterRulerAPI registers routes associated with the Ruler API
+func (a *API) RegisterRulerAPI(r *ruler.API) {
+	// Prometheus Rule API Routes
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
-		// Ruler API Routes
-		a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
-		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-		a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
-		a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
+	// Ruler API Routes
+	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
-		// Legacy Prometheus Rule API Routes
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	// Legacy Prometheus Rule API Routes
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
-		// Legacy Ruler API Routes
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
-		a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
-	}
+	// Legacy Ruler API Routes
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.

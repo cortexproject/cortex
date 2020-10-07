@@ -40,7 +40,7 @@
   - `POST <legacy-http-prefix>/push`
   - `POST /push`
   - `POST /ingester/push`
-* [CHANGE] Renamed CLI flags to configure the network interface names from which automatically detect the instance IP. Not a breaking change because these flags were non documented. #3295
+* [CHANGE] Renamed CLI flags to configure the network interface names from which automatically detect the instance IP. #3295
   - `-compactor.ring.instance-interface` renamed to `-compactor.ring.instance-interface-names`
   - `-store-gateway.sharding-ring.instance-interface` renamed to `-store-gateway.sharding-ring.instance-interface-names`
   - `-distributor.ring.instance-interface` renamed to `-distributor.ring.instance-interface-names`

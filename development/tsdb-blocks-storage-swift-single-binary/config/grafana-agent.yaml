@@ -1,0 +1,26 @@
+server:
+  log_level: debug
+  http_listen_port: 9091
+
+prometheus:
+  global:
+    scrape_interval: 5s
+    external_labels:
+      scraped_by: grafana-agent
+  configs:
+    - name: local
+      host_filter: false
+      scrape_configs:
+        - job_name: cortex-1
+          static_configs:
+            - targets: ['cortex-1:8001']
+              labels:
+                container: 'cortex-1'
+        - job_name: cortex-2
+          static_configs:
+            - targets: ['cortex-2:8002']
+              labels:
+                container: 'cortex-2'
+
+      remote_write:
+        - url: http://cortex-1:8001/api/prom/push

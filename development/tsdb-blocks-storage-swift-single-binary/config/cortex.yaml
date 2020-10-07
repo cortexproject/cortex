@@ -1,0 +1,81 @@
+auth_enabled: false
+
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+ingester_client:
+  grpc_client_config:
+    # Configure the client to allow messages up to 100MB.
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: gzip
+
+ingester:
+  lifecycler:
+    # We want to start immediately.
+    join_after: 0
+    final_sleep: 0s
+    num_tokens: 512
+
+    ring:
+      kvstore:
+        store: consul
+        consul:
+          host: localhost:8500
+      replication_factor: 1
+
+querier:
+  query_ingesters_within: 3h
+
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    replication_factor: 1
+    kvstore:
+      store: consul
+      consul:
+        host: localhost:8500
+
+blocks_storage:
+  backend: swift
+
+  tsdb:
+    dir: /data/cortex-tsdb-ingester
+    ship_interval: 1m
+    block_ranges_period: [ 2h ]
+    retention_period: 3h
+
+  bucket_store:
+    sync_dir: /data/cortex-tsdb-querier
+
+  swift:
+    auth_url:          http://localhost:5000/v2.0
+    username:          admin
+    password:          s3cr3t
+    project_name:      admin
+    region_name:       RegionOne
+    container_name:    cortex-tsdb
+
+storage:
+  engine: blocks
+
+ruler:
+  enable_api: true
+  enable_sharding: true
+  poll_interval: 2s
+  storage:
+    type: swift
+    swift:
+      auth_url:          http://localhost:5000/v2.0
+      username:          admin
+      password:          s3cr3t
+      project_name:      admin
+      region_name:       RegionOne
+      container_name: cortex-rules
+  ring:
+    kvstore:
+      store: consul
+      consul:
+        host: localhost:8500

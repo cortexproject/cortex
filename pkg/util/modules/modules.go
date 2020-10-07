@@ -25,12 +25,6 @@ type module struct {
 // in the right order of dependencies.
 type Manager struct {
 	modules map[string]*module
-
-	// Modules that are already initialized
-	modulesInitialized map[string]bool
-
-	// Service map
-	servicesMap map[string]services.Service
 }
 
 // UserInvisibleModule is an option for `RegisterModule` that marks module not visible to user. Modules are user visible by default.
@@ -41,9 +35,7 @@ func UserInvisibleModule(m *module) {
 // NewManager creates a new Manager
 func NewManager() *Manager {
 	return &Manager{
-		modules:            make(map[string]*module),
-		modulesInitialized: make(map[string]bool),
-		servicesMap:        make(map[string]services.Service),
+		modules: make(map[string]*module),
 	}
 }
 
@@ -76,16 +68,19 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 // in the right order. Modules are wrapped in such a way that they start after their
 // dependencies have been started and stop before their dependencies are stopped.
 func (m *Manager) InitModuleServices(modules ...string) (map[string]services.Service, error) {
+	svcsMap := map[string]services.Service{}
+	initMap := map[string]bool{}
+
 	for _, module := range modules {
-		if err := m.initModule(module); err != nil {
+		if err := m.initModule(module, initMap, svcsMap); err != nil {
 			return nil, err
 		}
 	}
 
-	return m.servicesMap, nil
+	return svcsMap, nil
 }
 
-func (m *Manager) initModule(name string) error {
+func (m *Manager) initModule(name string, initMap map[string]bool, svcsMap map[string]services.Service) error {
 	if _, ok := m.modules[name]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", name)
 	}
@@ -95,8 +90,8 @@ func (m *Manager) initModule(name string) error {
 	deps = append(deps, name) // lastly, initialize the requested module
 
 	for ix, n := range deps {
-		// Skip already loaded modules
-		if m.modulesInitialized[n] {
+		// Skip already initialized modules
+		if initMap[n] {
 			continue
 		}
 
@@ -113,15 +108,15 @@ func (m *Manager) initModule(name string) error {
 			if s != nil {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(m.servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(svcsMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 
 		if serv != nil {
-			m.servicesMap[n] = serv
+			svcsMap[n] = serv
 		}
 
-		m.modulesInitialized[n] = true
+		initMap[n] = true
 	}
 
 	return nil

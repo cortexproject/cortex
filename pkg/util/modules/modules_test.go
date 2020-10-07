@@ -47,23 +47,23 @@ func TestDependencies(t *testing.T) {
 	assert.Equal(t, invDeps[0], "serviceB")
 
 	// Test unknown module
-	err := mm.InitModuleServices("service_unknown")
+	svc, err := mm.InitModuleServices("service_unknown")
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
-	assert.Empty(t, mm.GetServicesMap())
+	assert.Empty(t, svc)
 
 	// Test init failure
-	err = mm.InitModuleServices("serviceD")
+	svc, err = mm.InitModuleServices("serviceD")
 	assert.Error(t, err)
-	assert.Empty(t, mm.GetServicesMap())
+	assert.Empty(t, svc)
 
-	err = mm.InitModuleServices("serviceC")
+	svc, err = mm.InitModuleServices("serviceC")
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(mm.GetServicesMap()))
+	assert.Equal(t, 3, len(svc))
 
 	// Test loading of the module second time (should be noop)
-	err = mm.InitModuleServices("serviceC")
+	svc, err = mm.InitModuleServices("serviceC")
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(mm.GetServicesMap()))
+	assert.Equal(t, 3, len(svc))
 }
 
 func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {

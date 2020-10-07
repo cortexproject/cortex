@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -72,11 +71,10 @@ import (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      string          `yaml:"target"`
-	Modules     map[string]bool `yaml:"-"`
-	AuthEnabled bool            `yaml:"auth_enabled"`
-	PrintConfig bool            `yaml:"-"`
-	HTTPPrefix  string          `yaml:"http_prefix"`
+	Target      flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled bool                   `yaml:"auth_enabled"`
+	PrintConfig bool                   `yaml:"-"`
+	HTTPPrefix  string                 `yaml:"http_prefix"`
 
 	API            api.Config               `yaml:"api"`
 	Server         server.Config            `yaml:"server"`
@@ -112,7 +110,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
 
-	f.StringVar(&c.Target, "target", All, "List of Cortex modules to load, comma separated. "+
+	c.Target.Set(All)
+
+	f.Var((*flagext.StringSliceCSV)(&c.Target), "target", "List of Cortex modules to load, comma separated. "+
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
 
@@ -209,6 +209,10 @@ func (c *Config) Validate(log log.Logger) error {
 	return nil
 }
 
+func (c *Config) isModuleEnabled(m string) bool {
+	return util.StringsContain(c.Target, m)
+}
+
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
 // When an empty node is defined in YAML, the YAML parser sets the whole struct to its zero value
 // and so we loose all default values. It's very difficult to detect this case for the user, so we
@@ -283,12 +287,6 @@ func New(cfg Config) (*Cortex, error) {
 		os.Exit(0)
 	}
 
-	// Parse a comma-separated list of modules to load
-	cfg.Modules = map[string]bool{}
-	for _, n := range strings.Split(cfg.Target, ",") {
-		cfg.Modules[n] = true
-	}
-
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
 	//
@@ -317,28 +315,25 @@ func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
-// InitModules initializes required Cortex modules
-func (t *Cortex) InitModules() error {
-	for module := range t.Cfg.Modules {
+func (t *Cortex) initModules() (err error) {
+	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
 			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
 		}
-
-		err := t.ModuleManager.InitModuleServices(module)
-		if err != nil {
-			return err
-		}
 	}
 
-	t.ServiceMap = t.ModuleManager.GetServicesMap()
-	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
+	t.ServiceMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
+	if err != nil {
+		return err
+	}
 
+	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
 	return nil
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
-	if err := t.InitModules(); err != nil {
+	if err := t.initModules(); err != nil {
 		return err
 	}
 

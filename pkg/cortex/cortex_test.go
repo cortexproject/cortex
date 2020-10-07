@@ -69,13 +69,14 @@ func TestCortex(t *testing.T) {
 				},
 			},
 		},
-		Target: fmt.Sprintf("%s,%s", All, Compactor),
 	}
+
+	cfg.Target.Set(fmt.Sprintf("%s,%s", All, Compactor))
 
 	c, err := New(cfg)
 	require.NoError(t, err)
 
-	err = c.InitModules()
+	err = c.initModules()
 	require.NoError(t, err)
 	require.NotNil(t, c.ServiceMap)
 

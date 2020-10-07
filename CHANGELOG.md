@@ -2,9 +2,6 @@
 
 ## master / unreleased
 
-* [FEATURE] Implement an ability to load multiple Cortex modules using a comma-separated list. #3272
-  - Should be backwards compatible with the current behavior.
-  - Target list like 'all,compactor' can be used to load the single-binary modules plus some other modules.
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
   - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
   - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.
@@ -45,6 +42,7 @@
   - `POST /ingester/push`
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
+* [ENHANCEMENT] Allow to specify multiple comma-separated Cortex services to `-target` CLI option (or its respective YAML config option). For example, `-target=all,compactor` can be used to start Cortex single-binary with compactor as well. #3272
 * [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
   - `-blocks-storage.s3.http.idle-conn-timeout`
   - `-blocks-storage.s3.http.response-header-timeout`

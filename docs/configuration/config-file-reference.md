@@ -445,6 +445,10 @@ ring:
   # within the ring.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -distributor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `ingester_config`
@@ -1169,6 +1173,10 @@ ring:
   # ring.
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ruler.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 
   # Number of tokens for each ingester.
   # CLI flag: -ruler.ring.num-tokens
@@ -3623,6 +3631,10 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -compactor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `store_gateway_config`
@@ -3700,6 +3712,10 @@ sharding_ring:
   # availability zones.
   # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Name of network interface to read address from.
+  # CLI flag: -store-gateway.sharding-ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.

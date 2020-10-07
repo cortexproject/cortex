@@ -58,8 +58,7 @@ func TestRateLimitingBucket(t *testing.T) {
 	assert.NoError(t, rlb.Close())
 }
 
-type MockBucket struct {
-}
+type MockBucket struct{}
 
 // Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 // object name including the prefix of the inspected directory.

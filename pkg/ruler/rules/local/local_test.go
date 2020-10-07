@@ -73,7 +73,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	userMap, err := client.LoadAllRuleGroups(ctx)
+	userMap, err := client.ListAllRuleGroups(ctx) // Client loads rules in its List method.
 	require.NoError(t, err)
 
 	for _, u := range []string{user1, user2} {

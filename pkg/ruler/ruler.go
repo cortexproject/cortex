@@ -50,6 +50,7 @@ const (
 	ShardingStrategyDefault = "default"
 	ShardingStrategyShuffle = "shuffle-sharding"
 
+	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency = 10
 
 	rulerSyncReasonInitial    = "initial"
@@ -435,44 +436,47 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 
-	configs, err := r.loadRules(ctx)
-
+	configs, err := r.listRules(ctx)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to load rules", "err", err)
+		level.Error(r.logger).Log("msg", "unable to list rules", "err", err)
+		return
+	}
+
+	err = r.store.LoadRuleGroups(ctx, configs)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to load rules owned by this ruler", "err", err)
 		return
 	}
 
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 
-func (r *Ruler) loadRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	switch {
 	case !r.cfg.EnableSharding:
-		return r.loadRulesNoSharding(ctx)
+		return r.listRulesNoSharding(ctx)
 
 	case r.cfg.ShardingStrategy == ShardingStrategyDefault:
-		return r.loadRulesShardingDefault(ctx)
+		return r.listRulesShardingDefault(ctx)
 
 	case r.cfg.ShardingStrategy == ShardingStrategyShuffle:
-		return r.loadRulesShuffleSharding(ctx)
+		return r.listRulesShuffleSharding(ctx)
 
 	default:
 		return nil, errors.New("invalid sharding configuration")
 	}
 }
 
-func (r *Ruler) loadRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	return r.store.LoadAllRuleGroups(ctx)
+func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	return r.store.ListAllRuleGroups(ctx)
 }
 
-func (r *Ruler) loadRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	configs, err := r.store.LoadAllRuleGroups(ctx)
+func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Iterate through each users configuration and determine if the on-disk
-	// configurations need to be updated
 	filteredConfigs := make(map[string]rules.RuleGroupList)
 	for userID, groups := range configs {
 		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
@@ -483,7 +487,7 @@ func (r *Ruler) loadRulesShardingDefault(ctx context.Context) (map[string]rules.
 	return filteredConfigs, nil
 }
 
-func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	users, err := r.store.ListAllUsers(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to list users of ruler")
@@ -528,7 +532,7 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	for i := 0; i < concurrency; i++ {
 		g.Go(func() error {
 			for userID := range userCh {
-				groups, err := r.store.LoadRuleGroupsForUserAndNamespace(gctx, userID, "")
+				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, userID, "")
 				if err != nil {
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
@@ -550,6 +554,9 @@ func (r *Ruler) loadRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	return result, err
 }
 
+// filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
+// This function only uses User, Namespace, and Name fields of individual RuleGroups.
+//
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
 func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {

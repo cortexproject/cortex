@@ -250,19 +250,20 @@ func TestSwiftRuleStorage(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	// Add 2 rule group.
-	r1 := newRule(userID, "1")
+	// Add 2 rule groups.
+	r1 := newRuleGroup(userID, "foo", "1")
 	err = store.SetRuleGroup(ctx, userID, "foo", r1)
 	require.NoError(t, err)
 
-	r2 := newRule(userID, "2")
+	r2 := newRuleGroup(userID, "bar", "2")
 	err = store.SetRuleGroup(ctx, userID, "bar", r2)
 	require.NoError(t, err)
 
 	// Get rules back.
-	rls, err := store.LoadAllRuleGroups(ctx)
+	rls, err := store.ListAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(rls[userID]))
+	require.NoError(t, store.LoadRuleGroups(ctx, rls))
 
 	userRules := rls[userID]
 	sort.Slice(userRules, func(i, j int) bool { return userRules[i].Name < userRules[j].Name })
@@ -274,21 +275,22 @@ func TestSwiftRuleStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	//Verify we only have the second rule group
-	rls, err = store.LoadAllRuleGroups(ctx)
+	rls, err = store.ListAllRuleGroups(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(rls[userID]))
+	require.NoError(t, store.LoadRuleGroups(ctx, rls))
 	require.Equal(t, r2, rls[userID][0])
 }
 
-func newRule(userID, name string) *rules.RuleGroupDesc {
+func newRuleGroup(userID, namespace, group string) *rules.RuleGroupDesc {
 	return &rules.RuleGroupDesc{
-		Name:      name + "rule",
+		Name:      group,
 		Interval:  time.Minute,
-		Namespace: name + "namespace",
+		Namespace: namespace,
 		Rules: []*rules.RuleDesc{
 			{
-				Expr:   fmt.Sprintf(`{%s="bar"}`, name),
-				Record: name + ":bar",
+				Expr:   fmt.Sprintf(`{%s="bar"}`, group),
+				Record: group + ":bar",
 			},
 		},
 		User: userID,

@@ -375,19 +375,25 @@ func (r *Ruler) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
-	rgs, err := r.store.LoadRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
+	rgs, err := r.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
 
 	if len(rgs) == 0 {
 		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
 		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
 		return
 	}
+
+	err = r.store.LoadRuleGroups(req.Context(), map[string]rules.RuleGroupList{userID: rgs})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
 
 	formatted := rgs.Formatted()
 	marshalAndSend(formatted, w, logger)

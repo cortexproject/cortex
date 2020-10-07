@@ -22,7 +22,7 @@ require (
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.10.0
-	github.com/go-redis/redis/v8 v8.0.0-beta.10.0.20200905143926-df7fe4e2ce72
+	github.com/go-redis/redis/v8 v8.2.3
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3

@@ -29,3 +29,89 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-doc
       - name: Check White Noise.
         run: make BUILD_IN_CONTAINER=false check-white-noise
+
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+    services:
+      cassandra:
+        image: cassandra:3.11
+        env:
+          JVM_OPTS: "-Xms1024M -Xmx1024M"
+        ports:
+        - 9042:9042
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v1
+      - name: Get Dependencies
+        run: go get -v -t -d ./...
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Run Tests
+        run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
+
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v1
+      - name: Install Docker Client
+        run: |
+          set -x
+          VER="17.03.0-ce"
+          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+          mv /tmp/docker/* /usr/bin
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Build Image
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false
+      - name: Build Website
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false web-build
+      - uses: actions/upload-artifact@v2
+        with:
+          name: website public
+          path: website/public/
+      - uses: actions/upload-artifact@v2
+        with:
+          name: Frontend Protobuf
+          path: pkg/querier/frontend/frontend.pb.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: Caching Index Client Protobuf
+          path: pkg/chunk/storage/caching_index_client.pb.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: Ring Protobuf
+          path: pkg/ring/ring.pb.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: Cortex Protobuf
+          path: pkg/ingester/client/cortex.pb.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: Rules Protobuf
+          path: pkg/ruler/rules/rules.pb.go
+      - name: Save Images
+        run: |
+          mkdir /tmp/images
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false save-images
+      - name: Zip Images
+        run: tar -zcvf images.tar.gz /tmp/images
+      - name: Upload Images Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: Docker Images
+          path: ./images.tar.gz

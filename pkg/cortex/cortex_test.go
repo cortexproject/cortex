@@ -71,7 +71,7 @@ func TestCortex(t *testing.T) {
 		},
 	}
 
-	cfg.Target.Set(fmt.Sprintf("%s,%s", All, Compactor))
+	cfg.Target.Set(fmt.Sprintf("%s,%s", All, Compactor)) //nolint:errcheck
 
 	c, err := New(cfg)
 	require.NoError(t, err)

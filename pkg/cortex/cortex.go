@@ -110,7 +110,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = "cortex"
 	c.Server.ExcludeRequestInLog = true
 
-	c.Target.Set(All)
+	// Set the default module list to 'all'
+	// Make linter happy
+	c.Target.Set(All) //nolint:errcheck
 
 	f.Var((*flagext.StringSliceCSV)(&c.Target), "target", "List of Cortex modules to load, comma separated. "+
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+

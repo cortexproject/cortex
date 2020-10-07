@@ -126,7 +126,7 @@ func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	return result, nil
 }
 
-func (m *mockRuleStore) LoadAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -138,7 +138,7 @@ func (m *mockRuleStore) LoadAllRuleGroups(_ context.Context) (map[string]rules.R
 	return result, nil
 }
 
-func (m *mockRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -166,7 +166,12 @@ func (m *mockRuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, u
 	return namespaceRules, nil
 }
 
-func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rules.RuleGroupList) error {
+	// Nothing to do, as mockRuleStore already returns groups with loaded rules.
+	return nil
+}
+
+func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

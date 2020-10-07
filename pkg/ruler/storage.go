@@ -100,5 +100,5 @@ func newObjRuleStore(client chunk.ObjectClient, err error) (rules.RuleStore, err
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewRuleStore(client), nil
+	return objectclient.NewRuleStore(client, loadRulesConcurrency), nil
 }

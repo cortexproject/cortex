@@ -34,11 +34,13 @@ func TestRateLimitingBucket(t *testing.T) {
 	rdr, err := rlb.Get(ctx, "name")
 	assert.NoError(t, err)
 	bts, err := ioutil.ReadAll(rdr)
+	assert.NoError(t, err)
 	assert.Equal(t, "some data", string(bts))
 
 	rdr, err = rlb.GetRange(ctx, "name", 100, 200)
 	assert.NoError(t, err)
 	bts, err = ioutil.ReadAll(rdr)
+	assert.NoError(t, err)
 	assert.Equal(t, "some more data", string(bts))
 
 	ex, err := rlb.Exists(ctx, "name")

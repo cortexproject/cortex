@@ -41,7 +41,7 @@ func NewRateLimitingBucket(bkt objstore.Bucket, limit rate.Limit, burst int) Rat
 
 // Iter calls the same method in the underlying bucket after checking the rate limiter.
 func (rlb RateLimitingBucket) Iter(ctx context.Context, dir string, f func(string) error) (err error) {
-	if rlb.limiter.Allow() == false {
+	if !rlb.limiter.Allow() {
 		rateLimited.WithLabelValues("iter").Inc()
 		return ErrRateLimited
 	}

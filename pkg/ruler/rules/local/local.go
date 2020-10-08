@@ -68,8 +68,8 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// LoadAllRuleGroups implements rules.RuleStore
-func (l *Client) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+// ListAllRuleGroups implements rules.RuleStore. This method also loads the rules.
+func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	users, err := l.ListAllUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -88,13 +88,18 @@ func (l *Client) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 	return lists, nil
 }
 
-// LoadRuleGroupsForUserAndNamespace implements rules.RuleStore
-func (l *Client) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+// ListRuleGroupsForUserAndNamespace implements rules.RuleStore. This method also loads the rules.
+func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	if namespace != "" {
-		return l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
+		return l.loadAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}
 
 	return l.loadAllRulesGroupsForUser(ctx, userID)
+}
+
+func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rules.RuleGroupList) error {
+	// This Client already loads the rules in its List methods, there is nothing left to do here.
+	return nil
 }
 
 // GetRuleGroup implements RuleStore
@@ -142,7 +147,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 			continue
 		}
 
-		list, err := l.listAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
+		list, err := l.loadAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to list rule group for user %s and namespace %s", userID, namespace)
 		}
@@ -153,7 +158,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 	return allLists, nil
 }
 
-func (l *Client) listAllRulesGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
 	rulegroups, allErrors := l.loader.Load(filename)

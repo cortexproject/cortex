@@ -224,6 +224,10 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Name of network interface to read address from.
+    # CLI flag: -store-gateway.sharding-ring.instance-interface-names
+    [instance_interface_names: <list of string> | default = [eth0 en0]]
+
     # The availability zone where this instance is running. Required if
     # zone-awareness is enabled.
     # CLI flag: -store-gateway.sharding-ring.instance-availability-zone

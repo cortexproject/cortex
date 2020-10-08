@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
 	"strings"
-	"sync"
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -27,24 +27,26 @@ import (
 // across all backends
 
 const (
-	delim                     = "/"
-	rulePrefix                = "rules" + delim
-	loadRuleGroupsConcurrency = 4
+	delim      = "/"
+	rulePrefix = "rules" + delim
 )
 
 // RuleStore allows cortex rules to be stored using an object store backend.
 type RuleStore struct {
-	client chunk.ObjectClient
+	client          chunk.ObjectClient
+	loadConcurrency int
 }
 
 // NewRuleStore returns a new RuleStore
-func NewRuleStore(client chunk.ObjectClient) *RuleStore {
+func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
 	return &RuleStore{
-		client: client,
+		client:          client,
+		loadConcurrency: loadConcurrency,
 	}
 }
 
-func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.RuleGroupDesc, error) {
+// If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
+func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
 		level.Debug(util.Logger).Log("msg", "rule group does not exist", "name", objectKey)
@@ -61,7 +63,11 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string) (*rules.
 		return nil, err
 	}
 
-	rg := &rules.RuleGroupDesc{}
+	if rg == nil {
+		rg = &rules.RuleGroupDesc{}
+	} else {
+		rg.Reset()
+	}
 
 	err = proto.Unmarshal(buf, rg)
 	if err != nil {
@@ -92,44 +98,100 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// LoadAllRuleGroups implements rules.RuleStore.
-func (o *RuleStore) LoadAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+// ListAllRuleGroups implements rules.RuleStore.
+func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
 	// No delimiter to get *all* rule groups for all users and namespaces.
-	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey("", "", ""), "")
+	ruleGroupObjects, _, err := o.client.List(ctx, rulePrefix, "")
 	if err != nil {
 		return nil, err
 	}
 
-	if len(ruleGroupObjects) == 0 {
-		return map[string]rules.RuleGroupList{}, nil
-	}
-
-	return o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
+	return convertRuleGroupObjectsToMap(ruleGroupObjects), nil
 }
 
-func (o *RuleStore) LoadRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
 	}
 
-	if len(ruleGroupObjects) == 0 {
-		return rules.RuleGroupList{}, nil
+	return convertRuleGroupObjectsToMap(ruleGroupObjects)[userID], nil
+}
+
+func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rules.RuleGroupList) error {
+	ch := make(chan *rules.RuleGroupDesc)
+
+	// Given we store one file per rule group. With this, we create a pool of workers that will
+	// download all rule groups in parallel. We limit the number of workers to avoid a
+	// particular user having too many rule groups rate limiting us with the object storage.
+	g, gCtx := errgroup.WithContext(ctx)
+	for i := 0; i < o.loadConcurrency; i++ {
+		g.Go(func() error {
+			for gr := range ch {
+				if gr == nil {
+					continue
+				}
+
+				user, namespace, group := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+				if user == "" || namespace == "" || group == "" {
+					return fmt.Errorf("invalid rule group: user=%q, namespace=%q, group=%q", user, namespace, group)
+				}
+
+				key := generateRuleObjectKey(user, namespace, group)
+
+				level.Debug(util.Logger).Log("msg", "loading rule group", "key", key, "user", user)
+				gr, err := o.getRuleGroup(gCtx, key, gr) // reuse group pointer from the map.
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "failed to get rule group", "key", key, "user", user)
+					return err
+				}
+
+				if user != gr.User || namespace != gr.Namespace || group != gr.Name {
+					return fmt.Errorf("mismatch between requested rule group and loaded rule group, requested: user=%q, namespace=%q, group=%q, loaded: user=%q, namespace=%q, group=%q", user, namespace, group, gr.User, gr.Namespace, gr.Name)
+				}
+			}
+
+			return nil
+		})
 	}
 
-	groups, err := o.loadRuleGroupsConcurrently(ctx, ruleGroupObjects)
-	return groups[userID], err
+outer:
+	for _, gs := range groupsToLoad {
+		for _, g := range gs {
+			select {
+			case <-gCtx.Done():
+				break outer
+			case ch <- g:
+				// ok
+			}
+		}
+	}
+	close(ch)
+
+	return g.Wait()
+}
+
+func convertRuleGroupObjectsToMap(ruleGroupObjects []chunk.StorageObject) map[string]rules.RuleGroupList {
+	result := map[string]rules.RuleGroupList{}
+	for _, rg := range ruleGroupObjects {
+		user, namespace, group := decomposeRuleObjectKey(rg.Key)
+		if user == "" || namespace == "" || group == "" {
+			continue
+		}
+
+		result[user] = append(result[user], &rules.RuleGroupDesc{
+			User:      user,
+			Namespace: namespace,
+			Name:      group,
+		})
+	}
+	return result
 }
 
 // GetRuleGroup returns the requested rule group
 func (o *RuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, grp string) (*rules.RuleGroupDesc, error) {
 	handle := generateRuleObjectKey(userID, namespace, grp)
-	rg, err := o.getRuleGroup(ctx, handle)
-	if err != nil {
-		return nil, err
-	}
-
-	return rg, nil
+	return o.getRuleGroup(ctx, handle, nil)
 }
 
 // SetRuleGroup sets provided rule group
@@ -176,54 +238,6 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	return nil
 }
 
-func (o *RuleStore) loadRuleGroupsConcurrently(ctx context.Context, rgObjects []chunk.StorageObject) (map[string]rules.RuleGroupList, error) {
-	ch := make(chan string, len(rgObjects))
-
-	for _, obj := range rgObjects {
-		ch <- obj.Key
-	}
-	close(ch)
-
-	mtx := sync.Mutex{}
-	result := map[string]rules.RuleGroupList{}
-
-	concurrency := loadRuleGroupsConcurrency
-	if loadRuleGroupsConcurrency < len(rgObjects) {
-		concurrency = len(rgObjects)
-	}
-
-	// Given we store one file per rule group. With this, we create a pool of workers that will
-	// download all rule groups in parallel. We limit the number of workers to avoid a
-	// particular user having too many rule groups rate limiting us with the object storage.
-	g, gCtx := errgroup.WithContext(ctx)
-	for i := 0; i < concurrency; i++ {
-		g.Go(func() error {
-			for key := range ch {
-				user := decomposeRuleObjectKey(key)
-				if user == "" {
-					continue
-				}
-
-				level.Debug(util.Logger).Log("msg", "listing rule group", "key", key, "user", user)
-				rg, err := o.getRuleGroup(gCtx, key)
-				if err != nil {
-					level.Error(util.Logger).Log("msg", "failed to get rule group", "key", key, "user", user)
-					return err
-				}
-
-				mtx.Lock()
-				result[user] = append(result[user], rg)
-				mtx.Unlock()
-			}
-
-			return nil
-		})
-	}
-
-	err := g.Wait()
-	return result, err
-}
-
 func generateRuleObjectKey(userID, namespace, groupName string) string {
 	if userID == "" {
 		return rulePrefix
@@ -242,10 +256,25 @@ func generateRuleObjectKey(userID, namespace, groupName string) string {
 	return prefix + ns + base64.URLEncoding.EncodeToString([]byte(groupName))
 }
 
-func decomposeRuleObjectKey(handle string) string {
-	components := strings.Split(handle, "/")
-	if len(components) != 4 {
-		return ""
+func decomposeRuleObjectKey(objectKey string) (userID, namespace, groupName string) {
+	if !strings.HasPrefix(objectKey, rulePrefix) {
+		return
 	}
-	return components[1]
+
+	components := strings.Split(objectKey, delim)
+	if len(components) != 4 {
+		return
+	}
+
+	ns, err := base64.URLEncoding.DecodeString(components[2])
+	if err != nil {
+		return
+	}
+
+	gr, err := base64.URLEncoding.DecodeString(components[3])
+	if err != nil {
+		return
+	}
+
+	return components[1], string(ns), string(gr)
 }

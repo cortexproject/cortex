@@ -40,6 +40,12 @@
   - `POST <legacy-http-prefix>/push`
   - `POST /push`
   - `POST /ingester/push`
+* [CHANGE] Renamed CLI flags to configure the network interface names from which automatically detect the instance IP. #3295
+  - `-compactor.ring.instance-interface` renamed to `-compactor.ring.instance-interface-names`
+  - `-store-gateway.sharding-ring.instance-interface` renamed to `-store-gateway.sharding-ring.instance-interface-names`
+  - `-distributor.ring.instance-interface` renamed to `-distributor.ring.instance-interface-names`
+  - `-ruler.ring.instance-interface` renamed to `-ruler.ring.instance-interface-names`
+* [CHANGE] Renamed `-redis.enable-tls` CLI flag to `-redis.tls-enabled`, and its respective YAML config option from `enable_tls` to `tls_enabled`. #3298
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
 * [ENHANCEMENT] Allow to specify multiple comma-separated Cortex services to `-target` CLI option (or its respective YAML config option). For example, `-target=all,compactor` can be used to start Cortex single-binary with compactor as well. #3272
@@ -64,14 +70,18 @@
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
 * [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264
 * [ENHANCEMENT] Experimental Ruler API: Fetch rule groups from object storage in parallel. #3218
-* [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218
+* [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218 #3292
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
+* [ENHANCEMENT] Return an explicit error when the store-gateway is explicitly requested without a blocks storage engine. #3287
+* [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules synching performances when ruler sharding is enabled. #3269
+* [ENHANCEMENT] Added `-redis.tls-insecure-skip-verify` flag. #3298
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
 * [BUGFIX] Check for postgres rows errors. #3197
 * [BUGFIX] Ruler Experimental API: Don't allow rule groups without names or empty rule groups. #3210
 * [BUGFIX] Experimental Alertmanager API: Do not allow empty Alertmanager configurations or bad template filenames to be submitted through the configuration API. #3185
+* [BUGFIX] Reduce failures to update heartbeat when using Consul. #3259
 * [BUGFIX] When using ruler sharding, moving all user rule groups from ruler to a different one and then back could end up with some user groups not being evaluated at all. #3235
 
 ## 1.4.0 / 2020-10-02

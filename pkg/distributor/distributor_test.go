@@ -1722,8 +1722,8 @@ func TestSortLabels(t *testing.T) {
 
 func countMockIngestersCalls(ingesters []mockIngester, name string) int {
 	count := 0
-	for _, ing := range ingesters {
-		if ing.countCalls(name) > 0 {
+	for i := 0; i < len(ingesters); i++ {
+		if ingesters[i].countCalls(name) > 0 {
 			count++
 		}
 	}

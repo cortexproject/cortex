@@ -72,7 +72,7 @@
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
 * [ENHANCEMENT] Return an explicit error when the store-gateway is explicitly requested without a blocks storage engine. #3287
 * [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules synching performances when ruler sharding is enabled. #3269
-* [CHANGE] Renamed `-redis.enable-tls` CLI flag to `-redis.tls-enabled`. #3298
+* [CHANGE] Renamed `-redis.enable-tls` CLI flag to `-redis.tls-enabled`, and its respective YAML config option from `enable_tls` to `tls_enabled`. #3298
 * [ENHANCEMENT] Added `-redis.tls-skip-verify` flag. #3298
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195

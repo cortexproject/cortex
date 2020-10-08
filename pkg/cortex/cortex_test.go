@@ -1,7 +1,6 @@
 package cortex
 
 import (
-	"fmt"
 	"net/url"
 	"testing"
 
@@ -71,26 +70,26 @@ func TestCortex(t *testing.T) {
 		},
 	}
 
-	cfg.Target.Set(fmt.Sprintf("%s,%s", All, Compactor)) //nolint:errcheck
+	cfg.Target = []string{All, Compactor}
 
 	c, err := New(cfg)
 	require.NoError(t, err)
 
-	err = c.initModules()
+	svcMap, err := c.initModules()
 	require.NoError(t, err)
-	require.NotNil(t, c.ServiceMap)
+	require.NotNil(t, svcMap)
 
-	for m, s := range c.ServiceMap {
+	for m, s := range svcMap {
 		// make sure each service is still New
 		require.Equal(t, services.New, s.State(), "module: %s", m)
 	}
 
 	// check random modules that we expect to be configured when using Target=All
-	require.NotNil(t, c.ServiceMap[Server])
-	require.NotNil(t, c.ServiceMap[IngesterService])
-	require.NotNil(t, c.ServiceMap[Ring])
-	require.NotNil(t, c.ServiceMap[DistributorService])
+	require.NotNil(t, svcMap[Server])
+	require.NotNil(t, svcMap[IngesterService])
+	require.NotNil(t, svcMap[Ring])
+	require.NotNil(t, svcMap[DistributorService])
 
 	// check that compactor is configured which is not part of Target=All
-	require.NotNil(t, c.ServiceMap[Compactor])
+	require.NotNil(t, svcMap[Compactor])
 }

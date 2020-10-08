@@ -56,14 +56,20 @@ func TestDependencies(t *testing.T) {
 	assert.Error(t, err)
 	assert.Empty(t, svc)
 
+	// Test loading several modules
+	svc, err = mm.InitModuleServices("serviceA", "serviceB")
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(svc))
+
 	svc, err = mm.InitModuleServices("serviceC")
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(svc))
 
-	// Test loading of the module second time (should be noop)
-	svc, err = mm.InitModuleServices("serviceC")
+	// Test loading of the module second time - should produce the same set of services, but new instances.
+	svc2, err := mm.InitModuleServices("serviceC")
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(svc))
+	assert.NotEqual(t, svc, svc2)
 }
 
 func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {

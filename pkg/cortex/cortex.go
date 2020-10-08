@@ -111,10 +111,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.ExcludeRequestInLog = true
 
 	// Set the default module list to 'all'
-	// Make linter happy
-	c.Target.Set(All) //nolint:errcheck
+	c.Target = []string{All}
 
-	f.Var((*flagext.StringSliceCSV)(&c.Target), "target", "List of Cortex modules to load, comma separated. "+
+	f.Var((*flagext.StringSliceCSV)(&c.Target), "target", "Comma-separated list of Cortex modules to load. "+
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
 
@@ -317,25 +316,25 @@ func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
-func (t *Cortex) initModules() (err error) {
+func (t *Cortex) initModules() (svcMap map[string]services.Service, err error) {
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
 			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
 		}
 	}
 
-	t.ServiceMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
+	svcMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
-		return err
+		return
 	}
 
 	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
-	return nil
+	return
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.
-func (t *Cortex) Run() error {
-	if err := t.initModules(); err != nil {
+func (t *Cortex) Run() (err error) {
+	if t.ServiceMap, err = t.initModules(); err != nil {
 		return err
 	}
 

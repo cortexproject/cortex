@@ -93,9 +93,12 @@ func (d *Distributor) getIngestersForQuery(ctx context.Context, matchers ...*lab
 	}
 
 	// If "shard by all labels" is disabled, we can get ingesters by metricName if exists.
-	metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
-	if !d.cfg.ShardByAllLabels && ok && metricNameMatcher.Type == labels.MatchEqual {
-		return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
+	if !d.cfg.ShardByAllLabels {
+		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
+
+		if ok && metricNameMatcher.Type == labels.MatchEqual {
+			return d.ingestersRing.Get(shardByMetricName(userID, metricNameMatcher.Value), ring.Read, nil)
+		}
 	}
 
 	return d.ingestersRing.GetAll(ring.Read)

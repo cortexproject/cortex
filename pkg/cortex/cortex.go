@@ -316,27 +316,21 @@ func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
 }
 
-func (t *Cortex) initModules() (svcMap map[string]services.Service, err error) {
+// Run starts Cortex running, and blocks until a Cortex stops.
+func (t *Cortex) Run() error {
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
 			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
 		}
 	}
 
-	svcMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
+	var err error
+	t.ServiceMap, err = t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
-		return
+		return err
 	}
 
 	t.API.RegisterServiceMapHandler(http.HandlerFunc(t.servicesHandler))
-	return
-}
-
-// Run starts Cortex running, and blocks until a Cortex stops.
-func (t *Cortex) Run() (err error) {
-	if t.ServiceMap, err = t.initModules(); err != nil {
-		return err
-	}
 
 	// get all services, create service manager and tell it to start
 	servs := []services.Service(nil)

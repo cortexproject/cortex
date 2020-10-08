@@ -68,19 +68,19 @@ func (m *Manager) AddDependency(name string, dependsOn ...string) error {
 // in the right order. Modules are wrapped in such a way that they start after their
 // dependencies have been started and stop before their dependencies are stopped.
 func (m *Manager) InitModuleServices(modules ...string) (map[string]services.Service, error) {
-	svcsMap := map[string]services.Service{}
+	servicesMap := map[string]services.Service{}
 	initMap := map[string]bool{}
 
 	for _, module := range modules {
-		if err := m.initModule(module, initMap, svcsMap); err != nil {
+		if err := m.initModule(module, initMap, servicesMap); err != nil {
 			return nil, err
 		}
 	}
 
-	return svcsMap, nil
+	return servicesMap, nil
 }
 
-func (m *Manager) initModule(name string, initMap map[string]bool, svcsMap map[string]services.Service) error {
+func (m *Manager) initModule(name string, initMap map[string]bool, servicesMap map[string]services.Service) error {
 	if _, ok := m.modules[name]; !ok {
 		return fmt.Errorf("unrecognised module name: %s", name)
 	}
@@ -108,12 +108,12 @@ func (m *Manager) initModule(name string, initMap map[string]bool, svcsMap map[s
 			if s != nil {
 				// We pass servicesMap, which isn't yet complete. By the time service starts,
 				// it will be fully built, so there is no need for extra synchronization.
-				serv = newModuleServiceWrapper(svcsMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
+				serv = newModuleServiceWrapper(servicesMap, n, s, mod.deps, m.findInverseDependencies(n, deps[ix+1:]))
 			}
 		}
 
 		if serv != nil {
-			svcsMap[n] = serv
+			servicesMap[n] = serv
 		}
 
 		initMap[n] = true

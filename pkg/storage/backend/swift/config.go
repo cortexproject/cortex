@@ -6,13 +6,13 @@ import (
 
 // Config holds the config options for GCS backend
 type Config struct {
-	AuthURL           string `yaml:"auth_url"`
+	AuthUrl           string `yaml:"auth_url"`
 	Username          string `yaml:"username"`
 	UserDomainName    string `yaml:"user_domain_name"`
 	UserDomainID      string `yaml:"user_domain_id"`
-	UserID            string `yaml:"user_id"`
+	UserId            string `yaml:"user_id"`
 	Password          string `yaml:"password"`
-	DomainID          string `yaml:"domain_id"`
+	DomainId          string `yaml:"domain_id"`
 	DomainName        string `yaml:"domain_name"`
 	ProjectID         string `yaml:"project_id"`
 	ProjectName       string `yaml:"project_name"`
@@ -29,13 +29,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers the flags for TSDB Swift storage with the provided prefix
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.AuthURL, prefix+"swift.auth-url", "", "Openstack authentication URL")
+	f.StringVar(&cfg.AuthUrl, prefix+"swift.auth-url", "", "Openstack authentication URL")
 	f.StringVar(&cfg.Username, prefix+"swift.username", "", "Openstack username for the api.")
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "Openstack user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "Openstack user's domain id.")
-	f.StringVar(&cfg.UserID, prefix+"swift.user-id", "", "Openstack userid for the api.")
+	f.StringVar(&cfg.UserId, prefix+"swift.user-id", "", "Openstack userid for the api.")
 	f.StringVar(&cfg.Password, prefix+"swift.password", "", "Openstack api key.")
-	f.StringVar(&cfg.DomainID, prefix+"swift.domain-id", "", "Openstack user's domain id.")
+	f.StringVar(&cfg.DomainId, prefix+"swift.domain-id", "", "Openstack user's domain id.")
 	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "Openstack user's domain name.")
 	f.StringVar(&cfg.ProjectID, prefix+"swift.project-id", "", "Openstack project id (v2,v3 auth only).")
 	f.StringVar(&cfg.ProjectName, prefix+"swift.project-name", "", "Openstack project name (v2,v3 auth only)")

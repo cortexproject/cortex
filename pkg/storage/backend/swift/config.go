@@ -34,7 +34,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "Openstack user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "Openstack user's domain id.")
 	f.StringVar(&cfg.UserId, prefix+"swift.user-id", "", "Openstack userid for the api.")
-	f.StringVar(&cfg.Password, prefix+"swift.password", "","Openstack api key.")
+	f.StringVar(&cfg.Password, prefix+"swift.password", "", "Openstack api key.")
 	f.StringVar(&cfg.DomainId, prefix+"swift.domain-id", "", "Openstack user's domain id.")
 	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "Openstack user's domain name.")
 	f.StringVar(&cfg.ProjectID, prefix+"swift.project-id", "", "Openstack project id (v2,v3 auth only).")

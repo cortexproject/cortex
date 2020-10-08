@@ -6,11 +6,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
 )
 
 // NewBucketClient creates a new bucket client based on the configured backend

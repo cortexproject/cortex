@@ -779,8 +779,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
-	// We always need to query all ingesters.
-	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
+	replicationSet, err := d.getIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}

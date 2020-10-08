@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -43,8 +45,15 @@ func TestIngesterSharding(t *testing.T) {
 			defer s.Close()
 
 			flags := BlocksStorageFlags
+			flags["-distributor.shard-by-all-labels"] = "true"
 			flags["-distributor.sharding-strategy"] = testData.shardingStrategy
 			flags["-distributor.ingestion-tenant-shard-size"] = strconv.Itoa(testData.tenantShardSize)
+
+			if testData.shardingStrategy == "shuffle-sharding" {
+				// Enable shuffle sharding on read path but not lookback, otherwise all ingesters would be
+				// queried being just registered.
+				flags["-querier.shuffle-sharding-ingesters-lookback-period"] = "1ns"
+			}
 
 			// Start dependencies.
 			consul := e2edb.NewConsul()
@@ -56,6 +65,7 @@ func TestIngesterSharding(t *testing.T) {
 			ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "")
 			ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), flags, "")
 			ingester3 := e2ecortex.NewIngester("ingester-3", consul.NetworkHTTPEndpoint(), flags, "")
+			ingesters := e2ecortex.NewCompositeCortexService(ingester1, ingester2, ingester3)
 			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
 			require.NoError(t, s.StartAndWaitReady(distributor, ingester1, ingester2, ingester3, querier))
 
@@ -70,15 +80,19 @@ func TestIngesterSharding(t *testing.T) {
 
 			// Push series.
 			now := time.Now()
+			expectedVectors := map[string]model.Vector{}
 
-			client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
+			client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 			require.NoError(t, err)
 
 			for i := 1; i <= numSeriesToPush; i++ {
-				series, _ := generateSeries(fmt.Sprintf("series_%d", i), now)
+				metricName := fmt.Sprintf("series_%d", i)
+				series, expectedVector := generateSeries(metricName, now)
 				res, err := client.Push(series)
 				require.NoError(t, err)
 				require.Equal(t, 200, res.StatusCode)
+
+				expectedVectors[metricName] = expectedVector
 			}
 
 			// Extract metrics from ingesters.
@@ -98,6 +112,29 @@ func TestIngesterSharding(t *testing.T) {
 
 			require.Equal(t, testData.expectedIngestersWithSeries, numIngestersWithSeries)
 			require.Equal(t, numSeriesToPush, totalIngestedSeries)
+
+			// Query back series.
+			for metricName, expectedVector := range expectedVectors {
+				result, err := client.Query(metricName, now)
+				require.NoError(t, err)
+				require.Equal(t, model.ValVector, result.Type())
+				assert.Equal(t, expectedVector, result.(model.Vector))
+			}
+
+			// We expect that only ingesters belonging to tenant's shard have been queried if
+			// shuffle sharding is enabled.
+			expectedIngesters := ingesters.NumInstances()
+			if testData.shardingStrategy == "shuffle-sharding" {
+				expectedIngesters = testData.tenantShardSize
+			}
+
+			expectedCalls := expectedIngesters * len(expectedVectors)
+			require.NoError(t, ingesters.WaitSumMetricsWithOptions(
+				e2e.Equals(float64(expectedCalls)),
+				[]string{"cortex_request_duration_seconds"},
+				e2e.WithMetricCount,
+				e2e.SkipMissingMetrics, // Some ingesters may have received no request at all.
+				e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "route", "/cortex.Ingester/QueryStream"))))
 
 			// Ensure no service-specific metrics prefix is used by the wrong service.
 			assertServiceMetricsPrefixes(t, Distributor, distributor)

@@ -2925,7 +2925,7 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 
 # Maximum time to wait before giving up on redis requests.
 # CLI flag: -<prefix>.redis.timeout
-[timeout: <duration> | default = 100ms]
+[timeout: <duration> | default = 500ms]
 
 # How long keys stay in the redis.
 # CLI flag: -<prefix>.redis.expiration

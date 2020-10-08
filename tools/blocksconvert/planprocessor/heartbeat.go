@@ -1,4 +1,4 @@
-package plan_processor
+package planprocessor
 
 import (
 	"context"
@@ -25,7 +25,7 @@ type heartbeat struct {
 	lastProgressFile string
 }
 
-func NewHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration, planFileBasename, lastProgressFile string) *heartbeat {
+func newHeartbeat(log log.Logger, bucket objstore.Bucket, interval time.Duration, planFileBasename, lastProgressFile string) *heartbeat {
 	hb := &heartbeat{
 		log:              log,
 		bucket:           bucket,

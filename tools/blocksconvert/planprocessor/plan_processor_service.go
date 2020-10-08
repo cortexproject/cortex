@@ -1,4 +1,4 @@
-package plan_processor
+package planprocessor
 
 import (
 	"bufio"
@@ -225,7 +225,7 @@ func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, p
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	hb := NewHeartbeat(planLog, s.cfg.Bucket, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
+	hb := newHeartbeat(planLog, s.cfg.Bucket, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
 	hb.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
 		level.Error(planLog).Log("msg", "heartbeating failed, aborting build", "failure", failure)
 		cancel()

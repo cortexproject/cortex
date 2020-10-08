@@ -41,7 +41,7 @@ type Config struct {
 	DeleteLocalBlock bool
 	SeriesBatchSize  int
 
-	PlanProcessorConfig plan_processor.Config
+	PlanProcessorConfig planprocessor.Config
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -119,7 +119,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	cfg.PlanProcessorConfig.Cleanup = b.cleanupFn
 	cfg.PlanProcessorConfig.Factory = b.planProcessorFactory
 
-	return plan_processor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
+	return planprocessor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
 }
 
 type Builder struct {
@@ -164,7 +164,7 @@ func (b *Builder) cleanupFn(log log.Logger) error {
 	return nil
 }
 
-func (b *Builder) planProcessorFactory(planLog log.Logger, userID string, start time.Time, end time.Time) plan_processor.PlanProcessor {
+func (b *Builder) planProcessorFactory(planLog log.Logger, userID string, start time.Time, end time.Time) planprocessor.PlanProcessor {
 	return &builderProcessor{
 		builder:  b,
 		log:      planLog,

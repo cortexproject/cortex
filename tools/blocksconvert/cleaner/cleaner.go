@@ -26,7 +26,7 @@ type Config struct {
 	PlansDirectory string
 	Concurrency    int
 
-	PlanProcessorConfig plan_processor.Config
+	PlanProcessorConfig planprocessor.Config
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -88,7 +88,7 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	cfg.PlanProcessorConfig.Bucket = bucketClient
 	cfg.PlanProcessorConfig.Factory = c.planProcessorFactory
 
-	return plan_processor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
+	return planprocessor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
 }
 
 type Cleaner struct {
@@ -108,7 +108,7 @@ type Cleaner struct {
 	deletedSeriesErrors prometheus.Counter
 }
 
-func (c *Cleaner) planProcessorFactory(planLog log.Logger, userID string, start time.Time, end time.Time) plan_processor.PlanProcessor {
+func (c *Cleaner) planProcessorFactory(planLog log.Logger, userID string, start time.Time, end time.Time) planprocessor.PlanProcessor {
 	return &cleanerProcessor{
 		cleaner:  c,
 		log:      planLog,

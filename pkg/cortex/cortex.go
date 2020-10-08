@@ -113,7 +113,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	// Set the default module list to 'all'
 	c.Target = []string{All}
 
-	f.Var((*flagext.StringSliceCSV)(&c.Target), "target", "Comma-separated list of Cortex modules to load. "+
+	f.Var(&c.Target, "target", "Comma-separated list of Cortex modules to load. "+
 		"The alias 'all' can be used in the list to load a number of core modules and will enable single-binary mode. "+
 		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
 

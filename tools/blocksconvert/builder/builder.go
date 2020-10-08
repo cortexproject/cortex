@@ -26,7 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
-	"github.com/cortexproject/cortex/tools/blocksconvert/plan_processor"
+	"github.com/cortexproject/cortex/tools/blocksconvert/planprocessor"
 )
 
 // How many series are kept in the memory before sorting and writing them to the file.
@@ -135,10 +135,9 @@ type Builder struct {
 	writtenSamples    prometheus.Counter
 	blocksSize        prometheus.Counter
 
-	buildInProgress      prometheus.Gauge
-	chunksNotFound       prometheus.Counter
-	seriesInMemory       prometheus.Gauge
-	currentPlanStartTime prometheus.Gauge
+	buildInProgress prometheus.Gauge
+	chunksNotFound  prometheus.Counter
+	seriesInMemory  prometheus.Gauge
 }
 
 func (b *Builder) cleanupFn(log log.Logger) error {

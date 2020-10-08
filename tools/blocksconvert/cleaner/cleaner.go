@@ -19,7 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
-	"github.com/cortexproject/cortex/tools/blocksconvert/plan_processor"
+	"github.com/cortexproject/cortex/tools/blocksconvert/planprocessor"
 )
 
 type Config struct {

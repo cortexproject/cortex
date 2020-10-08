@@ -39,7 +39,7 @@ type Config struct {
 	NextPlanInterval  time.Duration
 	GrpcConfig        grpcclient.ConfigWithTLS
 
-	// Additional settings required for PlanProcessorService.
+	// Additional settings required for plan processor service.
 
 	PlansDirectory string                                                                            // Where to store plan files.
 	Bucket         objstore.Bucket                                                                   // Bucket client used for downloading plan files.
@@ -57,7 +57,7 @@ func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.NextPlanInterval, prefix+".next-plan-interval", 1*time.Minute, "How often to ask for next plan (when idle)")
 }
 
-func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer) (*PlanProcessorService, error) {
+func NewService(cfg Config, l log.Logger, reg prometheus.Registerer) (*Service, error) {
 	if cfg.SchedulerEndpoint == "" {
 		return nil, errors.New("no scheduler endpoint")
 	}
@@ -73,7 +73,7 @@ func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer
 		return nil, errors.Wrap(err, "failed to create plans directory")
 	}
 
-	b := &PlanProcessorService{
+	b := &Service{
 		cfg: cfg,
 		log: l,
 
@@ -97,7 +97,7 @@ func NewPlanProcessorService(cfg Config, l log.Logger, reg prometheus.Registerer
 // This service implements common behaviour for plan-processing: 1) wait for next plan, 2) download plan,
 // 3) process each plan entry, 4) delete local plan, 5) repeat. It gets plans from scheduler. During plan processing,
 // this service maintains "progress" status file, and when plan processing finishes, it uploads "finished" plan.
-type PlanProcessorService struct {
+type Service struct {
 	services.Service
 
 	cfg Config
@@ -108,7 +108,7 @@ type PlanProcessorService struct {
 	currentPlanStartTime prometheus.Gauge
 }
 
-func (s *PlanProcessorService) cleanup(_ context.Context) error {
+func (s *Service) cleanup(_ context.Context) error {
 	files, err := ioutil.ReadDir(s.cfg.PlansDirectory)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (s *PlanProcessorService) cleanup(_ context.Context) error {
 	return nil
 }
 
-func (s *PlanProcessorService) running(ctx context.Context) error {
+func (s *Service) running(ctx context.Context) error {
 	ticker := time.NewTicker(s.cfg.NextPlanInterval)
 	defer ticker.Stop()
 
@@ -213,7 +213,7 @@ func (s *PlanProcessorService) running(ctx context.Context) error {
 	}
 }
 
-func (s *PlanProcessorService) downloadAndProcessPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
+func (s *Service) downloadAndProcessPlanFile(ctx context.Context, planFile, planBaseName, lastProgressFile string) error {
 	defer s.planFileSize.Set(0)
 	defer s.planFileReadPosition.Set(0)
 	defer s.currentPlanStartTime.Set(0)

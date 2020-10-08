@@ -88,7 +88,7 @@ func NewCleaner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	cfg.PlanProcessorConfig.Bucket = bucketClient
 	cfg.PlanProcessorConfig.Factory = c.planProcessorFactory
 
-	return planprocessor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
+	return planprocessor.NewService(cfg.PlanProcessorConfig, l, reg)
 }
 
 type Cleaner struct {

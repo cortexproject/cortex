@@ -119,7 +119,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 	cfg.PlanProcessorConfig.Cleanup = b.cleanupFn
 	cfg.PlanProcessorConfig.Factory = b.planProcessorFactory
 
-	return planprocessor.NewPlanProcessorService(cfg.PlanProcessorConfig, l, reg)
+	return planprocessor.NewService(cfg.PlanProcessorConfig, l, reg)
 }
 
 type Builder struct {

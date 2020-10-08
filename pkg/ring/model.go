@@ -25,18 +25,6 @@ func (ts ByAddr) Len() int           { return len(ts) }
 func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByAddr) Less(i, j int) bool { return ts[i].Addr < ts[j].Addr }
 
-// ByZoneAndAddr is a sortable list of IngesterDesc.
-type ByZoneAddr []IngesterDesc
-
-func (ts ByZoneAddr) Len() int      { return len(ts) }
-func (ts ByZoneAddr) Swap(i, j int) { ts[i], ts[j] = ts[j], ts[i] }
-func (ts ByZoneAddr) Less(i, j int) bool {
-	if ts[i].Zone != ts[j].Zone {
-		return ts[i].Zone < ts[j].Zone
-	}
-	return ts[i].Addr < ts[j].Addr
-}
-
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
 	return NewDesc()

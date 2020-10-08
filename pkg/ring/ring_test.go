@@ -333,7 +333,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			// Init the ring description.
+			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
 			for id, instance := range ringDesc.Ingesters {
 				instance.Timestamp = time.Now().Unix()
@@ -617,14 +617,8 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 		ringInstances[name] = desc
 	}
 
-	// Init the ring description.
+	// Init the ring.
 	ringDesc := &Desc{Ingesters: ringInstances}
-	for id, instance := range ringDesc.Ingesters {
-		instance.Timestamp = time.Now().Unix()
-		instance.State = ACTIVE
-		ringDesc.Ingesters[id] = instance
-	}
-
 	ring := Ring{
 		cfg: Config{
 			HeartbeatTimeout:     time.Hour,
@@ -699,14 +693,8 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 		ringInstances[name] = desc
 	}
 
-	// Init the ring description.
+	// Init the ring.
 	ringDesc := &Desc{Ingesters: ringInstances}
-	for id, instance := range ringDesc.Ingesters {
-		instance.Timestamp = time.Now().Unix()
-		instance.State = ACTIVE
-		ringDesc.Ingesters[id] = instance
-	}
-
 	ring := Ring{
 		cfg: Config{
 			HeartbeatTimeout:     time.Hour,

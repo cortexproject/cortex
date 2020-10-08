@@ -89,7 +89,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan *request {
 	if uq == nil {
 		uq = &userQueue{
 			ch:    make(chan *request, q.maxUserQueueSize),
-			seed:  util.ShuffleShardSeed(userID),
+			seed:  util.ShuffleShardSeed(userID, ""),
 			index: -1,
 		}
 		q.userQueues[userID] = uq

@@ -516,7 +516,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		// Since we consider each zone like an independent ring, we have to use dedicated
 		// pseudo-random generator for each zone, in order to guarantee the "consistency"
 		// property when the shard size changes or a new zone is added.
-		random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier + zone)))
+		random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier, zone)))
 
 		// To select one more instance while guaranteeing the "consistency" property,
 		// we do pick a random value from the generator and resolve uniqueness collisions

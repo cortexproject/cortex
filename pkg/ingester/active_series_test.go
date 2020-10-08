@@ -211,9 +211,3 @@ func benchmarkPurge(b *testing.B, twice bool) {
 		}
 	}
 }
-
-func TestYoloBuf(t *testing.T) {
-	s := yoloBuf("hello world")
-
-	require.Equal(t, []byte("hello world"), s)
-}

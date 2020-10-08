@@ -5,11 +5,19 @@ import (
 	"encoding/binary"
 )
 
+var (
+	seedSeparator = []byte{0}
+)
+
 // ShuffleShardSeed returns seed for random number generator, computed from provided identifier.
-func ShuffleShardSeed(identifier string) int64 {
+func ShuffleShardSeed(identifier, zone string) int64 {
 	// Use the identifier to compute an hash we'll use to seed the random.
 	hasher := md5.New()
-	hasher.Write([]byte(identifier)) // nolint:errcheck
+	hasher.Write(YoloBuf(identifier)) // nolint:errcheck
+	if zone != "" {
+		hasher.Write(seedSeparator) // nolint:errcheck
+		hasher.Write(YoloBuf(zone)) // nolint:errcheck
+	}
 	checksum := hasher.Sum(nil)
 
 	// Generate the seed based on the first 64 bits of the checksum.

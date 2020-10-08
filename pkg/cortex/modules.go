@@ -592,7 +592,7 @@ func (t *Cortex) initCompactor() (serv services.Service, err error) {
 
 func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
-		if t.Cfg.Target != All {
+		if !t.Cfg.isModuleEnabled(All) {
 			return nil, fmt.Errorf("storage engine must be set to blocks to enable the store-gateway")
 		}
 		return nil, nil

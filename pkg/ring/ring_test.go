@@ -512,8 +512,8 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	maxCombinations := int(math.Pow(float64(numTenants), 2)) - numTenants
 	for numMatching, probability := range theoreticalMatchings {
 		// We allow a max deviance of 10% compared to the theoretical probability,
-		// clamping it between 1% and 0.1% boundaries.
-		maxDeviance := math.Min(1, math.Max(0.1, probability*0.1))
+		// clamping it between 1% and 0.2% boundaries.
+		maxDeviance := math.Min(1, math.Max(0.2, probability*0.1))
 
 		actual := (float64(distribution[numMatching]) / float64(maxCombinations)) * 100
 		assert.InDelta(t, probability, actual, maxDeviance, "numMatching: %d", numMatching)

@@ -1144,6 +1144,168 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	}
 }
 
+func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
+	// Create 30 instances in 3 zones.
+	ringInstances := map[string]IngesterDesc{}
+	for i := 0; i < 30; i++ {
+		name, desc := generateRingInstance(i, i%3)
+		ringInstances[name] = desc
+	}
+
+	// Init the ring description.
+	ringDesc := &Desc{Ingesters: ringInstances}
+	for id, instance := range ringDesc.Ingesters {
+		instance.Timestamp = time.Now().Unix()
+		instance.State = ACTIVE
+		ringDesc.Ingesters[id] = instance
+	}
+
+	ring := Ring{
+		cfg: Config{
+			HeartbeatTimeout:     time.Hour,
+			ZoneAwarenessEnabled: true,
+		},
+		ringDesc:         ringDesc,
+		ringTokens:       ringDesc.getTokens(),
+		ringTokensByZone: ringDesc.getTokensByZone(),
+		ringZones:        getZones(ringDesc.getTokensByZone()),
+		strategy:         &DefaultReplicationStrategy{},
+	}
+
+	// Get the replication set with shard size = 3.
+	firstShard := ring.ShuffleShard("tenant-id", 3)
+	assert.Equal(t, 3, firstShard.IngesterCount())
+
+	firstSet, err := firstShard.GetAll(Read)
+	require.NoError(t, err)
+
+	// Increase shard size to 6.
+	secondShard := ring.ShuffleShard("tenant-id", 6)
+	assert.Equal(t, 6, secondShard.IngesterCount())
+
+	secondSet, err := secondShard.GetAll(Read)
+	require.NoError(t, err)
+
+	for _, firstInstance := range firstSet.Ingesters {
+		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
+	}
+
+	// Increase shard size to 9.
+	thirdShard := ring.ShuffleShard("tenant-id", 9)
+	assert.Equal(t, 9, thirdShard.IngesterCount())
+
+	thirdSet, err := thirdShard.GetAll(Read)
+	require.NoError(t, err)
+
+	for _, secondInstance := range secondSet.Ingesters {
+		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
+	}
+
+	// Decrease shard size to 6.
+	fourthShard := ring.ShuffleShard("tenant-id", 6)
+	assert.Equal(t, 6, fourthShard.IngesterCount())
+
+	fourthSet, err := fourthShard.GetAll(Read)
+	require.NoError(t, err)
+
+	// We expect to have the same exact instances we had when the shard size was 6.
+	for _, secondInstance := range secondSet.Ingesters {
+		assert.True(t, fourthSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
+	}
+
+	// Decrease shard size to 3.
+	fifthShard := ring.ShuffleShard("tenant-id", 3)
+	assert.Equal(t, 3, fifthShard.IngesterCount())
+
+	fifthSet, err := fifthShard.GetAll(Read)
+	require.NoError(t, err)
+
+	// We expect to have the same exact instances we had when the shard size was 3.
+	for _, firstInstance := range firstSet.Ingesters {
+		assert.True(t, fifthSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
+	}
+}
+
+func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
+	// Create 20 instances in 2 zones.
+	ringInstances := map[string]IngesterDesc{}
+	for i := 0; i < 20; i++ {
+		name, desc := generateRingInstance(i, i%2)
+		ringInstances[name] = desc
+	}
+
+	// Init the ring description.
+	ringDesc := &Desc{Ingesters: ringInstances}
+	for id, instance := range ringDesc.Ingesters {
+		instance.Timestamp = time.Now().Unix()
+		instance.State = ACTIVE
+		ringDesc.Ingesters[id] = instance
+	}
+
+	ring := Ring{
+		cfg: Config{
+			HeartbeatTimeout:     time.Hour,
+			ZoneAwarenessEnabled: true,
+		},
+		ringDesc:         ringDesc,
+		ringTokens:       ringDesc.getTokens(),
+		ringTokensByZone: ringDesc.getTokensByZone(),
+		ringZones:        getZones(ringDesc.getTokensByZone()),
+		strategy:         &DefaultReplicationStrategy{},
+	}
+
+	// Get the replication set with shard size = 2.
+	firstShard := ring.ShuffleShard("tenant-id", 2)
+	assert.Equal(t, 2, firstShard.IngesterCount())
+
+	firstSet, err := firstShard.GetAll(Read)
+	require.NoError(t, err)
+
+	// Increase shard size to 4.
+	secondShard := ring.ShuffleShard("tenant-id", 4)
+	assert.Equal(t, 4, secondShard.IngesterCount())
+
+	secondSet, err := secondShard.GetAll(Read)
+	require.NoError(t, err)
+
+	for _, firstInstance := range firstSet.Ingesters {
+		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
+	}
+
+	// Scale up cluster, adding 10 instances in 1 new zone.
+	for i := 20; i < 30; i++ {
+		name, desc := generateRingInstance(i, 2)
+		ringInstances[name] = desc
+	}
+
+	ring.ringDesc.Ingesters = ringInstances
+	ring.ringTokens = ringDesc.getTokens()
+	ring.ringTokensByZone = ringDesc.getTokensByZone()
+	ring.ringZones = getZones(ringDesc.getTokensByZone())
+
+	// Increase shard size to 6.
+	thirdShard := ring.ShuffleShard("tenant-id", 6)
+	assert.Equal(t, 6, thirdShard.IngesterCount())
+
+	thirdSet, err := thirdShard.GetAll(Read)
+	require.NoError(t, err)
+
+	for _, secondInstance := range secondSet.Ingesters {
+		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
+	}
+
+	// Increase shard size to 9.
+	fourthShard := ring.ShuffleShard("tenant-id", 9)
+	assert.Equal(t, 9, fourthShard.IngesterCount())
+
+	fourthSet, err := fourthShard.GetAll(Read)
+	require.NoError(t, err)
+
+	for _, thirdInstance := range thirdSet.Ingesters {
+		assert.True(t, fourthSet.Includes(thirdInstance.Addr), "new replication set is expected to include previous instance %s", thirdInstance.Addr)
+	}
+}
+
 func BenchmarkRing_ShuffleShard(b *testing.B) {
 	for _, numInstances := range []int{50, 100, 1000} {
 		for _, numZones := range []int{1, 3} {

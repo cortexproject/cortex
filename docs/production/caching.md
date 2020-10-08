@@ -104,9 +104,9 @@ You can also use [Redis](https://redis.io/) for out-of-process caching; this is 
     Redis Sentinel master group name.
     An empty string for Redis Server or Redis Cluster
 -<prefix>.redis.tls-enabled
-    Enables connecting to redis with TLS.
--<prefix>.redis.tls-skip-verify
-    Disables SSL certificate verification.
+    Enable connecting to redis with TLS.
+-<prefix>.redis.tls-insecure-skip-verify
+    Skip validating server certificate.
 -<prefix>.redis.expiration duration
     How long keys stay in the redis.
 -<prefix>.redis.db int

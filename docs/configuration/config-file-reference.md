@@ -2943,13 +2943,13 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.password
 [password: <string> | default = ""]
 
-# Enables connecting to redis with TLS.
+# Enable connecting to redis with TLS.
 # CLI flag: -<prefix>.redis.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Disables SSL certificate verification.
-# CLI flag: -<prefix>.redis.tls-skip-verify
-[tls_skip_verify: <boolean> | default = false]
+# Skip validating server certificate.
+# CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 
 # Close connections after remaining idle for this duration. If the value is
 # zero, then idle connections are not closed.

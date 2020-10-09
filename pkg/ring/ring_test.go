@@ -725,7 +725,7 @@ func TestRingUpdates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
 	t.Cleanup(func() {
-		_ = services.StartAndAwaitRunning(context.Background(), ring)
+		_ = services.StopAndAwaitTerminated(context.Background(), ring)
 	})
 
 	require.Equal(t, 0, ring.IngesterCount())

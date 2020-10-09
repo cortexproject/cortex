@@ -477,7 +477,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 
 	result := r.shuffleShard(identifier, size, 0, time.Now())
 
-	r.setCachedShuffledSubring(identifier, size, result.(*Ring))
+	r.setCachedShuffledSubring(identifier, size, result)
 	return result
 }
 
@@ -497,10 +497,8 @@ func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPer
 	return r.shuffleShard(identifier, size, lookbackPeriod, now)
 }
 
-func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) *Ring {
 	lookbackUntil := now.Add(-lookbackPeriod).Unix()
-
-	var result *Ring
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -585,7 +583,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	shardDesc := &Desc{Ingesters: shard}
 	shardTokensByZone := shardDesc.getTokensByZone()
 
-	result = &Ring{
+	return &Ring{
 		cfg:              r.cfg,
 		strategy:         r.strategy,
 		ringDesc:         shardDesc,
@@ -596,8 +594,6 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
 	}
-
-	return result
 }
 
 // GetInstanceState returns the current state of an instance or an error if the

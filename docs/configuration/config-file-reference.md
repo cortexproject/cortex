@@ -744,8 +744,9 @@ store_gateway_client:
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
 # selecting only ingesters which may have received series since 'now - lookback
-# period'. If this setting is 0, queriers always query all ingesters (ingesters
-# shuffle sharding on read path is disabled).
+# period'. The lookback period should be greater or equal than the configured
+# 'query store after'. If this setting is 0, queriers always query all ingesters
+# (ingesters shuffle sharding on read path is disabled).
 # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 ```

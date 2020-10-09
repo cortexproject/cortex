@@ -79,7 +79,6 @@ func TestCortex(t *testing.T) {
 	serviceMap, err := c.ModuleManager.InitModuleServices(cfg.Target...)
 	require.NoError(t, err)
 	require.NotNil(t, serviceMap)
-	log.Println(serviceMap)
 
 	for m, s := range serviceMap {
 		// make sure each service is still New

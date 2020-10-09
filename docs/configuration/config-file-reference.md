@@ -943,7 +943,9 @@ storage:
     [max_retry_delay: <duration> | default = 500ms]
 
   gcs:
-    # Name of GCS bucket to put chunks in.
+    # Name of GCS bucket. Please refer to
+    # https://cloud.google.com/docs/authentication/production for more
+    # information about how to configure authentication.
     # CLI flag: -ruler.storage.gcs.bucketname
     [bucket_name: <string> | default = ""]
 
@@ -1259,7 +1261,9 @@ storage:
     [path: <string> | default = ""]
 
   gcs:
-    # Name of GCS bucket to put chunks in.
+    # Name of GCS bucket. Please refer to
+    # https://cloud.google.com/docs/authentication/production for more
+    # information about how to configure authentication.
     # CLI flag: -alertmanager.storage.gcs.bucketname
     [bucket_name: <string> | default = ""]
 
@@ -1854,7 +1858,9 @@ bigtable:
   # CLI flag: -bigtable.project
   [project: <string> | default = ""]
 
-  # Bigtable instance ID.
+  # Bigtable instance ID. Please refer to
+  # https://cloud.google.com/docs/authentication/production for more information
+  # about how to configure authentication.
   # CLI flag: -bigtable.instance
   [instance: <string> | default = ""]
 
@@ -1911,7 +1917,9 @@ bigtable:
   [table_cache_expiration: <duration> | default = 30m]
 
 gcs:
-  # Name of GCS bucket to put chunks in.
+  # Name of GCS bucket. Please refer to
+  # https://cloud.google.com/docs/authentication/production for more information
+  # about how to configure authentication.
   # CLI flag: -gcs.bucketname
   [bucket_name: <string> | default = ""]
 

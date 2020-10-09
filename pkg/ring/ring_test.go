@@ -806,7 +806,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
 	buf := bytes.Buffer{}
-	util.Logger = log.NewLogfmtLogger(&buf)
+	util.Logger = log.NewSyncLogger(log.NewLogfmtLogger(&buf))
 
 	defer func() {
 		if t.Failed() {
@@ -814,7 +814,10 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		}
 	}()
 
-	inmem := consul.NewInMemoryClient(GetCodec())
+	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+		MaxCasRetries: 20,
+		CasRetryDelay: 500 * time.Millisecond,
+	})
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},

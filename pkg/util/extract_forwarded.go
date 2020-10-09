@@ -7,7 +7,7 @@ import (
 )
 
 // ipAddressesKey is key for the GRPC metadata where the IP addresses are stored
-const ipAddressesKey = "github.com/cortexproject/cortex/util/extract_forwarded/x-forwarded-for"
+const ipAddressesKey = "x-forwarded-for-bin"
 
 // GetSourceIPsFromOutgoingCtx extracts the source field from the GRPC context
 func GetSourceIPsFromOutgoingCtx(ctx context.Context) string {

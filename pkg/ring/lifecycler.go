@@ -56,12 +56,12 @@ type LifecyclerConfig struct {
 	FinalSleep       time.Duration `yaml:"final_sleep"`
 	TokensFilePath   string        `yaml:"tokens_file_path"`
 	Zone             string        `yaml:"availability_zone"`
+	SkipUnregister   bool          `yaml:"skip_unregister"`
 
 	// For testing, you can override the address and ID of this ingester
-	Addr           string `yaml:"address" doc:"hidden"`
-	Port           int    `doc:"hidden"`
-	ID             string `doc:"hidden"`
-	SkipUnregister bool   `yaml:"-"`
+	Addr string `yaml:"address" doc:"hidden"`
+	Port int    `doc:"hidden"`
+	ID   string `doc:"hidden"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -102,6 +102,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.IntVar(&cfg.Port, prefix+"lifecycler.port", 0, "port to advertise in consul (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.ID, prefix+"lifecycler.ID", hostname, "ID to register in the ring.")
 	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone where this instance is running.")
+	f.BoolVar(&cfg.SkipUnregister, prefix+"skip-unregister", false, "Leave the instance in the ring upon removal. Useful for rolling restarts with consistent naming.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.

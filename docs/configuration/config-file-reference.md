@@ -608,6 +608,11 @@ lifecycler:
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Try writing to an additional ingester in the presence of an ingester not
+    # in the ACTIVE state.
+    # CLI flag: -distributor.extend-writes
+    [extend_writes: <boolean> | default = true]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
@@ -647,6 +652,11 @@ lifecycler:
   # The availability zone where this instance is running.
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
+
+  # Leave the instance in the ring upon removal. Useful for rolling restarts
+  # with consistent naming.
+  # CLI flag: -ingester.skip-unregister
+  [skip_unregister: <boolean> | default = false]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by

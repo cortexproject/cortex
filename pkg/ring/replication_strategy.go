@@ -17,7 +17,9 @@ type ReplicationStrategy interface {
 	ShouldExtendReplicaSet(instance IngesterDesc, op Operation) bool
 }
 
-type DefaultReplicationStrategy struct{}
+type DefaultReplicationStrategy struct {
+	ExtendWrites bool
+}
 
 // Filter decides, given the set of ingesters eligible for a key,
 // which ingesters you will try and write to and how many failures you will
@@ -70,8 +72,11 @@ func (s *DefaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDes
 	// size of the replica set for read, but we can read from Leaving ingesters,
 	// so don't skip it in this case.
 	// NB dead ingester will be filtered later by DefaultReplicationStrategy.Filter().
-	if op == Write && ingester.State != ACTIVE {
-		return true
+	if op == Write {
+		if s.ExtendWrites {
+			return ingester.State != ACTIVE
+		}
+		return false
 	} else if op == Read && (ingester.State != ACTIVE && ingester.State != LEAVING) {
 		return true
 	}

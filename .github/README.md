@@ -67,13 +67,14 @@ A significant number of commands in the Makefile are hardcoded with an assumed f
 
 As of October 2020, GitHub Actions do not persist between different jobs in the same workflow. Each job is run on a fresh virtual environment (https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/introduction-to-github-actions#runners). As such, we need to upload and download artifacts to share data between jobs.
 
-Artifact	Stored in	Used by	Purpose of storing artifact
-website public	build	deploy_website	share between jobs
-Docker Images	build	deploy, integration, integrations-config-db	share between jobs
-Frontend Protobuf	build	-	long term storage
-Caching Index Client Protobuf	build	-	long term storage
-Ring Protobuf 	build	-	long term storage
-Rules Protobuf	build	-	long term storage
+| Artifact                      | Stored In | Used By                                     | Purpose of Storing Artifact |
+|-------------------------------|-----------|---------------------------------------------|-----------------------------|
+| website public                | build     | deploy_website                              | share data between jobs     |
+| Docker Images                 | build     | deploy, integration, integrations-config-db | share data between jobs     |
+| Frontend Protobuf             | build     |                                             | long term storage           |
+| Caching Index Client Protobuf | build     |                                             | long term storage           |
+| Ring Protobuf                 | build     |                                             | long term storage           |
+| Rules Protobuf                | build     |                                             | long term storage           |
 
 *Note:* Docker Images are zipped before uploading as a workaround. The images contain characters that are illegal in the upload-artifact action.
 ```yaml

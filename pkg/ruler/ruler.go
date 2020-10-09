@@ -707,6 +707,12 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 		}
 		cc := NewRulerClient(conn)
 		newGrps, err := cc.Rules(ctx, nil)
+
+		// Close the gRPC connection regardless the RPC was successful or not.
+		if closeErr := conn.Close(); closeErr != nil {
+			level.Warn(r.logger).Log("msg", "failed to close gRPC connection to ruler", "remote", rlr.Addr, "err", closeErr)
+		}
+
 		if err != nil {
 			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
 		}

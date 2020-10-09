@@ -68,13 +68,14 @@ func TestCortex(t *testing.T) {
 				},
 			},
 		},
-		Target: All,
+
+		Target: []string{All, Compactor},
 	}
 
 	c, err := New(cfg)
 	require.NoError(t, err)
 
-	serviceMap, err := c.ModuleManager.InitModuleServices(c.Cfg.Target)
+	serviceMap, err := c.ModuleManager.InitModuleServices(cfg.Target...)
 	require.NoError(t, err)
 	require.NotNil(t, serviceMap)
 
@@ -88,4 +89,7 @@ func TestCortex(t *testing.T) {
 	require.NotNil(t, serviceMap[IngesterService])
 	require.NotNil(t, serviceMap[Ring])
 	require.NotNil(t, serviceMap[DistributorService])
+
+	// check that compactor is configured which is not part of Target=All
+	require.NotNil(t, serviceMap[Compactor])
 }

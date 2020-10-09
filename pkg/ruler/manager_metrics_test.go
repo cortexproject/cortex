@@ -61,12 +61,27 @@ cortex_prometheus_rule_evaluations_total{rule_group="group_two",user="user2"} 10
 cortex_prometheus_rule_evaluations_total{rule_group="group_two",user="user3"} 100
 # HELP cortex_prometheus_rule_group_duration_seconds The duration of rule group evaluations.
 # TYPE cortex_prometheus_rule_group_duration_seconds summary
-cortex_prometheus_rule_group_duration_seconds_sum{user="user1"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user1"} 0
-cortex_prometheus_rule_group_duration_seconds_sum{user="user2"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user2"} 0
-cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 0
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.01"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.05"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.5"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.9"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.99"} 1
+cortex_prometheus_rule_group_duration_seconds_sum{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds_count{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.01"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.05"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.5"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.9"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.99"} 10
+cortex_prometheus_rule_group_duration_seconds_sum{user="user2"} 10
+cortex_prometheus_rule_group_duration_seconds_count{user="user2"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.01"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.05"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.5"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.9"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.99"} 100
+cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 100
+cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 1
 # HELP cortex_prometheus_rule_group_iterations_missed_total The total number of rule group evaluations missed due to slow rule group evaluation.
 # TYPE cortex_prometheus_rule_group_iterations_missed_total counter
 cortex_prometheus_rule_group_iterations_missed_total{user="user1"} 1

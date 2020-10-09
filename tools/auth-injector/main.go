@@ -24,10 +24,15 @@ func main() {
 	flag.Parse()
 
 	// Parse remote URL.
+	if cfg.RemoteURL == "" {
+		log.Fatalln("No -remote-address specified.")
+	}
+
 	remoteURL, err := url.Parse(cfg.RemoteURL)
 	if err != nil {
 		log.Fatalf("Unable to parse remote address. Error: %s.", err.Error())
 	}
+	log.Println("Forwarding to", remoteURL)
 
 	ln, err := net.Listen("tcp", cfg.LocalAddress)
 	if err != nil {

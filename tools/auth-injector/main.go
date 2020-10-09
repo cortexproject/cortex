@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -28,6 +29,11 @@ func main() {
 		log.Fatalf("Unable to parse remote address. Error: %s.", err.Error())
 	}
 
+	ln, err := net.Listen("tcp", cfg.LocalAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	s := &http.Server{
 		Addr:           cfg.LocalAddress,
 		Handler:        injectAuthHeader(cfg.TenantID, httputil.NewSingleHostReverseProxy(remoteURL)),
@@ -36,7 +42,8 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Fatal(s.ListenAndServe())
+	log.Println("Listening on", ln.Addr())
+	log.Fatal(s.Serve(ln))
 }
 
 func injectAuthHeader(tenantID string, h http.Handler) http.Handler {

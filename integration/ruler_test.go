@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -161,7 +160,7 @@ func TestRulerEvaluationDelay(t *testing.T) {
 		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":             "2s",
 		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
-		"-ruler.evaluation-delay-duration": "1m",
+		"-ruler.evaluation-delay-duration": "5m", // 5 minutes is clarifying when seeing when a rule is evaluated
 	}
 
 	// Start Cortex components.
@@ -171,7 +170,7 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	// Create a client with the ruler address configured
-	c, err := e2ecortex.NewClient("", "", "", cortex.HTTPEndpoint(), "")
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "")
 	require.NoError(t, err)
 
 	// Wait until the rule is evaluated
@@ -179,15 +178,21 @@ func TestRulerEvaluationDelay(t *testing.T) {
 
 	now := time.Now()
 
-	result, err := c.QueryRange("time_eval", now.Add(-2*time.Minute), now, time.Second*30)
+	result, err := c.QueryRange("time_eval", now.Add(-10*time.Minute), now, time.Minute)
 	require.NoError(t, err)
 	require.Equal(t, model.ValMatrix, result.Type())
 
+	// Iterate through the values recorded and ensure they exist in the past.
 	matrix := result.(model.Matrix)
+
+	// 290 seconds gives 10 seconds of slack between the rule evaluation and the query
+	// to account for CI latency, but ensures the latest evalation was in the past.
+	var maxDiff int64 = 290
+
 	for _, m := range matrix {
 		for _, v := range m.Values {
-			diff := float64(v.Timestamp.Unix()) - float64(v.Value)
-			require.LessOrEqual(t, math.Abs(diff), 50)
+			diff := now.Unix() - int64(v.Value)
+			require.GreaterOrEqual(t, diff, maxDiff)
 		}
 	}
 

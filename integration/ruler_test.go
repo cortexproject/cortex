@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -185,7 +186,8 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	matrix := result.(model.Matrix)
 	for _, m := range matrix {
 		for _, v := range m.Values {
-			require.Greater(t, v.Timestamp.Add(-time.Second*50).Unix(), int64(v.Value))
+			diff := float64(v.Timestamp.Unix()) - float64(v.Value)
+			require.LessOrEqual(t, math.Abs(diff), 50)
 		}
 	}
 

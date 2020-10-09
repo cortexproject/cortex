@@ -7,7 +7,7 @@ import (
 )
 
 // ipAddressesKey is key for the GRPC metadata where the IP addresses are stored
-const ipAddressesKey = "x-forwarded-for-bin"
+const ipAddressesKey = "extract-forwarded-x-forwarded-for"
 
 // GetSourceIPsFromOutgoingCtx extracts the source field from the GRPC context
 func GetSourceIPsFromOutgoingCtx(ctx context.Context) string {

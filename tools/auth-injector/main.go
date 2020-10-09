@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -17,15 +18,25 @@ type Config struct {
 
 func main() {
 	cfg := Config{}
-	flag.StringVar(&cfg.LocalAddress, "local-address", "", "Local address to listen to (eg. localhost:8080).")
-	flag.StringVar(&cfg.RemoteURL, "remote-address", "", "Remote address to proxy to (eg. http://domain.com:80).")
+	flag.StringVar(&cfg.LocalAddress, "local-address", ":8080", "Local address to listen on (host:port or :port).")
+	flag.StringVar(&cfg.RemoteURL, "remote-address", "", "URL of target to forward requests to to (eg. http://domain.com:80).")
 	flag.StringVar(&cfg.TenantID, "tenant-id", "", "Tenant ID to inject to proxied requests.")
 	flag.Parse()
 
 	// Parse remote URL.
+	if cfg.RemoteURL == "" {
+		log.Fatalln("No -remote-address specified.")
+	}
+
 	remoteURL, err := url.Parse(cfg.RemoteURL)
 	if err != nil {
 		log.Fatalf("Unable to parse remote address. Error: %s.", err.Error())
+	}
+	log.Println("Forwarding to", remoteURL)
+
+	ln, err := net.Listen("tcp", cfg.LocalAddress)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	s := &http.Server{
@@ -36,7 +47,8 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	log.Fatal(s.ListenAndServe())
+	log.Println("Listening on", ln.Addr())
+	log.Fatal(s.Serve(ln))
 }
 
 func injectAuthHeader(tenantID string, h http.Handler) http.Handler {

@@ -1,7 +1,6 @@
 package ring
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -10,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -805,15 +803,6 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	buf := bytes.Buffer{}
-	util.Logger = log.NewSyncLogger(log.NewLogfmtLogger(&buf))
-
-	defer func() {
-		if t.Failed() {
-			fmt.Println(buf.String())
-		}
-	}()
-
 	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
 		MaxCasRetries: 20,
 		CasRetryDelay: 500 * time.Millisecond,

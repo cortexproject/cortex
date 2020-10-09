@@ -991,28 +991,18 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// The goal of this test is NOT to ensure that the minimum required number of instances
 	// are returned at any given time, BUT at least all required instances are returned.
 	var (
-		numInitialInstances = []int{9} // TODO , 30, 60, 90}
-		numInitialZones     = []int{3} // TODO, 1, 3}
+		numInitialInstances = []int{9, 30, 60, 90}
+		numInitialZones     = []int{3, 1, 3}
 		numEvents           = 100
 		lookbackPeriod      = time.Hour
 		delayBetweenEvents  = 5 * time.Minute // 12 events / hour
 		userID              = "user-1"
 	)
 
-	// TODO randomise it but log the seed to have a way to reproduce tests if break
-	rand.Seed(2)
-
-	//printShard := func(rs ReplicationSet) {
-	//	fmt.Print("curr shard: ")
-	//
-	//	ingesters := rs.Ingesters
-	//	sort.Sort(ByZoneAddr(ingesters))
-	//
-	//	for _, i := range ingesters {
-	//		fmt.Print(i.Addr, "(", i.Zone, "), ")
-	//	}
-	//	fmt.Print("\n")
-	//}
+	// Randomise the seed but log it in case we need to reproduce the test on failure.
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	t.Log("random generator seed:", seed)
 
 	for _, numInstances := range numInitialInstances {
 		for _, numZones := range numInitialZones {
@@ -1043,7 +1033,6 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				// Add the initial shard to the history.
 				rs, err := ring.ShuffleShard(userID, shardSize).GetAll(Read)
 				require.NoError(t, err)
-				//printShard(rs)
 
 				history := map[time.Time]ReplicationSet{
 					currTime: rs,
@@ -1052,11 +1041,9 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				// Simulate a progression of random events over the time and, at each iteration of the simuation,
 				// make sure the subring includes all non-removed instances picked from previous versions of the
 				// ring up until the lookback period.
-				nextIngesterID := len(ringDesc.Ingesters)
+				nextIngesterID := len(ringDesc.Ingesters) + 1
 
 				for i := 1; i <= numEvents; i++ {
-					//fmt.Println("")
-
 					currTime = currTime.Add(delayBetweenEvents)
 
 					switch r := rand.Intn(100); {
@@ -1065,8 +1052,6 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						instanceID := fmt.Sprintf("instance-%d", nextIngesterID)
 						zoneID := fmt.Sprintf("zone-%d", nextIngesterID%numZones)
 						nextIngesterID++
-
-						//fmt.Println(currTime.String(), "scale up", instanceID, "zone", zoneID)
 
 						ringDesc.Ingesters[instanceID] = generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(128, nil), currTime)
 
@@ -1086,8 +1071,6 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						idxToRemove := rand.Intn(len(ingesterIDs))
 						idToRemove := ingesterIDs[idxToRemove]
 						delete(ringDesc.Ingesters, idToRemove)
-
-						//fmt.Println(currTime.String(), "scale down", idToRemove)
 
 						ring.ringTokens = ringDesc.getTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
@@ -1109,15 +1092,12 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					default:
 						// Scale up shard size (keeping the per-zone balance).
 						shardSize += numZones
-
-						//fmt.Println(currTime.String(), "shard size scaled up to", shardSize)
 					}
 
 					// Add the current shard to the history.
 					rs, err = ring.ShuffleShard(userID, shardSize).GetAll(Read)
 					require.NoError(t, err)
 					history[currTime] = rs
-					//printShard(rs)
 
 					// Ensure the shard with lookback includes all instances from previous states of the ring.
 					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetAll(Read)

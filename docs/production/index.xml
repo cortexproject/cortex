@@ -307,8 +307,10 @@ For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
 -&amp;lt;prefix&amp;gt;.redis.master-name
 Redis Sentinel master group name.
 An empty string for Redis Server or Redis Cluster
--&amp;lt;prefix&amp;gt;.redis.enable-tls
-Enables connecting to redis with TLS.
+-&amp;lt;prefix&amp;gt;.redis.tls-enabled
+Enable connecting to redis with TLS.
+-&amp;lt;prefix&amp;gt;.redis.tls-insecure-skip-verify
+Skip validating server certificate.
 -&amp;lt;prefix&amp;gt;.redis.expiration duration
 How long keys stay in the redis.
 -&amp;lt;prefix&amp;gt;.redis.db int

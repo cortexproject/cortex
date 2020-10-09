@@ -148,7 +148,7 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	// If same user is later re-added, all metrics will start from 0, which is fine.
 
 	data.SendSumOfSummariesPerUser(out, m.EvalDuration, "prometheus_rule_evaluation_duration_seconds")
-	data.SendSumOfSummariesPerUser(out, m.IterationDuration, "cortex_prometheus_rule_group_duration_seconds")
+	data.SendSumOfSummariesPerUser(out, m.IterationDuration, "prometheus_rule_group_duration_seconds")
 
 	data.SendSumOfCountersPerUser(out, m.IterationsMissed, "prometheus_rule_group_iterations_missed_total")
 	data.SendSumOfCountersPerUser(out, m.IterationsScheduled, "prometheus_rule_group_iterations_total")

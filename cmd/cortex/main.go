@@ -146,8 +146,13 @@ func main() {
 	// In testing mode skip JAEGER setup to avoid panic due to
 	// "duplicate metrics collector registration attempted"
 	if !testMode {
+		name := "cortex"
+		if len(cfg.Target) == 1 {
+			name += "-" + cfg.Target[0]
+		}
+
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
-		if trace, err := tracing.NewFromEnv("cortex-" + cfg.Target); err != nil {
+		if trace, err := tracing.NewFromEnv(name); err != nil {
 			level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
 		} else {
 			defer trace.Close()

@@ -179,16 +179,10 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	// to parse form we need to be sure
-	// that roundtriper request gets not read reader
+	// create buffer for later use in case of slow query
+	// to obtain request's form values
 	var buf bytes.Buffer
 	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
-	// Ensure the form has been parsed so all the parameters are present
-	err := r.ParseForm()
-	if err != nil {
-		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
-	}
-	r.Body = ioutil.NopCloser(&buf)
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
@@ -205,13 +199,13 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 		io.Copy(w, resp.Body)
 	}
 
-	f.reportSlowQuery(queryResponseTime, r)
+	f.reportSlowQuery(queryResponseTime, r, buf)
 }
 
 // reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, if it is set to 0 query logging
 // is disabled. This function shouldn't access request body as it will be already read by RoundTriper returning
 // no form values or reporting closed body warning
-func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request) {
+func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request, bodyBuf bytes.Buffer) {
 	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
 		logMessage := []interface{}{
 			"msg", "slow query detected",
@@ -219,6 +213,14 @@ func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Requ
 			"host", r.Host,
 			"path", r.URL.Path,
 			"time_taken", queryResponseTime.String(),
+		}
+
+		r.Body = ioutil.NopCloser(&bodyBuf)
+
+		// Ensure the form has been parsed so all the parameters are present
+		err := r.ParseForm()
+		if err != nil {
+			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
 		}
 
 		// Attempt to iterate through the Form to log any filled in values

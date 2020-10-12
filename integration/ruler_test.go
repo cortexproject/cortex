@@ -195,9 +195,6 @@ func TestRulerEvaluationDelay(t *testing.T) {
 			require.GreaterOrEqual(t, diff, maxDiff)
 		}
 	}
-
-	// Stop the running cortex
-	require.NoError(t, cortex.Stop())
 }
 
 func TestRulerAlertmanager(t *testing.T) {

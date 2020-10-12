@@ -3,8 +3,6 @@ package scheduler
 import (
 	"fmt"
 	"time"
-
-	"github.com/oklog/ulid"
 )
 
 type planStatus int
@@ -37,16 +35,16 @@ func (s planStatus) String() string {
 type plan struct {
 	PlanFiles     []string
 	ProgressFiles map[string]time.Time
-	Blocks        []ulid.ULID
+	Finished      []string
 	ErrorFile     string
 }
 
 func (ps plan) Status() planStatus {
-	if len(ps.PlanFiles) != 1 || len(ps.Blocks) > 1 || (len(ps.Blocks) > 0 && ps.ErrorFile != "") {
+	if len(ps.PlanFiles) != 1 || len(ps.Finished) > 1 || (len(ps.Finished) > 0 && ps.ErrorFile != "") {
 		return Invalid
 	}
 
-	if len(ps.Blocks) > 0 {
+	if len(ps.Finished) > 0 {
 		return Finished
 	}
 

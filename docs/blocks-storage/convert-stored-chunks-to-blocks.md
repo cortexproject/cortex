@@ -103,7 +103,7 @@ Cleaner doesn't **scan** for index entries, but uses existing plan files to find
 
 Cleaner should only be deployed if no other Builder is running. Running multiple Cleaners at once is not supported, and will result in leftover chunks and index entries. Reason for this is that chunks can span multiple days, and chunk is fully deleted only when processing plan (day) when chunk started. Since cleaner also needs to download some chunks to be able to clean up all index entries, when using multiple cleaners, it can happen that cleaner processing older plans will delete chunks required to properly clean up data in newer plans. When using single cleaner only, this is not a problem, since scheduler sends plans to cleaner in time-reversed order.
 
-**Note:** Cleaner is designed for use in very special cases, eg. when deleting chunks and index entries for a specific customer. If `blocksconvert` was used to convert ALL chunks to blocks, it is simpler to just drop the index and chunks database afterwards. In such case, Cleaner is not needed. 
+**Note:** Cleaner is designed for use in very special cases, eg. when deleting chunks and index entries for a specific customer. If `blocksconvert` was used to convert ALL chunks to blocks, it is simpler to just drop the index and chunks database afterwards. In such case, Cleaner is not needed.
 
 ### Limitations
 

@@ -27,10 +27,7 @@ func TestRuler_rules(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := API{
-		ruler: r,
-		store: r.store,
-	}
+	a := NewAPI(r, r.store)
 
 	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()

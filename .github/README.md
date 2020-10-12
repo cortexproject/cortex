@@ -43,15 +43,6 @@ Each step in a job has a clear name that encapsulates the purpose of the command
 # commands
 ```
 
-**Checkout Version**
-
-Current build-image ships with an older version of Git which breaks github/actions@v2 so we are using actions/checkout@v1 for all jobs until the quay image is updated to ship with a more recent version of Git.
-
-```yaml
-- name: Checkout Repo
-  uses: actions/checkout@v1
-```
-
 **Symbolic Link to Expected Workspace**
 
 A significant number of commands in the Makefile are hardcoded with an assumed file structure of the CI container. To ensure paths specified in previous commands don’t break, a symlink was created from the hardcoded “expected” working directory `/go/src/github.com/cortexproject/cortex` to the actual working directory `$GITHUB_WORKSPACE`.

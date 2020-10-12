@@ -5,7 +5,7 @@ defaults: &defaults
   docker:
     # IMPORTANT: whenever you change the build-image version tag, remember to replace it
     #            across the entire file (there are multiple references).
-    - image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+    - image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
   working_directory: /go/src/github.com/cortexproject/cortex
 
 filters: &filters
@@ -87,7 +87,7 @@ jobs:
 
   test:
     docker:
-      - image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+      - image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
       - image: cassandra:3.11
         environment:
           JVM_OPTS: "-Xms1024M -Xmx1024M"
@@ -111,7 +111,7 @@ jobs:
         name: Integration Test
         command: |
           touch build-image/.uptodate
-          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2 configs-integration-test
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP configs-integration-test
 
   integration:
     machine:

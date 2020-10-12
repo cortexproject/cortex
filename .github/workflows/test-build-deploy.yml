@@ -9,10 +9,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -31,7 +31,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
     services:
       cassandra:
         image: cassandra:3.11
@@ -41,7 +41,7 @@ jobs:
         - 9042:9042
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -52,10 +52,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Install Docker Client
         run: |
           set -x

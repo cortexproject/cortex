@@ -7889,6 +7889,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Build the image running &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
 &lt;li>Publish the image to the repository running &lt;code>docker push quay.io/cortexproject/build-image:TAG&lt;/code> (this can only be done by a maintainer)&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.circleci/config.yml&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/production/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/ingesters-with-wal/</guid><description>
 &lt;p>Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.&lt;/p>

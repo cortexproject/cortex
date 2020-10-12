@@ -790,29 +790,29 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	}{
 		"single zone, shard size = 1, recently bootstrapped cluster": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-time.Minute))},
 				{what: test, shardSize: 1, expected: []string{"instance-1", "instance-2", "instance-3"}},
 			},
 		},
 		"single zone, shard size = 1, instances scale up": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 0) + 2}, now.Add(-10*time.Minute))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 2}, now.Add(-10*time.Minute))},
 				{what: test, shardSize: 1, expected: []string{"instance-4" /* lookback: */, "instance-1"}},
-				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-5*time.Minute))},
+				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-5*time.Minute))},
 				{what: test, shardSize: 1, expected: []string{"instance-5" /* lookback: */, "instance-4", "instance-1"}},
 			},
 		},
 		"single zone, shard size = 1, instances scale down": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				{what: remove, instanceID: "instance-3"},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
@@ -822,61 +822,61 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 		},
 		"single zone, shard size = 1, rollout with instances unregistered (removed and re-added one by one)": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				// Rollout instance-3.
 				{what: remove, instanceID: "instance-3"},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now)},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now)},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				// Rollout instance-2.
 				{what: remove, instanceID: "instance-2"},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now)},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now)},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				// Rollout instance-1.
 				{what: remove, instanceID: "instance-1"},
 				{what: test, shardSize: 1, expected: []string{"instance-2" /* side effect: */, "instance-3"}},
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now)},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now)},
 				{what: test, shardSize: 1, expected: []string{"instance-1" /* lookback: */, "instance-2" /* side effect: */, "instance-3"}},
 			},
 		},
 		"single zone, shard size = 2, rollout with instances unregistered (removed and re-added one by one)": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 3) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 3) + 1}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
 				// Rollout instance-4.
 				{what: remove, instanceID: "instance-4"},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 3) + 1}, now)},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 3) + 1}, now)},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
 				// Rollout instance-3.
 				{what: remove, instanceID: "instance-3"},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now)},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now)},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
 				// Rollout instance-2.
 				{what: remove, instanceID: "instance-2"},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-3" /* side effect:*/, "instance-4"}},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now)},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now)},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
 				// Rollout instance-1.
 				{what: remove, instanceID: "instance-1"},
 				{what: test, shardSize: 2, expected: []string{"instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now)},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now)},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2" /* lookback: */, "instance-3" /* side effect:*/, "instance-4"}},
 			},
 		},
 		"single zone, increase shard size": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-a", []uint32{userToken(userID, "zone-a", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-a", []uint32{userToken(userID, "zone-a", 2) + 1}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 1, expected: []string{"instance-1"}},
 				{what: test, shardSize: 2, expected: []string{"instance-1", "instance-2"}},
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
@@ -885,42 +885,42 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 		},
 		"multi zone, shard size = 3, recently bootstrapped cluster": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, 1) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, 2) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 3) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, 4) + 1}, now.Add(-time.Minute))},
-				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, 5) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 3) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, "zone-b", 4) + 1}, now.Add(-time.Minute))},
+				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, "zone-c", 5) + 1}, now.Add(-time.Minute))},
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3", "instance-4", "instance-5", "instance-6"}},
 			},
 		},
 		"multi zone, shard size = 3, instances scale up": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, 1) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, 2) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 0) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, 1) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, 2) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 3}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
 				// Scale up.
-				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, 0) + 1}, now)},
-				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, 1) + 1}, now)},
-				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, 2) + 1}, now)},
+				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now)},
+				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 1}, now)},
+				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 1}, now)},
 				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-8", "instance-9" /* lookback: */, "instance-1", "instance-2", "instance-3"}},
 			},
 		},
 		"multi zone, shard size = 3, instances scale down": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 0) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, 1) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, 2) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, 0) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, 1) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, 2) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 2}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
 				// Scale down.
 				{what: remove, instanceID: "instance-1"},
@@ -931,15 +931,15 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 		},
 		"multi zone, increase shard size": {
 			timeline: []event{
-				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, 0) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, 1) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, 2) + 1}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, 0) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, 1) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, 2) + 3}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, 0) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, 1) + 2}, now.Add(-2*lookbackPeriod))},
-				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, 2) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-1", instanceDesc: generateRingInstanceWithInfo("instance-1", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-2", instanceDesc: generateRingInstanceWithInfo("instance-2", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-3", instanceDesc: generateRingInstanceWithInfo("instance-3", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 1}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-4", instanceDesc: generateRingInstanceWithInfo("instance-4", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-5", instanceDesc: generateRingInstanceWithInfo("instance-5", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-6", instanceDesc: generateRingInstanceWithInfo("instance-6", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 3}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 2}, now.Add(-2*lookbackPeriod))},
+				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 2}, now.Add(-2*lookbackPeriod))},
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
 				{what: test, shardSize: 6, expected: []string{"instance-1", "instance-2", "instance-3", "instance-7", "instance-8", "instance-9"}},
 			},
@@ -1121,168 +1121,6 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
-	// Create 30 instances in 3 zones.
-	ringInstances := map[string]IngesterDesc{}
-	for i := 0; i < 30; i++ {
-		name, desc := generateRingInstance(i, i%3)
-		ringInstances[name] = desc
-	}
-
-	// Init the ring description.
-	ringDesc := &Desc{Ingesters: ringInstances}
-	for id, instance := range ringDesc.Ingesters {
-		instance.Timestamp = time.Now().Unix()
-		instance.State = ACTIVE
-		ringDesc.Ingesters[id] = instance
-	}
-
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout:     time.Hour,
-			ZoneAwarenessEnabled: true,
-		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-
-	// Get the replication set with shard size = 3.
-	firstShard := ring.ShuffleShard("tenant-id", 3)
-	assert.Equal(t, 3, firstShard.IngesterCount())
-
-	firstSet, err := firstShard.GetAll(Read)
-	require.NoError(t, err)
-
-	// Increase shard size to 6.
-	secondShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, secondShard.IngesterCount())
-
-	secondSet, err := secondShard.GetAll(Read)
-	require.NoError(t, err)
-
-	for _, firstInstance := range firstSet.Ingesters {
-		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
-	}
-
-	// Increase shard size to 9.
-	thirdShard := ring.ShuffleShard("tenant-id", 9)
-	assert.Equal(t, 9, thirdShard.IngesterCount())
-
-	thirdSet, err := thirdShard.GetAll(Read)
-	require.NoError(t, err)
-
-	for _, secondInstance := range secondSet.Ingesters {
-		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
-	}
-
-	// Decrease shard size to 6.
-	fourthShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, fourthShard.IngesterCount())
-
-	fourthSet, err := fourthShard.GetAll(Read)
-	require.NoError(t, err)
-
-	// We expect to have the same exact instances we had when the shard size was 6.
-	for _, secondInstance := range secondSet.Ingesters {
-		assert.True(t, fourthSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
-	}
-
-	// Decrease shard size to 3.
-	fifthShard := ring.ShuffleShard("tenant-id", 3)
-	assert.Equal(t, 3, fifthShard.IngesterCount())
-
-	fifthSet, err := fifthShard.GetAll(Read)
-	require.NoError(t, err)
-
-	// We expect to have the same exact instances we had when the shard size was 3.
-	for _, firstInstance := range firstSet.Ingesters {
-		assert.True(t, fifthSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
-	}
-}
-
-func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
-	// Create 20 instances in 2 zones.
-	ringInstances := map[string]IngesterDesc{}
-	for i := 0; i < 20; i++ {
-		name, desc := generateRingInstance(i, i%2)
-		ringInstances[name] = desc
-	}
-
-	// Init the ring description.
-	ringDesc := &Desc{Ingesters: ringInstances}
-	for id, instance := range ringDesc.Ingesters {
-		instance.Timestamp = time.Now().Unix()
-		instance.State = ACTIVE
-		ringDesc.Ingesters[id] = instance
-	}
-
-	ring := Ring{
-		cfg: Config{
-			HeartbeatTimeout:     time.Hour,
-			ZoneAwarenessEnabled: true,
-		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
-	}
-
-	// Get the replication set with shard size = 2.
-	firstShard := ring.ShuffleShard("tenant-id", 2)
-	assert.Equal(t, 2, firstShard.IngesterCount())
-
-	firstSet, err := firstShard.GetAll(Read)
-	require.NoError(t, err)
-
-	// Increase shard size to 4.
-	secondShard := ring.ShuffleShard("tenant-id", 4)
-	assert.Equal(t, 4, secondShard.IngesterCount())
-
-	secondSet, err := secondShard.GetAll(Read)
-	require.NoError(t, err)
-
-	for _, firstInstance := range firstSet.Ingesters {
-		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
-	}
-
-	// Scale up cluster, adding 10 instances in 1 new zone.
-	for i := 20; i < 30; i++ {
-		name, desc := generateRingInstance(i, 2)
-		ringInstances[name] = desc
-	}
-
-	ring.ringDesc.Ingesters = ringInstances
-	ring.ringTokens = ringDesc.getTokens()
-	ring.ringTokensByZone = ringDesc.getTokensByZone()
-	ring.ringZones = getZones(ringDesc.getTokensByZone())
-
-	// Increase shard size to 6.
-	thirdShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, thirdShard.IngesterCount())
-
-	thirdSet, err := thirdShard.GetAll(Read)
-	require.NoError(t, err)
-
-	for _, secondInstance := range secondSet.Ingesters {
-		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
-	}
-
-	// Increase shard size to 9.
-	fourthShard := ring.ShuffleShard("tenant-id", 9)
-	assert.Equal(t, 9, fourthShard.IngesterCount())
-
-	fourthSet, err := fourthShard.GetAll(Read)
-	require.NoError(t, err)
-
-	for _, thirdInstance := range thirdSet.Ingesters {
-		assert.True(t, fourthSet.Includes(thirdInstance.Addr), "new replication set is expected to include previous instance %s", thirdInstance.Addr)
 	}
 }
 
@@ -1581,8 +1419,8 @@ func TestShuffleShardWithCaching(t *testing.T) {
 }
 
 // User shuffle shard token.
-func userToken(user string, skip int) uint32 {
-	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user)))
+func userToken(user, zone string, skip int) uint32 {
+	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user, zone)))
 
 	for ; skip > 0; skip-- {
 		_ = r.Uint32()

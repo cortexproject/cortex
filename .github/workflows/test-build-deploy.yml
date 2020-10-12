@@ -5,11 +5,15 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
   pull_request:
+
+default_container: &default_container
+  container:
+  - image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
+
 jobs:
   lint:
+    <<: *default_container
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v1
@@ -29,9 +33,8 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-white-noise
 
   test:
+    <<: *default_container
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
     services:
       cassandra:
         image: cassandra:3.11
@@ -50,9 +53,8 @@ jobs:
         run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
 
   build:
+    <<: *default_container
     runs-on: ubuntu-latest
-    container:
-      image: quay.io/cortexproject/build-image:update-golang-1.14.9-eb0c8d4d2
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v1

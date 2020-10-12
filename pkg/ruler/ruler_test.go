@@ -585,7 +585,7 @@ func TestSharding(t *testing.T) {
 
 // User shuffle shard token.
 func userToken(user string, skip int) uint32 {
-	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user)))
+	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user, "")))
 
 	for ; skip > 0; skip-- {
 		_ = r.Uint32()

@@ -471,9 +471,6 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 		return cached
 	}
 
-	// Initialise the random generator used to select instances in the ring.
-	random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier)))
-
 	var result *Ring
 
 	// This deferred function will store newly computed ring into cache.
@@ -514,6 +511,12 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 			// and use all tokens in the ring.
 			tokens = r.ringTokens
 		}
+
+		// Initialise the random generator used to select instances in the ring.
+		// Since we consider each zone like an independent ring, we have to use dedicated
+		// pseudo-random generator for each zone, in order to guarantee the "consistency"
+		// property when the shard size changes or a new zone is added.
+		random := rand.New(rand.NewSource(util.ShuffleShardSeed(identifier, zone)))
 
 		// To select one more instance while guaranteeing the "consistency" property,
 		// we do pick a random value from the generator and resolve uniqueness collisions

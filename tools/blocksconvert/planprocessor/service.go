@@ -38,13 +38,6 @@ type Config struct {
 	SchedulerEndpoint string
 	NextPlanInterval  time.Duration
 	GrpcConfig        grpcclient.ConfigWithTLS
-
-	// Additional settings required for plan processor service.
-
-	PlansDirectory string                                                                            // Where to store plan files.
-	Bucket         objstore.Bucket                                                                   // Bucket client used for downloading plan files.
-	Cleanup        func(logger log.Logger) error                                                     // Cleanup function called on startup and after each build. Can be nil.
-	Factory        func(planLog log.Logger, userID string, dayStart, dayEnd time.Time) PlanProcessor // Factory for creating PlanProcessor. Called for each new plan.
 }
 
 func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {
@@ -57,25 +50,34 @@ func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.NextPlanInterval, prefix+".next-plan-interval", 1*time.Minute, "How often to ask for next plan (when idle)")
 }
 
-func NewService(cfg Config, l log.Logger, reg prometheus.Registerer) (*Service, error) {
+// Creates new plan processor service.
+// PlansDirectory is used for storing plan files.
+// Bucket client used for downloading plan files.
+// Cleanup function called on startup and after each build. Can be nil.
+// Factory for creating PlanProcessor. Called for each new plan.
+func NewService(cfg Config, plansDirectory string, bucket objstore.Bucket, cleanup func(logger log.Logger) error, factory func(planLog log.Logger, userID string, dayStart, dayEnd time.Time) PlanProcessor, l log.Logger, reg prometheus.Registerer) (*Service, error) {
 	if cfg.SchedulerEndpoint == "" {
 		return nil, errors.New("no scheduler endpoint")
 	}
 
-	if cfg.Bucket == nil || cfg.Factory == nil {
+	if bucket == nil || factory == nil {
 		return nil, errors.New("invalid config")
 	}
 
-	if cfg.PlansDirectory == "" {
+	if plansDirectory == "" {
 		return nil, errors.New("no directory for plans")
 	}
-	if err := os.MkdirAll(cfg.PlansDirectory, os.FileMode(0700)); err != nil {
+	if err := os.MkdirAll(plansDirectory, os.FileMode(0700)); err != nil {
 		return nil, errors.Wrap(err, "failed to create plans directory")
 	}
 
 	b := &Service{
-		cfg: cfg,
-		log: l,
+		cfg:            cfg,
+		plansDirectory: plansDirectory,
+		bucket:         bucket,
+		cleanupFn:      cleanup,
+		factory:        factory,
+		log:            l,
 
 		currentPlanStartTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_plan_start_time_seconds",
@@ -103,19 +105,24 @@ type Service struct {
 	cfg Config
 	log log.Logger
 
+	plansDirectory string
+	bucket         objstore.Bucket
+	cleanupFn      func(logger log.Logger) error
+	factory        func(planLog log.Logger, userID string, dayStart time.Time, dayEnd time.Time) PlanProcessor
+
 	planFileReadPosition prometheus.Gauge
 	planFileSize         prometheus.Gauge
 	currentPlanStartTime prometheus.Gauge
 }
 
 func (s *Service) cleanup(_ context.Context) error {
-	files, err := ioutil.ReadDir(s.cfg.PlansDirectory)
+	files, err := ioutil.ReadDir(s.plansDirectory)
 	if err != nil {
 		return err
 	}
 
 	for _, f := range files {
-		toRemove := filepath.Join(s.cfg.PlansDirectory, f.Name())
+		toRemove := filepath.Join(s.plansDirectory, f.Name())
 
 		level.Info(s.log).Log("msg", "deleting unfinished local plan file", "file", toRemove)
 		err = os.Remove(toRemove)
@@ -124,8 +131,8 @@ func (s *Service) cleanup(_ context.Context) error {
 		}
 	}
 
-	if s.cfg.Cleanup != nil {
-		return s.cfg.Cleanup(s.log)
+	if s.cleanupFn != nil {
+		return s.cleanupFn(s.log)
 	}
 	return nil
 }
@@ -198,7 +205,7 @@ func (s *Service) running(ctx context.Context) error {
 				// If context is canceled (blocksconvert is shutting down, or due to hearbeating failure), don't upload error.
 				if !errors.Is(err, context.Canceled) {
 					errorFile := blocksconvert.ErrorFilename(planBaseName)
-					err = s.cfg.Bucket.Upload(ctx, errorFile, strings.NewReader(err.Error()))
+					err = s.bucket.Upload(ctx, errorFile, strings.NewReader(err.Error()))
 					if err != nil {
 						level.Error(s.log).Log("msg", "failed to upload error file", "errorFile", errorFile, "err", err)
 					}
@@ -225,7 +232,7 @@ func (s *Service) downloadAndProcessPlanFile(ctx context.Context, planFile, plan
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	hb := newHeartbeat(planLog, s.cfg.Bucket, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
+	hb := newHeartbeat(planLog, s.bucket, s.cfg.HeartbeatPeriod, planBaseName, lastProgressFile)
 	hb.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
 		level.Error(planLog).Log("msg", "heartbeating failed, aborting build", "failure", failure)
 		cancel()
@@ -234,8 +241,8 @@ func (s *Service) downloadAndProcessPlanFile(ctx context.Context, planFile, plan
 		return errors.Wrap(err, "failed to start heartbeating")
 	}
 
-	localPlanFile := filepath.Join(s.cfg.PlansDirectory, filepath.Base(planFile))
-	planSize, err := downloadPlanFile(ctx, s.cfg.Bucket, planFile, localPlanFile)
+	localPlanFile := filepath.Join(s.plansDirectory, filepath.Base(planFile))
+	planSize, err := downloadPlanFile(ctx, s.bucket, planFile, localPlanFile)
 	if err != nil {
 		return errors.Wrapf(err, "failed to download plan file %s to %s", planFile, localPlanFile)
 	}
@@ -268,7 +275,7 @@ func (s *Service) downloadAndProcessPlanFile(ctx context.Context, planFile, plan
 
 	level.Info(planLog).Log("msg", "processing plan file", "user", userID, "dayStart", dayStart, "dayEnd", dayEnd)
 
-	processor := s.cfg.Factory(planLog, userID, dayStart, dayEnd)
+	processor := s.factory(planLog, userID, dayStart, dayEnd)
 
 	planEntryCh := make(chan blocksconvert.PlanEntry)
 
@@ -297,7 +304,7 @@ func (s *Service) downloadAndProcessPlanFile(ctx context.Context, planFile, plan
 
 	// Upload finished status file
 	finishedFile := blocksconvert.FinishedFilename(planBaseName, id)
-	if err := s.cfg.Bucket.Upload(ctx, finishedFile, strings.NewReader(id)); err != nil {
+	if err := s.bucket.Upload(ctx, finishedFile, strings.NewReader(id)); err != nil {
 		return errors.Wrap(err, "failed to upload finished status file")
 	}
 	level.Info(planLog).Log("msg", "uploaded finished file", "file", finishedFile)

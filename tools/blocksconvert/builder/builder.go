@@ -114,12 +114,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		}),
 	}
 
-	cfg.PlanProcessorConfig.PlansDirectory = filepath.Join(cfg.OutputDirectory, "plans")
-	cfg.PlanProcessorConfig.Bucket = bucketClient
-	cfg.PlanProcessorConfig.Cleanup = b.cleanupFn
-	cfg.PlanProcessorConfig.Factory = b.planProcessorFactory
-
-	return planprocessor.NewService(cfg.PlanProcessorConfig, l, reg)
+	return planprocessor.NewService(cfg.PlanProcessorConfig, filepath.Join(cfg.OutputDirectory, "plans"), bucketClient, b.cleanupFn, b.planProcessorFactory, l, reg)
 }
 
 type Builder struct {

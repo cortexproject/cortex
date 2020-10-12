@@ -75,30 +75,6 @@ jobs:
         run: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false web-build
-      - uses: actions/upload-artifact@v2
-        with:
-          name: website public
-          path: website/public/
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Frontend Protobuf
-          path: pkg/querier/frontend/frontend.pb.go
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Caching Index Client Protobuf
-          path: pkg/chunk/storage/caching_index_client.pb.go
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Ring Protobuf
-          path: pkg/ring/ring.pb.go
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Cortex Protobuf
-          path: pkg/ingester/client/cortex.pb.go
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Rules Protobuf
-          path: pkg/ruler/rules/rules.pb.go
       - name: Save Images
         run: |
           mkdir /tmp/images

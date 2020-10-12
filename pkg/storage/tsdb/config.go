@@ -9,6 +9,7 @@ import (
 
 	"github.com/alecthomas/units"
 	"github.com/pkg/errors"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
@@ -69,6 +70,10 @@ type BucketConfig struct {
 	Azure      azure.Config      `yaml:"azure"`
 	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+
+	// Not used internally, meant to allow callers to wrap Buckets
+	// created using this config
+	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
 }
 
 // BlocksStorageConfig holds the config information for the blocks storage.

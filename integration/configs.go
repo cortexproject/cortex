@@ -73,6 +73,18 @@ receivers:
     labels: {}
     annotations: {}	
 `
+
+	cortexRulerEvalTimeConfigYaml = `groups:
+- name: rule
+  interval: 1s
+  rules:
+  - record: time_eval
+    alert: ""
+    expr: time()
+    for: 0s
+    labels: {}
+    annotations: {}	
+`
 )
 
 var (

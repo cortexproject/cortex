@@ -241,6 +241,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "duration", nil
 	case "cortex.moduleName":
 		return "string", nil
+	case "flagext.StringSliceCSV":
+		return "string", nil
 	}
 
 	// Fallback to auto-detection of built-in data types

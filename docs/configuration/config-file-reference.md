@@ -52,8 +52,10 @@ Where default_value is the value to use if the environment variable is undefined
 ### Supported contents and default values of the config file
 
 ```yaml
-# The Cortex module to run. Use "-modules" command line flag to get a list of
-# available modules, and to see which modules are included in "All".
+# Comma-separated list of Cortex modules to load. The alias 'all' can be used in
+# the list to load a number of core modules and will enable single-binary mode.
+# Use '-modules' command line flag to get a list of available modules, and to
+# see which modules are included in 'all'.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -445,6 +447,10 @@ ring:
   # within the ring.
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -distributor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `ingester_config`
@@ -937,7 +943,9 @@ storage:
     [max_retry_delay: <duration> | default = 500ms]
 
   gcs:
-    # Name of GCS bucket to put chunks in.
+    # Name of GCS bucket. Please refer to
+    # https://cloud.google.com/docs/authentication/production for more
+    # information about how to configure authentication.
     # CLI flag: -ruler.storage.gcs.bucketname
     [bucket_name: <string> | default = ""]
 
@@ -1170,6 +1178,10 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # Name of network interface to read address from.
+  # CLI flag: -ruler.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
   # Number of tokens for each ingester.
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
@@ -1249,7 +1261,9 @@ storage:
     [path: <string> | default = ""]
 
   gcs:
-    # Name of GCS bucket to put chunks in.
+    # Name of GCS bucket. Please refer to
+    # https://cloud.google.com/docs/authentication/production for more
+    # information about how to configure authentication.
     # CLI flag: -alertmanager.storage.gcs.bucketname
     [bucket_name: <string> | default = ""]
 
@@ -1844,7 +1858,9 @@ bigtable:
   # CLI flag: -bigtable.project
   [project: <string> | default = ""]
 
-  # Bigtable instance ID.
+  # Bigtable instance ID. Please refer to
+  # https://cloud.google.com/docs/authentication/production for more information
+  # about how to configure authentication.
   # CLI flag: -bigtable.instance
   [instance: <string> | default = ""]
 
@@ -1901,7 +1917,9 @@ bigtable:
   [table_cache_expiration: <duration> | default = 30m]
 
 gcs:
-  # Name of GCS bucket to put chunks in.
+  # Name of GCS bucket. Please refer to
+  # https://cloud.google.com/docs/authentication/production for more information
+  # about how to configure authentication.
   # CLI flag: -gcs.bucketname
   [bucket_name: <string> | default = ""]
 
@@ -2917,7 +2935,7 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 
 # Maximum time to wait before giving up on redis requests.
 # CLI flag: -<prefix>.redis.timeout
-[timeout: <duration> | default = 100ms]
+[timeout: <duration> | default = 500ms]
 
 # How long keys stay in the redis.
 # CLI flag: -<prefix>.redis.expiration
@@ -2935,9 +2953,13 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.password
 [password: <string> | default = ""]
 
-# Enables connecting to redis with TLS.
-# CLI flag: -<prefix>.redis.enable-tls
-[enable_tls: <boolean> | default = false]
+# Enable connecting to redis with TLS.
+# CLI flag: -<prefix>.redis.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 
 # Close connections after remaining idle for this duration. If the value is
 # zero, then idle connections are not closed.
@@ -3684,6 +3706,10 @@ sharding_ring:
   # the ring.
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -compactor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```
 
 ### `store_gateway_config`
@@ -3761,6 +3787,10 @@ sharding_ring:
   # availability zones.
   # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Name of network interface to read address from.
+  # CLI flag: -store-gateway.sharding-ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.

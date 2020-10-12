@@ -175,4 +175,8 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+    # Name of network interface to read address from.
+    # CLI flag: -compactor.ring.instance-interface-names
+    [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```

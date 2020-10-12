@@ -40,9 +40,17 @@
   - `POST <legacy-http-prefix>/push`
   - `POST /push`
   - `POST /ingester/push`
+* [CHANGE] Renamed CLI flags to configure the network interface names from which automatically detect the instance IP. #3295
+  - `-compactor.ring.instance-interface` renamed to `-compactor.ring.instance-interface-names`
+  - `-store-gateway.sharding-ring.instance-interface` renamed to `-store-gateway.sharding-ring.instance-interface-names`
+  - `-distributor.ring.instance-interface` renamed to `-distributor.ring.instance-interface-names`
+  - `-ruler.ring.instance-interface` renamed to `-ruler.ring.instance-interface-names`
+* [CHANGE] Renamed `-<prefix>.redis.enable-tls` CLI flag to `-<prefix>.redis.tls-enabled`, and its respective YAML config option from `enable_tls` to `tls_enabled`. #3298
+* [CHANGE] Increased default `-<prefix>.redis.timeout` from `100ms` to `500ms`. #3301
 * [FEATURE] Added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
-* [FEATURE] Add OpenStack Swift support to blocks storage #2861
+* [FEATURE] Add OpenStack Swift support to blocks storage #3303
+* [ENHANCEMENT] Allow to specify multiple comma-separated Cortex services to `-target` CLI option (or its respective YAML config option). For example, `-target=all,compactor` can be used to start Cortex single-binary with compactor as well. #3275
 * [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
   - `-blocks-storage.s3.http.idle-conn-timeout`
   - `-blocks-storage.s3.http.response-header-timeout`
@@ -51,6 +59,7 @@
 * [ENHANCEMENT] Shuffle sharding: improved shuffle sharding in the write path. Shuffle sharding now should be explicitly enabled via `-distributor.sharding-strategy` CLI flag (or its respective YAML config option) and guarantees stability, consistency, shuffling and balanced zone-awareness properties. #3090 #3214
 * [ENHANCEMENT] Ingester: added new metric `cortex_ingester_active_series` to track active series more accurately. Also added options to control whether active series tracking is enabled (`-ingester.active-series-enabled`, defaults to false), and how often this metric is updated (`-ingester.active-series-update-period`) and max idle time for series to be considered inactive (`-ingester.active-series-idle-timeout`). #3153
 * [ENHANCEMENT] Blocksconvert – Builder: download plan file locally before processing it. #3209
+* [ENHANCEMENT] Blocksconvert – Cleaner: added new tool for deleting chunks data. #3283
 * [ENHANCEMENT] Store-gateway: added zone-aware replication support to blocks replication in the store-gateway. #3200
 * [ENHANCEMENT] Store-gateway: exported new metrics. #3231
   - `cortex_bucket_store_cached_series_fetch_duration_seconds`
@@ -66,7 +75,9 @@
 * [ENHANCEMENT] Experimental Ruler API: Fetch rule groups from object storage in parallel. #3218
 * [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218 #3292
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
+* [ENHANCEMENT] Return an explicit error when the store-gateway is explicitly requested without a blocks storage engine. #3287
 * [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules synching performances when ruler sharding is enabled. #3269
+* [ENHANCEMENT] Added `-<prefix>.redis.tls-insecure-skip-verify` flag. #3298
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
@@ -75,6 +86,10 @@
 * [BUGFIX] Experimental Alertmanager API: Do not allow empty Alertmanager configurations or bad template filenames to be submitted through the configuration API. #3185
 * [BUGFIX] Reduce failures to update heartbeat when using Consul. #3259
 * [BUGFIX] When using ruler sharding, moving all user rule groups from ruler to a different one and then back could end up with some user groups not being evaluated at all. #3235
+* [BUGFIX] Fixed shuffle sharding consistency when zone-awareness is enabled and the shard size is increased or instances in a new zone are added. #3299
+* [BUGFIX] Use a valid grpc header when logging IP addresses. #3307
+* [BUGFIX] Fixed the metric `cortex_prometheus_rule_group_duration_seconds` in the Ruler, it wouldn't report any values. #3310
+* [BUGFIX] Fixed gRPC connections leaking in rulers when rulers sharding is enabled and APIs called. #3314
 
 ## 1.4.0 / 2020-10-02
 

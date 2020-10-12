@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
@@ -144,6 +146,55 @@ func TestRulerAPISingleBinary(t *testing.T) {
 
 	// Wait until the user manager is created
 	require.NoError(t, cortexRestarted.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+}
+
+func TestRulerEvaluationDelay(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	namespace := "ns"
+	user := "fake"
+
+	configOverrides := map[string]string{
+		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler.poll-interval":             "2s",
+		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
+		"-ruler.evaluation-delay-duration": "5m", // 5 minutes is clarifying when seeing when a rule is evaluated
+	}
+
+	// Start Cortex components.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerEvalTimeConfigYaml)))
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Create a client with the ruler address configured
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "")
+	require.NoError(t, err)
+
+	// Wait until the rule is evaluated
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Greater(0), "cortex_prometheus_rule_evaluations_total"))
+
+	now := time.Now()
+
+	result, err := c.QueryRange("time_eval", now.Add(-10*time.Minute), now, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+
+	// Iterate through the values recorded and ensure they exist in the past.
+	matrix := result.(model.Matrix)
+
+	// 290 seconds gives 10 seconds of slack between the rule evaluation and the query
+	// to account for CI latency, but ensures the latest evalation was in the past.
+	var maxDiff int64 = 290
+
+	for _, m := range matrix {
+		for _, v := range m.Values {
+			diff := now.Unix() - int64(v.Value)
+			require.GreaterOrEqual(t, diff, maxDiff)
+		}
+	}
 }
 
 func TestRulerAlertmanager(t *testing.T) {

@@ -873,7 +873,7 @@ func TestRingUpdates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
 	t.Cleanup(func() {
-		_ = services.StartAndAwaitRunning(context.Background(), ring)
+		_ = services.StopAndAwaitTerminated(context.Background(), ring)
 	})
 
 	require.Equal(t, 0, ring.IngesterCount())
@@ -944,7 +944,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lc))
 
 	t.Cleanup(func() {
-		_ = services.StartAndAwaitRunning(context.Background(), lc)
+		_ = services.StopAndAwaitTerminated(context.Background(), lc)
 	})
 
 	return lc
@@ -953,7 +953,10 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	inmem := consul.NewInMemoryClient(GetCodec())
+	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+		MaxCasRetries: 20,
+		CasRetryDelay: 500 * time.Millisecond,
+	})
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},

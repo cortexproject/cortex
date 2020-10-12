@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -1718,6 +1719,80 @@ func TestSortLabels(t *testing.T) {
 	sort.SliceIsSorted(unsorted, func(i, j int) bool {
 		return strings.Compare(unsorted[i].Name, unsorted[j].Name) < 0
 	})
+}
+
+func TestDistributor_Push_Relabel(t *testing.T) {
+	ctx = user.InjectOrgID(context.Background(), "user")
+
+	type testcase struct {
+		inputSeries          labels.Labels
+		expectedSeries       labels.Labels
+		metricRelabelConfigs []*relabel.Config
+	}
+
+	cases := []testcase{
+		// No relabel config.
+		{
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "foo"},
+				{Name: "cluster", Value: "one"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "foo"},
+				{Name: "cluster", Value: "one"},
+			},
+		},
+		{
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "foo"},
+				{Name: "cluster", Value: "one"},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "foo"},
+				{Name: "cluster", Value: "two"},
+			},
+			metricRelabelConfigs: []*relabel.Config{
+				{
+					SourceLabels: []model.LabelName{"cluster"},
+					Action:       relabel.DefaultRelabelConfig.Action,
+					Regex:        relabel.DefaultRelabelConfig.Regex,
+					TargetLabel:  "cluster",
+					Replacement:  "two",
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		var err error
+		var limits validation.Limits
+		flagext.DefaultValues(&limits)
+		limits.MetricRelabelConfigs = tc.metricRelabelConfigs
+
+		ds, ingesters, r := prepare(t, prepConfig{
+			numIngesters:     2,
+			happyIngesters:   2,
+			numDistributors:  1,
+			shardByAllLabels: true,
+			limits:           &limits,
+		})
+		defer stopAll(ds, r)
+
+		// Push the series to the distributor
+		req := mockWriteRequest(tc.inputSeries, 1, 1)
+		_, err = ds[0].Push(ctx, req)
+		require.NoError(t, err)
+
+		// Since each test pushes only 1 series, we do expect the ingester
+		// to have received exactly 1 series
+		for i := range ingesters {
+			timeseries := ingesters[i].series()
+			assert.Equal(t, 1, len(timeseries))
+			for _, v := range timeseries {
+				assert.Equal(t, tc.expectedSeries, client.FromLabelAdaptersToLabels(v.Labels))
+			}
+		}
+	}
 }
 
 func countMockIngestersCalls(ingesters []mockIngester, name string) int {

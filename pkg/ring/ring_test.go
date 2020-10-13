@@ -905,7 +905,9 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
 				// Scale up.
 				{what: add, instanceID: "instance-7", instanceDesc: generateRingInstanceWithInfo("instance-7", "zone-a", []uint32{userToken(userID, "zone-a", 0) + 1}, now)},
+				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-2", "instance-3" /* lookback: */, "instance-1"}},
 				{what: add, instanceID: "instance-8", instanceDesc: generateRingInstanceWithInfo("instance-8", "zone-b", []uint32{userToken(userID, "zone-b", 1) + 1}, now)},
+				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-8", "instance-3" /* lookback: */, "instance-1", "instance-2"}},
 				{what: add, instanceID: "instance-9", instanceDesc: generateRingInstanceWithInfo("instance-9", "zone-c", []uint32{userToken(userID, "zone-c", 2) + 1}, now)},
 				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-8", "instance-9" /* lookback: */, "instance-1", "instance-2", "instance-3"}},
 			},
@@ -924,7 +926,9 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				{what: test, shardSize: 3, expected: []string{"instance-1", "instance-2", "instance-3"}},
 				// Scale down.
 				{what: remove, instanceID: "instance-1"},
+				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-2", "instance-3"}},
 				{what: remove, instanceID: "instance-2"},
+				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-8", "instance-3"}},
 				{what: remove, instanceID: "instance-3"},
 				{what: test, shardSize: 3, expected: []string{"instance-7", "instance-8", "instance-9"}},
 			},

@@ -84,10 +84,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := API{
-		ruler: r,
-		store: r.store,
-	}
+	a := NewAPI(r, r.store)
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
@@ -144,10 +141,7 @@ func TestRuler_alerts(t *testing.T) {
 	defer rcleanup()
 	defer r.StopAsync()
 
-	a := API{
-		ruler: r,
-		store: r.store,
-	}
+	a := NewAPI(r, r.store)
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, "user1")
 	w := httptest.NewRecorder()
@@ -183,10 +177,7 @@ func TestRuler_Create(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := API{
-		ruler: r,
-		store: r.store,
-	}
+	a := NewAPI(r, r.store)
 
 	tc := []struct {
 		name   string
@@ -277,10 +268,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := API{
-		ruler: r,
-		store: r.store,
-	}
+	a := NewAPI(r, r.store)
 
 	router := mux.NewRouter()
 	router.Path("/api/v1/rules/{namespace}").Methods(http.MethodDelete).HandlerFunc(a.DeleteNamespace)

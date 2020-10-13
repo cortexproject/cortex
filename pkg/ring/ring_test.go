@@ -996,23 +996,23 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// are returned at any given time, BUT at least all required instances are returned.
 	var (
 		numInitialInstances = []int{9, 30, 60, 90}
-		numInitialZones     = []int{3, 1, 3}
+		numInitialZones     = []int{1, 3}
 		numEvents           = 100
 		lookbackPeriod      = time.Hour
 		delayBetweenEvents  = 5 * time.Minute // 12 events / hour
 		userID              = "user-1"
 	)
 
-	// Randomise the seed but log it in case we need to reproduce the test on failure.
-	seed := time.Now().UnixNano()
-	rand.Seed(seed)
-	t.Log("random generator seed:", seed)
-
 	for _, numInstances := range numInitialInstances {
 		for _, numZones := range numInitialZones {
 			testName := fmt.Sprintf("num instances = %d, num zones = %d", numInstances, numZones)
 
 			t.Run(testName, func(t *testing.T) {
+				// Randomise the seed but log it in case we need to reproduce the test on failure.
+				seed := time.Now().UnixNano()
+				rand.Seed(seed)
+				t.Log("random generator seed:", seed)
+
 				// Initialise the ring.
 				ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
 				ring := Ring{

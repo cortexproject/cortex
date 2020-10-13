@@ -27,9 +27,11 @@ func TestRuler_rules(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
+	a := NewAPI(r, r.store)
+
 	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
-	r.PrometheusRules(w, req)
+	a.PrometheusRules(w, req)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -82,9 +84,11 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
+	a := NewAPI(r, r.store)
+
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
-	r.PrometheusRules(w, req)
+	a.PrometheusRules(w, req)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -137,9 +141,11 @@ func TestRuler_alerts(t *testing.T) {
 	defer rcleanup()
 	defer r.StopAsync()
 
+	a := NewAPI(r, r.store)
+
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, "user1")
 	w := httptest.NewRecorder()
-	r.PrometheusAlerts(w, req)
+	a.PrometheusAlerts(w, req)
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -170,6 +176,8 @@ func TestRuler_Create(t *testing.T) {
 	r, rcleanup := newTestRuler(t, cfg)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store)
 
 	tc := []struct {
 		name   string
@@ -228,8 +236,8 @@ rules:
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			router := mux.NewRouter()
-			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(r.CreateRuleGroup)
-			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").HandlerFunc(r.GetRuleGroup)
+			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").HandlerFunc(a.GetRuleGroup)
 			// POST
 			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
 			w := httptest.NewRecorder()
@@ -260,9 +268,11 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
+	a := NewAPI(r, r.store)
+
 	router := mux.NewRouter()
-	router.Path("/api/v1/rules/{namespace}").Methods(http.MethodDelete).HandlerFunc(r.DeleteNamespace)
-	router.Path("/api/v1/rules/{namespace}/{groupName}").Methods(http.MethodGet).HandlerFunc(r.GetRuleGroup)
+	router.Path("/api/v1/rules/{namespace}").Methods(http.MethodDelete).HandlerFunc(a.DeleteNamespace)
+	router.Path("/api/v1/rules/{namespace}/{groupName}").Methods(http.MethodGet).HandlerFunc(a.GetRuleGroup)
 
 	// Verify namespace1 rules are there.
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace1/group1", nil, "user1")

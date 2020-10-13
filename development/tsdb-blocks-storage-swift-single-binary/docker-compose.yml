@@ -17,7 +17,20 @@ services:
       - 8080:8080
       - 35357:35357
 
+  swift-create-container:
+    network_mode: host
+    image: theflockers/swiftclient
+    environment:
+      - OS_USERNAME=admin
+      - OS_PASSWORD=s3cr3t
+      - OS_TENANT_NAME=admin
+      - OS_AUTH_URL=http://localhost:5000/v2.0
+      - OS_REGION_NAME=RegionOne
+    command: ["sh", "-c", "sleep 30 && swift post cortex-rules && \
+                            swift post cortex-tsdb && swift list"]
+
   prometheus:
+    network_mode: host
     image: prom/prometheus:v2.16.0
     command: ["--config.file=/etc/prometheus/prometheus.yaml"]
     volumes:
@@ -28,6 +41,7 @@ services:
   # Scrape the metrics also with the Grafana agent (useful to test metadata ingestion
   # until metadata remote write is not supported by Prometheus).
   grafana-agent:
+    network_mode: host
     image: grafana/agent:v0.2.0
     command: ["-config.file=/etc/agent-config/grafana-agent.yaml", "-prometheus.wal-directory=/tmp"]
     volumes:
@@ -47,7 +61,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 30 && exec ./cortex -config.file=./config/cortex.yaml -target=all -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
+    command: ["sh", "-c", "sleep 40 && exec ./cortex -config.file=./config/cortex.yaml -target=all -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
     depends_on:
       - consul
       - swift
@@ -69,7 +83,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 30 && exec ./cortex -config.file=./config/cortex.yaml -target=all -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
+    command: ["sh", "-c", "sleep 40 && exec ./cortex -config.file=./config/cortex.yaml -target=all -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
     depends_on:
       - consul
       - swift

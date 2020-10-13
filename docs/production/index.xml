@@ -232,7 +232,7 @@ For details about table options, see the official document of storage you are us
 &lt;p>Run grafana to visualise metrics from Cortex:&lt;/p>
 &lt;pre>&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
 &lt;/code>&lt;/pre>&lt;p>Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code>http://localhost:9009/api/prom&lt;/code>.&lt;/p>
-&lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. You can follow this &lt;a href="https://github.com/cortexproject/cortex/tree/master/production/dashboards">documentation&lt;/a> to do so.&lt;/p></description></item><item><title>Docs: Caching in Cortex</title><link>/docs/production/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/caching/</guid><description>
+&lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. If you&amp;rsquo;re looking for ready to use dashboards, you can take a look at Grafana&amp;rsquo;s &lt;a href="https://github.com/grafana/cortex-jsonnet/">Cortex dashboards and alerts&lt;/a> (Jsonnet) or Weaveworks&amp;rsquo;s &lt;a href="https://github.com/weaveworks/cortex-dashboards">Cortex dashboards&lt;/a> (Python).&lt;/p></description></item><item><title>Docs: Caching in Cortex</title><link>/docs/production/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/caching/</guid><description>
 &lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost. Cortex can use a cache for:&lt;/p>
 &lt;ul>

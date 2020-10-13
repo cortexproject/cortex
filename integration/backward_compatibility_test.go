@@ -20,34 +20,13 @@ var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		// 0.6.0 used 204 status code for querier and ingester
-		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0": preCortex10Flags,
-
-		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0": preCortex10Flags,
-
 		"quay.io/cortexproject/cortex:v1.0.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
-
 		"quay.io/cortexproject/cortex:v1.4.0": nil,
 	}
 )
-
-func preCortex10Flags(flags map[string]string) map[string]string {
-	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                             "",
-		"-config-yaml":                                    flags["-schema-config-file"],
-		"-table-manager.poll-interval":                    "",
-		"-dynamodb.poll-interval":                         flags["-table-manager.poll-interval"],
-		"-store-gateway.sharding-enabled":                 "",
-		"-store-gateway.sharding-ring.store":              "",
-		"-store-gateway.sharding-ring.consul.hostname":    "",
-		"-store-gateway.sharding-ring.replication-factor": "",
-	})
-}
 
 func preCortex14Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{

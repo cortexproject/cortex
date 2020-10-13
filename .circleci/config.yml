@@ -161,8 +161,8 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${CIRCLE_TAG:-$(./tools/image-tag)}"
           export CORTEX_CHECKOUT_DIR="/home/circleci/.go_workspace/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 1200s -v -count=1 ./integration/...
-        no_output_timeout: 20m
+          go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/...
+        no_output_timeout: 30m
 
   build:
     <<: *defaults

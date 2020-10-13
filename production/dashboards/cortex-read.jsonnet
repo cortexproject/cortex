@@ -45,6 +45,7 @@ g.dashboard(
             query: 'histogram_quantile(0.99, sum(rate(cortex_request_duration_seconds_bucket{route=~"api_prom_api_v1|prometheus_api_v1_.*"}[1m])) by (le))',
             legendFormat: 'p99',
         }],
+        yFormat='s',
     )
 )
 .addPanel(
@@ -61,7 +62,7 @@ g.dashboard(
             legendFormat: 'success',
         }, {
             query: 'sum(rate(cortex_request_duration_seconds_count{status_code!="success", route=~".*Query|.*LabelValues|.*MetricsForLabelMatchers"}[1m]))',
-            legendFormat: 'failuer',
+            legendFormat: 'failure',
         }],
     ) + {
         aliasColors: {
@@ -80,6 +81,7 @@ g.dashboard(
             query: 'histogram_quantile(0.99, sum(rate(cortex_request_duration_seconds_bucket{route=~".*Query|.*LabelValues|.*MetricsForLabelMatchers"}[1m])) by (le, route))',
             legendFormat: 'p99 - {{route}}',
         }],
+        yFormat='s',
     )
 )
 .addPanel(
@@ -118,6 +120,7 @@ g.dashboard(
             query: 'histogram_quantile(0.99, sum(rate(cortex_cache_request_duration_seconds_bucket{method="memcache.fetch"}[1m])) by (le))',
             legendFormat: 'p99',
         }],
+        yFormat='s',
     )
 )
 .addPanel(
@@ -136,5 +139,6 @@ g.dashboard(
     g.graphPanel(
         title='Latency',
         targets=db.readLatencyTargets,
+        yFormat='s',
     ) + db.readLatencyMixin
 )

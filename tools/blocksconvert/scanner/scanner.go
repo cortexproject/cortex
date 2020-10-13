@@ -374,7 +374,7 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	if s.bucket != nil {
 		level.Info(tableLog).Log("msg", "uploading generated plan files for table", "source", dir)
 
-		err := objstore.UploadDir(ctx, tableLog, s.bucket, dir, s.bucketPrefix)
+		err := uploadPlans(ctx, tableLog, dir, s.bucket, s.bucketPrefix)
 		if err != nil {
 			return errors.Wrapf(err, "failed to upload plan files for table %s to bucket", table)
 		}
@@ -394,6 +394,10 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 
 	level.Info(tableLog).Log("msg", "done processing table")
 	return nil
+}
+
+func uploadPlans(ctx context.Context, tableLog log.Logger, dir string, bucket objstore.Bucket, bucketPrefix string) error {
+	return objstore.UploadDir(ctx, tableLog, bucket, dir, bucketPrefix)
 }
 
 func shouldSkipOperationBecauseFileExists(file string) bool {

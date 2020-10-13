@@ -1035,7 +1035,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				currTime := time.Now().Add(lookbackPeriod).Add(time.Minute)
 
 				// Add the initial shard to the history.
-				rs, err := ring.ShuffleShard(userID, shardSize).GetAll(Read)
+				rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAll(Read)
 				require.NoError(t, err)
 
 				history := map[time.Time]ReplicationSet{
@@ -1099,7 +1099,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					}
 
 					// Add the current shard to the history.
-					rs, err = ring.ShuffleShard(userID, shardSize).GetAll(Read)
+					rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAll(Read)
 					require.NoError(t, err)
 					history[currTime] = rs
 

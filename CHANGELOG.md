@@ -68,6 +68,7 @@
 * [ENHANCEMENT] Blocksconvert – Scanner: support for scanning specific date-range only. #3222
 * [ENHANCEMENT] Blocksconvert – Scanner: metrics for tracking progress. #3222
 * [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
+* [ENHANCEMENT] Blocksconvert – Scanner: upload plans concurrently. #3340
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
 * [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264

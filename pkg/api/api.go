@@ -325,6 +325,7 @@ func (a *API) RegisterQuerier(
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		prometheus.DefaultGatherer,
 	)
 
 	// these routes are always registered to the default server

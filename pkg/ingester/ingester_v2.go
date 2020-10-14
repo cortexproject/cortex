@@ -121,8 +121,9 @@ func (u *userTSDB) setLastUpdate(t time.Time) {
 
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs    map[string]*userTSDB // tsdb sharded by userID
-	bucket objstore.Bucket
+	dbs              map[string]*userTSDB // tsdb sharded by userID
+	bucket           objstore.Bucket
+	compactBlocksMtx sync.Mutex
 
 	// Value used by shipper as external label.
 	shipperIngesterID string
@@ -1216,8 +1217,30 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	return nil
 }
 
+// compactHead compact the Head block at 2h intervals,
+// avoiding a single huge block.
+func compactHead(userDB *userTSDB) error {
+	// The Compact() will produces multiple 2h blocks if Head has a lot of data.
+	if err := userDB.Compact(); err != nil {
+		return err
+	}
+	twentyFourHrs := 24 * time.Hour.Milliseconds()
+	h := userDB.Head()
+	if (h.MinTime()/twentyFourHrs)*twentyFourHrs != (h.MaxTime()/twentyFourHrs)*twentyFourHrs {
+		// Remaining data in Head spans across 2 days, so we break it into 2 blocks.
+		maxt := (h.MaxTime()/twentyFourHrs)*twentyFourHrs - 1
+		if err := userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), maxt)); err != nil {
+			return err
+		}
+	}
+	return userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+}
+
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
 func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
+	i.TSDBState.compactBlocksMtx.Lock()
+	defer i.TSDBState.compactBlocksMtx.Unlock()
+
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -1247,12 +1270,12 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			err = compactHead(userDB)
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			err = compactHead(userDB)
 
 		default:
 			reason = "regular"

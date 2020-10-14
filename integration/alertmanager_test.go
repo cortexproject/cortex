@@ -31,7 +31,7 @@ func TestAlertmanager(t *testing.T) {
 		"",
 	)
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
-	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(0), "cortex_alertmanager_config_invalid"))
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_config_last_reload_successful"))
 
 	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)
@@ -81,7 +81,10 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
 	require.NoError(t, err)
 
-	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_alertmanager_config_invalid"},
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_config_last_reload_successful"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_alertmanager_config_last_reload_successful_seconds"},
 		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
 		e2e.WaitMissingMetrics))
 
@@ -108,7 +111,9 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 
 	// The deleted config is applied asynchronously, so we should wait until the metric
 	// disappear for the specific user.
-	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_invalid", e2e.WithLabelMatchers(
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful", e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful_seconds", e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
 
 	cfg, err = c.GetAlertmanagerConfig(context.Background())

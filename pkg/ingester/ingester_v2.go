@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -107,6 +108,38 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 	}
+}
+
+// blocksToDelete returns the blocks which have been shipped.
+func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
+	deletable := make(map[ulid.ULID]struct{}, len(blocks))
+	for _, b := range blocks {
+		deletable[b.Meta().ULID] = struct{}{}
+	}
+
+	if u.shipper == nil {
+		return deletable
+	}
+
+	shipperMeta, err := shipper.ReadMetaFile(u.Dir())
+	if err != nil {
+		// If there is any issue with the shipper, we should be conservative and not delete anything.
+		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
+		return nil
+	}
+
+Outer:
+	for id := range deletable {
+		for _, shippedID := range shipperMeta.Uploaded {
+			if shippedID == id {
+				continue Outer
+			}
+		}
+		// Not shipped yet.
+		delete(deletable, id)
+	}
+
+	return deletable
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
@@ -965,6 +998,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
 		SeriesLifecycleCallback: userDB,
+		BlocksToDelete:          userDB.blocksToDelete,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

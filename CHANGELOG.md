@@ -92,6 +92,7 @@
 * [BUGFIX] Use a valid grpc header when logging IP addresses. #3307
 * [BUGFIX] Fixed the metric `cortex_prometheus_rule_group_duration_seconds` in the Ruler, it wouldn't report any values. #3310
 * [BUGFIX] Fixed gRPC connections leaking in rulers when rulers sharding is enabled and APIs called. #3314
+* [BUGFIX] Block Storage: Avoid creating large blocks on forced compaction and when TSDB is idle. #3344
 
 ## 1.4.0 / 2020-10-02
 

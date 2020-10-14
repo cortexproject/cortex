@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -718,10 +719,10 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// label values without any time range bound. Once we implement querying from object store too,
+	// then we should use from and to supplied by the query.
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
@@ -748,10 +749,10 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// label values without any time range bound. Once we implement querying from object store too,
+	// then we should use from and to supplied by the query.
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
@@ -784,10 +785,10 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
+	// label values without any time range bound. Once we implement querying from object store too,
+	// then we should use from and to supplied by the query.
+	q, err := db.Querier(ctx, 0, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}

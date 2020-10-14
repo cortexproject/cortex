@@ -1022,7 +1022,7 @@ rsc.io/binaryregexp/syntax
 ## explicit
 sigs.k8s.io/yaml
 # git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
-# k8s.io/client-go => k8s.io/client-go v0.18.3
+# k8s.io/client-go => k8s.io/client-go v0.19.2
 # github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1

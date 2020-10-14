@@ -112,6 +112,9 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 
 // blocksToDelete returns the blocks which have been shipped.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
+	if u.DB == nil {
+		return map[ulid.ULID]struct{}{}
+	}
 	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
 	if u.shipper == nil {
 		return deletable

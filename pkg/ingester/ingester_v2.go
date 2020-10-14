@@ -112,11 +112,7 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 
 // blocksToDelete returns the blocks which have been shipped.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	deletable := make(map[ulid.ULID]struct{}, len(blocks))
-	for _, b := range blocks {
-		deletable[b.Meta().ULID] = struct{}{}
-	}
-
+	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
 	if u.shipper == nil {
 		return deletable
 	}
@@ -125,7 +121,7 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	if err != nil {
 		// If there is any issue with the shipper, we should be conservative and not delete anything.
 		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
-		return nil
+		return map[ulid.ULID]struct{}{}
 	}
 
 Outer:

@@ -4781,7 +4781,7 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;li>&lt;a href="https://thanos.io/storage.md/#filesystem">Local Filesystem&lt;/a> (single node only)&lt;/li>
 &lt;li>&lt;a href="https://wiki.openstack.org/wiki/Swift">OpenStack Swift&lt;/a> (experimental)&lt;/li>
 &lt;/ul>
-&lt;p>For more information, please check out the &lt;a href="./blocks-storage/">Blocks storage&lt;/a> documentation.&lt;/p>
+&lt;p>For more information, please check out the &lt;a href="/docs/blocks-storage/">Blocks storage&lt;/a> documentation.&lt;/p>
 &lt;h2 id="services">Services&lt;/h2>
 &lt;p>Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task. These components run separately and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.&lt;/p>
 &lt;p>Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don&amp;rsquo;t coordinate or communicate with each other within that layer.&lt;/p>

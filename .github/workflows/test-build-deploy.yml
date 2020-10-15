@@ -5,6 +5,7 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
   pull_request:
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -59,12 +60,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v2
       - name: Install Docker Client
-        run: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+        run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -94,13 +90,6 @@ jobs:
     needs: build
     runs-on: ubuntu-16.04
     steps:
-      - name: Install Docker Client
-        run: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          sudo mv /tmp/docker/* /usr/bin
       - name: Upgrade golang
         run: |
           cd /tmp
@@ -111,6 +100,8 @@ jobs:
           cd -
       - name: Checkout Repo
         uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
@@ -153,6 +144,7 @@ jobs:
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
           TAG: ${{ github.event.push.tag_name }}
+
   integration-configs-db:
     needs: build
     runs-on: ubuntu-16.04
@@ -160,12 +152,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v2
       - name: Install Docker Client
-        run: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          sudo mv /tmp/docker/* /usr/bin
+        run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact
         uses: actions/download-artifact@v2
         with:

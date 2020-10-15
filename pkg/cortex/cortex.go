@@ -250,23 +250,23 @@ type Cortex struct {
 	ServiceMap    map[string]services.Service
 	ModuleManager *modules.Manager
 
-	API              *api.API
-	Server           *server.Server
-	Ring             *ring.Ring
-	Overrides        *validation.Overrides
-	Distributor      *distributor.Distributor
-	Ingester         *ingester.Ingester
-	Flusher          *flusher.Flusher
-	Store            chunk.Store
-	DeletesStore     *purger.DeleteStore
-	Frontend         *frontend.Frontend
-	TableManager     *chunk.TableManager
-	RuntimeConfig    *runtimeconfig.Manager
-	Purger           *purger.Purger
-	TombstonesLoader *purger.TombstonesLoader
-	QuerierQueryable prom_storage.SampleAndChunkQueryable
-	QuerierEngine    *promql.Engine
-	Tripperware      frontend.Tripperware
+	API                      *api.API
+	Server                   *server.Server
+	Ring                     *ring.Ring
+	Overrides                *validation.Overrides
+	Distributor              *distributor.Distributor
+	Ingester                 *ingester.Ingester
+	Flusher                  *flusher.Flusher
+	Store                    chunk.Store
+	DeletesStore             *purger.DeleteStore
+	Frontend                 *frontend.Frontend
+	TableManager             *chunk.TableManager
+	RuntimeConfig            *runtimeconfig.Manager
+	Purger                   *purger.Purger
+	TombstonesLoader         *purger.TombstonesLoader
+	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	QuerierEngine            *promql.Engine
+	QueryFrontendTripperware frontend.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rules.RuleStore

@@ -43,33 +43,33 @@ import (
 
 // The various modules that make up Cortex.
 const (
-	API                 string = "api"
-	Ring                string = "ring"
-	RuntimeConfig       string = "runtime-config"
-	Overrides           string = "overrides"
-	Server              string = "server"
-	Distributor         string = "distributor"
-	DistributorService  string = "distributor-service"
-	Ingester            string = "ingester"
-	IngesterService     string = "ingester-service"
-	Flusher             string = "flusher"
-	Querier             string = "querier"
-	Queryable           string = "queryable"
-	StoreQueryable      string = "store-queryable"
-	QueryFrontend       string = "query-frontend"
-	QueryTripperware    string = "query-tripperware"
-	Store               string = "store"
-	DeleteRequestsStore string = "delete-requests-store"
-	TableManager        string = "table-manager"
-	RulerStorage        string = "ruler-storage"
-	Ruler               string = "ruler"
-	Configs             string = "configs"
-	AlertManager        string = "alertmanager"
-	Compactor           string = "compactor"
-	StoreGateway        string = "store-gateway"
-	MemberlistKV        string = "memberlist-kv"
-	Purger              string = "purger"
-	All                 string = "all"
+	API                      string = "api"
+	Ring                     string = "ring"
+	RuntimeConfig            string = "runtime-config"
+	Overrides                string = "overrides"
+	Server                   string = "server"
+	Distributor              string = "distributor"
+	DistributorService       string = "distributor-service"
+	Ingester                 string = "ingester"
+	IngesterService          string = "ingester-service"
+	Flusher                  string = "flusher"
+	Querier                  string = "querier"
+	Queryable                string = "queryable"
+	StoreQueryable           string = "store-queryable"
+	QueryFrontend            string = "query-frontend"
+	QueryFrontendTripperware string = "query-frontend-tripperware"
+	Store                    string = "store"
+	DeleteRequestsStore      string = "delete-requests-store"
+	TableManager             string = "table-manager"
+	RulerStorage             string = "ruler-storage"
+	Ruler                    string = "ruler"
+	Configs                  string = "configs"
+	AlertManager             string = "alertmanager"
+	Compactor                string = "compactor"
+	StoreGateway             string = "store-gateway"
+	MemberlistKV             string = "memberlist-kv"
+	Purger                   string = "purger"
+	All                      string = "all"
 )
 
 func (t *Cortex) initAPI() (services.Service, error) {
@@ -206,7 +206,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 
 // initQuerier registers an internal HTTP router with a Prometheus API backed by the
 // Cortex Queryable. Then it does one of the following:
-// 1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, they internal
+// 1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, the internal
 //    HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
 //    worker.
 // 2. Querier Standalone: The querier will register the internal HTTP router with the external
@@ -245,8 +245,9 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 			t.Cfg.Worker.Address = address
 		}
 
-		// If queries processed using the external HTTP Server, we need wrap the internalHandler with
-		// middleware to parse the tenant ID from the HTTP header and inject it into the request context
+		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
+		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
+		// request context.
 		queryHandler = middleware.AuthenticateUser.Wrap(queryHandler)
 	}
 
@@ -415,9 +416,9 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	return
 }
 
-// initTripperware instantiates the tripperware used by the query frontend
+// initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
-func (t *Cortex) initTripperware() (serv services.Service, err error) {
+func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	// Load the schema only if sharded queries is set.
 	if t.Cfg.QueryRange.ShardedQueries {
 		err = t.Cfg.Schema.Load()
@@ -451,7 +452,7 @@ func (t *Cortex) initTripperware() (serv services.Service, err error) {
 		return nil, err
 	}
 
-	t.Tripperware = tripperware
+	t.QueryFrontendTripperware = tripperware
 
 	return services.NewIdleService(nil, func(_ error) error {
 		if cache != nil {
@@ -468,7 +469,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		return
 	}
 
-	t.Frontend.Wrap(t.Tripperware)
+	t.Frontend.Wrap(t.QueryFrontendTripperware)
 	t.API.RegisterQueryFrontend(t.Frontend)
 
 	return services.NewIdleService(nil, func(_ error) error {
@@ -701,7 +702,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Queryable, t.initQueryable, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryTripperware, t.initTripperware, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -715,28 +716,28 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:                {Server},
-		Ring:               {API, RuntimeConfig, MemberlistKV},
-		Overrides:          {RuntimeConfig},
-		Distributor:        {DistributorService, API},
-		DistributorService: {Ring, Overrides},
-		Store:              {Overrides, DeleteRequestsStore},
-		Ingester:           {IngesterService, API},
-		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
-		Flusher:            {Store, API},
-		Queryable:          {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
-		Querier:            {Queryable},
-		StoreQueryable:     {Overrides, Store, MemberlistKV},
-		QueryFrontend:      {QueryTripperware},
-		QueryTripperware:   {API, Overrides, DeleteRequestsStore},
-		TableManager:       {API},
-		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
-		Configs:            {API},
-		AlertManager:       {API},
-		Compactor:          {API, MemberlistKV},
-		StoreGateway:       {API, Overrides, MemberlistKV},
-		Purger:             {Store, DeleteRequestsStore, API},
-		All:                {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:                      {Server},
+		Ring:                     {API, RuntimeConfig, MemberlistKV},
+		Overrides:                {RuntimeConfig},
+		Distributor:              {DistributorService, API},
+		DistributorService:       {Ring, Overrides},
+		Store:                    {Overrides, DeleteRequestsStore},
+		Ingester:                 {IngesterService, API},
+		IngesterService:          {Overrides, Store, RuntimeConfig, MemberlistKV},
+		Flusher:                  {Store, API},
+		Queryable:                {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		Querier:                  {Queryable},
+		StoreQueryable:           {Overrides, Store, MemberlistKV},
+		QueryFrontend:            {QueryFrontendTripperware},
+		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
+		TableManager:             {API},
+		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Configs:                  {API},
+		AlertManager:             {API},
+		Compactor:                {API, MemberlistKV},
+		StoreGateway:             {API, Overrides, MemberlistKV},
+		Purger:                   {Store, DeleteRequestsStore, API},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

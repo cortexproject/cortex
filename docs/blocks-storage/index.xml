@@ -1536,6 +1536,8 @@ Scans the chunks index database and produces so-called &amp;ldquo;plan files&amp
 Looks for plan files, and distributes them to builders. Scheduler has global view of overall conversion progress.&lt;/li>
 &lt;li>&lt;a href="#builder">&lt;strong>Builder&lt;/strong>&lt;/a>&lt;br />
 Asks scheduler for next plan file to work on, fetches chunks, puts them into TSDB block, and uploads the block to the object store. It repeats this process until there are no more plans.&lt;/li>
+&lt;li>&lt;a href="#cleaner">&lt;strong>Cleaner&lt;/strong>&lt;/a>&lt;br />
+Cleaner asks scheduler for next plan file to work on, but instead of building the block, it actually &lt;strong>REMOVES CHUNKS&lt;/strong> and &lt;strong>INDEX ENTRIES&lt;/strong> from the Index database.&lt;/li>
 &lt;/ul>
 &lt;p>All tools start HTTP server (see &lt;code>-server.http*&lt;/code> options) exposing the &lt;code>/metrics&lt;/code> endpoint.
 All tools also start gRPC server (&lt;code>-server.grpc*&lt;/code> options), but only Scheduler exposes services on it.&lt;/p>
@@ -1583,10 +1585,23 @@ Scheduler HTTP server also exposes &lt;code>/plans&lt;/code> page that shows cur
 &lt;p>Multiple builders may run at the same time, each builder will receive different plan to work on from scheduler.
 Builders are CPU intensive (decoding and merging chunks), and require fast disk IO for writing blocks.&lt;/p>
 &lt;p>Builders&amp;rsquo;s metrics have &lt;code>cortex_blocksconvert_builder&lt;/code> prefix, and include total number of fetched chunks and their size, read position of the current plan and plan size, total number of written series and samples, number of chunks that couldn&amp;rsquo;t be downloaded.&lt;/p>
+&lt;h3 id="cleaner">Cleaner&lt;/h3>
+&lt;p>Cleaner is similar to builder in that it asks scheduler for next plan to work on, but instead of building blocks, it actually &lt;strong>REMOVES CHUNKS and INDEX ENTRIES&lt;/strong>. Use with caution.&lt;/p>
+&lt;p>Cleaner is started by using &lt;code>blocksconvert -target=cleaner&lt;/code>. Like Builder, it needs Scheduler endpoint, Cortex schema file, index and chunk-store specific options. Note that Cleaner works with any index store supported by Cortex, not just BigTable.&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-cleaner.scheduler-endpoint&lt;/code> – where to find scheduler&lt;/li>
+&lt;li>&lt;code>-blocks-storage.*&lt;/code> – blocks storage configuration, used for downloading plan files&lt;/li>
+&lt;li>&lt;code>-cleaner.plans-dir&lt;/code> – local directory to store plan file while it is being processed by Cleaner.&lt;/li>
+&lt;li>&lt;code>-schema-config-file&lt;/code> – Cortex schema file.&lt;/li>
+&lt;/ul>
+&lt;p>Cleaner doesn&amp;rsquo;t &lt;strong>scan&lt;/strong> for index entries, but uses existing plan files to find chunks and index entries. For each series, Cleaner needs to download at least one chunk. This is because plan file doesn&amp;rsquo;t contain label names and values, but chunks do. Cleaner will then delete all index entries associated with the series, and also all chunks.&lt;/p>
+&lt;p>&lt;strong>WARNING:&lt;/strong> If both Builder and Cleaner run at the same time and use use the same Scheduler, &lt;strong>some plans will be handled by builder, and some by cleaner!&lt;/strong> This will result in a loss of data!&lt;/p>
+&lt;p>Cleaner should only be deployed if no other Builder is running. Running multiple Cleaners at once is not supported, and will result in leftover chunks and index entries. Reason for this is that chunks can span multiple days, and chunk is fully deleted only when processing plan (day) when chunk started. Since cleaner also needs to download some chunks to be able to clean up all index entries, when using multiple cleaners, it can happen that cleaner processing older plans will delete chunks required to properly clean up data in newer plans. When using single cleaner only, this is not a problem, since scheduler sends plans to cleaner in time-reversed order.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> Cleaner is designed for use in very special cases, eg. when deleting chunks and index entries for a specific customer. If &lt;code>blocksconvert&lt;/code> was used to convert ALL chunks to blocks, it is simpler to just drop the index and chunks database afterwards. In such case, Cleaner is not needed.&lt;/p>
 &lt;h3 id="limitations">Limitations&lt;/h3>
 &lt;p>The &lt;code>blocksconvert&lt;/code> toolset currently has the following limitations:&lt;/p>
 &lt;ul>
-&lt;li>Supports only BigTable for chunks index backend&lt;/li>
+&lt;li>Scanner supports only BigTable for chunks index backend, and cannot currently scan other databases.&lt;/li>
 &lt;li>Supports only chunks schema versions v9, v10 and v11&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
 &lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>

@@ -38,6 +38,7 @@ var (
 	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	maxBodySize         = 10 * 1024 * 1024 // 10 MiB
 )
 
 // Config for a Frontend.
@@ -179,9 +180,11 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	// create buffer for later use in case of slow query
-	// to obtain request's form values
+	defer r.Body.Close()
+
+	// buffer the body for later use in case of slow query
 	var buf bytes.Buffer
+	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBodySize))
 	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
 
 	startTime := time.Now()
@@ -190,46 +193,54 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		writeError(w, err)
-	} else {
-		hs := w.Header()
-		for h, vs := range resp.Header {
-			hs[h] = vs
-		}
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		return
+	}
+
+	hs := w.Header()
+	for h, vs := range resp.Header {
+		hs[h] = vs
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		writeError(w, err)
+		return
 	}
 
 	f.reportSlowQuery(queryResponseTime, r, buf)
 }
 
-// reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, if it is set to 0 query logging
-// is disabled. This function shouldn't access request body as it will be already read by RoundTriper returning
-// no form values or reporting closed body warning
+// reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, where 0 disables logging
 func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request, bodyBuf bytes.Buffer) {
-	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		logMessage := []interface{}{
-			"msg", "slow query detected",
-			"method", r.Method,
-			"host", r.Host,
-			"path", r.URL.Path,
-			"time_taken", queryResponseTime.String(),
-		}
-
-		r.Body = ioutil.NopCloser(&bodyBuf)
-
-		// Ensure the form has been parsed so all the parameters are present
-		err := r.ParseForm()
-		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
-		}
-
-		// Attempt to iterate through the Form to log any filled in values
-		for k, v := range r.Form {
-			logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
-		}
-
-		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	if f.cfg.LogQueriesLongerThan == 0 || queryResponseTime <= f.cfg.LogQueriesLongerThan {
+		return
 	}
+
+	logMessage := []interface{}{
+		"msg", "slow query detected",
+		"method", r.Method,
+		"host", r.Host,
+		"path", r.URL.Path,
+		"time_taken", queryResponseTime.String(),
+	}
+
+	// use previously buffered body
+	r.Body = ioutil.NopCloser(&bodyBuf)
+
+	// Ensure the form has been parsed so all the parameters are present
+	err := r.ParseForm()
+	if err != nil {
+		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
+	}
+
+	// Attempt to iterate through the Form to log any filled in values
+	for k, v := range r.Form {
+		logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
+	}
+
+	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+
 }
 
 func writeError(w http.ResponseWriter, err error) {

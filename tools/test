@@ -7,7 +7,7 @@ SLOW=
 TAGS=
 PARALLEL=
 RACE="-race -covermode=atomic"
-TIMEOUT=5m
+TIMEOUT=10m
 VERBOSE=
 
 usage() {

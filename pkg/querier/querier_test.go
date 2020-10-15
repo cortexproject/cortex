@@ -736,6 +736,45 @@ func TestStoreQueryable(t *testing.T) {
 	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
 }
 
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		setup    func(cfg *Config)
+		expected error
+	}{
+		"should pass with default config": {
+			setup: func(cfg *Config) {},
+		},
+		"should pass if 'query store after' is enabled and shuffle-sharding is disabled": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+			},
+		},
+		"should pass if 'query store after' is enabled and shuffle-sharding is enabled with greater value": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+				cfg.ShuffleShardingIngestersLookbackPeriod = 2 * time.Hour
+			},
+		},
+		"should fail if 'query store after' is enabled and shuffle-sharding is enabled with lesser value": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+				cfg.ShuffleShardingIngestersLookbackPeriod = time.Minute
+			},
+			expected: errShuffleShardingLookbackLessThanQueryStoreAfter,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := &Config{}
+			flagext.DefaultValues(cfg)
+			testData.setup(cfg)
+
+			assert.Equal(t, testData.expected, cfg.Validate())
+		})
+	}
+}
+
 type mockQueryableWithFilter struct {
 	useQueryableCalled bool
 }

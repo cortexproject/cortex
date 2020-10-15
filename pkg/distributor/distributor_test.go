@@ -445,22 +445,26 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 }
 
 func TestDistributor_PushQuery(t *testing.T) {
+	const shuffleShardSize = 5
+
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	barMatcher := mustEqualMatcher("bar", "baz")
 
 	type testcase struct {
-		name             string
-		numIngesters     int
-		happyIngesters   int
-		samples          int
-		metadata         int
-		matchers         []*labels.Matcher
-		expectedResponse model.Matrix
-		expectedError    error
-		shardByAllLabels bool
+		name                string
+		numIngesters        int
+		happyIngesters      int
+		samples             int
+		metadata            int
+		matchers            []*labels.Matcher
+		expectedIngesters   int
+		expectedResponse    model.Matrix
+		expectedError       error
+		shardByAllLabels    bool
+		shuffleShardEnabled bool
 	}
 
-	// We'll programatically build the test cases now, as we want complete
+	// We'll programmatically build the test cases now, as we want complete
 	// coverage along quite a few different axis.
 	testcases := []testcase{}
 
@@ -473,74 +477,98 @@ func TestDistributor_PushQuery(t *testing.T) {
 			// Test with between 0 and numIngesters "happy" ingesters.
 			for happyIngesters := 0; happyIngesters <= numIngesters; happyIngesters++ {
 
-				// When we're not sharding by metric name, queriers with more than one
-				// failed ingester should fail.
-				if shardByAllLabels && numIngesters-happyIngesters > 1 {
+				// Test either with shuffle-sharding enabled or disabled.
+				for _, shuffleShardEnabled := range []bool{false, true} {
+					scenario := fmt.Sprintf("shardByAllLabels=%v, numIngester=%d, happyIngester=%d, shuffleSharding=%v)", shardByAllLabels, numIngesters, happyIngesters, shuffleShardEnabled)
+
+					// The number of ingesters we expect to query depends whether shuffle sharding and/or
+					// shard by all labels are enabled.
+					var expectedIngesters int
+					if shuffleShardEnabled {
+						expectedIngesters = util.Min(shuffleShardSize, numIngesters)
+					} else if shardByAllLabels {
+						expectedIngesters = numIngesters
+					} else {
+						expectedIngesters = 3 // Replication factor
+					}
+
+					// When we're not sharding by metric name, queriers with more than one
+					// failed ingester should fail.
+					if shardByAllLabels && numIngesters-happyIngesters > 1 {
+						testcases = append(testcases, testcase{
+							name:                fmt.Sprintf("ExpectFail(%s)", scenario),
+							numIngesters:        numIngesters,
+							happyIngesters:      happyIngesters,
+							matchers:            []*labels.Matcher{nameMatcher, barMatcher},
+							expectedError:       errFail,
+							shardByAllLabels:    shardByAllLabels,
+							shuffleShardEnabled: shuffleShardEnabled,
+						})
+						continue
+					}
+
+					// When we have less ingesters than replication factor, any failed ingester
+					// will cause a failure.
+					if numIngesters < 3 && happyIngesters < 2 {
+						testcases = append(testcases, testcase{
+							name:                fmt.Sprintf("ExpectFail(%s)", scenario),
+							numIngesters:        numIngesters,
+							happyIngesters:      happyIngesters,
+							matchers:            []*labels.Matcher{nameMatcher, barMatcher},
+							expectedError:       errFail,
+							shardByAllLabels:    shardByAllLabels,
+							shuffleShardEnabled: shuffleShardEnabled,
+						})
+						continue
+					}
+
+					// If we're sharding by metric name and we have failed ingesters, we can't
+					// tell ahead of time if the query will succeed, as we don't know which
+					// ingesters will hold the results for the query.
+					if !shardByAllLabels && numIngesters-happyIngesters > 1 {
+						continue
+					}
+
+					// Reading all the samples back should succeed.
 					testcases = append(testcases, testcase{
-						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
-						numIngesters:     numIngesters,
-						happyIngesters:   happyIngesters,
-						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    errFail,
-						shardByAllLabels: shardByAllLabels,
+						name:                fmt.Sprintf("ReadAll(%s)", scenario),
+						numIngesters:        numIngesters,
+						happyIngesters:      happyIngesters,
+						samples:             10,
+						matchers:            []*labels.Matcher{nameMatcher, barMatcher},
+						expectedResponse:    expectedResponse(0, 10),
+						expectedIngesters:   expectedIngesters,
+						shardByAllLabels:    shardByAllLabels,
+						shuffleShardEnabled: shuffleShardEnabled,
 					})
-					continue
-				}
 
-				// When we have less ingesters than replication factor, any failed ingester
-				// will cause a failure.
-				if numIngesters < 3 && happyIngesters < 2 {
+					// As should reading none of the samples back.
 					testcases = append(testcases, testcase{
-						name:             fmt.Sprintf("ExpectFail(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
-						numIngesters:     numIngesters,
-						happyIngesters:   happyIngesters,
-						matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-						expectedError:    errFail,
-						shardByAllLabels: shardByAllLabels,
+						name:                fmt.Sprintf("ReadNone(%s)", scenario),
+						numIngesters:        numIngesters,
+						happyIngesters:      happyIngesters,
+						samples:             10,
+						matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
+						expectedResponse:    expectedResponse(0, 0),
+						expectedIngesters:   expectedIngesters,
+						shardByAllLabels:    shardByAllLabels,
+						shuffleShardEnabled: shuffleShardEnabled,
 					})
-					continue
-				}
 
-				// If we're sharding by metric name and we have failed ingesters, we can't
-				// tell ahead of time if the query will succeed, as we don't know which
-				// ingesters will hold the results for the query.
-				if !shardByAllLabels && numIngesters-happyIngesters > 1 {
-					continue
-				}
-
-				// Reading all the samples back should succeed.
-				testcases = append(testcases, testcase{
-					name:             fmt.Sprintf("ReadAll(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
-					numIngesters:     numIngesters,
-					happyIngesters:   happyIngesters,
-					samples:          10,
-					matchers:         []*labels.Matcher{nameMatcher, barMatcher},
-					expectedResponse: expectedResponse(0, 10),
-					shardByAllLabels: shardByAllLabels,
-				})
-
-				// As should reading none of the samples back.
-				testcases = append(testcases, testcase{
-					name:             fmt.Sprintf("ReadNone(shardByAllLabels=%v,numIngester=%d,happyIngester=%d)", shardByAllLabels, numIngesters, happyIngesters),
-					numIngesters:     numIngesters,
-					happyIngesters:   happyIngesters,
-					samples:          10,
-					matchers:         []*labels.Matcher{nameMatcher, mustEqualMatcher("not", "found")},
-					expectedResponse: expectedResponse(0, 0),
-					shardByAllLabels: shardByAllLabels,
-				})
-
-				// And reading each sample individually.
-				for i := 0; i < 10; i++ {
-					testcases = append(testcases, testcase{
-						name:             fmt.Sprintf("ReadOne(shardByAllLabels=%v, sample=%d,numIngester=%d,happyIngester=%d)", shardByAllLabels, i, numIngesters, happyIngesters),
-						numIngesters:     numIngesters,
-						happyIngesters:   happyIngesters,
-						samples:          10,
-						matchers:         []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
-						expectedResponse: expectedResponse(i, i+1),
-						shardByAllLabels: shardByAllLabels,
-					})
+					// And reading each sample individually.
+					for i := 0; i < 10; i++ {
+						testcases = append(testcases, testcase{
+							name:                fmt.Sprintf("ReadOne(%s, sample=%d)", scenario, i),
+							numIngesters:        numIngesters,
+							happyIngesters:      happyIngesters,
+							samples:             10,
+							matchers:            []*labels.Matcher{nameMatcher, mustEqualMatcher("sample", strconv.Itoa(i))},
+							expectedResponse:    expectedResponse(i, i+1),
+							expectedIngesters:   expectedIngesters,
+							shardByAllLabels:    shardByAllLabels,
+							shuffleShardEnabled: shuffleShardEnabled,
+						})
+					}
 				}
 			}
 		}
@@ -548,11 +576,13 @@ func TestDistributor_PushQuery(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			ds, _, r := prepare(t, prepConfig{
-				numIngesters:     tc.numIngesters,
-				happyIngesters:   tc.happyIngesters,
-				numDistributors:  1,
-				shardByAllLabels: tc.shardByAllLabels,
+			ds, ingesters, r := prepare(t, prepConfig{
+				numIngesters:        tc.numIngesters,
+				happyIngesters:      tc.happyIngesters,
+				numDistributors:     1,
+				shardByAllLabels:    tc.shardByAllLabels,
+				shuffleShardEnabled: tc.shuffleShardEnabled,
+				shuffleShardSize:    shuffleShardSize,
 			})
 			defer stopAll(ds, r)
 
@@ -576,6 +606,15 @@ func TestDistributor_PushQuery(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedResponse.String(), response.String())
+
+			// Check how many ingesters have been queried.
+			// Due to the quorum the distributor could cancel the last request towards ingesters
+			// if all other ones are successful, so we're good either has been queried X or X-1
+			// ingesters.
+			if tc.expectedError == nil {
+				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "Query"))
+				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "QueryStream"))
+			}
 		})
 	}
 }
@@ -808,6 +847,8 @@ func TestSlowQueries(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
+	const numIngesters = 5
+
 	fixtures := []struct {
 		lbls      labels.Labels
 		value     float64
@@ -822,96 +863,169 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		matchers []*labels.Matcher
-		expected []metric.Metric
+		shuffleShardEnabled bool
+		shuffleShardSize    int
+		matchers            []*labels.Matcher
+		expectedResult      []metric.Metric
+		expectedIngesters   int
 	}{
 		"should return an empty response if no metric match": {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "unknown"),
 			},
-			expected: []metric.Metric{},
+			expectedResult:    []metric.Metric{},
+			expectedIngesters: numIngesters,
 		},
 		"should filter metrics by single matcher": {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expected: []metric.Metric{
+			expectedResult: []metric.Metric{
 				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
 				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
 			},
+			expectedIngesters: numIngesters,
 		},
 		"should filter metrics by multiple matchers": {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "status", "200"),
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
 			},
-			expected: []metric.Metric{
+			expectedResult: []metric.Metric{
 				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
 			},
+			expectedIngesters: numIngesters,
 		},
 		"should return all matching metrics even if their FastFingerprint collide": {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "fast_fingerprint_collision"),
 			},
-			expected: []metric.Metric{
+			expectedResult: []metric.Metric{
 				{Metric: util.LabelsToMetric(fixtures[3].lbls)},
 				{Metric: util.LabelsToMetric(fixtures[4].lbls)},
 			},
+			expectedIngesters: numIngesters,
+		},
+		"should query only ingesters belonging to tenant's subring if shuffle sharding is enabled": {
+			shuffleShardEnabled: true,
+			shuffleShardSize:    3,
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
+			},
+			expectedResult: []metric.Metric{
+				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
+				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
+			},
+			expectedIngesters: 3,
+		},
+		"should query all ingesters if shuffle sharding is enabled but shard size is 0": {
+			shuffleShardEnabled: true,
+			shuffleShardSize:    0,
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
+			},
+			expectedResult: []metric.Metric{
+				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
+				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
+			},
+			expectedIngesters: numIngesters,
 		},
 	}
 
-	// Create distributor
-	ds, _, r := prepare(t, prepConfig{
-		numIngesters:     3,
-		happyIngesters:   3,
-		numDistributors:  1,
-		shardByAllLabels: true,
-	})
-	defer stopAll(ds, r)
-
-	// Push fixtures
-	ctx := user.InjectOrgID(context.Background(), "test")
-
-	for _, series := range fixtures {
-		req := mockWriteRequest(series.lbls, series.value, series.timestamp)
-		_, err := ds[0].Push(ctx, req)
-		require.NoError(t, err)
-	}
-
-	// Run tests
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			now := model.Now()
 
+			// Create distributor
+			ds, ingesters, r := prepare(t, prepConfig{
+				numIngesters:        numIngesters,
+				happyIngesters:      numIngesters,
+				numDistributors:     1,
+				shardByAllLabels:    true,
+				shuffleShardEnabled: testData.shuffleShardEnabled,
+				shuffleShardSize:    testData.shuffleShardSize,
+			})
+			defer stopAll(ds, r)
+
+			// Push fixtures
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			for _, series := range fixtures {
+				req := mockWriteRequest(series.lbls, series.value, series.timestamp)
+				_, err := ds[0].Push(ctx, req)
+				require.NoError(t, err)
+			}
+
 			metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
 			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expected, metrics)
+			assert.ElementsMatch(t, testData.expectedResult, metrics)
+
+			// Check how many ingesters have been queried.
+			// Due to the quorum the distributor could cancel the last request towards ingesters
+			// if all other ones are successful, so we're good either has been queried X or X-1
+			// ingesters.
+			assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsForLabelMatchers"))
 		})
 	}
 }
 
 func TestDistributor_MetricsMetadata(t *testing.T) {
-	// Create distributor
-	ds, _, r := prepare(t, prepConfig{
-		numIngesters:     3,
-		happyIngesters:   3,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           nil,
-	})
-	defer stopAll(ds, r)
+	const numIngesters = 5
 
-	// Push metadata
-	ctx := user.InjectOrgID(context.Background(), "test")
+	tests := map[string]struct {
+		shuffleShardEnabled bool
+		shuffleShardSize    int
+		expectedIngesters   int
+	}{
+		"should query all ingesters if shuffle sharding is disabled": {
+			shuffleShardEnabled: false,
+			expectedIngesters:   numIngesters,
+		},
+		"should query all ingesters if shuffle sharding is enabled but shard size is 0": {
+			shuffleShardEnabled: true,
+			shuffleShardSize:    0,
+			expectedIngesters:   numIngesters,
+		},
+		"should query only ingesters belonging to tenant's subring if shuffle sharding is enabled": {
+			shuffleShardEnabled: true,
+			shuffleShardSize:    3,
+			expectedIngesters:   3,
+		},
+	}
 
-	req := makeWriteRequest(0, 0, 10)
-	_, err := ds[0].Push(ctx, req)
-	require.NoError(t, err)
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Create distributor
+			ds, ingesters, r := prepare(t, prepConfig{
+				numIngesters:        numIngesters,
+				happyIngesters:      numIngesters,
+				numDistributors:     1,
+				shardByAllLabels:    true,
+				shuffleShardEnabled: testData.shuffleShardEnabled,
+				shuffleShardSize:    testData.shuffleShardSize,
+				limits:              nil,
+			})
+			defer stopAll(ds, r)
 
-	// Asert on metric metadata
-	metadata, err := ds[0].MetricsMetadata(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, 10, len(metadata))
+			// Push metadata
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			req := makeWriteRequest(0, 0, 10)
+			_, err := ds[0].Push(ctx, req)
+			require.NoError(t, err)
+
+			// Assert on metric metadata
+			metadata, err := ds[0].MetricsMetadata(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, 10, len(metadata))
+
+			// Check how many ingesters have been queried.
+			// Due to the quorum the distributor could cancel the last request towards ingesters
+			// if all other ones are successful, so we're good either has been queried X or X-1
+			// ingesters.
+			assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsMetadata"))
+		})
+	}
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
@@ -938,6 +1052,8 @@ type prepConfig struct {
 	numIngesters, happyIngesters int
 	queryDelay                   time.Duration
 	shardByAllLabels             bool
+	shuffleShardEnabled          bool
+	shuffleShardSize             int
 	limits                       *validation.Limits
 	numDistributors              int
 }
@@ -966,7 +1082,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 			Zone:                "",
 			State:               ring.ACTIVE,
 			Timestamp:           time.Now().Unix(),
-			RegisteredTimestamp: time.Now().Unix(),
+			RegisteredTimestamp: time.Now().Add(-2 * time.Hour).Unix(),
 			Tokens:              []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)},
 		}
 		ingestersByAddr[addr] = &ingesters[i]
@@ -1002,6 +1118,11 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 
 	distributors := make([]*Distributor, 0, cfg.numDistributors)
 	for i := 0; i < cfg.numDistributors; i++ {
+		if cfg.limits == nil {
+			cfg.limits = &validation.Limits{}
+			flagext.DefaultValues(cfg.limits)
+		}
+
 		var distributorCfg Config
 		var clientConfig client.Config
 		flagext.DefaultValues(&distributorCfg, &clientConfig)
@@ -1014,10 +1135,13 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 
-		if cfg.limits == nil {
-			cfg.limits = &validation.Limits{}
-			flagext.DefaultValues(cfg.limits)
+		if cfg.shuffleShardEnabled {
+			distributorCfg.ShardingStrategy = ShardingStrategyShuffle
+			distributorCfg.ShuffleShardingLookbackPeriod = time.Hour
+
+			cfg.limits.IngestionTenantShardSize = cfg.shuffleShardSize
 		}
+
 		overrides, err := validation.NewOverrides(*cfg.limits, nil)
 		require.NoError(t, err)
 
@@ -1143,6 +1267,7 @@ type mockIngester struct {
 	timeseries map[uint32]*client.PreallocTimeseries
 	metadata   map[uint32]map[client.MetricMetadata]struct{}
 	queryDelay time.Duration
+	calls      map[string]int
 }
 
 func (i *mockIngester) series() map[uint32]*client.PreallocTimeseries {
@@ -1157,6 +1282,8 @@ func (i *mockIngester) series() map[uint32]*client.PreallocTimeseries {
 }
 
 func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	i.trackCall("Check")
+
 	return &grpc_health_v1.HealthCheckResponse{}, nil
 }
 
@@ -1167,6 +1294,8 @@ func (i *mockIngester) Close() error {
 func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts ...grpc.CallOption) (*client.WriteResponse, error) {
 	i.Lock()
 	defer i.Unlock()
+
+	i.trackCall("Push")
 
 	if !i.happy {
 		return nil, errFail
@@ -1220,8 +1349,11 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 
 func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts ...grpc.CallOption) (*client.QueryResponse, error) {
 	time.Sleep(i.queryDelay)
+
 	i.Lock()
 	defer i.Unlock()
+
+	i.trackCall("Query")
 
 	if !i.happy {
 		return nil, errFail
@@ -1243,8 +1375,11 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 
 func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest, opts ...grpc.CallOption) (client.Ingester_QueryStreamClient, error) {
 	time.Sleep(i.queryDelay)
+
 	i.Lock()
 	defer i.Unlock()
+
+	i.trackCall("QueryStream")
 
 	if !i.happy {
 		return nil, errFail
@@ -1308,6 +1443,8 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 	i.Lock()
 	defer i.Unlock()
 
+	i.trackCall("MetricsForLabelMatchers")
+
 	if !i.happy {
 		return nil, errFail
 	}
@@ -1332,6 +1469,8 @@ func (i *mockIngester) MetricsMetadata(ctx context.Context, req *client.MetricsM
 	i.Lock()
 	defer i.Unlock()
 
+	i.trackCall("MetricsMetadata")
+
 	if !i.happy {
 		return nil, errFail
 	}
@@ -1344,6 +1483,21 @@ func (i *mockIngester) MetricsMetadata(ctx context.Context, req *client.MetricsM
 	}
 
 	return resp, nil
+}
+
+func (i *mockIngester) trackCall(name string) {
+	if i.calls == nil {
+		i.calls = map[string]int{}
+	}
+
+	i.calls[name]++
+}
+
+func (i *mockIngester) countCalls(name string) int {
+	i.Lock()
+	defer i.Unlock()
+
+	return i.calls[name]
 }
 
 type stream struct {
@@ -1564,4 +1718,14 @@ func TestSortLabels(t *testing.T) {
 	sort.SliceIsSorted(unsorted, func(i, j int) bool {
 		return strings.Compare(unsorted[i].Name, unsorted[j].Name) < 0
 	})
+}
+
+func countMockIngestersCalls(ingesters []mockIngester, name string) int {
+	count := 0
+	for i := 0; i < len(ingesters); i++ {
+		if ingesters[i].countCalls(name) > 0 {
+			count++
+		}
+	}
+	return count
 }

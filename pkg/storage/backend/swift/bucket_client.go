@@ -10,13 +10,13 @@ import (
 // NewBucketClient creates a new Swift bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	bucketConfig := swift.SwiftConfig{
-		AuthUrl:           cfg.AuthUrl,
+		AuthUrl:           cfg.AuthURL,
 		Username:          cfg.Username,
 		UserDomainName:    cfg.UserDomainName,
 		UserDomainID:      cfg.UserDomainID,
-		UserId:            cfg.UserId,
+		UserId:            cfg.UserID,
 		Password:          cfg.Password,
-		DomainId:          cfg.DomainId,
+		DomainId:          cfg.DomainID,
 		DomainName:        cfg.DomainName,
 		ProjectID:         cfg.ProjectID,
 		ProjectName:       cfg.ProjectName,

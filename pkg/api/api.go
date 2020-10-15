@@ -12,6 +12,7 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
@@ -325,6 +326,8 @@ func (a *API) RegisterQuerier(
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		// This is used for the stats API which we should not support. Or find other ways to.
+		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 	)
 
 	// these routes are always registered to the default server

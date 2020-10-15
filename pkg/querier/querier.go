@@ -281,8 +281,10 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
 	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
 	// querying the long-term storage.
-	if sp == nil {
-		return q.metadataQuerier.Select(true, nil, matchers...)
+	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
+	// See: https://github.com/prometheus/prometheus/pull/8050
+	if sp == nil || sp.Func == "series" {
+		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
 	userID, err := user.ExtractOrgID(ctx)

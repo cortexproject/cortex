@@ -28,7 +28,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		replicationSet, err := d.getIngestersForQuery(ctx, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -55,7 +55,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		replicationSet, err := d.getIngestersForQuery(ctx, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -73,9 +73,9 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 	return result, err
 }
 
-// getIngestersForQuery returns a replication set including all ingesters that should be queried
+// GetIngestersForQuery returns a replication set including all ingesters that should be queried
 // to fetch series matching input label matchers.
-func (d *Distributor) getIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
+func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
@@ -104,9 +104,9 @@ func (d *Distributor) getIngestersForQuery(ctx context.Context, matchers ...*lab
 	return d.ingestersRing.GetAll(ring.Read)
 }
 
-// getIngestersForMetadata returns a replication set including all ingesters that should be queried
+// GetIngestersForMetadata returns a replication set including all ingesters that should be queried
 // to fetch metadata (eg. label names/values or series).
-func (d *Distributor) getIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
+func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err

@@ -639,7 +639,7 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) ([]string, error) {
-	replicationSet, err := d.getIngestersForMetadata(ctx)
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -670,7 +670,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 
 // LabelNames returns all of the label names.
 func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
-	replicationSet, err := d.getIngestersForMetadata(ctx)
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +703,7 @@ func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	replicationSet, err := d.getIngestersForMetadata(ctx)
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +739,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 // MetricsMetadata returns all metric metadata of a user.
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
-	replicationSet, err := d.getIngestersForMetadata(ctx)
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -779,7 +779,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 
 // UserStats returns statistics about the current user.
 func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
-	replicationSet, err := d.getIngestersForMetadata(ctx)
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}

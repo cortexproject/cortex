@@ -53,7 +53,7 @@ done
 
 GO_TEST_ARGS=(-tags "${TAGS[@]}" -cpu 4 -timeout $TIMEOUT $VERBOSE)
 
-if [ -n "$SLOW" ] || [ -n "$CIRCLECI" ]; then
+if [ -n "$SLOW" ] || [ -n "$CIRCLECI" ] || [ -n "$CI" ]; then
     SLOW=true
 fi
 

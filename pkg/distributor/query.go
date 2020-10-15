@@ -104,9 +104,9 @@ func (d *Distributor) getIngestersForQuery(ctx context.Context, matchers ...*lab
 	return d.ingestersRing.GetAll(ring.Read)
 }
 
-// getIngestersForMetadata returns a replication set including all ingesters that should be queried
+// GetIngestersForMetadata returns a replication set including all ingesters that should be queried
 // to fetch metadata (eg. label names/values or series).
-func (d *Distributor) getIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
+func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err

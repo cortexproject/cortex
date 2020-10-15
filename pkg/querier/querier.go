@@ -275,7 +275,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp == nil || sp.Func == "series" {
-		return q.metadataQuerier.Select(true, nil, matchers...)
+		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
 	userID, err := user.ExtractOrgID(ctx)

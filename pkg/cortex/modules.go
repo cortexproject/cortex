@@ -212,10 +212,47 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 // 2. Querier Standalone: The querier will register the internal HTTP router with the external
 //    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
 //    as a http.Handler to the frontend worker.
+// Route Diagram:
+//                        │  query
+//                        │ request
+//                        │
+//                        ▼
+//              ┌──────────────────┐    QF to      ┌──────────────────┐
+//              │  external HTTP   │    Worker     │                  │
+//              │      router      │──────────────▶│ frontend worker  │
+//              │                  │               │                  │
+//              └──────────────────┘               └──────────────────┘
+//                        │                                  │
+//                                                           │
+//               only in  │                                  │
+//            microservice         ┌──────────────────┐      │
+//              querier   │        │ internal Querier │      │
+//                         ─ ─ ─ ─▶│      router      │◀─────┘
+//                                 │                  │
+//                                 └──────────────────┘
+//                                           │
+//                                           │
+//  /metadata & /chunk ┌─────────────────────┼─────────────────────┐
+//        requests     │                     │                     │
+//                     │                     │                     │
+//                     ▼                     ▼                     ▼
+//           ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+//           │                  │  │                  │  │                  │
+//           │Querier Queryable │  │  /api/v1 router  │  │ /api/prom router │
+//           │                  │  │                  │  │                  │
+//           └──────────────────┘  └──────────────────┘  └──────────────────┘
+//                     ▲                     │                     │
+//                     │                     └──────────┬──────────┘
+//                     │                                ▼
+//                     │                      ┌──────────────────┐
+//                     │                      │                  │
+//                     └──────────────────────│  Prometheus API  │
+//                                            │                  │
+//                                            └──────────────────┘
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// Create a internal HTTP handler that is configured with the Prometheus API routes and points
 	// to a Prometheus API struct instantiated with the Cortex Queryable.
-	queryHandler := api.NewQuerierHandler(
+	internalQuerierRouter := api.NewQuerierHandler(
 		t.Cfg.API,
 		t.QuerierQueryable,
 		t.QuerierEngine,
@@ -230,12 +267,12 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// to ensure requests it processes use the default middleware instrumentation.
 	if !t.Cfg.isModuleEnabled(QueryFrontend) && !t.Cfg.isModuleEnabled(All) {
 		// First, register the internal querier handler with the external HTTP server
-		t.API.RegisterQueryAPI(queryHandler)
+		t.API.RegisterQueryAPI(internalQuerierRouter)
 
 		// Second, set the http.Handler that the frontend worker will use to process requests to point to
 		// the external HTTP server. This will allow the querier to consolidate query metrics both external
 		// and internal using the default instrumentation when running as a standalone service.
-		queryHandler = t.Server.HTTPServer.Handler
+		internalQuerierRouter = t.Server.HTTPServer.Handler
 	} else {
 		// Single binary mode requires a query frontend endpoint for the worker. If no frontend endpoint
 		// is configured, Cortex will default to using localhost on it's own GRPC listening port.
@@ -248,12 +285,12 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
 		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 		// request context.
-		queryHandler = middleware.AuthenticateUser.Wrap(queryHandler)
+		internalQuerierRouter = middleware.AuthenticateUser.Wrap(internalQuerierRouter)
 	}
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(t.Cfg.Worker, t.Cfg.Querier, httpgrpc_server.NewServer(queryHandler), util.Logger)
+	worker, err := frontend.NewWorker(t.Cfg.Worker, t.Cfg.Querier, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger)
 	if err != nil {
 		return nil, err
 	}

@@ -111,23 +111,19 @@ func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	var cancel context.CancelFunc
+	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
 	}
 
 	rc, err := b.getObject(ctx, objectKey)
-	if cancel != nil {
-		if err != nil {
-			// cancel the context if there is an error.
-			cancel()
-			return nil, err
-		}
-		// else return a wrapped ReadCloser which cancels the context while closing the reader.
-		rc = chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel)
+	if err != nil {
+		// cancel the context if there is an error.
+		cancel()
+		return nil, err
 	}
-
-	return rc, nil
+	// else return a wrapped ReadCloser which cancels the context while closing the reader.
+	return chunk_util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
 }
 
 func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {

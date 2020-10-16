@@ -68,23 +68,19 @@ func (s *GCSObjectClient) Stop() {
 // GetObject returns a reader for the specified object key from the configured GCS bucket. If the
 // key does not exist a generic chunk.ErrStorageObjectNotFound error is returned.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, error) {
-	var cancel context.CancelFunc
+	var cancel context.CancelFunc = func() {}
 	if s.cfg.RequestTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, s.cfg.RequestTimeout)
 	}
 
 	rc, err := s.getObject(ctx, objectKey)
-	if cancel != nil {
-		if err != nil {
-			// cancel the context if there is an error.
-			cancel()
-			return nil, err
-		}
-		// else return a wrapped ReadCloser which cancels the context while closing the reader.
-		rc = util.NewReadCloserWithContextCancelFunc(rc, cancel)
+	if err != nil {
+		// cancel the context if there is an error.
+		cancel()
+		return nil, err
 	}
-
-	return rc, nil
+	// else return a wrapped ReadCloser which cancels the context while closing the reader.
+	return util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
 }
 
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, err error) {

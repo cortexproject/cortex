@@ -124,6 +124,7 @@ type Lifecycler struct {
 
 	// Whether to flush if transfer fails on shutdown.
 	flushOnShutdown *atomic.Bool
+	skipUnregister  *atomic.Bool
 
 	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
 	// goes away and comes back empty. The state changes during lifecycle of instance.
@@ -182,6 +183,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		RingName:        ringName,
 		RingKey:         ringKey,
 		flushOnShutdown: atomic.NewBool(flushOnShutdown),
+		skipUnregister:  atomic.NewBool(cfg.SkipUnregister),
 		Zone:            zone,
 
 		actorChan: make(chan func()),
@@ -490,7 +492,7 @@ heartbeatLoop:
 		}
 	}
 
-	if !i.cfg.SkipUnregister {
+	if !i.skipUnregister.Load() {
 		if err := i.unregister(context.Background()); err != nil {
 			return perrors.Wrapf(err, "failed to unregister from the KV store, ring: %s", i.RingName)
 		}
@@ -777,6 +779,16 @@ func (i *Lifecycler) FlushOnShutdown() bool {
 // Passing 'true' enables it, and 'false' disabled it.
 func (i *Lifecycler) SetFlushOnShutdown(flushOnShutdown bool) {
 	i.flushOnShutdown.Store(flushOnShutdown)
+}
+
+// SkipUnregister returns if unregistering is skipped on shutdown.
+func (i *Lifecycler) SkipUnregister() bool {
+	return i.skipUnregister.Load()
+}
+
+// SetSkipUnregister enables/disables unregistering on shutdown.
+func (i *Lifecycler) SetSkipUnregister(skipUnregister bool) {
+	i.skipUnregister.Store(skipUnregister)
 }
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {

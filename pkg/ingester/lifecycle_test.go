@@ -2,8 +2,11 @@ package ingester
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -89,6 +92,32 @@ func TestIngesterRestart(t *testing.T) {
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
 		return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
 	})
+}
+
+func TestIngester_ShutdownHandler(t *testing.T) {
+	for _, skipUnregister := range []bool{false, true} {
+		t.Run(fmt.Sprintf("SkipUnregister=%t", skipUnregister), func(t *testing.T) {
+			config := defaultIngesterTestConfig()
+			clientConfig := defaultClientTestConfig()
+			limits := defaultLimitsTestConfig()
+			config.LifecyclerConfig.SkipUnregister = skipUnregister
+			_, ingester := newTestStore(t, config, clientConfig, limits, nil)
+
+			// Make sure the ingester has been added to the ring.
+			test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
+				return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+			})
+
+			recorder := httptest.NewRecorder()
+			ingester.ShutdownHandler(recorder, nil)
+			require.Equal(t, http.StatusNoContent, recorder.Result().StatusCode)
+
+			// Make sure the ingester has been removed from the ring even when skipUnregister is true.
+			test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
+				return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+			})
+		})
+	}
 }
 
 func TestIngesterChunksTransfer(t *testing.T) {

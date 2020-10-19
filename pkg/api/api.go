@@ -200,6 +200,8 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
 
+// ingester is defined as an interface to allow for alternative implementations
+// of ingesters to be passed into the API.RegisterIngester() method.
 type ingester interface {
 	client.IngesterServer
 	FlushHandler(http.ResponseWriter, *http.Request)

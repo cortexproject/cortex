@@ -12,6 +12,7 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
@@ -29,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -200,8 +200,17 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
 
+// ingester is defined as an interface to allow for alternative implementations
+// of ingesters to be passed into the API.RegisterIngester() method.
+type ingester interface {
+	client.IngesterServer
+	FlushHandler(http.ResponseWriter, *http.Request)
+	ShutdownHandler(http.ResponseWriter, *http.Request)
+	Push(context.Context, *client.WriteRequest) (*client.WriteResponse, error)
+}
+
 // RegisterIngester registers the ingesters HTTP and GRPC service
-func (a *API) RegisterIngester(i *ingester.Ingester, pushConfig distributor.Config) {
+func (a *API) RegisterIngester(i ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 
 	a.indexPage.AddLink(SectionDangerous, "/ingester/flush", "Trigger a Flush of data from Ingester to storage")
@@ -325,6 +334,8 @@ func (a *API) RegisterQuerier(
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		// This is used for the stats API which we should not support. Or find other ways to.
+		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 	)
 
 	// these routes are always registered to the default server

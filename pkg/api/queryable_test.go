@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -149,6 +150,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		prometheus.DefaultGatherer,
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

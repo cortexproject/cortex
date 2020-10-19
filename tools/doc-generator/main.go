@@ -67,7 +67,7 @@ var (
 		},
 		{
 			name:       "query_frontend_config",
-			structType: reflect.TypeOf(frontend.Config{}),
+			structType: reflect.TypeOf(frontend.CombinedFrontendConfig{}),
 			desc:       "The query_frontend_config configures the Cortex query-frontend.",
 		},
 		{
@@ -112,7 +112,7 @@ var (
 		},
 		{
 			name:       "frontend_worker_config",
-			structType: reflect.TypeOf(frontend.WorkerConfig{}),
+			structType: reflect.TypeOf(frontend.CombinedWorkerConfig{}),
 			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.",
 		},
 		{

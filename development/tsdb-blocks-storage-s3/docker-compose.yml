@@ -271,3 +271,68 @@ services:
       - 18022:18022
     volumes:
       - ./config:/cortex/config
+
+  query-scheduler:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18011 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-scheduler -server.http-listen-port=8011 -server.grpc-listen-port=9011 -store.max-query-length=8760h -log.level=debug"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=query-scheduler
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8011:8011
+      - 18011:18011
+    volumes:
+      - ./config:/cortex/config
+
+  # This frontend uses query-scheduler, activated by `-frontend.scheduler-address` option.
+  query-frontend-with-scheduler:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18012 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8012 -server.grpc-listen-port=9012 -store.max-query-length=8760h -frontend.scheduler-address=query-scheduler:9011 -log.level=debug"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=query-frontend2
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8012:8012
+      - 18012:18012
+    volumes:
+      - ./config:/cortex/config
+
+  # This querier is connecting to query-scheduler, instead of query-frontend. This is achieved by setting -querier.scheduler-address="..."
+  querier-with-scheduler:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -log.level=debug"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=querier-scheduler
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8013:8013
+      - 18013:18013
+    volumes:
+      - ./config:/cortex/config

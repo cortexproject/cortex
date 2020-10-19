@@ -53,3 +53,4 @@ Currently experimental features are:
 - Blocksconvert tools
 - OpenStack Swift storage support.
 - Metric relabeling in the distributor.
+- Scalable query-frontend (when using query-scheduler)

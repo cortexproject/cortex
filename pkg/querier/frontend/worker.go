@@ -23,7 +23,7 @@ import (
 
 // WorkerConfig is config for a worker.
 type WorkerConfig struct {
-	Address             string        `yaml:"frontend_address"`
+	FrontendAddress     string        `yaml:"frontend_address"`
 	Parallelism         int           `yaml:"parallelism"`
 	MatchMaxConcurrency bool          `yaml:"match_max_concurrent"`
 	DNSLookupDuration   time.Duration `yaml:"dns_lookup_duration"`
@@ -34,7 +34,7 @@ type WorkerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *WorkerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, "querier.frontend-address", "", "Address of query frontend service, in host:port format.")
+	f.StringVar(&cfg.FrontendAddress, "querier.frontend-address", "", "Address of query frontend service, in host:port format. If -querier.scheduler-address is set as well, querier will use scheduler instead. If neither -querier.frontend-address or -querier.scheduler-address is set, queries must arrive via HTTP endpoint.")
 	f.IntVar(&cfg.Parallelism, "querier.worker-parallelism", 10, "Number of simultaneous queries to process per query frontend.")
 	f.BoolVar(&cfg.MatchMaxConcurrency, "querier.worker-match-max-concurrent", false, "Force worker concurrency to match the -querier.max-concurrent option.  Overrides querier.worker-parallelism.")
 	f.DurationVar(&cfg.DNSLookupDuration, "querier.dns-lookup-period", 10*time.Second, "How often to query DNS.")
@@ -59,11 +59,10 @@ type worker struct {
 }
 
 // NewWorker creates a new worker and returns a service that is wrapping it.
-// If no address is specified, it returns nil service (and no error).
+// If no address is specified, it returns error.
 func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Server, log log.Logger) (services.Service, error) {
-	if cfg.Address == "" {
-		level.Info(log).Log("msg", "no address specified, not starting worker")
-		return nil, nil
+	if cfg.FrontendAddress == "" {
+		return nil, errors.New("frontend address not configured")
 	}
 
 	if cfg.QuerierID == "" {
@@ -79,7 +78,7 @@ func NewWorker(cfg WorkerConfig, querierCfg querier.Config, server *server.Serve
 		return nil, err
 	}
 
-	watcher, err := resolver.Resolve(cfg.Address)
+	watcher, err := resolver.Resolve(cfg.FrontendAddress)
 	if err != nil {
 		return nil, err
 	}

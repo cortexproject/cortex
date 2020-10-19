@@ -1,63 +1,36 @@
 package frontend
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
-	"net/url"
-	"path"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
-)
-
-const (
-	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
-	StatusClientClosedRequest = 499
-	defaultMaxBodySize        = 10 * 1024 * 1024 // 10 MiB
 )
 
 var (
-	errTooManyRequest        = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
-	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 )
 
 // Config for a Frontend.
 type Config struct {
-	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
-	CompressResponses       bool          `yaml:"compress_responses"`
-	DownstreamURL           string        `yaml:"downstream_url"`
-	MaxBodySize             int64         `yaml:"max_body_size"`
-	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
+	MaxOutstandingPerTenant int `yaml:"max_outstanding_per_tenant"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
-	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
-	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", defaultMaxBodySize, "Max body size for downstream prometheus.")
-	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
 type Limits interface {
@@ -68,10 +41,9 @@ type Limits interface {
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
 // for requests which failed.
 type Frontend struct {
-	cfg          Config
-	log          log.Logger
-	roundTripper http.RoundTripper
-	limits       Limits
+	cfg    Config
+	log    log.Logger
+	limits Limits
 
 	mtx    sync.Mutex
 	cond   *sync.Cond // Notified when request is enqueued or dequeued, or querier is disconnected.
@@ -123,46 +95,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 	}
 	f.cond = sync.NewCond(&f.mtx)
 
-	// The front end implements http.RoundTripper using a GRPC worker queue by default.
-	f.roundTripper = f
-	// However if the user has specified a downstream Prometheus, then we should use that.
-	if cfg.DownstreamURL != "" {
-		u, err := url.Parse(cfg.DownstreamURL)
-		if err != nil {
-			return nil, err
-		}
-
-		f.roundTripper = RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-			tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(r.Context())
-			if tracer != nil && span != nil {
-				carrier := opentracing.HTTPHeadersCarrier(r.Header)
-				tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
-			}
-			r.URL.Scheme = u.Scheme
-			r.URL.Host = u.Host
-			r.URL.Path = path.Join(u.Path, r.URL.Path)
-			r.Host = ""
-			return http.DefaultTransport.RoundTrip(r)
-		})
-	}
-
 	return f, nil
-}
-
-// Wrap uses a Tripperware to chain a new RoundTripper to the frontend.
-func (f *Frontend) Wrap(trw Tripperware) {
-	f.roundTripper = trw(f.roundTripper)
-}
-
-// Tripperware is a signature for all http client-side middleware.
-type Tripperware func(http.RoundTripper) http.RoundTripper
-
-// RoundTripFunc is to http.RoundTripper what http.HandlerFunc is to http.Handler.
-type RoundTripFunc func(*http.Request) (*http.Response, error)
-
-// RoundTrip implements http.RoundTripper.
-func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
-	return f(r)
 }
 
 // Close stops new requests and errors out any pending requests.
@@ -172,112 +105,6 @@ func (f *Frontend) Close() {
 	for f.queues.len() > 0 {
 		f.cond.Wait()
 	}
-}
-
-// Handler for HTTP requests.
-func (f *Frontend) Handler() http.Handler {
-	if f.cfg.CompressResponses {
-		return gziphandler.GzipHandler(http.HandlerFunc(f.handle))
-	}
-	return http.HandlerFunc(f.handle)
-}
-
-func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	// Buffer the body for later use to track slow queries.
-	var buf bytes.Buffer
-	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.MaxBodySize)
-	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
-
-	startTime := time.Now()
-	resp, err := f.roundTripper.RoundTrip(r)
-	queryResponseTime := time.Since(startTime)
-
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-
-	hs := w.Header()
-	for h, vs := range resp.Header {
-		hs[h] = vs
-	}
-
-	w.WriteHeader(resp.StatusCode)
-	// we don't check for copy error as there is no much we can do at this point
-	io.Copy(w, resp.Body)
-
-	f.reportSlowQuery(queryResponseTime, r, buf)
-}
-
-// reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, where 0 disables logging
-func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request, bodyBuf bytes.Buffer) {
-	if f.cfg.LogQueriesLongerThan == 0 || queryResponseTime <= f.cfg.LogQueriesLongerThan {
-		return
-	}
-
-	logMessage := []interface{}{
-		"msg", "slow query detected",
-		"method", r.Method,
-		"host", r.Host,
-		"path", r.URL.Path,
-		"time_taken", queryResponseTime.String(),
-	}
-
-	// use previously buffered body
-	r.Body = ioutil.NopCloser(&bodyBuf)
-
-	// Ensure the form has been parsed so all the parameters are present
-	err := r.ParseForm()
-	if err != nil {
-		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
-	}
-
-	// Attempt to iterate through the Form to log any filled in values
-	for k, v := range r.Form {
-		logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
-	}
-
-	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
-
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	switch err {
-	case context.Canceled:
-		err = errCanceled
-	case context.DeadlineExceeded:
-		err = errDeadlineExceeded
-	default:
-		if strings.Contains(err.Error(), "http: request body too large") {
-			err = errRequestEntityTooLarge
-		}
-	}
-	server.WriteError(w, err)
-}
-
-// RoundTrip implement http.Transport.
-func (f *Frontend) RoundTrip(r *http.Request) (*http.Response, error) {
-	req, err := server.HTTPRequest(r)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := f.RoundTripGRPC(r.Context(), req)
-	if err != nil {
-		return nil, err
-	}
-
-	httpResp := &http.Response{
-		StatusCode: int(resp.Code),
-		Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-		Header:     http.Header{},
-	}
-	for _, h := range resp.Headers {
-		httpResp.Header[h.Key] = h.Values
-	}
-	return httpResp, nil
 }
 
 type httpgrpcHeadersCarrier httpgrpc.HTTPRequest
@@ -522,12 +349,6 @@ FindQueue:
 // CheckReady determines if the query frontend is ready.  Function parameters/return
 // chosen to match the same method in the ingester
 func (f *Frontend) CheckReady(_ context.Context) error {
-	// if the downstream url is configured the query frontend is not aware of the state
-	//  of the queriers and is therefore always ready
-	if f.cfg.DownstreamURL != "" {
-		return nil
-	}
-
 	// if we have more than one querier connected we will consider ourselves ready
 	connectedClients := f.connectedClients.Load()
 	if connectedClients > 0 {

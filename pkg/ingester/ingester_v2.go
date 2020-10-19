@@ -1070,8 +1070,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 	walkErr := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			level.Warn(util.Logger).Log("msg", "skipped filesystem entry when looking for existing TSDB to open", "path", path, "err", err)
-			return filepath.SkipDir
+			level.Error(util.Logger).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
+			return errors.Wrapf(err, "an error occurred while iterating the filesystem storing TSDBs at %s", path)
 		}
 
 		// Skip root dir and all other files

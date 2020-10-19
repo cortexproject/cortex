@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -110,7 +111,7 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 	}
 }
 
-// blocksToDelete returns the blocks which have been shipped.
+// blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	if u.DB == nil {
 		return map[ulid.ULID]struct{}{}
@@ -130,7 +131,7 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 Outer:
 	for id := range deletable {
 		for _, shippedID := range shipperMeta.Uploaded {
-			if shippedID == id {
+			if bytes.Equal(shippedID[:], id[:]) {
 				continue Outer
 			}
 		}

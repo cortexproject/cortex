@@ -565,7 +565,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20201002105236-bb1662a1d13c
+# github.com/thanos-io/thanos v0.13.1-0.20201019130456-f41940581d9a
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

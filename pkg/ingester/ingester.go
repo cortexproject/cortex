@@ -217,7 +217,15 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	if err != nil {
 		return nil, err
 	}
-	i.limiter = NewLimiter(limits, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor, cfg.DistributorShardingStrategy, cfg.DistributorShardByAllLabels)
+
+	i.limiter = NewLimiter(
+		limits,
+		i.lifecycler,
+		cfg.DistributorShardingStrategy,
+		cfg.DistributorShardByAllLabels,
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+
 	i.subservicesWatcher = services.NewFailureWatcher()
 	i.subservicesWatcher.WatchService(i.lifecycler)
 

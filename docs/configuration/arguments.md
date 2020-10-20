@@ -489,7 +489,7 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
    Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
 
-   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels` and `-distributor.sharding-strategy` set for the ingesters too.
+   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
@@ -506,7 +506,7 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
    Like `max_metadata_per_user` and `max_metadata_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
 
-   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels` and `-distributor.sharding-strategy` set for the ingesters too.
+   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 ## Storage
 

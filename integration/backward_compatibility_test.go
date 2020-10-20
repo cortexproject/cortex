@@ -41,7 +41,7 @@ func preCortex14Flags(flags map[string]string) map[string]string {
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}
@@ -54,7 +54,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}

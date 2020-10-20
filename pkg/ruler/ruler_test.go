@@ -111,7 +111,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0}, cleanup
+	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {

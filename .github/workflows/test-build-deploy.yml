@@ -73,6 +73,11 @@ jobs:
         run: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false web-build
+      - name: Upload Website Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: website public
+          path: website/public/
       - name: Save Images
         run: |
           mkdir /tmp/images
@@ -160,7 +165,87 @@ jobs:
       - name: Extract Docker Images Archive
         run: tar -xvf images.tar -C /
       - name: Run Integration Configs Tests
+        # Github Actions does not support TTY in their default runners yet
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-            make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP TTY='' configs-integration-test
+
+  deploy_website:
+    needs: [build, test]
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        with:
+          # web-deploy script expects repo to be cloned with ssh for some commands to work
+          ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Website Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: website public
+          path: website/public
+      - name: Setup SSH Keys and known_hosts for Github Authentication to Deploy Website
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        shell: bash
+      - name: Deploy Website
+        # SSH is used to authentricate with Github because web-deploy script uses git to checkout and push to gh-pages
+        run: make BUILD_IN_CONTAINER=false web-deploy
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+
+  deploy:
+    needs: [build, test, lint, integration, integration-configs-db]
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: ./.github/workflows/scripts/install-docker.sh
+      - name: Sym link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Docker Images Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Load Images
+        run: |
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false load-images
+      - name: Deploy
+        run: |
+          if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+            docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+          fi
+          if [ -n "$QUAY_PASSWORD" ]; then
+            docker login -u "$QUAY_REGISTRY_USER" -p "$QUAY_REGISTRY_PASSWORD" quay.io;
+          fi
+          IMAGE_TAG=$GIT_TAG ./push-images $NOQUAY
+        env:
+          DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+          QUAY_REGISTRY_USER: ${{secrets.QUAY_USER}}
+          QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_PASSWORD}}
+          GIT_TAG: ${{github.event.release.tag_name}}
+          NOQUAY: ${{secrets.NOQUAY}}

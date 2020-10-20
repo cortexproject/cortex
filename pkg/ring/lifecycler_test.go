@@ -18,18 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
-type flushTransferer struct {
-	lifecycler *Lifecycler
-}
-
-func (f *flushTransferer) Flush() {}
-func (f *flushTransferer) TransferOut(ctx context.Context) error {
-	if err := f.lifecycler.ClaimTokensFor(ctx, "ing1"); err != nil {
-		return err
-	}
-	return f.lifecycler.ChangeState(ctx, ACTIVE)
-}
-
 func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	var lifecyclerConfig LifecyclerConfig
 	flagext.DefaultValues(&lifecyclerConfig)

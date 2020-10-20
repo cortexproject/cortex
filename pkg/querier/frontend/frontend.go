@@ -182,7 +182,7 @@ func (f *Frontend) Handler() http.Handler {
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	// buffer the body for later use in case of slow query
+	// Buffer the body for later use to track slow queries.
 	var buf bytes.Buffer
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBodySize))
 	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))

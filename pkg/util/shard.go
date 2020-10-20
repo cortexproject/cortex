@@ -5,6 +5,12 @@ import (
 	"encoding/binary"
 )
 
+const (
+	// Sharding strategies.
+	ShardingStrategyDefault = "default"
+	ShardingStrategyShuffle = "shuffle-sharding"
+)
+
 var (
 	seedSeparator = []byte{0}
 )

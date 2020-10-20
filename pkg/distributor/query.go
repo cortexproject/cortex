@@ -83,7 +83,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 
 	// If shuffle sharding is enabled we should only query ingesters which are
 	// part of the tenant's subring.
-	if d.cfg.ShardingStrategy == ShardingStrategyShuffle {
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		shardSize := d.limits.IngestionTenantShardSize(userID)
 		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
 
@@ -114,7 +114,7 @@ func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.Replica
 
 	// If shuffle sharding is enabled we should only query ingesters which are
 	// part of the tenant's subring.
-	if d.cfg.ShardingStrategy == ShardingStrategyShuffle {
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		shardSize := d.limits.IngestionTenantShardSize(userID)
 		lookbackPeriod := d.cfg.ShuffleShardingLookbackPeriod
 

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -19,7 +20,9 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 		ringReplicationFactor    int
 		ringIngesterCount        int
 		shardByAllLabels         bool
-		expected                 int
+		shardSize                int
+		expectedDefaultSharding  int
+		expectedShuffleSharding  int
 	}{
 		"both local and global limits are disabled": {
 			maxLocalSeriesPerMetric:  0,
@@ -27,7 +30,8 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        1,
 			shardByAllLabels:         false,
-			expected:                 math.MaxInt32,
+			expectedDefaultSharding:  math.MaxInt32,
+			expectedShuffleSharding:  math.MaxInt32,
 		},
 		"only local limit is enabled": {
 			maxLocalSeriesPerMetric:  1000,
@@ -35,7 +39,8 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        1,
 			shardByAllLabels:         false,
-			expected:                 1000,
+			expectedDefaultSharding:  1000,
+			expectedShuffleSharding:  1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=false and replication-factor=1": {
 			maxLocalSeriesPerMetric:  0,
@@ -43,7 +48,9 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        10,
 			shardByAllLabels:         false,
-			expected:                 1000,
+			shardSize:                5,
+			expectedDefaultSharding:  1000,
+			expectedShuffleSharding:  1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
 			maxLocalSeriesPerMetric:  0,
@@ -51,7 +58,9 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 100,
+			shardSize:                5,
+			expectedDefaultSharding:  100,
+			expectedShuffleSharding:  200,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=3": {
 			maxLocalSeriesPerMetric:  0,
@@ -59,7 +68,9 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 300,
+			shardSize:                5,
+			expectedDefaultSharding:  300,
+			expectedShuffleSharding:  600,
 		},
 		"both local and global limits are set with local limit < global limit": {
 			maxLocalSeriesPerMetric:  150,
@@ -67,15 +78,19 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 150,
+			shardSize:                5,
+			expectedDefaultSharding:  150,
+			expectedShuffleSharding:  150,
 		},
 		"both local and global limits are set with local limit > global limit": {
-			maxLocalSeriesPerMetric:  500,
+			maxLocalSeriesPerMetric:  800,
 			maxGlobalSeriesPerMetric: 1000,
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 300,
+			shardSize:                5,
+			expectedDefaultSharding:  300,
+			expectedShuffleSharding:  600,
 		},
 	}
 
@@ -91,13 +106,19 @@ func TestSeriesLimit_maxSeriesPerMetric(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerMetric:  testData.maxLocalSeriesPerMetric,
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
+				IngestionTenantShardSize: testData.shardSize,
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			// Assert on default sharding strategy.
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerMetric("test")
+			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
-			assert.Equal(t, testData.expected, actual)
+			// Assert on shuffle sharding strategy.
+			limiter = NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyShuffle, testData.shardByAllLabels)
+			actual = limiter.maxSeriesPerMetric("test")
+			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
 	}
 }
@@ -109,7 +130,9 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 		ringReplicationFactor      int
 		ringIngesterCount          int
 		shardByAllLabels           bool
-		expected                   int
+		shardSize                  int
+		expectedDefaultSharding    int
+		expectedShuffleSharding    int
 	}{
 		"both local and global limits are disabled": {
 			maxLocalMetadataPerMetric:  0,
@@ -117,7 +140,8 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      1,
 			ringIngesterCount:          1,
 			shardByAllLabels:           false,
-			expected:                   math.MaxInt32,
+			expectedDefaultSharding:    math.MaxInt32,
+			expectedShuffleSharding:    math.MaxInt32,
 		},
 		"only local limit is enabled": {
 			maxLocalMetadataPerMetric:  1000,
@@ -125,7 +149,8 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      1,
 			ringIngesterCount:          1,
 			shardByAllLabels:           false,
-			expected:                   1000,
+			expectedDefaultSharding:    1000,
+			expectedShuffleSharding:    1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=false and replication-factor=1": {
 			maxLocalMetadataPerMetric:  0,
@@ -133,7 +158,9 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      1,
 			ringIngesterCount:          10,
 			shardByAllLabels:           false,
-			expected:                   1000,
+			shardSize:                  5,
+			expectedDefaultSharding:    1000,
+			expectedShuffleSharding:    1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
 			maxLocalMetadataPerMetric:  0,
@@ -141,7 +168,9 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      1,
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
-			expected:                   100,
+			shardSize:                  5,
+			expectedDefaultSharding:    100,
+			expectedShuffleSharding:    200,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=3": {
 			maxLocalMetadataPerMetric:  0,
@@ -149,7 +178,9 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      3,
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
-			expected:                   300,
+			shardSize:                  5,
+			expectedDefaultSharding:    300,
+			expectedShuffleSharding:    600,
 		},
 		"both local and global limits are set with local limit < global limit": {
 			maxLocalMetadataPerMetric:  150,
@@ -157,15 +188,19 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			ringReplicationFactor:      3,
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
-			expected:                   150,
+			shardSize:                  5,
+			expectedDefaultSharding:    150,
+			expectedShuffleSharding:    150,
 		},
 		"both local and global limits are set with local limit > global limit": {
-			maxLocalMetadataPerMetric:  500,
+			maxLocalMetadataPerMetric:  800,
 			maxGlobalMetadataPerMetric: 1000,
 			ringReplicationFactor:      3,
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
-			expected:                   300,
+			shardSize:                  5,
+			expectedDefaultSharding:    300,
+			expectedShuffleSharding:    600,
 		},
 	}
 
@@ -181,81 +216,100 @@ func TestSeriesLimit_maxMetadataPerMetric(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalMetadataPerMetric:  testData.maxLocalMetadataPerMetric,
 				MaxGlobalMetadataPerMetric: testData.maxGlobalMetadataPerMetric,
+				IngestionTenantShardSize:   testData.shardSize,
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			// Assert on default sharding strategy.
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.maxMetadataPerMetric("test")
+			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
-			assert.Equal(t, testData.expected, actual)
+			// Assert on default shuffle strategy.
+			limiter = NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyShuffle, testData.shardByAllLabels)
+			actual = limiter.maxMetadataPerMetric("test")
+			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
 	}
 }
 
 func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 	tests := map[string]struct {
-		maxLocalSeriesPerUser  int
-		maxGlobalSeriesPerUser int
-		ringReplicationFactor  int
-		ringIngesterCount      int
-		shardByAllLabels       bool
-		expected               int
+		maxLocalSeriesPerUser   int
+		maxGlobalSeriesPerUser  int
+		ringReplicationFactor   int
+		ringIngesterCount       int
+		shardByAllLabels        bool
+		shardSize               int
+		expectedDefaultSharding int
+		expectedShuffleSharding int
 	}{
 		"both local and global limits are disabled": {
-			maxLocalSeriesPerUser:  0,
-			maxGlobalSeriesPerUser: 0,
-			ringReplicationFactor:  1,
-			ringIngesterCount:      1,
-			shardByAllLabels:       false,
-			expected:               math.MaxInt32,
+			maxLocalSeriesPerUser:   0,
+			maxGlobalSeriesPerUser:  0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			shardByAllLabels:        false,
+			expectedDefaultSharding: math.MaxInt32,
+			expectedShuffleSharding: math.MaxInt32,
 		},
 		"only local limit is enabled": {
-			maxLocalSeriesPerUser:  1000,
-			maxGlobalSeriesPerUser: 0,
-			ringReplicationFactor:  1,
-			ringIngesterCount:      1,
-			shardByAllLabels:       false,
-			expected:               1000,
+			maxLocalSeriesPerUser:   1000,
+			maxGlobalSeriesPerUser:  0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			shardByAllLabels:        false,
+			expectedDefaultSharding: 1000,
+			expectedShuffleSharding: 1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=false and replication-factor=1": {
-			maxLocalSeriesPerUser:  0,
-			maxGlobalSeriesPerUser: 1000,
-			ringReplicationFactor:  1,
-			ringIngesterCount:      10,
-			shardByAllLabels:       false,
-			expected:               math.MaxInt32,
+			maxLocalSeriesPerUser:   0,
+			maxGlobalSeriesPerUser:  1000,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       10,
+			shardByAllLabels:        false,
+			expectedDefaultSharding: math.MaxInt32,
+			expectedShuffleSharding: math.MaxInt32,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
-			maxLocalSeriesPerUser:  0,
-			maxGlobalSeriesPerUser: 1000,
-			ringReplicationFactor:  1,
-			ringIngesterCount:      10,
-			shardByAllLabels:       true,
-			expected:               100,
+			maxLocalSeriesPerUser:   0,
+			maxGlobalSeriesPerUser:  1000,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       10,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 100,
+			expectedShuffleSharding: 200,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=3": {
-			maxLocalSeriesPerUser:  0,
-			maxGlobalSeriesPerUser: 1000,
-			ringReplicationFactor:  3,
-			ringIngesterCount:      10,
-			shardByAllLabels:       true,
-			expected:               300,
+			maxLocalSeriesPerUser:   0,
+			maxGlobalSeriesPerUser:  1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 300,
+			expectedShuffleSharding: 600,
 		},
 		"both local and global limits are set with local limit < global limit": {
-			maxLocalSeriesPerUser:  150,
-			maxGlobalSeriesPerUser: 1000,
-			ringReplicationFactor:  3,
-			ringIngesterCount:      10,
-			shardByAllLabels:       true,
-			expected:               150,
+			maxLocalSeriesPerUser:   150,
+			maxGlobalSeriesPerUser:  1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 150,
+			expectedShuffleSharding: 150,
 		},
 		"both local and global limits are set with local limit > global limit": {
-			maxLocalSeriesPerUser:  500,
-			maxGlobalSeriesPerUser: 1000,
-			ringReplicationFactor:  3,
-			ringIngesterCount:      10,
-			shardByAllLabels:       true,
-			expected:               300,
+			maxLocalSeriesPerUser:   800,
+			maxGlobalSeriesPerUser:  1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 300,
+			expectedShuffleSharding: 600,
 		},
 	}
 
@@ -269,15 +323,21 @@ func TestSeriesLimit_maxSeriesPerUser(t *testing.T) {
 
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
-				MaxLocalSeriesPerUser:  testData.maxLocalSeriesPerUser,
-				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
+				MaxLocalSeriesPerUser:    testData.maxLocalSeriesPerUser,
+				MaxGlobalSeriesPerUser:   testData.maxGlobalSeriesPerUser,
+				IngestionTenantShardSize: testData.shardSize,
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			// Assert on default sharding strategy.
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.maxSeriesPerUser("test")
+			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
-			assert.Equal(t, testData.expected, actual)
+			// Assert on shuffle sharding strategy.
+			limiter = NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyShuffle, testData.shardByAllLabels)
+			actual = limiter.maxSeriesPerUser("test")
+			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
 	}
 }
@@ -289,7 +349,9 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 		ringReplicationFactor    int
 		ringIngesterCount        int
 		shardByAllLabels         bool
-		expected                 int
+		shardSize                int
+		expectedDefaultSharding  int
+		expectedShuffleSharding  int
 	}{
 		"both local and global limits are disabled": {
 			maxLocalMetadataPerUser:  0,
@@ -297,7 +359,8 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        1,
 			shardByAllLabels:         false,
-			expected:                 math.MaxInt32,
+			expectedDefaultSharding:  math.MaxInt32,
+			expectedShuffleSharding:  math.MaxInt32,
 		},
 		"only local limit is enabled": {
 			maxLocalMetadataPerUser:  1000,
@@ -305,7 +368,8 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        1,
 			shardByAllLabels:         false,
-			expected:                 1000,
+			expectedDefaultSharding:  1000,
+			expectedShuffleSharding:  1000,
 		},
 		"only global limit is enabled with shard-by-all-labels=false and replication-factor=1": {
 			maxLocalMetadataPerUser:  0,
@@ -313,7 +377,8 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        10,
 			shardByAllLabels:         false,
-			expected:                 math.MaxInt32,
+			expectedDefaultSharding:  math.MaxInt32,
+			expectedShuffleSharding:  math.MaxInt32,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
 			maxLocalMetadataPerUser:  0,
@@ -321,7 +386,9 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    1,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 100,
+			shardSize:                5,
+			expectedDefaultSharding:  100,
+			expectedShuffleSharding:  200,
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=3": {
 			maxLocalMetadataPerUser:  0,
@@ -329,7 +396,9 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 300,
+			shardSize:                5,
+			expectedDefaultSharding:  300,
+			expectedShuffleSharding:  600,
 		},
 		"both local and global limits are set with local limit < global limit": {
 			maxLocalMetadataPerUser:  150,
@@ -337,15 +406,19 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 150,
+			shardSize:                5,
+			expectedDefaultSharding:  150,
+			expectedShuffleSharding:  150,
 		},
 		"both local and global limits are set with local limit > global limit": {
-			maxLocalMetadataPerUser:  500,
+			maxLocalMetadataPerUser:  800,
 			maxGlobalMetadataPerUser: 1000,
 			ringReplicationFactor:    3,
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
-			expected:                 300,
+			shardSize:                5,
+			expectedDefaultSharding:  300,
+			expectedShuffleSharding:  600,
 		},
 	}
 
@@ -361,13 +434,19 @@ func TestLimit_maxMetadataPerUser(t *testing.T) {
 			limits, err := validation.NewOverrides(validation.Limits{
 				MaxLocalMetricsWithMetadataPerUser:  testData.maxLocalMetadataPerUser,
 				MaxGlobalMetricsWithMetadataPerUser: testData.maxGlobalMetadataPerUser,
+				IngestionTenantShardSize:            testData.shardSize,
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			// Assert on default sharding strategy.
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.maxMetadataPerUser("test")
+			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
-			assert.Equal(t, testData.expected, actual)
+			// Assert on shuffle sharding strategy.
+			limiter = NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyShuffle, testData.shardByAllLabels)
+			actual = limiter.maxMetadataPerUser("test")
+			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
 	}
 }
@@ -426,7 +505,7 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -487,7 +566,7 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)
@@ -549,7 +628,7 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -611,7 +690,7 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, testData.shardByAllLabels)
+			limiter := NewLimiter(limits, ring, testData.ringReplicationFactor, util.ShardingStrategyDefault, testData.shardByAllLabels)
 			actual := limiter.AssertMaxMetricsWithMetadataPerUser("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)

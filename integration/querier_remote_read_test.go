@@ -29,7 +29,7 @@ func TestQuerierRemoteRead(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	flags := mergeFlags(ChunksStorageFlags, map[string]string{})
+	flags := mergeFlags(ChunksStorageFlags(), map[string]string{})
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
@@ -37,7 +37,7 @@ func TestQuerierRemoteRead(t *testing.T) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
 
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -63,7 +63,7 @@ func TestQuerierRemoteRead(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the querier has updated the ring.

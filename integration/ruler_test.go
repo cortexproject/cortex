@@ -32,12 +32,12 @@ func TestRulerAPI(t *testing.T) {
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, RulerConfigs["-ruler.storage.s3.buckets"])
+	minio := e2edb.NewMinio(9000, RulerFlags()["-ruler.storage.s3.buckets"])
 	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
 
 	// Start Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags, RulerConfigs), "")
+	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags()), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured
@@ -207,17 +207,17 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, RulerConfigs["-ruler.storage.s3.buckets"])
+	minio := e2edb.NewMinio(9000, RulerFlags()["-ruler.storage.s3.buckets"])
 	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
 
 	// Have at least one alertmanager configuration.
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 	// Start Alertmanagers.
-	am1 := e2ecortex.NewAlertmanager("alertmanager1", mergeFlags(AlertmanagerFlags, AlertmanagerLocalFlags), "")
-	require.NoError(t, s.StartAndWaitReady(am1))
-	am2 := e2ecortex.NewAlertmanager("alertmanager2", mergeFlags(AlertmanagerFlags, AlertmanagerLocalFlags), "")
-	require.NoError(t, s.StartAndWaitReady(am2))
+	amFlags := mergeFlags(AlertmanagerFlags(), AlertmanagerLocalFlags())
+	am1 := e2ecortex.NewAlertmanager("alertmanager1", amFlags, "")
+	am2 := e2ecortex.NewAlertmanager("alertmanager2", amFlags, "")
+	require.NoError(t, s.StartAndWaitReady(am1, am2))
 
 	am1URL := "http://" + am1.HTTPEndpoint()
 	am2URL := "http://" + am2.HTTPEndpoint()
@@ -229,7 +229,7 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	// Start Ruler.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags, RulerConfigs, configOverrides), "")
+	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(), configOverrides), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured

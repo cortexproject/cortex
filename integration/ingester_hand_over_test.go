@@ -17,13 +17,13 @@ import (
 )
 
 func TestIngesterHandOverWithChunksStorage(t *testing.T) {
-	runIngesterHandOverTest(t, ChunksStorageFlags, func(t *testing.T, s *e2e.Scenario) {
+	runIngesterHandOverTest(t, ChunksStorageFlags(), func(t *testing.T, s *e2e.Scenario) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
 		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
-		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're

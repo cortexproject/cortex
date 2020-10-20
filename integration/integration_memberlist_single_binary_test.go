@@ -77,7 +77,7 @@ func newSingleBinary(name string, join string) *e2ecortex.CortexService {
 
 	serv := e2ecortex.NewSingleBinary(
 		name,
-		mergeFlags(ChunksStorageFlags, flags),
+		mergeFlags(ChunksStorageFlags(), flags),
 		"",
 		8000,
 	)

@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -115,7 +114,7 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 // blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	if u.DB == nil {
-		return map[ulid.ULID]struct{}{}
+		return nil
 	}
 	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
 	if u.shipper == nil {
@@ -126,21 +125,16 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	if err != nil {
 		// If there is any issue with the shipper, we should be conservative and not delete anything.
 		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
-		return map[ulid.ULID]struct{}{}
+		return nil
 	}
 
-Outer:
-	for id := range deletable {
-		for _, shippedID := range shipperMeta.Uploaded {
-			if bytes.Equal(shippedID[:], id[:]) {
-				continue Outer
-			}
+	result := map[ulid.ULID]struct{}{}
+	for _, shippedID := range shipperMeta.Uploaded {
+		if _, ok := deletable[shippedID]; ok {
+			result[shippedID] = struct{}{}
 		}
-		// Not shipped yet.
-		delete(deletable, id)
 	}
-
-	return deletable
+	return result
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {

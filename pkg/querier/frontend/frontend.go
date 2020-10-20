@@ -32,13 +32,13 @@ import (
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
+	maxBodySize               = 10 * 1024 * 1024 // 10 MiB
 )
 
 var (
 	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
-	maxBodySize         = 10 * 1024 * 1024 // 10 MiB
 )
 
 // Config for a Frontend.
@@ -202,11 +202,8 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
+	// we don't check for copy error as there is no much we can do at this point
+	io.Copy(w, resp.Body)
 
 	f.reportSlowQuery(queryResponseTime, r, buf)
 }

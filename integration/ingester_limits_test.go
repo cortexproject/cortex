@@ -46,7 +46,7 @@ func TestIngesterGlobalLimits(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			flags := BlocksStorageFlags
+			flags := BlocksStorageFlags()
 			flags["-distributor.replication-factor"] = "1"
 			flags["-distributor.shard-by-all-labels"] = "true"
 			flags["-distributor.sharding-strategy"] = testData.shardingStrategy

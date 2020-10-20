@@ -131,11 +131,9 @@ template_files:
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader([]byte(tc.cfg)))
-			ctx := context.Background()
-			ctx = user.InjectOrgID(ctx, "testing")
-			require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
+			ctx := user.InjectOrgID(req.Context(), "testing")
 			w := httptest.NewRecorder()
-			am.SetUserConfig(w, req)
+			am.SetUserConfig(w, req.WithContext(ctx))
 			resp := w.Result()
 
 			body, err := ioutil.ReadAll(resp.Body)

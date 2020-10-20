@@ -63,8 +63,10 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 }
 
 type ruleLimits struct {
-	evalDelay   time.Duration
-	tenantShard int
+	evalDelay            time.Duration
+	tenantShard          int
+	maxRulesPerRuleGroup int
+	maxRuleGroups        int
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -73,6 +75,14 @@ func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
 	return r.tenantShard
+}
+
+func (r ruleLimits) RulerMaxRuleGroupsPerUser(_ string) int {
+	return r.maxRuleGroups
+}
+
+func (r ruleLimits) RulerMaxRulesPerRuleGroupPerUser(_ string) int {
+	return r.maxRulesPerRuleGroup
 }
 
 func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {

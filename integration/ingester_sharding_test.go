@@ -44,7 +44,7 @@ func TestIngesterSharding(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			flags := BlocksStorageFlags
+			flags := BlocksStorageFlags()
 			flags["-distributor.shard-by-all-labels"] = "true"
 			flags["-distributor.sharding-strategy"] = testData.shardingStrategy
 			flags["-distributor.ingestion-tenant-shard-size"] = strconv.Itoa(testData.tenantShardSize)

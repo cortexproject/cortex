@@ -43,7 +43,7 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 		storeConfigs[i] = storeConfig{From: oldestStoreStartTime.Add(time.Duration(i) * perStoreDuration).UTC().Format("2006-01-02"), IndexStore: store}
 	}
 
-	flags := mergeFlags(ChunksStorageFlags, map[string]string{
+	flags := mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-cassandra.addresses":          cassandra.NetworkHTTPEndpoint(),
 		"-cassandra.keyspace":           "tests", // keyspace gets created on startup if it does not exist
 		"-cassandra.replication-factor": "1",

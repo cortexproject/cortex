@@ -381,10 +381,12 @@ func (o *Overrides) RulerTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).RulerTenantShardSize
 }
 
+// RulerMaxRulesPerRuleGroupPerUser returns the maximum number of rules per rule group for a given user.
 func (o *Overrides) RulerMaxRulesPerRuleGroupPerUser(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRulesPerRuleGroupPerUser
 }
 
+// RulerMaxRuleGroupsPerUser returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerUser
 }

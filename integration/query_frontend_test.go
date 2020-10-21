@@ -29,10 +29,12 @@ type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, 
 
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
+		flags = BlocksStorageFlags()
+
+		minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
-		return "", BlocksStorageFlags
+		return "", flags
 	})
 }
 
@@ -40,7 +42,7 @@ func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
+		minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
 		return cortexConfigFile, e2e.EmptyFlags()
@@ -54,14 +56,15 @@ func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
 		dynamo := e2edb.NewDynamoDB()
 		require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+		flags = ChunksStorageFlags()
+		tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
 		require.NoError(t, s.StartAndWaitReady(tableManager))
 
 		// Wait until the first table-manager sync has completed, so that we're
 		// sure the tables have been created.
 		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
-		return "", ChunksStorageFlags
+		return "", flags
 	})
 }
 
@@ -86,7 +89,14 @@ func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
 
 func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
+		flags = mergeFlags(
+			BlocksStorageFlags(),
+			getServerTLSFlags(),
+			getClientTLSFlagsWithPrefix("ingester.client"),
+			getClientTLSFlagsWithPrefix("querier.frontend-client"),
+		)
+
+		minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 		require.NoError(t, s.StartAndWaitReady(minio))
 
 		// set the ca
@@ -116,12 +126,7 @@ func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 			filepath.Join(s.SharedDir(), serverKeyFile),
 		))
 
-		return "", mergeFlags(
-			BlocksStorageFlags,
-			getServerTLSFlags(),
-			getClientTLSFlagsWithPrefix("ingester.client"),
-			getClientTLSFlagsWithPrefix("querier.frontend-client"),
-		)
+		return "", flags
 	})
 }
 

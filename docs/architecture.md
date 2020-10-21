@@ -64,7 +64,7 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 * [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
 
-For more information, please check out the [Blocks storage](./blocks-storage/) documentation.
+For more information, please check out the [Blocks storage](./blocks-storage/_index.md) documentation.
 
 ## Services
 

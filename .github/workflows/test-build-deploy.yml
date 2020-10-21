@@ -5,6 +5,7 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
   pull_request:
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -13,6 +14,8 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
+        # Commands in the Makefile are hardcoded with an assumed file structure of the CI container
+        # Symlink ensures paths specified in previous commands don’t break
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -57,12 +60,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v2
       - name: Install Docker Client
-        run: |
-          set -x
-          VER="17.03.0-ce"
-          curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-          tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-          mv /tmp/docker/* /usr/bin
+        run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -80,10 +78,89 @@ jobs:
           mkdir /tmp/images
           ln -s /tmp/images ./docker-images
           make BUILD_IN_CONTAINER=false save-images
-      - name: Zip Images
-        run: tar -zcvf images.tar.gz /tmp/images
-      - name: Upload Images Artifact
+      - name: Create Docker Images Archive
+        run: tar -cvf images.tar /tmp/images
+      - name: Upload Docker Images Artifact
         uses: actions/upload-artifact@v2
         with:
           name: Docker Images
-          path: ./images.tar.gz
+          path: ./images.tar
+
+  integration:
+    needs: build
+    runs-on: ubuntu-16.04
+    steps:
+      - name: Upgrade golang
+        run: |
+          cd /tmp
+          wget https://dl.google.com/go/go1.14.9.linux-amd64.tar.gz
+          tar -zxvf go1.14.9.linux-amd64.tar.gz
+          sudo rm -fr /usr/local/go
+          sudo mv /tmp/go /usr/local/go
+          cd -
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: sudo ./.github/workflows/scripts/install-docker.sh
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          sudo mkdir -p /go/src/github.com/cortexproject/cortex
+          sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Docker Images Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Load Docker Images
+        run: |
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false load-images
+      - name: Preload Images
+        # We download docker images used by integration tests so that all images are available
+        # locally and the download time doesn't account in the test execution time, which is subject
+        # to a timeout
+        run: |
+          docker pull minio/minio:RELEASE.2019-12-30T05-45-39Z
+          docker pull amazon/dynamodb-local:1.11.477
+          docker pull consul:0.9
+          docker pull gcr.io/etcd-development/etcd:v3.4.7
+          docker pull quay.io/cortexproject/cortex:v1.0.0
+          docker pull quay.io/cortexproject/cortex:v1.1.0
+          docker pull quay.io/cortexproject/cortex:v1.2.0
+          docker pull quay.io/cortexproject/cortex:v1.3.0
+          docker pull quay.io/cortexproject/cortex:v1.4.0
+          docker pull shopify/bigtable-emulator:0.1.0
+          docker pull rinscy/cassandra:3.11.0
+          docker pull memcached:1.6.1
+          docker pull bouncestorage/swift-aio:55ba4331
+      - name: Integration Tests
+        run: |
+          export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${TAG:-$(./tools/image-tag)}"
+          export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
+          echo "Running integration tests with image: $CORTEX_IMAGE"
+          go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/...
+        env:
+          IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
+          TAG: ${{ github.event.push.tag_name }}
+
+  integration-configs-db:
+    needs: build
+    runs-on: ubuntu-16.04
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: sudo ./.github/workflows/scripts/install-docker.sh
+      - name: Download Docker Images Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Run Integration Configs Tests
+        run: |
+          touch build-image/.uptodate
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
+            make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP TTY='' configs-integration-test

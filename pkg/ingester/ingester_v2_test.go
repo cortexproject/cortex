@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -1596,46 +1598,65 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 	return ingester, nil
 }
 
-func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
+func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		setup func(*testing.T, string)
-		check func(*testing.T, *Ingester)
+		setup       func(*testing.T, string)
+		check       func(*testing.T, *Ingester)
+		expectedErr string
 	}{
-		"empty user dir": {
+		"should not load TSDB if the user directory is empty": {
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.Empty(t, i.getTSDB("user0"), "tsdb created for empty user dir")
+				require.Nil(t, i.getTSDB("user0"))
 			},
 		},
-		"empty tsdbs": {
+		"should not load any TSDB if the root directory is empty": {
 			setup: func(t *testing.T, dir string) {},
 			check: func(t *testing.T, i *Ingester) {
-				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on empty dir")
+				require.Zero(t, len(i.TSDBState.dbs))
 			},
 		},
-		"missing tsdb dir": {
+		"should not load any TSDB is the root directory is missing": {
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Remove(dir))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on missing dir")
+				require.Zero(t, len(i.TSDBState.dbs))
 			},
 		},
-		"populated user dirs with unpopulated": {
+		"should load TSDB for any non-empty user directory": {
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user2"), 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.NotNil(t, i.getTSDB("user0"), "tsdb not created for non-empty user dir")
-				require.NotNil(t, i.getTSDB("user1"), "tsdb not created for non-empty user dir")
-				require.Empty(t, i.getTSDB("user2"), "tsdb created for empty user dir")
+				require.Equal(t, 2, len(i.TSDBState.dbs))
+				require.NotNil(t, i.getTSDB("user0"))
+				require.NotNil(t, i.getTSDB("user1"))
+				require.Nil(t, i.getTSDB("user2"))
 			},
+		},
+		"should fail and rollback if an error occur while loading any user's TSDB": {
+			setup: func(t *testing.T, dir string) {
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid and
+				// opening TSDB should fail).
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "wal", ""), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "chunks_head", ""), 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user0", "chunks_head", "00000001"), nil, 0700))
+
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 0, len(i.TSDBState.dbs))
+				require.Nil(t, i.getTSDB("user0"))
+				require.Nil(t, i.getTSDB("user1"))
+			},
+			expectedErr: "unable to open TSDB for user user0",
 		},
 	}
 
@@ -1665,10 +1686,16 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+
+			startErr := services.StartAndAwaitRunning(context.Background(), ingester)
+			if testData.expectedErr == "" {
+				require.NoError(t, startErr)
+			} else {
+				require.Error(t, startErr)
+				assert.Contains(t, startErr.Error(), testData.expectedErr)
+			}
 
 			defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
-
 			testData.check(t, ingester)
 		})
 	}
@@ -2232,4 +2259,88 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	// Verify that DB is no longer in memory, but was closed
 	db = i.getTSDB(userID)
 	require.Nil(t, db)
+}
+
+func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
+	chunkRange := 2 * time.Hour
+	chunkRangeMilliSec := chunkRange.Milliseconds()
+	cfg := defaultIngesterTestConfig()
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{chunkRange}
+	cfg.BlocksStorageConfig.TSDB.Retention = time.Millisecond // Which means delete all but first block.
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some data to create 3 blocks.
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for j := int64(0); j < 5; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	require.Nil(t, db.Compact())
+
+	oldBlocks := db.Blocks()
+	require.Equal(t, 3, len(oldBlocks))
+
+	// Saying that we have shipped the second block, so only that should get deleted.
+	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+		Version:  shipper.MetaVersion1,
+		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
+	}))
+
+	// Add more samples that could trigger another compaction and hence reload of blocks.
+	for j := int64(5); j < 6; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+	require.Nil(t, db.Compact())
+
+	// Only the second block should be gone along with a new block.
+	newBlocks := db.Blocks()
+	require.Equal(t, 3, len(newBlocks))
+	require.Equal(t, oldBlocks[0].Meta().ULID, newBlocks[0].Meta().ULID)    // First block remains same.
+	require.Equal(t, oldBlocks[2].Meta().ULID, newBlocks[1].Meta().ULID)    // 3rd block becomes 2nd now.
+	require.NotEqual(t, oldBlocks[1].Meta().ULID, newBlocks[2].Meta().ULID) // The new block won't match previous 2nd block.
+
+	// Shipping 2 more blocks, hence all the blocks from first round.
+	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+		Version:  shipper.MetaVersion1,
+		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
+	}))
+
+	// Add more samples that could trigger another compaction and hence reload of blocks.
+	for j := int64(6); j < 7; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+	require.Nil(t, db.Compact())
+
+	// All blocks from the old blocks should be gone now.
+	newBlocks2 := db.Blocks()
+	require.Equal(t, 2, len(newBlocks2))
+
+	require.Equal(t, newBlocks[2].Meta().ULID, newBlocks2[0].Meta().ULID) // Block created in last round.
+	for _, b := range oldBlocks {
+		// Second block is not one among old blocks.
+		require.NotEqual(t, b.Meta().ULID, newBlocks2[1].Meta().ULID)
+	}
 }

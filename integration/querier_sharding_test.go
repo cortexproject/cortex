@@ -39,18 +39,16 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, memcached))
 
-	minio := e2edb.NewMinio(9000, BlocksStorageFlags["-blocks-storage.s3.bucket-name"])
-	require.NoError(t, s.StartAndWaitReady(minio))
-
-	flags := BlocksStorageFlags
-
-	flags = mergeFlags(flags, map[string]string{
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":                       "true",
 		"-querier.split-queries-by-interval":           "24h",
 		"-querier.query-ingesters-within":              "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":                "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-querier.max-outstanding-requests-per-tenant": strconv.Itoa(numQueries), // To avoid getting errors.
 	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
 
 	if sharding {
 		// Use only single querier for each user.

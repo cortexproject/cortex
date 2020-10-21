@@ -71,7 +71,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
-			flags := mergeFlags(BlocksStorageFlags, map[string]string{
+			flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 				"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
 				"-blocks-storage.tsdb.ship-interval":               "1s",
 				"-blocks-storage.bucket-store.sync-interval":       "1s",
@@ -281,7 +281,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
-			flags := mergeFlags(BlocksStorageFlags, map[string]string{
+			flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 				"-blocks-storage.tsdb.block-ranges-period":                     blockRangePeriod.String(),
 				"-blocks-storage.tsdb.ship-interval":                           "1s",
 				"-blocks-storage.bucket-store.sync-interval":                   "1s",
@@ -423,7 +423,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 
 	// Configure the blocks storage to frequently compact TSDB head
 	// and ship blocks to the storage.
-	flags := mergeFlags(BlocksStorageFlags, map[string]string{
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
@@ -509,7 +509,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	flags := mergeFlags(ChunksStorageFlags, map[string]string{})
+	flags := ChunksStorageFlags()
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
@@ -517,7 +517,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
 
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -626,7 +626,7 @@ func TestHashCollisionHandling(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	flags := mergeFlags(ChunksStorageFlags, map[string]string{})
+	flags := ChunksStorageFlags()
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
@@ -634,7 +634,7 @@ func TestHashCollisionHandling(t *testing.T) {
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
 
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're

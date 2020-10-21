@@ -77,11 +77,11 @@ func (r ruleLimits) RulerTenantShardSize(_ string) int {
 	return r.tenantShard
 }
 
-func (r ruleLimits) RulerMaxRuleGroupsPerUser(_ string) int {
+func (r ruleLimits) RulerMaxRuleGroups(_ string) int {
 	return r.maxRuleGroups
 }
 
-func (r ruleLimits) RulerMaxRulesPerRuleGroupPerUser(_ string) int {
+func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 

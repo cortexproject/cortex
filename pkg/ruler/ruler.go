@@ -741,10 +741,14 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 	return &RulesResponse{Groups: groupDescs}, nil
 }
 
-// AssertMaxRuleGroupsPerUser limit has not been reached compared to the current
+// AssertMaxRuleGroups limit has not been reached compared to the current
 // number of total rule groups in input and returns an error if so.
-func (r *Ruler) AssertMaxRuleGroupsPerUser(userID string, rg int) error {
-	limit := r.limits.RulerMaxRuleGroupsPerUser(userID)
+func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
+	limit := r.limits.RulerMaxRuleGroups(userID)
+
+	if limit <= 0 {
+		return nil
+	}
 
 	if rg < limit {
 		return nil
@@ -753,10 +757,14 @@ func (r *Ruler) AssertMaxRuleGroupsPerUser(userID string, rg int) error {
 	return fmt.Errorf(errMaxRuleGroupsPerUserLimitExceeded, limit, rg)
 }
 
-// AssertMaxRulesPerRuleGroupPerUser limit has not been reached compared to the current
+// AssertMaxRulesPerRuleGroup limit has not been reached compared to the current
 // number of rules in a rule group in input and returns an error if so.
-func (r *Ruler) AssertMaxRulesPerRuleGroupPerUser(userID string, rules int) error {
-	limit := r.limits.RulerMaxRulesPerRuleGroupPerUser(userID)
+func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
+	limit := r.limits.RulerMaxRulesPerRuleGroup(userID)
+
+	if limit <= 0 {
+		return nil
+	}
 
 	if rules < limit {
 		return nil

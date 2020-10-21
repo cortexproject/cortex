@@ -129,7 +129,7 @@ func EnsureDirectory(dir string) error {
 }
 
 // ReadCloserWithContextCancelFunc helps with cancelling the context when closing a ReadCloser.
-// Note: The consumer of ReadCloserWithContextCancelFunc should always call the Close method when it is done reading which otherwise could cause a resource leak.
+// NOTE: The consumer of ReadCloserWithContextCancelFunc should always call the Close method when it is done reading which otherwise could cause a resource leak.
 type ReadCloserWithContextCancelFunc struct {
 	io.ReadCloser
 	cancel context.CancelFunc

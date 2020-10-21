@@ -60,7 +60,7 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.Ale
 		return alerts.AlertConfigDesc{}, err
 	}
 
-	defer runutil.CloseWithLogOnErr(util.Logger, readCloser, "close object reader")
+	defer runutil.CloseWithLogOnErr(util.Logger, readCloser, "close alert config reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {

@@ -2300,7 +2300,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	require.Equal(t, 3, len(oldBlocks))
 
 	// Saying that we have shipped the second block, so only that should get deleted.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
 	}))
@@ -2321,7 +2321,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	require.NotEqual(t, oldBlocks[1].Meta().ULID, newBlocks[2].Meta().ULID) // The new block won't match previous 2nd block.
 
 	// Shipping 2 more blocks, hence all the blocks from first round.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
 	}))

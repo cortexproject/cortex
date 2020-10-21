@@ -163,15 +163,15 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 
 // blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	if u.DB == nil {
+	if u.db == nil {
 		return nil
 	}
-	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
+	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
 	if u.shipper == nil {
 		return deletable
 	}
 
-	shipperMeta, err := shipper.ReadMetaFile(u.Dir())
+	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
 	if err != nil {
 		// If there is any issue with the shipper, we should be conservative and not delete anything.
 		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)

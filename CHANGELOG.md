@@ -98,6 +98,7 @@
 * [BUGFIX] Fixed Gossip memberlist members joining when addresses are configured using DNS-based service discovery. #3360
 * [BUGFIX] Ingester: fail to start an ingester running the blocks storage, if unable to load any existing TSDB at startup. #3354
 * [BUGFIX] Blocks storage: Avoid deletion of blocks in the ingester which are not shipped to the storage yet. #3346
+* [BUGFIX] Fix common prefixes returned by List method of S3 client. #3358
 
 ## 1.4.0 / 2020-10-02
 

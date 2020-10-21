@@ -127,7 +127,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroupPerUser, "ruler.max-rules-per-rule-group", 15, "Maximum number of rules per rule group per-tenant.")
-	f.IntVar(&l.RulerMaxRuleGroupsPerUser, "ruler.max-rule-groups", 20, "Maximum number of rule groups per-tenant.")
+	f.IntVar(&l.RulerMaxRuleGroupsPerUser, "ruler.max-rule-groups-per-user", 20, "Maximum number of rule groups per-tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")

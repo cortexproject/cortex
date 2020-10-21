@@ -58,7 +58,7 @@ const (
 	rulerSyncReasonRingChange = "ring-change"
 
 	// Limit errors
-	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit %d actual: %d) exceeded"
+	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit: %d actual: %d) exceeded"
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
 )
 

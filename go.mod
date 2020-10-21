@@ -47,7 +47,7 @@ require (
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.14.0
-	github.com/prometheus/prometheus v1.8.2-0.20201021125713-2624d827fadc
+	github.com/prometheus/prometheus v1.8.2-0.20201021150828-c5a832b39440
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2

@@ -1081,8 +1081,8 @@ github.com/prometheus/prometheus v1.8.2-0.20200805082714-e0cf219f0de2/go.mod h1:
 github.com/prometheus/prometheus v1.8.2-0.20200819132913-cb830b0a9c78 h1:tHIAD+hgCIb86T0/Du7vGyfHa6J1+XsImQoY8Ete+c8=
 github.com/prometheus/prometheus v1.8.2-0.20200819132913-cb830b0a9c78/go.mod h1:zfAqy/MwhMFajB9E2n12/9gG2fvofIE9uKDtlZCDxqs=
 github.com/prometheus/prometheus v1.8.2-0.20200923143134-7e2db3d092f3/go.mod h1:9VNWoDFHOMovlubld5uKKxfCDcPBj2GMOCjcUFXkYaM=
-github.com/prometheus/prometheus v1.8.2-0.20201021125713-2624d827fadc h1:/sVmawICge4nkNlVwuYdmwkTXk/HJJb8V5ilZx5/MaY=
-github.com/prometheus/prometheus v1.8.2-0.20201021125713-2624d827fadc/go.mod h1:dCFGRXrHSoQYAAWc8XbmOfsgYEWoY7/XlTecchlehao=
+github.com/prometheus/prometheus v1.8.2-0.20201021150828-c5a832b39440 h1:JaGDp2WhzxWFQ2GTXiEtssazFug/5Pp3r9ZHR2gV0N0=
+github.com/prometheus/prometheus v1.8.2-0.20201021150828-c5a832b39440/go.mod h1:dCFGRXrHSoQYAAWc8XbmOfsgYEWoY7/XlTecchlehao=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1 h1:+kGqA4dNN5hn7WwvKdzHl0rdN5AEkbNZd0VjRltAiZg=
 github.com/rafaeljusto/redigomock v0.0.0-20190202135759-257e089e14a1/go.mod h1:JaY6n2sDr+z2WTsXkOmNRUfDy6FN0L6Nk7x06ndm4tY=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=

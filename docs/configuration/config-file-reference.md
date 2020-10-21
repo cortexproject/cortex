@@ -2908,7 +2908,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [ruler_max_rules_per_rule_group: <int> | default = 15]
 
 # Maximum number of rule groups per-tenant. 0 to disable.
-# CLI flag: -ruler.max-rule-groups
+# CLI flag: -ruler.max-rule-groups-per-tenant
 [ruler_max_rule_groups: <int> | default = 20]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.

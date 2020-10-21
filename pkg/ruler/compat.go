@@ -76,7 +76,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 type RulesLimits interface {
 	EvaluationDelay(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
-	RulerMaxRuleGroups(userID string) int
+	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 }
 

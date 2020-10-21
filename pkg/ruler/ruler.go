@@ -744,7 +744,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 // AssertMaxRuleGroups limit has not been reached compared to the current
 // number of total rule groups in input and returns an error if so.
 func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
-	limit := r.limits.RulerMaxRuleGroups(userID)
+	limit := r.limits.RulerMaxRuleGroupsPerTenant(userID)
 
 	if limit <= 0 {
 		return nil

@@ -1779,13 +1779,51 @@ func TestIngester_flushing(t *testing.T) {
 				// Nothing shipped yet.
 				m.AssertNumberOfCalls(t, "Sync", 0)
 
-				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
 				time.Sleep(1 * time.Second)
 
 				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"noBlockSpanningOverADayOnFlush": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				// Pushing 4 samples, spanning over 2 days.
+				pushSingleSampleAtTime(t, i, 23*time.Hour.Milliseconds())
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()-1)
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()+1)
+				pushSingleSampleAtTime(t, i, 25*time.Hour.Milliseconds())
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i, true)
+				m.AssertNumberOfCalls(t, "Sync", 1)
+
+				// There should be 2 blocks created, divided at the 24 hour mark.
+				userDB := i.getTSDB(userID)
+				require.NotNil(t, userDB)
+
+				blocks := userDB.Blocks()
+				require.Equal(t, 2, len(blocks))
+				require.Equal(t, 23*time.Hour.Milliseconds(), blocks[0].Meta().MinTime)
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[0].Meta().MaxTime) // Block maxt is exclusive.
+				// Even though we added 24*time.Hour.Milliseconds()+1, the Head compaction
+				// will leave Head's mint to 24*time.Hour.Milliseconds(). Hence the block mint.
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
+				require.Equal(t, 25*time.Hour.Milliseconds()+1, blocks[1].Meta().MaxTime) // Block maxt is exclusive.
 			},
 		},
 	} {
@@ -2078,6 +2116,13 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 func pushSingleSample(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}
+
+func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }

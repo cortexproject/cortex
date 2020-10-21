@@ -46,12 +46,13 @@ type Shipper interface {
 }
 
 type userTSDB struct {
-	*tsdb.DB
-	userID         string
-	refCache       *cortex_tsdb.RefCache
-	activeSeries   *ActiveSeries
-	seriesInMetric *metricCounter
-	limiter        *Limiter
+	db               *tsdb.DB
+	userID           string
+	refCache         *cortex_tsdb.RefCache
+	activeSeries     *ActiveSeries
+	seriesInMetric   *metricCounter
+	limiter          *Limiter
+	compactBlocksMtx sync.Mutex
 
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
@@ -64,6 +65,55 @@ type userTSDB struct {
 	ingestedRuleSamples *ewmaRate
 }
 
+// Explicitly wrapping the tsdb.DB functions that we use.
+
+func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
+	return u.db.Appender(ctx)
+}
+
+func (u *userTSDB) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return u.db.Querier(ctx, mint, maxt)
+}
+
+func (u *userTSDB) Head() *tsdb.Head {
+	return u.db.Head()
+}
+
+func (u *userTSDB) Blocks() []*tsdb.Block {
+	return u.db.Blocks()
+}
+
+func (u *userTSDB) Close() error {
+	return u.db.Close()
+}
+
+func (u *userTSDB) Compact() error {
+	u.compactBlocksMtx.Lock()
+	defer u.compactBlocksMtx.Unlock()
+
+	return u.db.Compact()
+}
+
+// compactHead compacts the Head block at specified block durations avoiding a single huge block.
+func (u *userTSDB) compactHead(blockDuration int64) error {
+	u.compactBlocksMtx.Lock()
+	defer u.compactBlocksMtx.Unlock()
+	// The Compact() will produces multiple smaller blocks if Head has a lot of data.
+	if err := u.db.Compact(); err != nil {
+		return err
+	}
+	h := u.Head()
+	if (h.MinTime()/blockDuration)*blockDuration != (h.MaxTime()/blockDuration)*blockDuration {
+		// Remaining data in Head spans across 2 block ranges, so we break it into 2 blocks.
+		// Block maxt is exclusive, so we do a -1 here for maxt.
+		maxt := (h.MaxTime()/blockDuration)*blockDuration - 1
+		if err := u.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), maxt)); err != nil {
+			return err
+		}
+	}
+	return u.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+}
+
 // PreCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	if u.limiter == nil {
@@ -71,7 +121,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	}
 
 	// Total series limit.
-	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.DB.Head().NumSeries())); err != nil {
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
 		return makeLimitError(perUserSeriesLimit, err)
 	}
 
@@ -121,9 +171,8 @@ func (u *userTSDB) setLastUpdate(t time.Time) {
 
 // TSDBState holds data structures used by the TSDB storage engine
 type TSDBState struct {
-	dbs              map[string]*userTSDB // tsdb sharded by userID
-	bucket           objstore.Bucket
-	compactBlocksMtx sync.Mutex
+	dbs    map[string]*userTSDB // tsdb sharded by userID
+	bucket objstore.Bucket
 
 	// Value used by shipper as external label.
 	shipperIngesterID string
@@ -981,7 +1030,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
 
-	userDB.DB = db
+	userDB.db = db
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
@@ -1217,30 +1266,8 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	return nil
 }
 
-// compactHead compact the Head block at 2h intervals,
-// avoiding a single huge block.
-func compactHead(userDB *userTSDB) error {
-	// The Compact() will produces multiple 2h blocks if Head has a lot of data.
-	if err := userDB.Compact(); err != nil {
-		return err
-	}
-	twentyFourHrs := 24 * time.Hour.Milliseconds()
-	h := userDB.Head()
-	if (h.MinTime()/twentyFourHrs)*twentyFourHrs != (h.MaxTime()/twentyFourHrs)*twentyFourHrs {
-		// Remaining data in Head spans across 2 days, so we break it into 2 blocks.
-		maxt := (h.MaxTime()/twentyFourHrs)*twentyFourHrs - 1
-		if err := userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), maxt)); err != nil {
-			return err
-		}
-	}
-	return userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
-}
-
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
 func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
-	i.TSDBState.compactBlocksMtx.Lock()
-	defer i.TSDBState.compactBlocksMtx.Unlock()
-
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -1270,12 +1297,12 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-			err = compactHead(userDB)
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = compactHead(userDB)
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		default:
 			reason = "regular"

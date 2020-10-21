@@ -480,7 +480,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, "")
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error())
+		level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error(), "user", userID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

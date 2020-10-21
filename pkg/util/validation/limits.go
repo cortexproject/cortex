@@ -74,7 +74,7 @@ type Limits struct {
 	RulerEvaluationDelay             time.Duration `yaml:"ruler_evaluation_delay_duration"`
 	RulerTenantShardSize             int           `yaml:"ruler_tenant_shard_size"`
 	RulerMaxRulesPerRuleGroupPerUser int           `yaml:"ruler_max_rules_per_rule_group_per_user"`
-	RulerMaxRuleGroupsPerUser        int           `yaml:"ruler_max_rule_groups"`
+	RulerMaxRuleGroupsPerUser        int           `yaml:"ruler_max_rule_groups_per_user"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size"`

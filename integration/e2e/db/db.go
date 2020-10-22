@@ -42,7 +42,7 @@ func NewConsul() *e2e.HTTPService {
 		images.Consul,
 		// Run consul in "dev" mode so that the initial leader election is immediate
 		e2e.NewCommand("agent", "-server", "-client=0.0.0.0", "-dev", "-log-level=err"),
-		e2e.NewTCPReadinessProbe(8500),
+		e2e.NewHTTPReadinessProbe(8500, "/v1/operator/autopilot/health", 200, 200, `"Healthy": true`),
 		8500,
 	)
 }

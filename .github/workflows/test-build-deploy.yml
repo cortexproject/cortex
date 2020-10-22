@@ -238,14 +238,14 @@ jobs:
           if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
             docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
           fi
-          if [ -n "$QUAY_PASSWORD" ]; then
+          if [ -n "$QUAY_REGISTRY_PASSWORD" ]; then
             docker login -u "$QUAY_REGISTRY_USER" -p "$QUAY_REGISTRY_PASSWORD" quay.io;
           fi
           IMAGE_TAG=$GIT_TAG ./push-images $NOQUAY
         env:
           DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
-          QUAY_REGISTRY_USER: ${{secrets.QUAY_USER}}
-          QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_PASSWORD}}
+          QUAY_REGISTRY_USER: ${{secrets.QUAY_REGISTRY_USER}}
+          QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_REGISTRY_PASSWORD}}
           GIT_TAG: ${{github.event.release.tag_name}}
           NOQUAY: ${{secrets.NOQUAY}}

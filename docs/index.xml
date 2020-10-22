@@ -5497,7 +5497,7 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;li>
 &lt;p>&lt;code>max_global_series_per_metric&lt;/code> / &lt;code>-ingester.max-global-series-per-metric&lt;/code>&lt;/p>
 &lt;p>Like &lt;code>max_series_per_user&lt;/code> and &lt;code>max_series_per_metric&lt;/code>, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the &lt;code>-distributor.shard-by-all-labels&lt;/code> setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.&lt;/p>
-&lt;p>Requires &lt;code>-distributor.replication-factor&lt;/code> and &lt;code>-distributor.shard-by-all-labels&lt;/code> set for the ingesters too.&lt;/p>
+&lt;p>Requires &lt;code>-distributor.replication-factor&lt;/code>, &lt;code>-distributor.shard-by-all-labels&lt;/code>, &lt;code>-distributor.sharding-strategy&lt;/code> and &lt;code>-distributor.zone-awareness-enabled&lt;/code> set for the ingesters too.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>max_series_per_query&lt;/code> / &lt;code>-ingester.max-series-per-query&lt;/code>&lt;/p>
@@ -5505,6 +5505,21 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;li>
 &lt;p>&lt;code>max_samples_per_query&lt;/code> / &lt;code>-ingester.max-samples-per-query&lt;/code>&lt;/p>
 &lt;p>Limits on the number of timeseries and samples returns by a single ingester during a query.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>max_metadata_per_user&lt;/code> / &lt;code>-ingester.max-metadata-per-user&lt;/code>&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>max_metadata_per_metric&lt;/code> / &lt;code>-ingester.max-metadata-per-metric&lt;/code>&lt;/p>
+&lt;p>Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have. When running with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), this limit will enforce the maximum number of metadata a metric can have &amp;lsquo;globally&amp;rsquo;, as all metadata for a single metric will be sent to the same replication set of ingesters. This is not the case when running with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>max_global_metadata_per_user&lt;/code> / &lt;code>-ingester.max-global-metadata-per-user&lt;/code>&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>max_global_metadata_per_metric&lt;/code> / &lt;code>-ingester.max-global-metadata-per-metric&lt;/code>&lt;/p>
+&lt;p>Like &lt;code>max_metadata_per_user&lt;/code> and &lt;code>max_metadata_per_metric&lt;/code>, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the &lt;code>-distributor.shard-by-all-labels&lt;/code> setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.&lt;/p>
+&lt;p>Requires &lt;code>-distributor.replication-factor&lt;/code>, &lt;code>-distributor.shard-by-all-labels&lt;/code>, &lt;code>-distributor.sharding-strategy&lt;/code> and &lt;code>-distributor.zone-awareness-enabled&lt;/code> set for the ingesters too.&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h2 id="storage">Storage&lt;/h2>

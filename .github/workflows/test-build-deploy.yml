@@ -128,7 +128,7 @@ jobs:
         run: |
           docker pull minio/minio:RELEASE.2019-12-30T05-45-39Z
           docker pull amazon/dynamodb-local:1.11.477
-          docker pull consul:0.9
+          docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           docker pull quay.io/cortexproject/cortex:v1.0.0
           docker pull quay.io/cortexproject/cortex:v1.1.0

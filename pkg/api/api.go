@@ -200,9 +200,9 @@ func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distrib
 	a.RegisterRoute("/ha-tracker", d.HATracker, false, "GET")
 }
 
-// ingester is defined as an interface to allow for alternative implementations
+// Ingester is defined as an interface to allow for alternative implementations
 // of ingesters to be passed into the API.RegisterIngester() method.
-type ingester interface {
+type Ingester interface {
 	client.IngesterServer
 	FlushHandler(http.ResponseWriter, *http.Request)
 	ShutdownHandler(http.ResponseWriter, *http.Request)
@@ -210,7 +210,7 @@ type ingester interface {
 }
 
 // RegisterIngester registers the ingesters HTTP and GRPC service
-func (a *API) RegisterIngester(i ingester, pushConfig distributor.Config) {
+func (a *API) RegisterIngester(i Ingester, pushConfig distributor.Config) {
 	client.RegisterIngesterServer(a.server.GRPC, i)
 
 	a.indexPage.AddLink(SectionDangerous, "/ingester/flush", "Trigger a Flush of data from Ingester to storage")

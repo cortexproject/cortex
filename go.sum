@@ -1010,8 +1010,6 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/posener/complete v1.1.1/go.mod h1:em0nMJCgc9GFtwrmVmEMR/ZL6WyhyjMBndrE9hABlRI=
 github.com/posener/complete v1.2.3/go.mod h1:WZIdtGGp+qx0sLrYKtIRAruyNpv6hFCicSgv7Sy7s/s=
-github.com/pracucci/go-grpc v0.0.0-20200813121455-4a6760c71486 h1:WmYkAUXzWxOgeIZPNh0XnIL9eS7SaiVwogRPtRDVFkY=
-github.com/pracucci/go-grpc v0.0.0-20200813121455-4a6760c71486/go.mod h1:DYR5Eij8rJl8h7gblRrOZ8g0kW1umSpKqYIBTgeDtLo=
 github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645 h1:E3Wvr0RTSzcpwxFelwQPuh6/48ySQjRja44bAIqWZ/Q=
 github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645/go.mod h1:DYR5Eij8rJl8h7gblRrOZ8g0kW1umSpKqYIBTgeDtLo=
 github.com/prometheus/alertmanager v0.18.0/go.mod h1:WcxHBl40VSPuOaqWae6l6HpnEOVRIycEJ7i9iYkadEE=

@@ -85,9 +85,10 @@ func TestIngesterGlobalLimits(t *testing.T) {
 
 			numSeriesWithSameMetricName := 0
 			numSeriesTotal := 0
+			maxErrorsBeforeStop := 100
 
 			// Try to push as many series with the same metric name as we can.
-			for i := 1; i <= 10000; i++ {
+			for i, errs := 0, 0; i < 10000; i++ {
 				series, _ := generateSeries("test_limit_per_metric", now, prompb.Label{
 					Name:  "cardinality",
 					Value: strconv.Itoa(rand.Int()),
@@ -96,25 +97,25 @@ func TestIngesterGlobalLimits(t *testing.T) {
 				res, err := client.Push(series)
 				require.NoError(t, err)
 
-				if res.StatusCode != 200 {
+				if res.StatusCode == 200 {
+					numSeriesTotal++
+					numSeriesWithSameMetricName++
+				} else if errs++; errs >= maxErrorsBeforeStop {
 					break
 				}
-
-				numSeriesTotal++
-				numSeriesWithSameMetricName++
 			}
 
 			// Try to push as many series with the different metric name as we can.
-			for i := 1; i <= 10000; i++ {
+			for i, errs := 0, 0; i < 10000; i++ {
 				series, _ := generateSeries(fmt.Sprintf("test_limit_per_tenant_%d", rand.Int()), now)
 				res, err := client.Push(series)
 				require.NoError(t, err)
 
-				if res.StatusCode != 200 {
+				if res.StatusCode == 200 {
+					numSeriesTotal++
+				} else if errs++; errs >= maxErrorsBeforeStop {
 					break
 				}
-
-				numSeriesTotal++
 			}
 
 			// We expect the number of series we've been successfully pushed to be around

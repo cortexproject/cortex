@@ -56,6 +56,10 @@ const (
 	rulerSyncReasonInitial    = "initial"
 	rulerSyncReasonPeriodic   = "periodic"
 	rulerSyncReasonRingChange = "ring-change"
+
+	// Limit errors
+	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit: %d actual: %d) exceeded"
+	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
 )
 
 // Config is the configuration for the recording rules server.
@@ -735,4 +739,35 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 	}
 
 	return &RulesResponse{Groups: groupDescs}, nil
+}
+
+// AssertMaxRuleGroups limit has not been reached compared to the current
+// number of total rule groups in input and returns an error if so.
+func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
+	limit := r.limits.RulerMaxRuleGroupsPerTenant(userID)
+
+	if limit <= 0 {
+		return nil
+	}
+
+	if rg < limit {
+		return nil
+	}
+
+	return fmt.Errorf(errMaxRuleGroupsPerUserLimitExceeded, limit, rg)
+}
+
+// AssertMaxRulesPerRuleGroup limit has not been reached compared to the current
+// number of rules in a rule group in input and returns an error if so.
+func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
+	limit := r.limits.RulerMaxRulesPerRuleGroup(userID)
+
+	if limit <= 0 {
+		return nil
+	}
+
+	if rules < limit {
+		return nil
+	}
+	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)
 }

@@ -38,7 +38,7 @@ import (
 )
 
 var (
-	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
@@ -46,10 +46,6 @@ var (
 )
 
 const (
-	// Supported sharding strategies.
-	ShardingStrategyDefault = "default"
-	ShardingStrategyShuffle = "shuffle-sharding"
-
 	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency = 10
 
@@ -118,7 +114,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.RulerTenantShardSize <= 0 {
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.RulerTenantShardSize <= 0 {
 		return errInvalidTenantShardSize
 	}
 
@@ -154,7 +150,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
-	f.StringVar(&cfg.ShardingStrategy, "ruler.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.StringVar(&cfg.ShardingStrategy, "ruler.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
@@ -460,10 +456,10 @@ func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, 
 	case !r.cfg.EnableSharding:
 		return r.listRulesNoSharding(ctx)
 
-	case r.cfg.ShardingStrategy == ShardingStrategyDefault:
+	case r.cfg.ShardingStrategy == util.ShardingStrategyDefault:
 		return r.listRulesShardingDefault(ctx)
 
-	case r.cfg.ShardingStrategy == ShardingStrategyShuffle:
+	case r.cfg.ShardingStrategy == util.ShardingStrategyShuffle:
 		return r.listRulesShuffleSharding(ctx)
 
 	default:

@@ -1136,7 +1136,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 
 		if cfg.shuffleShardEnabled {
-			distributorCfg.ShardingStrategy = ShardingStrategyShuffle
+			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
 			distributorCfg.ShuffleShardingLookbackPeriod = time.Hour
 
 			cfg.limits.IngestionTenantShardSize = cfg.shuffleShardSize

@@ -106,7 +106,7 @@ var (
 	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 
-	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
@@ -118,8 +118,7 @@ const (
 	typeMetadata = "metadata"
 
 	// Supported sharding strategies.
-	ShardingStrategyDefault = "default"
-	ShardingStrategyShuffle = "shuffle-sharding"
+
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -185,7 +184,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
-	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 }
 
 // Validate config and returns error on failure
@@ -194,7 +193,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
 		return errInvalidTenantShardSize
 	}
 
@@ -535,7 +534,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	subRing := d.ingestersRing.(ring.ReadRing)
 
 	// Obtain a subring if required.
-	if d.cfg.ShardingStrategy == ShardingStrategyShuffle {
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		subRing = d.ingestersRing.ShuffleShard(userID, d.limits.IngestionTenantShardSize(userID))
 	}
 

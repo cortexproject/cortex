@@ -102,6 +102,7 @@
 * [BUGFIX] Blocks storage: Avoid deletion of blocks in the ingester which are not shipped to the storage yet. #3346
 * [BUGFIX] Fix common prefixes returned by List method of S3 client. #3358
 * [BUGFIX] Honor configured timeout in Azure and GCS object clients. #3285
+* [BUGFIX] Shuffle sharding: fixed max global series per user/metric limit when shuffle sharding and `-distributor.shard-by-all-labels=true` are both enabled in distributor. When using these global limits you should now set `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` to ingesters too. #3369
 
 ## 1.4.0 / 2020-10-02
 

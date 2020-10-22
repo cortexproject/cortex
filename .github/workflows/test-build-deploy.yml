@@ -246,6 +246,6 @@ jobs:
           DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
           QUAY_REGISTRY_USER: ${{secrets.QUAY_REGISTRY_USER}}
-          QUAY_REGISTRY_PASSWORD: ${{secrets.$QUAY_REGISTRY_PASSWORD}}
+          QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_REGISTRY_PASSWORD}}
           GIT_TAG: ${{github.event.release.tag_name}}
           NOQUAY: ${{secrets.NOQUAY}}

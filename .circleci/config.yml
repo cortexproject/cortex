@@ -32,25 +32,26 @@ workflows:
         <<: *filters
     - build:
         <<: *filters
-    - deploy_website:
-        requires:
-        - test
-        - build
-        filters:
-          branches:
-            only: master
-    - deploy:
-        requires:
-        - build
-        - test
-        - lint
-        - integration
-        - integration-configs-db
-        filters:
-          branches:
-            only: master
-          tags:
-            only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
+    # Disabling deploy jobs to prevent deploying twice while Github Actions Workflows are Running
+    # - deploy_website:
+    #     requires:
+    #     - test
+    #     - build
+    #     filters:
+    #       branches:
+    #         only: master
+    # - deploy:
+    #     requires:
+    #     - build
+    #     - test
+    #     - lint
+    #     - integration
+    #     - integration-configs-db
+    #     filters:
+    #       branches:
+    #         only: master
+    #       tags:
+    #         only: /^v[0-9]+(\.[0-9]+){2}(-.+|[^-.]*)$/
 
 commands:
   install-docker:

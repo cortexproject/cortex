@@ -62,10 +62,6 @@ As of October 2020, GitHub Actions do not persist between different jobs in the 
 |-------------------------------|-----------|---------------------------------------------|-----------------------------|
 | website public                | build     | deploy_website                              | share data between jobs     |
 | Docker Images                 | build     | deploy, integration, integrations-config-db | share data between jobs     |
-| Frontend Protobuf             | build     |                                             | long term storage           |
-| Caching Index Client Protobuf | build     |                                             | long term storage           |
-| Ring Protobuf                 | build     |                                             | long term storage           |
-| Rules Protobuf                | build     |                                             | long term storage           |
 
 *Note:* Docker Images are zipped before uploading as a workaround. The images contain characters that are illegal in the upload-artifact action.
 ```yaml

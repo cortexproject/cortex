@@ -577,12 +577,20 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 		// Get the metric family.
 		mf, ok := families[m]
 		if !ok {
+			if options.SkipMissingMetrics {
+				continue
+			}
+
 			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
 		// Filter metrics.
 		metrics := filterMetrics(mf.GetMetric(), options)
 		if len(metrics) == 0 {
+			if options.SkipMissingMetrics {
+				continue
+			}
+
 			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 

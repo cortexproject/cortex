@@ -177,4 +177,4 @@ docker run -d --name=grafana -p 3000:3000 grafana/grafana
 
 Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/api/prom`.
 
-Finally, You can monitor Cortex's reads & writes by creating the dashboard. You can follow this [documentation](https://github.com/cortexproject/cortex/tree/master/production/dashboards) to do so.
+Finally, You can monitor Cortex's reads & writes by creating the dashboard. If you're looking for ready to use dashboards, you can take a look at Grafana's [Cortex dashboards and alerts](https://github.com/grafana/cortex-jsonnet/) (Jsonnet) or Weaveworks's [Cortex dashboards](https://github.com/weaveworks/cortex-dashboards) (Python).

@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -54,7 +55,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 		// Sharding strategy: default
 		//
 		"default sharding, single instance in the ring with RF = 1": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -65,7 +66,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, single instance in the ring with RF = 1 but excluded": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -77,7 +78,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),
 		},
 		"default sharding, single instance in the ring with RF = 1 but excluded for non queried block": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -91,7 +92,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, single instance in the ring with RF = 2": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -102,7 +103,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, multiple instances in the ring with each requested block belonging to a different store-gateway and RF = 1": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -118,7 +119,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, multiple instances in the ring with each requested block belonging to a different store-gateway and RF = 1 but excluded": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -133,7 +134,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block3.String()),
 		},
 		"default sharding, multiple instances in the ring with each requested block belonging to a different store-gateway and RF = 2": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -149,7 +150,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, multiple instances in the ring with multiple requested blocks belonging to the same store-gateway and RF = 2": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -162,7 +163,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"default sharding, multiple instances in the ring with each requested block belonging to a different store-gateway and RF = 2 and some blocks excluded but with replacement available": {
-			shardingStrategy:  storegateway.ShardingStrategyDefault,
+			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
 				d.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
@@ -184,7 +185,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 		// Sharding strategy: shuffle sharding
 		//
 		"shuffle sharding, single instance in the ring with RF = 1, SS = 1": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   1,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
@@ -196,7 +197,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, single instance in the ring with RF = 1, SS = 1 but excluded": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   1,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
@@ -209,7 +210,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			expectedErr: fmt.Errorf("no store-gateway instance left after checking exclude for block %s", block1.String()),
 		},
 		"shuffle sharding, single instance in the ring with RF = 2, SS = 2": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   2,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
@@ -221,7 +222,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 1, SS = 1": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   1,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
@@ -236,7 +237,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 1, SS = 2": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   2,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
@@ -252,7 +253,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 1, SS = 4": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   4,
 			replicationFactor: 1,
 			setup: func(d *ring.Desc) {
@@ -269,7 +270,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 2, SS = 2 with excluded blocks but some replacement available": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   2,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {
@@ -288,7 +289,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			},
 		},
 		"shuffle sharding, multiple instances in the ring with RF = 2, SS = 2 with excluded blocks and no replacement available": {
-			shardingStrategy:  storegateway.ShardingStrategyShuffle,
+			shardingStrategy:  util.ShardingStrategyShuffle,
 			tenantShardSize:   2,
 			replicationFactor: 2,
 			setup: func(d *ring.Desc) {

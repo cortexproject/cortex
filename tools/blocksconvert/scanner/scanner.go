@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -49,7 +51,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.TableNames, "scanner.tables", "", "Comma-separated tables to generate plan files from. If not used, all tables found via schema and scanning of Index store will be used.")
 	f.StringVar(&cfg.OutputDirectory, "scanner.output-dir", "", "Local directory used for storing temporary plan files (will be created if missing).")
-	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
+	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors, and plan uploads.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
@@ -374,7 +376,7 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	if s.bucket != nil {
 		level.Info(tableLog).Log("msg", "uploading generated plan files for table", "source", dir)
 
-		err := objstore.UploadDir(ctx, tableLog, s.bucket, dir, s.bucketPrefix)
+		err := uploadPlansConcurrently(ctx, tableLog, dir, s.bucket, s.bucketPrefix, s.cfg.Concurrency)
 		if err != nil {
 			return errors.Wrapf(err, "failed to upload plan files for table %s to bucket", table)
 		}
@@ -394,6 +396,68 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 
 	level.Info(tableLog).Log("msg", "done processing table")
 	return nil
+}
+
+func uploadPlansConcurrently(ctx context.Context, log log.Logger, dir string, bucket objstore.Bucket, bucketPrefix string, concurrency int) error {
+	df, err := os.Stat(dir)
+	if err != nil {
+		return errors.Wrap(err, "stat dir")
+	}
+	if !df.IsDir() {
+		return errors.Errorf("%s is not a directory", dir)
+	}
+
+	// Path relative to dir, and only use Slash as separator. BucketPrefix is prepended to it when uploading.
+	paths := make(chan string)
+
+	g, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < concurrency; i++ {
+		g.Go(func() error {
+			for p := range paths {
+				src := filepath.Join(dir, filepath.FromSlash(p))
+				dst := path.Join(bucketPrefix, p)
+
+				err := objstore.UploadFile(ctx, log, bucket, src, dst)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	g.Go(func() error {
+		defer close(paths)
+
+		return filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			if fi.IsDir() {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(dir, path)
+			if err != nil {
+				return err
+			}
+
+			relPath = filepath.ToSlash(relPath)
+
+			select {
+			case paths <- relPath:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	})
+
+	return g.Wait()
 }
 
 func shouldSkipOperationBecauseFileExists(file string) bool {

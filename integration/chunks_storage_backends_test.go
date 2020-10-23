@@ -60,7 +60,7 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 		storeConfigs[i] = storeConfig{From: oldestStoreStartTime.Add(time.Duration(i) * perStoreDuration).Format("2006-01-02"), IndexStore: store}
 	}
 
-	storageFlags := mergeFlags(ChunksStorageFlags, map[string]string{
+	storageFlags := mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-cassandra.addresses":          cassandra.NetworkHTTPEndpoint(),
 		"-cassandra.keyspace":           "tests", // keyspace gets created on startup if it does not exist
 		"-cassandra.replication-factor": "1",

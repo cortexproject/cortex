@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -38,6 +39,9 @@ type Config struct {
 	CompactionRetries     int                      `yaml:"compaction_retries"`
 	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
+
+	EnabledUsers  flagext.StringSliceCSV `yaml:"-" doc:"hidden"`
+	DisabledUsers flagext.StringSliceCSV `yaml:"-" doc:"hidden"`
 
 	// Compactors sharding.
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
@@ -71,6 +75,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
 		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
 		"if store gateway still has the block loaded, or compactor is ignoring the deletion because it's compacting the block at the same time.")
+
+	f.Var(&cfg.EnabledUsers, "compactor.enabled-users", "Comma separated list of users that can be compacted. If specified, only these users will be compacted by compactor, otherwise all users can be compacted. Subject to sharding.")
+	f.Var(&cfg.DisabledUsers, "compactor.disabled-users", "Comma separated list of users that cannot be compacted by this compactor. If specified, and compactor would normally pick given user for compaction (via -compactor.enabled-users or sharding), it will be ignored instead.")
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
@@ -82,6 +89,12 @@ type Compactor struct {
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
+
+	// If empty, all users are enabled. If not empty, only users in the map are enabled (possibly owned by compactor, also subject to sharding configuration).
+	enabledUsers map[string]struct{}
+
+	// If empty, no users are disabled. If not empty, users in the map are disabled (not owned by this compactor).
+	disabledUsers map[string]struct{}
 
 	// Function that creates bucket client and TSDB compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -177,6 +190,20 @@ func newCompactor(
 			Name: "cortex_compactor_garbage_collected_blocks_total",
 			Help: "Total number of blocks marked for deletion by compactor.",
 		}),
+	}
+
+	if len(compactorCfg.EnabledUsers) > 0 {
+		c.enabledUsers = map[string]struct{}{}
+		for _, u := range compactorCfg.EnabledUsers {
+			c.enabledUsers[u] = struct{}{}
+		}
+	}
+
+	if len(compactorCfg.DisabledUsers) > 0 {
+		c.disabledUsers = map[string]struct{}{}
+		for _, u := range compactorCfg.DisabledUsers {
+			c.disabledUsers[u] = struct{}{}
+		}
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -444,6 +471,10 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Compactor) ownUser(userID string) (bool, error) {
+	if !isAllowedUser(c.enabledUsers, c.disabledUsers, userID) {
+		return false, nil
+	}
+
 	// Always owned if sharding is disabled.
 	if !c.compactorCfg.ShardingEnabled {
 		return true, nil
@@ -465,4 +496,20 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	}
 
 	return rs.Ingesters[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID string) bool {
+	if len(enabledUsers) > 0 {
+		if _, ok := enabledUsers[userID]; !ok {
+			return false
+		}
+	}
+
+	if len(disabledUsers) > 0 {
+		if _, ok := disabledUsers[userID]; ok {
+			return false
+		}
+	}
+
+	return true
 }

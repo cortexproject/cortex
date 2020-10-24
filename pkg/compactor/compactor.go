@@ -353,15 +353,13 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		// If sharding is enabled, ensure the user ID belongs to our shard.
-		if c.compactorCfg.ShardingEnabled {
-			if owned, err := c.ownUser(userID); err != nil {
-				level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
-				continue
-			} else if !owned {
-				level.Debug(c.logger).Log("msg", "skipping user because not owned by this shard", "user", userID)
-				continue
-			}
+		// Ensure the user ID belongs to our shard.
+		if owned, err := c.ownUser(userID); err != nil {
+			level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
+			continue
+		} else if !owned {
+			level.Debug(c.logger).Log("msg", "skipping user because not owned by this shard", "user", userID)
+			continue
 		}
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)

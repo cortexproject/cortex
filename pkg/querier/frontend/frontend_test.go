@@ -255,7 +255,7 @@ func TestFrontendCheckReady(t *testing.T) {
 	}
 }
 
-func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
+func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	// Create an HTTP server listening locally. This server mocks the downstream
 	// Prometheus API-compatible server.
 	downstreamListen, err := net.Listen("tcp", "localhost:0")
@@ -284,7 +284,7 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 		data.Set("test", "form")
 		data.Set("issue", "3111")
 
-		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/", addr), strings.NewReader(data.Encode()))
+		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/?foo=bar", addr), strings.NewReader(data.Encode()))
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 
@@ -311,6 +311,7 @@ func TestFrontend_LogsSlowQueriesFormValues_Issue3111(t *testing.T) {
 		assert.Contains(t, logs, "msg=\"slow query detected\"")
 		assert.Contains(t, logs, "param_issue=3111")
 		assert.Contains(t, logs, "param_test=form")
+		assert.Contains(t, logs, "param_foo=bar")
 	}
 
 	testFrontend(t, config, nil, test, false, l)

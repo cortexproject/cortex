@@ -197,6 +197,8 @@ func newCompactor(
 		for _, u := range compactorCfg.EnabledUsers {
 			c.enabledUsers[u] = struct{}{}
 		}
+
+		level.Info(c.logger).Log("msg", "using enabled users", "enabled", strings.Join(compactorCfg.EnabledUsers, ", "))
 	}
 
 	if len(compactorCfg.DisabledUsers) > 0 {
@@ -204,6 +206,8 @@ func newCompactor(
 		for _, u := range compactorCfg.DisabledUsers {
 			c.disabledUsers[u] = struct{}{}
 		}
+
+		level.Info(c.logger).Log("msg", "using disabled users", "disabled", strings.Join(compactorCfg.DisabledUsers, ", "))
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)

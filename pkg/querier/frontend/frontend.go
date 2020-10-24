@@ -32,13 +32,14 @@ import (
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
-	maxBodySize               = 10 * 1024 * 1024 // 10 MiB
+	defaultMaxBodySize        = 10 * 1024 * 1024 // 10 MiB
 )
 
 var (
-	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errTooManyRequest        = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
 )
 
 // Config for a Frontend.
@@ -46,6 +47,7 @@ type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
 	DownstreamURL           string        `yaml:"downstream_url"`
+	DownstreamMaxBodySize   int64         `yaml:"downstream_max_body_size"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
@@ -54,6 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
+	f.Int64Var(&cfg.DownstreamMaxBodySize, "frontend.downstream-max-body-size", defaultMaxBodySize, "Max body size for downstream prometheus.")
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
@@ -184,7 +187,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 
 	// Buffer the body for later use to track slow queries.
 	var buf bytes.Buffer
-	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBodySize))
+	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.DownstreamMaxBodySize)
 	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
 
 	startTime := time.Now()
@@ -247,6 +250,9 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
+		if strings.Contains(err.Error(), "http: request body too large") {
+			err = errRequestEntityTooLarge
+		}
 	}
 	server.WriteError(w, err)
 }

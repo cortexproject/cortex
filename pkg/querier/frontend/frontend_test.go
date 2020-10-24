@@ -317,6 +317,57 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	testFrontend(t, config, nil, test, false, l)
 }
 
+func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
+	// Create an HTTP server listening locally. This server mocks the downstream
+	// Prometheus API-compatible server.
+	downstreamListen, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	downstreamServer := http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := w.Write([]byte(responseBody))
+			require.NoError(t, err)
+		}),
+	}
+
+	defer downstreamServer.Shutdown(context.Background()) //nolint:errcheck
+	go downstreamServer.Serve(downstreamListen)           //nolint:errcheck
+
+	// Configure the query-frontend with the mocked downstream server.
+	config := defaultFrontendConfig()
+	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
+	config.DownstreamMaxBodySize = 1
+
+	test := func(addr string) {
+		data := url.Values{}
+		data.Set("test", "max body size")
+
+		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/?foo=bar", addr), strings.NewReader(data.Encode()))
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+
+		ctx := context.Background()
+		req = req.WithContext(ctx)
+		assert.NoError(t, err)
+		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		assert.NoError(t, err)
+
+		client := http.Client{
+			Transport: &nethttp.Transport{},
+		}
+
+		resp, err := client.Do(req)
+		assert.NoError(t, err)
+		b, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		assert.NoError(t, err)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode, string(b))
+	}
+
+	testFrontend(t, config, nil, test, false, nil)
+}
+
 func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {
 	logger := log.NewNopLogger()
 	if l != nil {

@@ -206,13 +206,17 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 
 // initQuerier registers an internal HTTP router with a Prometheus API backed by the
 // Cortex Queryable. Then it does one of the following:
+//
 // 1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, the internal
 //    HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
 //    worker.
+//
 // 2. Querier Standalone: The querier will register the internal HTTP router with the external
 //    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
 //    as a http.Handler to the frontend worker.
+//
 // Route Diagram:
+//
 //                        │  query
 //                        │ request
 //                        │
@@ -249,6 +253,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 //                     └──────────────────────│  Prometheus API  │
 //                                            │                  │
 //                                            └──────────────────┘
+//
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// Create a internal HTTP handler that is configured with the Prometheus API routes and points
 	// to a Prometheus API struct instantiated with the Cortex Queryable.

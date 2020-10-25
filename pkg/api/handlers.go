@@ -204,7 +204,7 @@ func NewQuerierHandler(
 		InflightRequests: inflightRequests,
 	}
 	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
-	middlewares := middleware.Merge(fakeRemoteAddr(), inst, cacheGenHeaderMiddleware)
+	middlewares := middleware.Merge(inst, cacheGenHeaderMiddleware)
 	router.Use(middlewares.Wrap)
 
 	promRouter := route.New().WithPrefix(cfg.ServerPrefix + cfg.PrometheusHTTPPrefix + "/api/v1")
@@ -227,9 +227,7 @@ func NewQuerierHandler(
 	// A prefix is fine because external routes will be registered explicitly
 	router.PathPrefix(cfg.LegacyHTTPPrefix + "/api/v1/").Handler(legacyPromRouter)
 
-	// Since we have a new router and the request will not go trough the default server
-	// HTTP middleware stack, we need to add a middleware to extract the trace context
-	// from the HTTP headers and inject it into the Go context.
+	// Add a middleware to extract the trace context and add a header.
 	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
 		return "internalQuerier"
 	}))

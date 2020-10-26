@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 )
@@ -104,16 +105,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		stop:      make(chan struct{}),
 		active:    false,
 		activeMtx: sync.Mutex{},
-		configHashMetric: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_alertmanager_config_hash",
+		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
 		}),
 	}
 
 	am.registry = reg
-	if am.registry != nil {
-		am.registry.MustRegister(am.configHashMetric)
-	}
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -263,9 +261,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	am.active = true
 	am.activeMtx.Unlock()
 
-	hash := md5HashAsMetricValue([]byte(rawCfg))
-	am.configHashMetric.Set(hash)
-
+	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))
 	return nil
 }
 

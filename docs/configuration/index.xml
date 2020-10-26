@@ -13,6 +13,7 @@ Passwords are filtered out of this endpoint.&lt;/p>
 &lt;li>&lt;code>&amp;lt;string&amp;gt;&lt;/code>: a regular string&lt;/li>
 &lt;li>&lt;code>&amp;lt;url&amp;gt;&lt;/code>: an URL&lt;/li>
 &lt;li>&lt;code>&amp;lt;prefix&amp;gt;&lt;/code>: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)&lt;/li>
+&lt;li>&lt;code>&amp;lt;relabel_config&amp;gt;&lt;/code>: a &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config">Prometheus relabeling configuration&lt;/a>.&lt;/li>
 &lt;li>&lt;code>&amp;lt;time&amp;gt;&lt;/code>: a timestamp, with available formats: &lt;code>2006-01-20&lt;/code> (midnight, local timezone), &lt;code>2006-01-20T15:04&lt;/code> (local timezone), and RFC 3339 formats: &lt;code>2006-01-20T15:04:05Z&lt;/code> (UTC) or &lt;code>2006-01-20T15:04:05+07:00&lt;/code> (explicit timezone)&lt;/li>
 &lt;/ul>
 &lt;h3 id="use-environment-variables-in-the-configuration">Use environment variables in the configuration&lt;/h3>
@@ -2684,6 +2685,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -distributor.ingestion-tenant-shard-size&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ingestion_tenant_shard_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># List of metric relabel configurations. Note that in most situations, it is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># more effective to use metrics relabeling directly in the Prometheus server,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># e.g. remote_write.write_relabel_configs.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metric_relabel_configs&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;relabel_config...&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The maximum number of series for which a query can fetch samples from each&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ingester. This limit is enforced only in the ingesters (when querying samples&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># not flushed to the storage yet) and it&amp;#39;s a per-instance limit. This limit is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4446,4 +4452,5 @@ and development.&lt;/p>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
 &lt;li>TLS configuration in Etcd client.&lt;/li>
 &lt;li>Blocksconvert tools&lt;/li>
+&lt;li>Metric relabeling in the distributor.&lt;/li>
 &lt;/ul></description></item></channel></rss>

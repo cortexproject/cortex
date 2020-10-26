@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,10 +40,15 @@ func TestReplicationSet_GetAddresses(t *testing.T) {
 
 // Return a function that fails starting from failAfter times
 func failingFunctionAfter(failAfter int, delay time.Duration) func(context.Context, *IngesterDesc) (interface{}, error) {
+	var mutex = &sync.RWMutex{}
 	count := 0
 	return func(context.Context, *IngesterDesc) (interface{}, error) {
+		mutex.Lock()
 		count++
+		mutex.Unlock()
 		time.Sleep(delay)
+		mutex.RLock()
+		defer mutex.RUnlock()
 		if count > failAfter {
 			return nil, errors.New("Dummy error")
 		}

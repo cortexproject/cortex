@@ -367,14 +367,16 @@ type HTTPReadinessProbe struct {
 	path                     string
 	expectedStatusRangeStart int
 	expectedStatusRangeEnd   int
+	expectedContent          []string
 }
 
-func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int) *HTTPReadinessProbe {
+func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
 		port:                     port,
 		path:                     path,
 		expectedStatusRangeStart: expectedStatusRangeStart,
 		expectedStatusRangeEnd:   expectedStatusRangeEnd,
+		expectedContent:          expectedContent,
 	}
 }
 
@@ -392,13 +394,19 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	}
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "response readiness")
+	body, _ := ioutil.ReadAll(res.Body)
 
-	if p.expectedStatusRangeStart <= res.StatusCode && res.StatusCode <= p.expectedStatusRangeEnd {
-		return nil
+	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
+		return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
 
-	body, _ := ioutil.ReadAll(res.Body)
-	return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
+	for _, expected := range p.expectedContent {
+		if !strings.Contains(string(body), expected) {
+			return fmt.Errorf("expected body containing %s, got: %v", expected, string(body))
+		}
+	}
+
+	return nil
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.

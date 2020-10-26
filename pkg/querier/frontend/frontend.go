@@ -47,7 +47,7 @@ type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
 	DownstreamURL           string        `yaml:"downstream_url"`
-	DownstreamMaxBodySize   int64         `yaml:"downstream_max_body_size"`
+	MaxBodySize             int64         `yaml:"max_body_size"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
@@ -56,7 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-	f.Int64Var(&cfg.DownstreamMaxBodySize, "frontend.downstream-max-body-size", defaultMaxBodySize, "Max body size for downstream prometheus.")
+	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", defaultMaxBodySize, "Max body size for downstream prometheus.")
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
@@ -187,7 +187,7 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 
 	// Buffer the body for later use to track slow queries.
 	var buf bytes.Buffer
-	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.DownstreamMaxBodySize)
+	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.MaxBodySize)
 	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
 
 	startTime := time.Now()

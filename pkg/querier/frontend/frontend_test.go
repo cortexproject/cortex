@@ -336,7 +336,7 @@ func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
 	// Configure the query-frontend with the mocked downstream server.
 	config := defaultFrontendConfig()
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
-	config.DownstreamMaxBodySize = 1
+	config.MaxBodySize = 1
 
 	test := func(addr string) {
 		data := url.Values{}

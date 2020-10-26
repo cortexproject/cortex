@@ -56,5 +56,3 @@ frontend:
 
   # The Prometheus URL to which the query-frontend should connect to.
   downstream_url: http://prometheus.mydomain.com
-  # Max body size for downstream prometheus
-  downstream_max_body_size: 10485760

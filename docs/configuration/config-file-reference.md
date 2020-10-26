@@ -770,8 +770,8 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [downstream_url: <string> | default = ""]
 
 # Max body size for downstream prometheus.
-# CLI flag: -frontend.downstream-max-body-size
-[downstream_max_body_size: <int> | default = 10485760]
+# CLI flag: -frontend.max-body-size
+[max_body_size: <int> | default = 10485760]
 
 # Log queries that are slower than the specified duration. Set to 0 to disable.
 # Set to < 0 to enable on all queries.

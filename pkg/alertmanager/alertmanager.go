@@ -2,6 +2,8 @@ package alertmanager
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/binary"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -70,6 +72,11 @@ type Alertmanager struct {
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
+	// This needs to be set to the hash of the config. All the hashes need to be same
+	// for deduping of alerts to work, hence we need this metric. See https://github.com/prometheus/alertmanager/issues/596
+	// Further, in upstream AM, this metric is handled using the config coordinator which we don't use
+	// hence we need to generate the metric ourselves.
+	configHashMetric prometheus.Gauge
 
 	activeMtx sync.Mutex
 	active    bool
@@ -97,9 +104,16 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		stop:      make(chan struct{}),
 		active:    false,
 		activeMtx: sync.Mutex{},
+		configHashMetric: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_alertmanager_config_hash",
+			Help: "Hash of the currently loaded alertmanager configuration.",
+		}),
 	}
 
 	am.registry = reg
+	if am.registry != nil {
+		am.registry.MustRegister(am.configHashMetric)
+	}
 
 	am.wg.Add(1)
 	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
@@ -182,7 +196,7 @@ func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 }
 
 // ApplyConfig applies a new configuration to an Alertmanager.
-func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
+func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
@@ -248,6 +262,9 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config) error {
 	am.activeMtx.Lock()
 	am.active = true
 	am.activeMtx.Unlock()
+
+	hash := md5HashAsMetricValue([]byte(rawCfg))
+	am.configHashMetric.Set(hash)
 
 	return nil
 }
@@ -366,4 +383,13 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		return nil, &errs
 	}
 	return integrations, nil
+}
+
+func md5HashAsMetricValue(data []byte) float64 {
+	sum := md5.Sum(data)
+	// We only want 48 bits as a float64 only has a 53 bit mantissa.
+	smallSum := sum[0:6]
+	var bytes = make([]byte, 8)
+	copy(bytes, smallSum)
+	return float64(binary.LittleEndian.Uint64(bytes))
 }

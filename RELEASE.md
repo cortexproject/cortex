@@ -20,7 +20,8 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.2.0         | 2020-06-24                                 | Bryan Boreham                               |
 | v1.3.0         | 2020-08-03                                 | Marco Pracucci (@pracucci)                  |
 | v1.4.0         | 2020-09-14                                 | Marco Pracucci (@pracucci)                  |
-| v1.5.0         | 2020-10-26                                 |                                             |
+| v1.5.0         | 2020-10-26                                 | Chris Marchbanks (@csmarchbanks)            |
+| v1.6.0         | 2020-12-07                                 |                                             |
 
 ## Release shepherd responsibilities
 

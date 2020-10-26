@@ -740,6 +740,15 @@ store_gateway_client:
 # Default value 0 means secondary store is always queried.
 # CLI flag: -querier.use-second-store-before-time
 [use_second_store_before_time: <time> | default = 0]
+
+# When distributor's sharding strategy is shuffle-sharding and this setting is >
+# 0, queriers fetch in-memory series from the minimum set of required ingesters,
+# selecting only ingesters which may have received series since 'now - lookback
+# period'. The lookback period should be greater or equal than the configured
+# 'query store after'. If this setting is 0, queriers always query all ingesters
+# (ingesters shuffle sharding on read path is disabled).
+# CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
+[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 ```
 
 ### `query_frontend_config`
@@ -2893,6 +2902,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # 0 disables shuffle sharding for the tenant.
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
 
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the

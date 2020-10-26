@@ -26,9 +26,8 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	chunksFlags := mergeFlags(ChunksStorageFlags, map[string]string{})
-
-	blockFlags := mergeFlags(BlocksStorageFlags, map[string]string{
+	chunksFlags := ChunksStorageFlags()
+	blockFlags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.tsdb.block-ranges-period":      "1h",
 		"-blocks-storage.tsdb.head-compaction-interval": "1m",
 		"-store-gateway.sharding-enabled":               "false",

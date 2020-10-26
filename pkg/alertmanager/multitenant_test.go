@@ -96,11 +96,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
-		# TYPE cortex_alertmanager_config_invalid gauge
-		cortex_alertmanager_config_invalid{user="user1"} 0
-		cortex_alertmanager_config_invalid{user="user2"} 0
-	`), "cortex_alertmanager_config_invalid"))
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -113,12 +113,12 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Len(t, am.alertmanagers, 3)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
-		# TYPE cortex_alertmanager_config_invalid gauge
-		cortex_alertmanager_config_invalid{user="user1"} 0
-		cortex_alertmanager_config_invalid{user="user2"} 0
-		cortex_alertmanager_config_invalid{user="user3"} 0
-	`), "cortex_alertmanager_config_invalid"))
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure the config is updated
 	mockStore.configs["user1"] = alerts.AlertConfigDesc{
@@ -146,11 +146,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
-		# TYPE cortex_alertmanager_config_invalid gauge
-		cortex_alertmanager_config_invalid{user="user1"} 0
-		cortex_alertmanager_config_invalid{user="user2"} 0
-	`), "cortex_alertmanager_config_invalid"))
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -170,12 +170,12 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_alertmanager_config_invalid Boolean set to 1 whenever the Alertmanager config is invalid for a user.
-		# TYPE cortex_alertmanager_config_invalid gauge
-		cortex_alertmanager_config_invalid{user="user1"} 0
-		cortex_alertmanager_config_invalid{user="user2"} 0
-		cortex_alertmanager_config_invalid{user="user3"} 0
-	`), "cortex_alertmanager_config_invalid"))
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
+		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
 }
 
 func TestAlertmanager_NoExternalURL(t *testing.T) {

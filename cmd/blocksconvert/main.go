@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/builder"
+	"github.com/cortexproject/cortex/tools/blocksconvert/cleaner"
 	"github.com/cortexproject/cortex/tools/blocksconvert/scanner"
 	"github.com/cortexproject/cortex/tools/blocksconvert/scheduler"
 )
@@ -29,6 +30,7 @@ type Config struct {
 	ScannerConfig   scanner.Config
 	BuilderConfig   builder.Config
 	SchedulerConfig scheduler.Config
+	CleanerConfig   cleaner.Config
 }
 
 func main() {
@@ -38,6 +40,7 @@ func main() {
 	cfg.ScannerConfig.RegisterFlags(flag.CommandLine)
 	cfg.BuilderConfig.RegisterFlags(flag.CommandLine)
 	cfg.SchedulerConfig.RegisterFlags(flag.CommandLine)
+	cfg.CleanerConfig.RegisterFlags(flag.CommandLine)
 	cfg.ServerConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -62,6 +65,8 @@ func main() {
 		targetService, err = builder.NewBuilder(cfg.BuilderConfig, cfg.SharedConfig, util.Logger, registry)
 	case "scheduler":
 		targetService, err = scheduler.NewScheduler(cfg.SchedulerConfig, cfg.SharedConfig, util.Logger, registry, serv.HTTP, serv.GRPC)
+	case "cleaner":
+		targetService, err = cleaner.NewCleaner(cfg.CleanerConfig, cfg.SharedConfig, util.Logger, registry)
 	default:
 		err = fmt.Errorf("unknown target")
 	}

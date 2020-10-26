@@ -6,10 +6,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
-type fetcher struct {
+type Fetcher struct {
 	userID string
 
 	client chunk.Client
@@ -18,8 +17,8 @@ type fetcher struct {
 	fetchedChunksSize prometheus.Counter
 }
 
-func newFetcher(userID string, client chunk.Client, chunksCache cache.Cache, fetchedChunks, fetchedChunksSize prometheus.Counter) (*fetcher, error) {
-	return &fetcher{
+func newFetcher(userID string, client chunk.Client, fetchedChunks, fetchedChunksSize prometheus.Counter) (*Fetcher, error) {
+	return &Fetcher{
 		client:            client,
 		userID:            userID,
 		fetchedChunks:     fetchedChunks,
@@ -27,7 +26,7 @@ func newFetcher(userID string, client chunk.Client, chunksCache cache.Cache, fet
 	}, nil
 }
 
-func (f *fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.Chunk, error) {
+func (f *Fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.Chunk, error) {
 	chunks := make([]chunk.Chunk, 0, len(chunkIDs))
 
 	for _, cid := range chunkIDs {

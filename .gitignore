@@ -19,5 +19,7 @@ cortex
 query-tee
 test-exporter
 
+!tools/blocksconvert
+
 # This is custom Makefile modification, if it exists.
 Makefile.local

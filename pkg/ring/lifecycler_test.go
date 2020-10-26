@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -16,18 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
-
-type flushTransferer struct {
-	lifecycler *Lifecycler
-}
-
-func (f *flushTransferer) Flush() {}
-func (f *flushTransferer) TransferOut(ctx context.Context) error {
-	if err := f.lifecycler.ClaimTokensFor(ctx, "ing1"); err != nil {
-		return err
-	}
-	return f.lifecycler.ChangeState(ctx, ACTIVE)
-}
 
 func testLifecyclerConfig(ringConfig Config, id string) LifecyclerConfig {
 	var lifecyclerConfig LifecyclerConfig
@@ -58,21 +47,19 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	flagext.DefaultValues(&ringConfig)
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
-	r, err := New(ringConfig, "ingester", IngesterRingKey, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+	ctx := context.Background()
 
 	// Add the first ingester to the ring
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &flushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler1))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler1))
+	defer services.StopAndAwaitTerminated(ctx, lifecycler1) // nolint:errcheck
 
 	// Assert the first ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -84,11 +71,12 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &flushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler2))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler2))
+	defer services.StopAndAwaitTerminated(ctx, lifecycler2) // nolint:errcheck
 
 	// Assert the second ingester joined the ring
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
@@ -99,6 +87,46 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
 		return lifecycler1.HealthyInstancesCount() == 2
 	})
+}
+
+func TestLifecycler_ZonesCount(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	events := []struct {
+		zone          string
+		expectedZones int
+	}{
+		{"zone-a", 1},
+		{"zone-b", 2},
+		{"zone-a", 2},
+		{"zone-c", 3},
+	}
+
+	for idx, event := range events {
+		ctx := context.Background()
+
+		// Register an ingester to the ring.
+		cfg := testLifecyclerConfig(ringConfig, fmt.Sprintf("instance-%d", idx))
+		cfg.HeartbeatPeriod = 100 * time.Millisecond
+		cfg.JoinAfter = 100 * time.Millisecond
+		cfg.Zone = event.zone
+
+		lifecycler, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		assert.Equal(t, 0, lifecycler.ZonesCount())
+
+		require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
+		defer services.StopAndAwaitTerminated(ctx, lifecycler) // nolint:errcheck
+
+		// Wait until joined.
+		test.Poll(t, time.Second, idx+1, func() interface{} {
+			return lifecycler.HealthyInstancesCount()
+		})
+
+		assert.Equal(t, event.expectedZones, lifecycler.ZonesCount())
+	}
 }
 
 func TestLifecycler_NilFlushTransferer(t *testing.T) {
@@ -156,8 +184,8 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 type nopFlushTransferer struct{}
 
 func (f *nopFlushTransferer) Flush() {}
-func (f *nopFlushTransferer) TransferOut(ctx context.Context) error {
-	panic("should not be called")
+func (f *nopFlushTransferer) TransferOut(_ context.Context) error {
+	return nil
 }
 
 func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {

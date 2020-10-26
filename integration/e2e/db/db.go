@@ -42,7 +42,7 @@ func NewConsul() *e2e.HTTPService {
 		images.Consul,
 		// Run consul in "dev" mode so that the initial leader election is immediate
 		e2e.NewCommand("agent", "-server", "-client=0.0.0.0", "-dev", "-log-level=err"),
-		nil,
+		e2e.NewHTTPReadinessProbe(8500, "/v1/operator/autopilot/health", 200, 200, `"Healthy": true`),
 		8500,
 	)
 }
@@ -51,9 +51,10 @@ func NewETCD() *e2e.HTTPService {
 	return e2e.NewHTTPService(
 		"etcd",
 		images.ETCD,
-		e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--log-level=error"),
-		nil,
+		e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),
+		e2e.NewHTTPReadinessProbe(9000, "/health", 200, 204),
 		2379,
+		9000, // Metrics
 	)
 }
 

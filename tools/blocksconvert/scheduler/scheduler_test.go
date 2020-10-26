@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -33,7 +32,7 @@ func TestScanForPlans(t *testing.T) {
 	// Only error, progress or finished
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/4.error", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/5.progress.1234234", strings.NewReader("")))
-	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/6.finished.01E8GCW9J0HV0992HSZ0N6RAMN", strings.NewReader("")))
+	require.NoError(t, bucket.Upload(context.Background(), "migration/12345/6.finished.cleaned", strings.NewReader("")))
 
 	plans, err := scanForPlans(context.Background(), bucket, "migration/12345/")
 	require.NoError(t, err)
@@ -51,7 +50,7 @@ func TestScanForPlans(t *testing.T) {
 			ProgressFiles: map[string]time.Time{
 				"migration/12345/2.inprogress.93485345": time.Unix(93485345, 0),
 			},
-			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN"), ulid.MustParse("01EE9Y140JP4T58X8FGTG5T17F")},
+			Finished: []string{"01E8GCW9J0HV0992HSZ0N6RAMN", "01EE9Y140JP4T58X8FGTG5T17F"},
 		},
 		"3": {
 			PlanFiles: []string{"migration/12345/3.plan"},
@@ -66,7 +65,7 @@ func TestScanForPlans(t *testing.T) {
 			},
 		},
 		"6": {
-			Blocks: []ulid.ULID{ulid.MustParse("01E8GCW9J0HV0992HSZ0N6RAMN")},
+			Finished: []string{"cleaned"},
 		},
 	}, plans)
 }

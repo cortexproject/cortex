@@ -23,6 +23,7 @@ type MetricsOptions struct {
 	GetValue           GetMetricValueFunc
 	LabelMatchers      []*labels.Matcher
 	WaitMissingMetrics bool
+	SkipMissingMetrics bool
 }
 
 // WithMetricCount is an option to get the histogram/summary count as metric value.
@@ -41,6 +42,11 @@ func WithLabelMatchers(matchers ...*labels.Matcher) MetricsOption {
 // option is not enabled, will return error on missing metrics.
 func WaitMissingMetrics(opts *MetricsOptions) {
 	opts.WaitMissingMetrics = true
+}
+
+// SkipWaitMissingMetrics is an option to skip/ignore whenever an expected metric is missing.
+func SkipMissingMetrics(opts *MetricsOptions) {
+	opts.SkipMissingMetrics = true
 }
 
 func buildMetricsOptions(opts []MetricsOption) MetricsOptions {

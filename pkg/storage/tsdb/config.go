@@ -55,6 +55,7 @@ var (
 
 	errUnsupportedStorageBackend    = errors.New("unsupported TSDB storage backend")
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
+	errInvalidOpeningConcurrency    = errors.New("invalid TSDB opening concurrency")
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
 	errInvalidCompactionConcurrency = errors.New("invalid TSDB compaction concurrency")
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
@@ -207,6 +208,10 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 func (cfg *TSDBConfig) Validate() error {
 	if cfg.ShipInterval > 0 && cfg.ShipConcurrency <= 0 {
 		return errInvalidShipConcurrency
+	}
+
+	if cfg.MaxTSDBOpeningConcurrencyOnStartup <= 0 {
+		return errInvalidOpeningConcurrency
 	}
 
 	if cfg.HeadCompactionInterval <= 0 || cfg.HeadCompactionInterval > 5*time.Minute {

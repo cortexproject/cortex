@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -1096,13 +1095,44 @@ func (i *Ingester) closeAllTSDB() {
 // concurrently opening TSDB.
 func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
-	wg := &sync.WaitGroup{}
-	openGate := gate.New(i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup)
 
-	// Keep track of all errors that could occur.
+	wg := &sync.WaitGroup{}
+	queue := make(chan string)
 	errs := tsdb_errors.MultiError{}
 	errsMx := sync.Mutex{}
 
+	// Create a pool of workers which will open existing TSDBs.
+	for n := 0; n < i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup; n++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for userID := range queue {
+				defer func(ts time.Time) {
+					i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
+				}(time.Now())
+
+				db, err := i.createTSDB(userID)
+				if err != nil {
+					errsMx.Lock()
+					errs.Add(errors.Wrapf(err, "unable to open TSDB for user %s", userID))
+					errsMx.Unlock()
+
+					level.Error(util.Logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
+					return
+				}
+
+				// Add the database to the map of user databases
+				i.userStatesMtx.Lock()
+				i.TSDBState.dbs[userID] = db
+				i.userStatesMtx.Unlock()
+				i.metrics.memUsers.Inc()
+			}
+		}()
+	}
+
+	// Find all users with a TSDB on the filesystem.
 	walkErr := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// If the root directory doesn't exist, we're OK (not needed to be created upfront).
@@ -1138,35 +1168,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 			return errors.Wrapf(err, "unable to read TSDB dir %s for user %s", path, userID)
 		}
 
-		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
-		if err := openGate.Start(ctx); err != nil {
-			return err
-		}
-
-		wg.Add(1)
-		go func(userID string) {
-			defer wg.Done()
-			defer openGate.Done()
-			defer func(ts time.Time) {
-				i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
-			}(time.Now())
-
-			db, err := i.createTSDB(userID)
-			if err != nil {
-				errsMx.Lock()
-				errs.Add(errors.Wrapf(err, "unable to open TSDB for user %s", userID))
-				errsMx.Unlock()
-
-				level.Error(util.Logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
-				return
-			}
-
-			// Add the database to the map of user databases
-			i.userStatesMtx.Lock()
-			i.TSDBState.dbs[userID] = db
-			i.userStatesMtx.Unlock()
-			i.metrics.memUsers.Inc()
-		}(userID)
+		// Enqueue the user to be processed.
+		queue <- userID
 
 		return filepath.SkipDir // Don't descend into directories
 	})
@@ -1177,7 +1180,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 		errsMx.Unlock()
 	}
 
-	// Wait for all opening routines to finish
+	// Wait for all workers to complete.
+	close(queue)
 	wg.Wait()
 
 	// Ensure no error occurred.

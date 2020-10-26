@@ -40,8 +40,8 @@ type Config struct {
 	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
 
-	EnabledUsers  flagext.StringSliceCSV `yaml:"-" doc:"hidden"`
-	DisabledUsers flagext.StringSliceCSV `yaml:"-" doc:"hidden"`
+	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
+	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
 	// Compactors sharding.
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
@@ -76,8 +76,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
 		"if store gateway still has the block loaded, or compactor is ignoring the deletion because it's compacting the block at the same time.")
 
-	f.Var(&cfg.EnabledUsers, "compactor.enabled-users", "Comma separated list of users that can be compacted. If specified, only these users will be compacted by compactor, otherwise all users can be compacted. Subject to sharding.")
-	f.Var(&cfg.DisabledUsers, "compactor.disabled-users", "Comma separated list of users that cannot be compacted by this compactor. If specified, and compactor would normally pick given user for compaction (via -compactor.enabled-users or sharding), it will be ignored instead.")
+	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
+	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
@@ -192,22 +192,22 @@ func newCompactor(
 		}),
 	}
 
-	if len(compactorCfg.EnabledUsers) > 0 {
+	if len(compactorCfg.EnabledTenants) > 0 {
 		c.enabledUsers = map[string]struct{}{}
-		for _, u := range compactorCfg.EnabledUsers {
+		for _, u := range compactorCfg.EnabledTenants {
 			c.enabledUsers[u] = struct{}{}
 		}
 
-		level.Info(c.logger).Log("msg", "using enabled users", "enabled", strings.Join(compactorCfg.EnabledUsers, ", "))
+		level.Info(c.logger).Log("msg", "using enabled users", "enabled", strings.Join(compactorCfg.EnabledTenants, ", "))
 	}
 
-	if len(compactorCfg.DisabledUsers) > 0 {
+	if len(compactorCfg.DisabledTenants) > 0 {
 		c.disabledUsers = map[string]struct{}{}
-		for _, u := range compactorCfg.DisabledUsers {
+		for _, u := range compactorCfg.DisabledTenants {
 			c.disabledUsers[u] = struct{}{}
 		}
 
-		level.Info(c.logger).Log("msg", "using disabled users", "disabled", strings.Join(compactorCfg.DisabledUsers, ", "))
+		level.Info(c.logger).Log("msg", "using disabled users", "disabled", strings.Join(compactorCfg.DisabledTenants, ", "))
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)

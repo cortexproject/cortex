@@ -1109,9 +1109,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 			defer wg.Done()
 
 			for userID := range queue {
-				defer func(ts time.Time) {
-					i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
-				}(time.Now())
+				startTime := time.Now()
 
 				db, err := i.createTSDB(userID)
 				if err != nil {
@@ -1128,6 +1126,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 				i.TSDBState.dbs[userID] = db
 				i.userStatesMtx.Unlock()
 				i.metrics.memUsers.Inc()
+
+				i.TSDBState.walReplayTime.Observe(time.Since(startTime).Seconds())
 			}
 		}()
 	}

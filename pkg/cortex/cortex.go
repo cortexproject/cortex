@@ -12,6 +12,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/promql"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -20,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -249,21 +250,23 @@ type Cortex struct {
 	ServiceMap    map[string]services.Service
 	ModuleManager *modules.Manager
 
-	API              *api.API
-	Server           *server.Server
-	Ring             *ring.Ring
-	Overrides        *validation.Overrides
-	Distributor      *distributor.Distributor
-	Ingester         *ingester.Ingester
-	Flusher          *flusher.Flusher
-	Store            chunk.Store
-	DeletesStore     *purger.DeleteStore
-	Frontend         *frontend.Frontend
-	TableManager     *chunk.TableManager
-	Cache            cache.Cache
-	RuntimeConfig    *runtimeconfig.Manager
-	Purger           *purger.Purger
-	TombstonesLoader *purger.TombstonesLoader
+	API                      *api.API
+	Server                   *server.Server
+	Ring                     *ring.Ring
+	Overrides                *validation.Overrides
+	Distributor              *distributor.Distributor
+	Ingester                 *ingester.Ingester
+	Flusher                  *flusher.Flusher
+	Store                    chunk.Store
+	DeletesStore             *purger.DeleteStore
+	Frontend                 *frontend.Frontend
+	TableManager             *chunk.TableManager
+	RuntimeConfig            *runtimeconfig.Manager
+	Purger                   *purger.Purger
+	TombstonesLoader         *purger.TombstonesLoader
+	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	QuerierEngine            *promql.Engine
+	QueryFrontendTripperware frontend.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rules.RuleStore

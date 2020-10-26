@@ -25,8 +25,8 @@ func TestAlertmanager(t *testing.T) {
 	alertmanager := e2ecortex.NewAlertmanager(
 		"alertmanager",
 		mergeFlags(
-			AlertmanagerFlags,
-			AlertmanagerLocalFlags,
+			AlertmanagerFlags(),
+			AlertmanagerLocalFlags(),
 		),
 		"",
 	)
@@ -56,15 +56,14 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	minio := e2edb.NewMinio(9000, AlertmanagerS3Flags["-alertmanager.storage.s3.buckets"])
+	flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
+
+	minio := e2edb.NewMinio(9000, flags["-alertmanager.storage.s3.buckets"])
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	am := e2ecortex.NewAlertmanager(
 		"alertmanager",
-		mergeFlags(
-			AlertmanagerFlags,
-			AlertmanagerS3Flags,
-		),
+		flags,
 		"",
 	)
 

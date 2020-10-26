@@ -63,8 +63,10 @@ func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
 }
 
 type ruleLimits struct {
-	evalDelay   time.Duration
-	tenantShard int
+	evalDelay            time.Duration
+	tenantShard          int
+	maxRulesPerRuleGroup int
+	maxRuleGroups        int
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -73,6 +75,14 @@ func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
 	return r.tenantShard
+}
+
+func (r ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
+	return r.maxRuleGroups
+}
+
+func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
+	return r.maxRulesPerRuleGroup
 }
 
 func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
@@ -101,7 +111,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0}, cleanup
+	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
@@ -291,7 +301,7 @@ func TestSharding(t *testing.T) {
 
 		"default sharding, single ruler": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyDefault,
+			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
 			},
@@ -300,7 +310,7 @@ func TestSharding(t *testing.T) {
 
 		"default sharding, multiple ACTIVE rulers": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyDefault,
+			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
 				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
@@ -321,7 +331,7 @@ func TestSharding(t *testing.T) {
 
 		"default sharding, unhealthy ACTIVE ruler": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyDefault,
+			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
@@ -345,7 +355,7 @@ func TestSharding(t *testing.T) {
 
 		"default sharding, LEAVING ruler": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyDefault,
+			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.LEAVING, time.Now())
@@ -361,7 +371,7 @@ func TestSharding(t *testing.T) {
 
 		"default sharding, JOINING ruler": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyDefault,
+			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.JOINING, time.Now())
@@ -377,7 +387,7 @@ func TestSharding(t *testing.T) {
 
 		"shuffle sharding, single ruler": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now())
@@ -390,7 +400,7 @@ func TestSharding(t *testing.T) {
 
 		"shuffle sharding, multiple rulers, shard size 1": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
@@ -407,7 +417,7 @@ func TestSharding(t *testing.T) {
 		// Same test as previous one, but with shard size=2. Second ruler gets all the rules.
 		"shuffle sharding, two rulers, shard size 2": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
@@ -424,7 +434,7 @@ func TestSharding(t *testing.T) {
 
 		"shuffle sharding, two rulers, shard size 1, distributed users": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
@@ -444,7 +454,7 @@ func TestSharding(t *testing.T) {
 		},
 		"shuffle sharding, three rulers, shard size 2": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
@@ -468,7 +478,7 @@ func TestSharding(t *testing.T) {
 		},
 		"shuffle sharding, three rulers, shard size 2, ruler2 has no users": {
 			sharding:         true,
-			shardingStrategy: ShardingStrategyShuffle,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {

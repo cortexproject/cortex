@@ -84,3 +84,6 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
 
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+
+// Fix a panic (see: https://github.com/opentracing-contrib/go-grpc/pull/12)
+replace github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645

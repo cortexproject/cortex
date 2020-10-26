@@ -144,7 +144,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 
 	userRules, exists := m.rules[userID]
 	if !exists {
-		return nil, rules.ErrUserNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	if namespace == "" {
@@ -160,7 +160,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	}
 
 	if len(namespaceRules) == 0 {
-		return nil, rules.ErrGroupNamespaceNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	return namespaceRules, nil

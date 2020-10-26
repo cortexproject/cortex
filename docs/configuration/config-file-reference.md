@@ -24,6 +24,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<string>`: a regular string
 * `<url>`: an URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
+* `<relabel_config>`: a [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
 * `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), and RFC 3339 formats: `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)
 
 ### Use environment variables in the configuration
@@ -2798,6 +2799,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # tenant.
 # CLI flag: -distributor.ingestion-tenant-shard-size
 [ingestion_tenant_shard_size: <int> | default = 0]
+
+# List of metric relabel configurations. Note that in most situations, it is
+# more effective to use metrics relabeling directly in the Prometheus server,
+# e.g. remote_write.write_relabel_configs.
+[metric_relabel_configs: <relabel_config...> | default = ]
 
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples

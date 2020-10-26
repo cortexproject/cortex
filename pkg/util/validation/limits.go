@@ -5,6 +5,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/relabel"
+
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -46,6 +48,7 @@ type Limits struct {
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 
 	// Ingester enforced limits.
 	// Series
@@ -374,6 +377,11 @@ func (o *Overrides) IngestionTenantShardSize(userID string) int {
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
+}
+
+// MetricRelabelConfigs returns the metric relabel configs for a given user.
+func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).MetricRelabelConfigs
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.

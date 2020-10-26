@@ -193,6 +193,16 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 		if err != nil {
 			return nil, errors.Wrapf(err, "config=%s.%s", t.PkgPath(), t.Name())
 		}
+		if fieldFlag == nil {
+			block.Add(&configEntry{
+				kind:      "field",
+				name:      fieldName,
+				required:  isFieldRequired(field),
+				fieldDesc: getFieldDescription(field, ""),
+				fieldType: fieldType,
+			})
+			continue
+		}
 
 		block.Add(&configEntry{
 			kind:         "field",
@@ -243,6 +253,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "flagext.StringSliceCSV":
 		return "string", nil
+	case "[]*relabel.Config":
+		return "relabel_config...", nil
 	}
 
 	// Fallback to auto-detection of built-in data types
@@ -297,6 +309,9 @@ func getFieldType(t reflect.Type) (string, error) {
 }
 
 func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*flag.Flag, error) {
+	if isAbsentInCLI(field) {
+		return nil, nil
+	}
 	fieldPtr := fieldValue.Addr().Pointer()
 	fieldFlag, ok := flags[fieldPtr]
 	if !ok {
@@ -393,6 +408,10 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 
 func isFieldHidden(f reflect.StructField) bool {
 	return getDocTagFlag(f, "hidden")
+}
+
+func isAbsentInCLI(f reflect.StructField) bool {
+	return getDocTagFlag(f, "nocli")
 }
 
 func isFieldRequired(f reflect.StructField) bool {

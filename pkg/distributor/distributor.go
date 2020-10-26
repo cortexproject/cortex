@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -444,6 +445,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
 			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+		}
+
+		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
+			l := relabel.Process(client.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			ts.Labels = client.FromLabelsToLabelAdapters(l)
 		}
 
 		// If we found both the cluster and replica labels, we only want to include the cluster label when

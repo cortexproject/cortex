@@ -188,13 +188,13 @@ enqueueAgain:
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case er := <-freq.enqueue:
-		if er.success {
-			cancelCh = er.cancelCh
+	case enqRes := <-freq.enqueue:
+		if enqRes.success {
+			cancelCh = enqRes.cancelCh
 			break
 		}
 
-		if er.retry {
+		if enqRes.retry {
 			retries--
 			if retries > 0 {
 				goto enqueueAgain

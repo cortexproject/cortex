@@ -118,7 +118,6 @@ func (f *Handler) reportSlowQuery(queryResponseTime time.Duration, r *http.Reque
 	}
 
 	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
-
 }
 
 func writeError(w http.ResponseWriter, err error) {

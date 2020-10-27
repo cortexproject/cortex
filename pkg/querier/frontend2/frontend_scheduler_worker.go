@@ -124,7 +124,7 @@ func (f *frontendSchedulerWorkers) getWorkersCount() int {
 }
 
 func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, address string) (*grpc.ClientConn, error) {
-	// Because we only use single long-running method, it doesn't make sense to inect user ID, send over tracing or add metrics.
+	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
 	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil)
 	if err != nil {
 		return nil, err

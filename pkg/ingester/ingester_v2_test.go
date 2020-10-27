@@ -1602,11 +1602,13 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
+		concurrency int
 		setup       func(*testing.T, string)
 		check       func(*testing.T, *Ingester)
 		expectedErr string
 	}{
 		"should not load TSDB if the user directory is empty": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
 			},
@@ -1615,12 +1617,14 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 		},
 		"should not load any TSDB if the root directory is empty": {
-			setup: func(t *testing.T, dir string) {},
+			concurrency: 10,
+			setup:       func(t *testing.T, dir string) {},
 			check: func(t *testing.T, i *Ingester) {
 				require.Zero(t, len(i.TSDBState.dbs))
 			},
 		},
 		"should not load any TSDB is the root directory is missing": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Remove(dir))
 			},
@@ -1629,6 +1633,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			},
 		},
 		"should load TSDB for any non-empty user directory": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
@@ -1641,7 +1646,26 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 				require.Nil(t, i.getTSDB("user2"))
 			},
 		},
-		"should fail and rollback if an error occur while loading any user's TSDB": {
+		"should load all TSDBs on concurrency < number of TSDBs": {
+			concurrency: 2,
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user3", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user4", "dummy"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 5, len(i.TSDBState.dbs))
+				require.NotNil(t, i.getTSDB("user0"))
+				require.NotNil(t, i.getTSDB("user1"))
+				require.NotNil(t, i.getTSDB("user2"))
+				require.NotNil(t, i.getTSDB("user3"))
+				require.NotNil(t, i.getTSDB("user4"))
+			},
+		},
+		"should fail and rollback if an error occur while loading a TSDB on concurrency > number of TSDBs": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid and
 				// opening TSDB should fail).
@@ -1657,6 +1681,30 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 				require.Nil(t, i.getTSDB("user1"))
 			},
 			expectedErr: "unable to open TSDB for user user0",
+		},
+		"should fail and rollback if an error occur while loading a TSDB on concurrency < number of TSDBs": {
+			concurrency: 2,
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user3", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user4", "dummy"), 0700))
+
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid and
+				// opening TSDB should fail).
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "wal", ""), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "chunks_head", ""), 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user2", "chunks_head", "00000001"), nil, 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 0, len(i.TSDBState.dbs))
+				require.Nil(t, i.getTSDB("user0"))
+				require.Nil(t, i.getTSDB("user1"))
+				require.Nil(t, i.getTSDB("user2"))
+				require.Nil(t, i.getTSDB("user3"))
+				require.Nil(t, i.getTSDB("user4"))
+			},
+			expectedErr: "unable to open TSDB for user user2",
 		},
 	}
 
@@ -1678,6 +1726,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			ingesterCfg := defaultIngesterTestConfig()
 			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+			ingesterCfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup = testData.concurrency
 			ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
 			ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 

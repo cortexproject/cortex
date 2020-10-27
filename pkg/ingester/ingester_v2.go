@@ -48,12 +48,14 @@ type Shipper interface {
 }
 
 type userTSDB struct {
-	db               *tsdb.DB
-	userID           string
-	refCache         *cortex_tsdb.RefCache
-	activeSeries     *ActiveSeries
-	seriesInMetric   *metricCounter
-	limiter          *Limiter
+	db             *tsdb.DB
+	userID         string
+	refCache       *cortex_tsdb.RefCache
+	activeSeries   *ActiveSeries
+	seriesInMetric *metricCounter
+	limiter        *Limiter
+
+	// This mutex is protecting TSDB Head compaction.
 	compactBlocksMtx sync.Mutex
 
 	// Used to detect idle TSDBs.
@@ -100,20 +102,22 @@ func (u *userTSDB) Compact() error {
 func (u *userTSDB) compactHead(blockDuration int64) error {
 	u.compactBlocksMtx.Lock()
 	defer u.compactBlocksMtx.Unlock()
-	// The Compact() will produces multiple smaller blocks if Head has a lot of data.
+
+	// The Compact() will produce multiple smaller blocks if Head has a lot of data.
 	if err := u.db.Compact(); err != nil {
 		return err
 	}
 	h := u.Head()
-	if (h.MinTime()/blockDuration)*blockDuration != (h.MaxTime()/blockDuration)*blockDuration {
+
+	minTime := h.MinTime()
+	maxTime := h.MaxTime()
+
+	if (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
 		// Remaining data in Head spans across 2 block ranges, so we break it into 2 blocks.
 		// Block maxt is exclusive, so we do a -1 here for maxt.
-		maxt := (h.MaxTime()/blockDuration)*blockDuration - 1
-		if err := u.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), maxt)); err != nil {
-			return err
-		}
+		maxTime = (maxTime/blockDuration)*blockDuration - 1
 	}
-	return u.db.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+	return u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime))
 }
 
 // PreCreation implements SeriesLifecycleCallback interface.

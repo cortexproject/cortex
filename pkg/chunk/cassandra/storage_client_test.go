@@ -16,7 +16,7 @@ func TestConfig_setClusterConfig_noAuth(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	cqlCfg := gocql.NewCluster()
-	err := cfg.setClusterConfig(cqlCfg)
+	err := cfg.setClusterConfig(cqlCfg, false)
 	require.NoError(t, err)
 	assert.Nil(t, cqlCfg.Authenticator)
 }
@@ -29,7 +29,7 @@ func TestConfig_setClusterConfig_authWithPassword(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	cqlCfg := gocql.NewCluster()
-	err := cfg.setClusterConfig(cqlCfg)
+	err := cfg.setClusterConfig(cqlCfg, false)
 	require.NoError(t, err)
 	assert.NotNil(t, cqlCfg.Authenticator)
 	assert.Equal(t, "user", cqlCfg.Authenticator.(gocql.PasswordAuthenticator).Username)
@@ -44,7 +44,7 @@ func TestConfig_setClusterConfig_authWithPasswordFile_withoutTrailingNewline(t *
 	require.NoError(t, cfg.Validate())
 
 	cqlCfg := gocql.NewCluster()
-	err := cfg.setClusterConfig(cqlCfg)
+	err := cfg.setClusterConfig(cqlCfg, false)
 	require.NoError(t, err)
 	assert.NotNil(t, cqlCfg.Authenticator)
 	assert.Equal(t, "user", cqlCfg.Authenticator.(gocql.PasswordAuthenticator).Username)
@@ -59,7 +59,7 @@ func TestConfig_setClusterConfig_authWithPasswordFile_withTrailingNewline(t *tes
 	require.NoError(t, cfg.Validate())
 
 	cqlCfg := gocql.NewCluster()
-	err := cfg.setClusterConfig(cqlCfg)
+	err := cfg.setClusterConfig(cqlCfg, false)
 	require.NoError(t, err)
 	assert.NotNil(t, cqlCfg.Authenticator)
 	assert.Equal(t, "user", cqlCfg.Authenticator.(gocql.PasswordAuthenticator).Username)
@@ -99,7 +99,7 @@ func TestConfig_setClusterConfig_consistency(t *testing.T) {
 			require.NoError(t, testData.cfg.Validate())
 
 			cqlCfg := gocql.NewCluster()
-			err := testData.cfg.setClusterConfig(cqlCfg)
+			err := testData.cfg.setClusterConfig(cqlCfg, false)
 			require.NoError(t, err)
 			assert.Equal(t, testData.expectedConsistency, cqlCfg.Consistency.String())
 		})

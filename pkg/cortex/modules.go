@@ -509,7 +509,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	}
 
 	// Wrap roundtripper into Tripperware.
-	t.QueryFrontendTripperware(roundTripper)
+	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
 	handler := frontend.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util.Logger)
 	if t.Cfg.Frontend.CompressResponses {

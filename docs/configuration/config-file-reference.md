@@ -2050,6 +2050,10 @@ cassandra:
   # CLI flag: -cassandra.table-options
   [table_options: <string> | default = ""]
 
+  # Consistency level for Cassandra table and keyspace operations.
+  # CLI flag: -cassandra.table-operations-consistency
+  [table_operations_consistency: <string> | default = "ALL"]
+
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir

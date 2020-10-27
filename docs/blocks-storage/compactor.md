@@ -124,6 +124,18 @@ compactor:
   # CLI flag: -compactor.deletion-delay
   [deletion_delay: <duration> | default = 12h]
 
+  # Comma separated list of tenants that can be compacted. If specified, only
+  # these tenants will be compacted by compactor, otherwise all tenants can be
+  # compacted. Subject to sharding.
+  # CLI flag: -compactor.enabled-tenants
+  [enabled_tenants: <string> | default = ""]
+
+  # Comma separated list of tenants that cannot be compacted by this compactor.
+  # If specified, and compactor would normally pick given tenant for compaction
+  # (via -compactor.enabled-tenants or sharding), it will be ignored instead.
+  # CLI flag: -compactor.disabled-tenants
+  [disabled_tenants: <string> | default = ""]
+
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and
   # avoid race conditions leading to the same tenant blocks simultaneously

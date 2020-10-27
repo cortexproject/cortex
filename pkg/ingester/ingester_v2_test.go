@@ -1816,31 +1816,42 @@ func TestIngester_flushing(t *testing.T) {
 			},
 		},
 
-		"noBlockSpanningOverADayOnFlush": {
+		"flushMultipleBlocksWithDataSpanning3Days": {
 			setupIngester: func(cfg *Config) {
 				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
 			},
 
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
 				// Pushing 5 samples, spanning over 3 days.
+				// First block
 				pushSingleSampleAtTime(t, i, 23*time.Hour.Milliseconds())
 				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()-1)
+
+				// Second block
 				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()+1)
 				pushSingleSampleAtTime(t, i, 25*time.Hour.Milliseconds())
-				pushSingleSampleAtTime(t, i, 26*time.Hour.Milliseconds())
+
+				// Third block, far in the future.
+				pushSingleSampleAtTime(t, i, 50*time.Hour.Milliseconds())
 
 				// Nothing shipped yet.
 				m.AssertNumberOfCalls(t, "Sync", 0)
 
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
-				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
-				time.Sleep(3 * time.Second)
+				// Wait for compaction to finish.
+				test.Poll(t, 5*time.Second, true, func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
 
-				verifyCompactedHead(t, i, true)
+					h := db.Head()
+					return h.NumSeries() == 0
+				})
+
 				m.AssertNumberOfCalls(t, "Sync", 1)
 
-				// There should be 2 blocks created, divided at the 24 hour mark.
 				userDB := i.getTSDB(userID)
 				require.NotNil(t, userDB)
 
@@ -1854,7 +1865,7 @@ func TestIngester_flushing(t *testing.T) {
 				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
 				require.Equal(t, 26*time.Hour.Milliseconds(), blocks[1].Meta().MaxTime)
 
-				require.Equal(t, 26*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.
+				require.Equal(t, 50*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.
 			},
 		},
 	} {

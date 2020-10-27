@@ -16,17 +16,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -1143,98 +1142,100 @@ func (i *Ingester) closeAllTSDB() {
 // concurrently opening TSDB.
 func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
-	wg := &sync.WaitGroup{}
-	openGate := gate.New(i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup)
 
-	// Keep track of all errors that could occur.
-	errs := tsdb_errors.MultiError{}
-	errsMx := sync.Mutex{}
+	queue := make(chan string)
+	group, groupCtx := errgroup.WithContext(ctx)
 
-	walkErr := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			// If the root directory doesn't exist, we're OK (not needed to be created upfront).
-			if os.IsNotExist(err) && path == i.cfg.BlocksStorageConfig.TSDB.Dir {
-				return filepath.SkipDir
+	// Create a pool of workers which will open existing TSDBs.
+	for n := 0; n < i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup; n++ {
+		group.Go(func() error {
+			for userID := range queue {
+				startTime := time.Now()
+
+				db, err := i.createTSDB(userID)
+				if err != nil {
+					level.Error(util.Logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
+					return errors.Wrapf(err, "unable to open TSDB for user %s", userID)
+				}
+
+				// Add the database to the map of user databases
+				i.userStatesMtx.Lock()
+				i.TSDBState.dbs[userID] = db
+				i.userStatesMtx.Unlock()
+				i.metrics.memUsers.Inc()
+
+				i.TSDBState.walReplayTime.Observe(time.Since(startTime).Seconds())
 			}
 
-			level.Error(util.Logger).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
-			return errors.Wrapf(err, "an error occurred while iterating the filesystem storing TSDBs at %s", path)
-		}
-
-		// Skip root dir and all other files
-		if path == i.cfg.BlocksStorageConfig.TSDB.Dir || !info.IsDir() {
 			return nil
-		}
+		})
+	}
 
-		// Top level directories are assumed to be user TSDBs
-		userID := info.Name()
-		f, err := os.Open(path)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "unable to open TSDB dir", "err", err, "user", userID, "path", path)
-			return errors.Wrapf(err, "unable to open TSDB dir %s for user %s", path, userID)
-		}
-		defer f.Close()
+	// Spawn a goroutine to find all users with a TSDB on the filesystem.
+	group.Go(func() error {
+		// Close the queue once filesystem walking is done.
+		defer close(queue)
 
-		// If the dir is empty skip it
-		if _, err := f.Readdirnames(1); err != nil {
-			if err == io.EOF {
-				return filepath.SkipDir
-			}
-
-			level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
-			return errors.Wrapf(err, "unable to read TSDB dir %s for user %s", path, userID)
-		}
-
-		// Limit the number of TSDB's opening concurrently. Start blocks until there's a free spot available or the context is cancelled.
-		if err := openGate.Start(ctx); err != nil {
-			return err
-		}
-
-		wg.Add(1)
-		go func(userID string) {
-			defer wg.Done()
-			defer openGate.Done()
-			defer func(ts time.Time) {
-				i.TSDBState.walReplayTime.Observe(time.Since(ts).Seconds())
-			}(time.Now())
-
-			db, err := i.createTSDB(userID)
+		walkErr := filepath.Walk(i.cfg.BlocksStorageConfig.TSDB.Dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				errsMx.Lock()
-				errs.Add(errors.Wrapf(err, "unable to open TSDB for user %s", userID))
-				errsMx.Unlock()
+				// If the root directory doesn't exist, we're OK (not needed to be created upfront).
+				if os.IsNotExist(err) && path == i.cfg.BlocksStorageConfig.TSDB.Dir {
+					return filepath.SkipDir
+				}
 
-				level.Error(util.Logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
-				return
+				level.Error(util.Logger).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
+				return errors.Wrapf(err, "an error occurred while iterating the filesystem storing TSDBs at %s", path)
 			}
 
-			// Add the database to the map of user databases
-			i.userStatesMtx.Lock()
-			i.TSDBState.dbs[userID] = db
-			i.userStatesMtx.Unlock()
-			i.metrics.memUsers.Inc()
-		}(userID)
+			// Skip root dir and all other files
+			if path == i.cfg.BlocksStorageConfig.TSDB.Dir || !info.IsDir() {
+				return nil
+			}
 
-		return filepath.SkipDir // Don't descend into directories
+			// Top level directories are assumed to be user TSDBs
+			userID := info.Name()
+			f, err := os.Open(path)
+			if err != nil {
+				level.Error(util.Logger).Log("msg", "unable to open TSDB dir", "err", err, "user", userID, "path", path)
+				return errors.Wrapf(err, "unable to open TSDB dir %s for user %s", path, userID)
+			}
+			defer f.Close()
+
+			// If the dir is empty skip it
+			if _, err := f.Readdirnames(1); err != nil {
+				if err == io.EOF {
+					return filepath.SkipDir
+				}
+
+				level.Error(util.Logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+				return errors.Wrapf(err, "unable to read TSDB dir %s for user %s", path, userID)
+			}
+
+			// Enqueue the user to be processed.
+			select {
+			case queue <- userID:
+				// Nothing to do.
+			case <-groupCtx.Done():
+				// Interrupt in case a failure occurred in another goroutine.
+				return nil
+			}
+
+			// Don't descend into subdirectories.
+			return filepath.SkipDir
+		})
+
+		return errors.Wrapf(walkErr, "unable to walk directory %s containing existing TSDBs", i.cfg.BlocksStorageConfig.TSDB.Dir)
 	})
 
-	if walkErr != nil {
-		errsMx.Lock()
-		errs.Add(errors.Wrapf(walkErr, "unable to walk directory %s containing existing TSDBs", i.cfg.BlocksStorageConfig.TSDB.Dir))
-		errsMx.Unlock()
+	// Wait for all workers to complete.
+	err := group.Wait()
+	if err != nil {
+		level.Error(util.Logger).Log("msg", "error while opening existing TSDBs", "err", err)
+		return err
 	}
 
-	// Wait for all opening routines to finish
-	wg.Wait()
-
-	// Ensure no error occurred.
-	if errs.Err() == nil {
-		level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
-		return nil
-	}
-
-	level.Error(util.Logger).Log("msg", "error while opening existing TSDBs", "err", errs.Error())
-	return errs.Err()
+	level.Info(util.Logger).Log("msg", "successfully opened existing TSDBs")
+	return nil
 }
 
 // numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.

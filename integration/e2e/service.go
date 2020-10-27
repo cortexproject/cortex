@@ -111,7 +111,7 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	s.usedNetworkName = networkName
 
 	// Wait until the container has been started.
-	if err = s.WaitStarted(); err != nil {
+	if err = s.WaitForRunning(); err != nil {
 		return err
 	}
 
@@ -123,10 +123,10 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
 		if err != nil {
 			// Catch init errors.
-			if werr := s.WaitStarted(); werr != nil {
+			if werr := s.WaitForRunning(); werr != nil {
 				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(), err)
 			}
-			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
+			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s; output: %q", containerPort, s.name, out)
 		}
 
 		stdout := strings.TrimSpace(string(out))
@@ -243,7 +243,7 @@ func (s *ConcreteService) containerName() string {
 	return containerName(s.usedNetworkName, s.name)
 }
 
-func (s *ConcreteService) WaitStarted() (err error) {
+func (s *ConcreteService) WaitForRunning() (err error) {
 	if !s.isExpectedRunning() {
 		return fmt.Errorf("service %s is stopped", s.Name())
 	}
@@ -251,14 +251,28 @@ func (s *ConcreteService) WaitStarted() (err error) {
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		// Enforce a timeout on the command execution because we've seen some flaky tests
 		// stuck here.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 
-		err = exec.CommandContext(ctx, "docker", "inspect", s.containerName()).Run()
-		if err == nil {
-			return nil
+		var out []byte
+		out, err = RunCommandWithTimeoutAndGetOutput(5*time.Second, "docker", "inspect", "--format={{json .State.Running}}", s.containerName())
+		if err != nil {
+			s.retryBackoff.Wait()
+			continue
 		}
-		s.retryBackoff.Wait()
+
+		if out == nil {
+			err = fmt.Errorf("nil output")
+			s.retryBackoff.Wait()
+			continue
+		}
+
+		str := strings.TrimSpace(string(out))
+		if str != "true" {
+			err = fmt.Errorf("unexpected output: %q", str)
+			s.retryBackoff.Wait()
+			continue
+		}
+
+		return nil
 	}
 
 	return fmt.Errorf("docker container %s failed to start: %v", s.name, err)

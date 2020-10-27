@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -18,6 +19,14 @@ import (
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
+	return cmd.CombinedOutput()
+}
+
+func RunCommandWithTimeoutAndGetOutput(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()
 }
 

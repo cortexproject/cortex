@@ -64,9 +64,9 @@ blocks_storage:
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync
 
-  # You can choose between local storage and Amazon S3, Google GCS and Azure storage. Each option requires additional configuration
+  # You can choose between local storage and Amazon S3, Google GCS, Azure  and OpenStack Swift storage. Each option requires additional configuration
   # as shown below. All options can be configured via flags as well which might be handy for secret inputs.
-  backend: s3 # s3, gcs, azure or filesystem are valid options
+  backend: s3 # s3, gcs, azure, swift or filesystem are valid options
   s3:
     bucket_name: cortex
     endpoint: s3.dualstack.us-east-1.amazonaws.com
@@ -82,6 +82,7 @@ blocks_storage:
 #    container_name:
 #    endpoint_suffix:
 #    max_retries: # Number of retries for recoverable errors (defaults to 20)
+
 # filesystem:
 #   dir: ./data/tsdb
 

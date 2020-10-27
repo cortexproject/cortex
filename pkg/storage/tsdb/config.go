@@ -16,6 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
 	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -28,6 +29,9 @@ const (
 
 	// BackendAzure is the value for the Azure storage backend
 	BackendAzure = "azure"
+
+	// BackendSwift is the value for the Openstack Swift storage backend
+	BackendSwift = "swift"
 
 	// BackendFilesystem is the value for the filesystem storge backend
 	BackendFilesystem = "filesystem"
@@ -47,7 +51,7 @@ const (
 
 // Validation errors
 var (
-	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendFilesystem}
+	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendSwift, BackendFilesystem}
 
 	errUnsupportedStorageBackend    = errors.New("unsupported TSDB storage backend")
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
@@ -64,6 +68,7 @@ type BucketConfig struct {
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
+	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
@@ -121,6 +126,7 @@ func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.S3.RegisterFlags(f)
 	cfg.GCS.RegisterFlags(f)
 	cfg.Azure.RegisterFlags(f)
+	cfg.Swift.RegisterFlags(f)
 	cfg.Filesystem.RegisterFlags(f)
 
 	f.StringVar(&cfg.Backend, "blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))

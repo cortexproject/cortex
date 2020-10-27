@@ -23,3 +23,7 @@ test-exporter
 
 # This is custom Makefile modification, if it exists.
 Makefile.local
+
+.idea
+compose
+compose-simple

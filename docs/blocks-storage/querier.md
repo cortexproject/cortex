@@ -190,7 +190,8 @@ The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
 blocks_storage:
-  # Backend storage to use. Supported backends are: s3, gcs, azure, filesystem.
+  # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+  # filesystem.
   # CLI flag: -blocks-storage.backend
   [backend: <string> | default = "s3"]
 
@@ -265,6 +266,65 @@ blocks_storage:
     # Number of retries for recoverable errors
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
+
+  swift:
+    # OpenStack Swift authentication URL
+    # CLI flag: -blocks-storage.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # OpenStack Swift username.
+    # CLI flag: -blocks-storage.swift.username
+    [username: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -blocks-storage.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -blocks-storage.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # OpenStack Swift user ID.
+    # CLI flag: -blocks-storage.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # OpenStack Swift API key.
+    # CLI flag: -blocks-storage.swift.password
+    [password: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -blocks-storage.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -blocks-storage.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # OpenStack Swift project ID (v2,v3 auth only).
+    # CLI flag: -blocks-storage.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # OpenStack Swift project name (v2,v3 auth only).
+    # CLI flag: -blocks-storage.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # ID of the OpenStack Swift project's domain (v3 auth only), only needed if
+    # it differs the from user domain.
+    # CLI flag: -blocks-storage.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+    # if it differs from the user domain.
+    # CLI flag: -blocks-storage.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # OpenStack Swift Region to use (v2,v3 auth only).
+    # CLI flag: -blocks-storage.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the OpenStack Swift container to put chunks in.
+    # CLI flag: -blocks-storage.swift.container-name
+    [container_name: <string> | default = ""]
 
   filesystem:
     # Local filesystem storage directory.

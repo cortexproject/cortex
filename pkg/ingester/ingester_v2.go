@@ -55,9 +55,6 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
-	// This mutex is protecting TSDB Head compaction.
-	compactBlocksMtx sync.Mutex
-
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
 
@@ -92,31 +89,27 @@ func (u *userTSDB) Close() error {
 }
 
 func (u *userTSDB) Compact() error {
-	u.compactBlocksMtx.Lock()
-	defer u.compactBlocksMtx.Unlock()
-
 	return u.db.Compact()
 }
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
-	u.compactBlocksMtx.Lock()
-	defer u.compactBlocksMtx.Unlock()
-
-	// The Compact() will produce multiple smaller blocks if Head has a lot of data.
-	if err := u.db.Compact(); err != nil {
-		return err
-	}
 	h := u.Head()
 
-	minTime := h.MinTime()
-	maxTime := h.MaxTime()
+	minTime, maxTime := h.MinTime(), h.MaxTime()
 
-	if (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
-		// Remaining data in Head spans across 2 block ranges, so we break it into 2 blocks.
-		// Block maxt is exclusive, so we do a -1 here for maxt.
-		maxTime = (maxTime/blockDuration)*blockDuration - 1
+	for (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
+		// Data in Head spans across multiple block ranges, so we break it into 2 blocks.
+		// Block max time is exclusive, so we do a -1 here.
+		blockMaxTime := ((minTime/blockDuration)+1)*blockDuration - 1
+		if err := u.db.CompactHead(tsdb.NewRangeHead(h, minTime, blockMaxTime)); err != nil {
+			return err
+		}
+
+		// Get current min/max times after compaction.
+		minTime, maxTime = h.MinTime(), h.MaxTime()
 	}
+
 	return u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime))
 }
 

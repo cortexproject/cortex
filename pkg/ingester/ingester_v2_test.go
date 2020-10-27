@@ -1822,11 +1822,12 @@ func TestIngester_flushing(t *testing.T) {
 			},
 
 			action: func(t *testing.T, i *Ingester, m *shipperMock) {
-				// Pushing 4 samples, spanning over 2 days.
+				// Pushing 5 samples, spanning over 3 days.
 				pushSingleSampleAtTime(t, i, 23*time.Hour.Milliseconds())
 				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()-1)
 				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()+1)
 				pushSingleSampleAtTime(t, i, 25*time.Hour.Milliseconds())
+				pushSingleSampleAtTime(t, i, 26*time.Hour.Milliseconds())
 
 				// Nothing shipped yet.
 				m.AssertNumberOfCalls(t, "Sync", 0)
@@ -1834,7 +1835,7 @@ func TestIngester_flushing(t *testing.T) {
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
-				time.Sleep(1 * time.Second)
+				time.Sleep(3 * time.Second)
 
 				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
@@ -1844,13 +1845,16 @@ func TestIngester_flushing(t *testing.T) {
 				require.NotNil(t, userDB)
 
 				blocks := userDB.Blocks()
-				require.Equal(t, 2, len(blocks))
+				require.Equal(t, 3, len(blocks))
 				require.Equal(t, 23*time.Hour.Milliseconds(), blocks[0].Meta().MinTime)
 				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[0].Meta().MaxTime) // Block maxt is exclusive.
+
 				// Even though we added 24*time.Hour.Milliseconds()+1, the Head compaction
 				// will leave Head's mint to 24*time.Hour.Milliseconds(). Hence the block mint.
 				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
-				require.Equal(t, 25*time.Hour.Milliseconds()+1, blocks[1].Meta().MaxTime) // Block maxt is exclusive.
+				require.Equal(t, 26*time.Hour.Milliseconds(), blocks[1].Meta().MaxTime)
+
+				require.Equal(t, 26*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.
 			},
 		},
 	} {

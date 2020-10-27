@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"crypto/rand"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -26,6 +27,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
+const unsortedChunksDir = "unsorted_chunks"
+
 // This builder uses TSDB's chunk and index writer directly, without
 // using TSDB Head.
 type tsdbBuilder struct {
@@ -35,8 +38,8 @@ type tsdbBuilder struct {
 	outDir      string
 	tmpBlockDir string
 
-	chunksWriterMu sync.Mutex
-	chunksWriter   tsdb.ChunkWriter
+	unsortedChunksWriterMu sync.Mutex
+	unsortedChunksWriter   tsdb.ChunkWriter
 
 	startTime model.Time
 	endTime   model.Time
@@ -69,21 +72,21 @@ func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, l
 		return nil, err
 	}
 
-	chunksWriter, err := chunks.NewWriter(filepath.Join(blockDir, "chunks"))
+	unsortedChunksWriter, err := chunks.NewWriter(filepath.Join(blockDir, unsortedChunksDir))
 	if err != nil {
 		return nil, errors.Wrap(err, "chunks writer")
 	}
 
 	return &tsdbBuilder{
-		log:          log,
-		ulid:         id,
-		outDir:       outDir,
-		tmpBlockDir:  blockDir,
-		chunksWriter: chunksWriter,
-		startTime:    model.TimeFromUnixNano(start.UnixNano()),
-		endTime:      model.TimeFromUnixNano(end.UnixNano()),
-		series:       newSeriesList(seriesBatchLimit, seriesDir),
-		seriesDir:    seriesDir,
+		log:                  log,
+		ulid:                 id,
+		outDir:               outDir,
+		tmpBlockDir:          blockDir,
+		unsortedChunksWriter: unsortedChunksWriter,
+		startTime:            model.TimeFromUnixNano(start.UnixNano()),
+		endTime:              model.TimeFromUnixNano(end.UnixNano()),
+		series:               newSeriesList(seriesBatchLimit, seriesDir),
+		seriesDir:            seriesDir,
 
 		processedSeries: processedSeries,
 		writtenSamples:  writtenSamples,
@@ -149,9 +152,9 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 		ch = nil
 	}
 
-	d.chunksWriterMu.Lock()
-	err = d.chunksWriter.WriteChunks(chs...)
-	d.chunksWriterMu.Unlock()
+	d.unsortedChunksWriterMu.Lock()
+	err = d.unsortedChunksWriter.WriteChunks(chs...)
+	d.unsortedChunksWriterMu.Unlock()
 
 	if err != nil {
 		return err
@@ -181,7 +184,7 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 }
 
 func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid.ULID, error) {
-	if err := d.chunksWriter.Close(); err != nil {
+	if err := d.unsortedChunksWriter.Close(); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "closing chunks writer")
 	}
 
@@ -211,10 +214,27 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		},
 	}
 
+	toClose := map[string]io.Closer{}
+	defer func() {
+		for k, c := range toClose {
+			err := c.Close()
+			if err != nil {
+				level.Error(d.log).Log("msg", "close failed", "name", k, "err", err)
+			}
+		}
+	}()
+
+	const (
+		indexWriterName          = "index writer"
+		unsortedChunksReaderName = "unsorted chunks reader"
+		chunksWriterName         = "chunks writer"
+	)
+
 	indexWriter, err := index.NewWriter(context.Background(), filepath.Join(d.tmpBlockDir, "index"))
 	if err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "new index writer")
+		return ulid.ULID{}, errors.Wrap(err, indexWriterName)
 	}
+	toClose[indexWriterName] = indexWriter
 
 	symbols, err := addSymbolsToIndex(indexWriter, d.series)
 	if err != nil {
@@ -223,7 +243,19 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 
 	level.Info(d.log).Log("msg", "added symbols to index", "count", symbols)
 
-	stats, err := addSeriesToIndex(indexWriter, d.series)
+	unsortedChunksReader, err := chunks.NewDirReader(filepath.Join(d.tmpBlockDir, unsortedChunksDir), nil)
+	if err != nil {
+		return ulid.ULID{}, errors.Wrap(err, unsortedChunksReaderName)
+	}
+	toClose[unsortedChunksReaderName] = unsortedChunksReader
+
+	chunksWriter, err := chunks.NewWriter(filepath.Join(d.tmpBlockDir, "chunks"))
+	if err != nil {
+		return ulid.ULID{}, errors.Wrap(err, chunksWriterName)
+	}
+	toClose[chunksWriterName] = chunksWriter
+
+	stats, err := addSeriesToIndex(indexWriter, d.series, unsortedChunksReader, chunksWriter)
 	if err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "adding series")
 	}
@@ -231,8 +263,19 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 
 	level.Info(d.log).Log("msg", "added series to index", "series", stats.NumSeries, "chunks", stats.NumChunks, "samples", stats.NumSamples)
 
-	if err := indexWriter.Close(); err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "closing index writer")
+	// Close index writer, unsorted chunks reader and chunks writer.
+	for k, c := range toClose {
+		delete(toClose, k)
+
+		err := c.Close()
+		if err != nil {
+			return ulid.ULID{}, errors.Wrapf(err, "closing %s", k)
+		}
+	}
+
+	// Delete unsorted chunks, they are no longer needed.
+	if err := os.RemoveAll(filepath.Join(d.tmpBlockDir, unsortedChunksDir)); err != nil {
+		return ulid.ULID{}, errors.Wrap(err, "deleting unsorted chunks")
 	}
 
 	if err := metadata.Write(d.log, d.tmpBlockDir, meta); err != nil {
@@ -246,7 +289,7 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 	return d.ulid, nil
 }
 
-func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList) (tsdb.BlockStats, error) {
+func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksReader *chunks.Reader, chunksWriter *chunks.Writer) (tsdb.BlockStats, error) {
 	var stats tsdb.BlockStats
 
 	it, err := sl.seriesIterator()
@@ -258,6 +301,29 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList) (tsdb.BlockStat
 	for s, ok := it.Next(); ok; s, ok = it.Next() {
 		l := s.Metric
 		cs := s.Chunks
+
+		// Read chunks into memory.
+		for ix := range s.Chunks {
+			cs[ix].Chunk, err = unsortedChunksReader.Chunk(cs[ix].Ref)
+			if err != nil {
+				return stats, errors.Wrap(err, "failed to read chunk")
+			}
+			cs[ix].Ref = 0
+		}
+
+		// Write chunks again. This time they will be written in the same order as series.
+		err = chunksWriter.WriteChunks(cs...)
+		if err != nil {
+			return stats, errors.Wrap(err, "failed to write sorted chunks")
+		}
+
+		// Remove chunks data from memory, but keep reference for writing to index.
+		for ix := range cs {
+			if cs[ix].Ref == 0 {
+				return stats, errors.Errorf("chunk ref not set after writing sorted chunks")
+			}
+			cs[ix].Chunk = nil
+		}
 
 		if err := indexWriter.AddSeries(uint64(ix), l, cs...); err != nil {
 			return stats, errors.Wrapf(err, "adding series %v", l)

@@ -110,6 +110,7 @@
 * [BUGFIX] Shuffle sharding: fixed max global series per user/metric limit when shuffle sharding and `-distributor.shard-by-all-labels=true` are both enabled in distributor. When using these global limits you should now set `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` to ingesters too. #3369
 * [BUGFIX] Slow query logging: when using downstream server request parameters were not logged. #3276
 * [BUGFIX] Fixed tenant detection in the ruler and alertmanager API when running without auth. #3343
+* [BUGFIX] Blocksconvert: fix chunks ordering in the block. Chunks in different order than series work just fine in TSDB blocks at the moment, but it's not consistent with what Prometheus does and future Prometheus and Cortex optimizations may rely on this ordering. #3371
 
 ## 1.4.0 / 2020-10-02
 

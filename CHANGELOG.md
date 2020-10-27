@@ -87,6 +87,7 @@
 * [ENHANCEMENT] Added `cortex_alertmanager_config_last_reload_successful_seconds` metric to show timestamp of last successful AM config reload. #3289
 * [ENHANCEMENT] Blocks storage: reduced number of bucket listing operations to list block content (applies to newly created blocks only). #3363
 * [ENHANCEMENT] Ruler: Include the tenant ID on the notifier logs. #3372
+* [ENHANCEMENT] Blocks storage Compactor: Added `-compactor.enabled-tenants` and `-compactor.disabled-tenants` to explicitly enable or disable compaction of specific tenants. #3385
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192
@@ -105,8 +106,10 @@
 * [BUGFIX] Blocks storage: Avoid deletion of blocks in the ingester which are not shipped to the storage yet. #3346
 * [BUGFIX] Fix common prefixes returned by List method of S3 client. #3358
 * [BUGFIX] Honor configured timeout in Azure and GCS object clients. #3285
+* [BUGFIX] Blocks storage: Avoid creating blocks larger than configured block range period on forced compaction and when TSDB is idle. #3344
 * [BUGFIX] Shuffle sharding: fixed max global series per user/metric limit when shuffle sharding and `-distributor.shard-by-all-labels=true` are both enabled in distributor. When using these global limits you should now set `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` to ingesters too. #3369
 * [BUGFIX] Slow query logging: when using downstream server request parameters were not logged. #3276
+* [BUGFIX] Fixed tenant detection in the ruler and alertmanager API when running without auth. #3343
 * [BUGFIX] Blocksconvert: fix chunks ordering in the block. Chunks in different order than series work just fine in TSDB blocks at the moment, but it's not consistent with what Prometheus does and future Prometheus and Cortex optimizations may rely on this ordering. #3371
 
 ## 1.4.0 / 2020-10-02
@@ -154,6 +157,7 @@
   * `cortex_bucket_stores_tenants_discovered`
   * `cortex_bucket_stores_tenants_synced`
 * [FEATURE] Experimental blocksconvert: introduce an experimental tool `blocksconvert` to migrate long-term storage chunks to blocks. #3092 #3122 #3127 #3162
+* [ENHANCEMENT] Improve the Alertmanager logging when serving requests from its API / UI. #3397
 * [ENHANCEMENT] Add support for azure storage in China, German and US Government environments. #2988
 * [ENHANCEMENT] Query-tee: added a small tolerance to floating point sample values comparison. #2994
 * [ENHANCEMENT] Query-tee: add support for doing a passthrough of requests to preferred backend for unregistered routes #3018

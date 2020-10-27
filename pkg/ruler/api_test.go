@@ -370,7 +370,6 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 	t.Helper()
 
 	req := httptest.NewRequest(method, url, body)
-	req.Header.Add(user.OrgIDHeaderName, userID)
 	ctx := user.InjectOrgID(req.Context(), userID)
 
 	return req.WithContext(ctx)

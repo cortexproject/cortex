@@ -99,7 +99,7 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 	minTime, maxTime := h.MinTime(), h.MaxTime()
 
 	for (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
-		// Data in Head spans across multiple block ranges, so we break it into 2 blocks.
+		// Data in Head spans across multiple block ranges, so we break it into blocks here.
 		// Block max time is exclusive, so we do a -1 here.
 		blockMaxTime := ((minTime/blockDuration)+1)*blockDuration - 1
 		if err := u.db.CompactHead(tsdb.NewRangeHead(h, minTime, blockMaxTime)); err != nil {

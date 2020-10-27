@@ -9,6 +9,8 @@ Currently the ingesters running in the chunks storage mode, store all their data
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
+_This documentation refers to Cortex chunks storage engine. The Cortex blocks storage has WAL always enabled._
+
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [statefulset](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.

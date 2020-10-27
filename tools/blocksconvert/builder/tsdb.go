@@ -232,7 +232,7 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 
 	indexWriter, err := index.NewWriter(context.Background(), filepath.Join(d.tmpBlockDir, "index"))
 	if err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "new index writer")
+		return ulid.ULID{}, errors.Wrap(err, indexWriterName)
 	}
 	toClose[indexWriterName] = indexWriter
 
@@ -245,13 +245,13 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 
 	unsortedChunksReader, err := chunks.NewDirReader(filepath.Join(d.tmpBlockDir, unsortedChunksDir), nil)
 	if err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "chunks reader")
+		return ulid.ULID{}, errors.Wrap(err, unsortedChunksReaderName)
 	}
 	toClose[unsortedChunksReaderName] = unsortedChunksReader
 
 	chunksWriter, err := chunks.NewWriter(filepath.Join(d.tmpBlockDir, "chunks"))
 	if err != nil {
-		return ulid.ULID{}, errors.Wrap(err, "chunks reader")
+		return ulid.ULID{}, errors.Wrap(err, chunksWriterName)
 	}
 	toClose[chunksWriterName] = chunksWriter
 

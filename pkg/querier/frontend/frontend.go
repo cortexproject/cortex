@@ -32,12 +32,14 @@ import (
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
+	defaultMaxBodySize        = 10 * 1024 * 1024 // 10 MiB
 )
 
 var (
-	errTooManyRequest   = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
-	errCanceled         = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errTooManyRequest        = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
 )
 
 // Config for a Frontend.
@@ -45,6 +47,7 @@ type Config struct {
 	MaxOutstandingPerTenant int           `yaml:"max_outstanding_per_tenant"`
 	CompressResponses       bool          `yaml:"compress_responses"`
 	DownstreamURL           string        `yaml:"downstream_url"`
+	MaxBodySize             int64         `yaml:"max_body_size"`
 	LogQueriesLongerThan    time.Duration `yaml:"log_queries_longer_than"`
 }
 
@@ -53,6 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
+	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", defaultMaxBodySize, "Max body size for downstream prometheus.")
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 }
 
@@ -179,6 +183,12 @@ func (f *Frontend) Handler() http.Handler {
 }
 
 func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	// Buffer the body for later use to track slow queries.
+	var buf bytes.Buffer
+	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.MaxBodySize)
+	r.Body = ioutil.NopCloser(io.TeeReader(r.Body, &buf))
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
@@ -186,39 +196,51 @@ func (f *Frontend) handle(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		writeError(w, err)
-	} else {
-		hs := w.Header()
-		for h, vs := range resp.Header {
-			hs[h] = vs
-		}
-		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		return
 	}
 
-	// If LogQueriesLongerThan is set to <0 we log every query, if it is set to 0 query logging
-	// is disabled
-	if f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan {
-		logMessage := []interface{}{
-			"msg", "slow query detected",
-			"method", r.Method,
-			"host", r.Host,
-			"path", r.URL.Path,
-			"time_taken", queryResponseTime.String(),
-		}
-
-		// Ensure the form has been parsed so all the parameters are present
-		err = r.ParseForm()
-		if err != nil {
-			level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
-		}
-
-		// Attempt to iterate through the Form to log any filled in values
-		for k, v := range r.Form {
-			logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
-		}
-
-		level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	hs := w.Header()
+	for h, vs := range resp.Header {
+		hs[h] = vs
 	}
+
+	w.WriteHeader(resp.StatusCode)
+	// we don't check for copy error as there is no much we can do at this point
+	io.Copy(w, resp.Body)
+
+	f.reportSlowQuery(queryResponseTime, r, buf)
+}
+
+// reportSlowQuery reprots slow queries if LogQueriesLongerThan is set to <0, where 0 disables logging
+func (f *Frontend) reportSlowQuery(queryResponseTime time.Duration, r *http.Request, bodyBuf bytes.Buffer) {
+	if f.cfg.LogQueriesLongerThan == 0 || queryResponseTime <= f.cfg.LogQueriesLongerThan {
+		return
+	}
+
+	logMessage := []interface{}{
+		"msg", "slow query detected",
+		"method", r.Method,
+		"host", r.Host,
+		"path", r.URL.Path,
+		"time_taken", queryResponseTime.String(),
+	}
+
+	// use previously buffered body
+	r.Body = ioutil.NopCloser(&bodyBuf)
+
+	// Ensure the form has been parsed so all the parameters are present
+	err := r.ParseForm()
+	if err != nil {
+		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse form for request", "err", err)
+	}
+
+	// Attempt to iterate through the Form to log any filled in values
+	for k, v := range r.Form {
+		logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
+	}
+
+	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+
 }
 
 func writeError(w http.ResponseWriter, err error) {
@@ -228,6 +250,9 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
+		if strings.Contains(err.Error(), "http: request body too large") {
+			err = errRequestEntityTooLarge
+		}
 	}
 	server.WriteError(w, err)
 }

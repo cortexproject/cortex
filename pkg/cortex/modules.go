@@ -7,12 +7,10 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -45,31 +43,33 @@ import (
 
 // The various modules that make up Cortex.
 const (
-	API                 string = "api"
-	Ring                string = "ring"
-	RuntimeConfig       string = "runtime-config"
-	Overrides           string = "overrides"
-	Server              string = "server"
-	Distributor         string = "distributor"
-	DistributorService  string = "distributor-service"
-	Ingester            string = "ingester"
-	IngesterService     string = "ingester-service"
-	Flusher             string = "flusher"
-	Querier             string = "querier"
-	StoreQueryable      string = "store-queryable"
-	QueryFrontend       string = "query-frontend"
-	Store               string = "store"
-	DeleteRequestsStore string = "delete-requests-store"
-	TableManager        string = "table-manager"
-	RulerStorage        string = "ruler-storage"
-	Ruler               string = "ruler"
-	Configs             string = "configs"
-	AlertManager        string = "alertmanager"
-	Compactor           string = "compactor"
-	StoreGateway        string = "store-gateway"
-	MemberlistKV        string = "memberlist-kv"
-	Purger              string = "purger"
-	All                 string = "all"
+	API                      string = "api"
+	Ring                     string = "ring"
+	RuntimeConfig            string = "runtime-config"
+	Overrides                string = "overrides"
+	Server                   string = "server"
+	Distributor              string = "distributor"
+	DistributorService       string = "distributor-service"
+	Ingester                 string = "ingester"
+	IngesterService          string = "ingester-service"
+	Flusher                  string = "flusher"
+	Querier                  string = "querier"
+	Queryable                string = "queryable"
+	StoreQueryable           string = "store-queryable"
+	QueryFrontend            string = "query-frontend"
+	QueryFrontendTripperware string = "query-frontend-tripperware"
+	Store                    string = "store"
+	DeleteRequestsStore      string = "delete-requests-store"
+	TableManager             string = "table-manager"
+	RulerStorage             string = "ruler-storage"
+	Ruler                    string = "ruler"
+	Configs                  string = "configs"
+	AlertManager             string = "alertmanager"
+	Compactor                string = "compactor"
+	StoreGateway             string = "store-gateway"
+	MemberlistKV             string = "memberlist-kv"
+	Purger                   string = "purger"
+	All                      string = "all"
 )
 
 func (t *Cortex) initAPI() (services.Service, error) {
@@ -190,55 +190,114 @@ func (t *Cortex) initDistributor() (serv services.Service, err error) {
 	return nil, nil
 }
 
-func (t *Cortex) initQuerier() (serv services.Service, err error) {
+// initQueryable instantiates the queryable and promQL engine used to service queries to
+// Cortex. It also registers the API endpoints associated with those two services.
+func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
-	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
 
-	// Prometheus histograms for requests to the querier.
-	querierRequestDuration := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
-		Buckets:   instrument.DefBuckets,
-	}, []string{"method", "route", "status_code", "ws"})
+	// Create a querier queryable and PromQL engine
+	t.QuerierQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
 
-	receivedMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_message_bytes",
-		Help:      "Size (in bytes) of messages received in the request to the querier.",
-		Buckets:   middleware.BodySizeBuckets,
-	}, []string{"method", "route"})
+	// Register the default endpoints that are always enabled for the querier module
+	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
-	sentMessageSize := promauto.With(prometheus.DefaultRegisterer).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_response_message_bytes",
-		Help:      "Size (in bytes) of messages sent in response by the querier.",
-		Buckets:   middleware.BodySizeBuckets,
-	}, []string{"method", "route"})
+	return nil, nil
+}
 
-	inflightRequests := promauto.With(prometheus.DefaultRegisterer).NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "querier_inflight_requests",
-		Help:      "Current number of inflight requests to the querier.",
-	}, []string{"method", "route"})
+// initQuerier registers an internal HTTP router with a Prometheus API backed by the
+// Cortex Queryable. Then it does one of the following:
+//
+// 1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, the internal
+//    HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
+//    worker.
+//
+// 2. Querier Standalone: The querier will register the internal HTTP router with the external
+//    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
+//    as a http.Handler to the frontend worker.
+//
+// Route Diagram:
+//
+//                        │  query
+//                        │ request
+//                        │
+//                        ▼
+//              ┌──────────────────┐    QF to      ┌──────────────────┐
+//              │  external HTTP   │    Worker     │                  │
+//              │      router      │──────────────▶│ frontend worker  │
+//              │                  │               │                  │
+//              └──────────────────┘               └──────────────────┘
+//                        │                                  │
+//                                                           │
+//               only in  │                                  │
+//            microservice         ┌──────────────────┐      │
+//              querier   │        │ internal Querier │      │
+//                         ─ ─ ─ ─▶│      router      │◀─────┘
+//                                 │                  │
+//                                 └──────────────────┘
+//                                           │
+//                                           │
+//  /metadata & /chunk ┌─────────────────────┼─────────────────────┐
+//        requests     │                     │                     │
+//                     │                     │                     │
+//                     ▼                     ▼                     ▼
+//           ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+//           │                  │  │                  │  │                  │
+//           │Querier Queryable │  │  /api/v1 router  │  │ /api/prom router │
+//           │                  │  │                  │  │                  │
+//           └──────────────────┘  └──────────────────┘  └──────────────────┘
+//                     ▲                     │                     │
+//                     │                     └──────────┬──────────┘
+//                     │                                ▼
+//                     │                      ┌──────────────────┐
+//                     │                      │                  │
+//                     └──────────────────────│  Prometheus API  │
+//                                            │                  │
+//                                            └──────────────────┘
+//
+func (t *Cortex) initQuerier() (serv services.Service, err error) {
+	// Create a internal HTTP handler that is configured with the Prometheus API routes and points
+	// to a Prometheus API struct instantiated with the Cortex Queryable.
+	internalQuerierRouter := api.NewQuerierHandler(
+		t.Cfg.API,
+		t.QuerierQueryable,
+		t.QuerierEngine,
+		t.Distributor,
+		t.TombstonesLoader,
+		prometheus.DefaultRegisterer,
+		util.Logger,
+	)
 
-	// if we are not configured for single binary mode then the querier needs to register its paths externally
-	registerExternally := !t.Cfg.isModuleEnabled(All)
-	handler := t.API.RegisterQuerier(queryable, engine, t.Distributor, registerExternally, t.TombstonesLoader, querierRequestDuration, receivedMessageSize, sentMessageSize, inflightRequests)
+	// If the querier is running standalone without the query-frontend, we must register it's internal
+	// HTTP handler externally and provide the external Cortex Server HTTP handler to the frontend worker
+	// to ensure requests it processes use the default middleware instrumentation.
+	if !t.Cfg.isModuleEnabled(QueryFrontend) && !t.Cfg.isModuleEnabled(All) {
+		// First, register the internal querier handler with the external HTTP server
+		t.API.RegisterQueryAPI(internalQuerierRouter)
 
-	// single binary mode requires a properly configured worker.  if the operator did not attempt to configure the
-	//  worker we will attempt an automatic configuration here
-	if t.Cfg.Worker.Address == "" && t.Cfg.isModuleEnabled(All) {
-		address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
-		level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
-		t.Cfg.Worker.Address = address
+		// Second, set the http.Handler that the frontend worker will use to process requests to point to
+		// the external HTTP server. This will allow the querier to consolidate query metrics both external
+		// and internal using the default instrumentation when running as a standalone service.
+		internalQuerierRouter = t.Server.HTTPServer.Handler
+	} else {
+		// Single binary mode requires a query frontend endpoint for the worker. If no frontend endpoint
+		// is configured, Cortex will default to using localhost on it's own GRPC listening port.
+		if t.Cfg.Worker.Address == "" {
+			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
+			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
+			t.Cfg.Worker.Address = address
+		}
+
+		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
+		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
+		// request context.
+		internalQuerierRouter = middleware.AuthenticateUser.Wrap(internalQuerierRouter)
 	}
 
 	// Query frontend worker will only be started after all its dependencies are started, not here.
 	// Worker may also be nil, if not configured, which is OK.
-	worker, err := frontend.NewWorker(t.Cfg.Worker, t.Cfg.Querier, httpgrpc_server.NewServer(handler), util.Logger)
+	worker, err := frontend.NewWorker(t.Cfg.Worker, t.Cfg.Querier, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	return worker, nil
@@ -399,18 +458,15 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 	return
 }
 
-func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
+// initQueryFrontendTripperware instantiates the tripperware used by the query frontend
+// to optimize Prometheus query requests.
+func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	// Load the schema only if sharded queries is set.
 	if t.Cfg.QueryRange.ShardedQueries {
 		err = t.Cfg.Schema.Load()
 		if err != nil {
 			return
 		}
-	}
-
-	t.Frontend, err = frontend.New(t.Cfg.Frontend, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return
 	}
 
 	tripperware, cache, err := queryrange.NewTripperware(
@@ -437,17 +493,29 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Cache = cache
-	t.Frontend.Wrap(tripperware)
 
+	t.QueryFrontendTripperware = tripperware
+
+	return services.NewIdleService(nil, func(_ error) error {
+		if cache != nil {
+			cache.Stop()
+			cache = nil
+		}
+		return nil
+	}), nil
+}
+
+func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
+	t.Frontend, err = frontend.New(t.Cfg.Frontend, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return
+	}
+
+	t.Frontend.Wrap(t.QueryFrontendTripperware)
 	t.API.RegisterQueryFrontend(t.Frontend)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.Frontend.Close()
-		if t.Cache != nil {
-			t.Cache.Stop()
-			t.Cache = nil
-		}
 		return nil
 	}), nil
 }
@@ -673,8 +741,10 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
 	mm.RegisterModule(Flusher, t.initFlusher)
+	mm.RegisterModule(Queryable, t.initQueryable, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
@@ -688,26 +758,28 @@ func (t *Cortex) setupModuleManager() error {
 
 	// Add dependencies
 	deps := map[string][]string{
-		API:                {Server},
-		Ring:               {API, RuntimeConfig, MemberlistKV},
-		Overrides:          {RuntimeConfig},
-		Distributor:        {DistributorService, API},
-		DistributorService: {Ring, Overrides},
-		Store:              {Overrides, DeleteRequestsStore},
-		Ingester:           {IngesterService, API},
-		IngesterService:    {Overrides, Store, RuntimeConfig, MemberlistKV},
-		Flusher:            {Store, API},
-		Querier:            {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
-		StoreQueryable:     {Overrides, Store, MemberlistKV},
-		QueryFrontend:      {API, Overrides, DeleteRequestsStore},
-		TableManager:       {API},
-		Ruler:              {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
-		Configs:            {API},
-		AlertManager:       {API},
-		Compactor:          {API, MemberlistKV},
-		StoreGateway:       {API, Overrides, MemberlistKV},
-		Purger:             {Store, DeleteRequestsStore, API},
-		All:                {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		API:                      {Server},
+		Ring:                     {API, RuntimeConfig, MemberlistKV},
+		Overrides:                {RuntimeConfig},
+		Distributor:              {DistributorService, API},
+		DistributorService:       {Ring, Overrides},
+		Store:                    {Overrides, DeleteRequestsStore},
+		Ingester:                 {IngesterService, API},
+		IngesterService:          {Overrides, Store, RuntimeConfig, MemberlistKV},
+		Flusher:                  {Store, API},
+		Queryable:                {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		Querier:                  {Queryable},
+		StoreQueryable:           {Overrides, Store, MemberlistKV},
+		QueryFrontend:            {QueryFrontendTripperware},
+		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
+		TableManager:             {API},
+		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Configs:                  {API},
+		AlertManager:             {API},
+		Compactor:                {API, MemberlistKV},
+		StoreGateway:             {API, Overrides, MemberlistKV},
+		Purger:                   {Store, DeleteRequestsStore, API},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

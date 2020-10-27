@@ -180,7 +180,7 @@ Displays a web page with the current status of the HA tracker, including the ele
 GET /debug/pprof/*
 ```
 
-Returns the runtime profiling data in the format expected by the pprof visualization tool. There are many things which can be profiled using this including heap, trace, goroutine, etc. 
+Returns the runtime profiling data in the format expected by the pprof visualization tool. There are many things which can be profiled using this including heap, trace, goroutine, etc.
 
 _For more information, please check out the official documentation of [pprof](https://golang.org/pkg/net/http/pprof/)._
 

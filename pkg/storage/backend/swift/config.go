@@ -4,7 +4,7 @@ import (
 	"flag"
 )
 
-// Config holds the config options for GCS backend
+// Config holds the config options for Swift backend
 type Config struct {
 	AuthURL           string `yaml:"auth_url"`
 	Username          string `yaml:"username"`

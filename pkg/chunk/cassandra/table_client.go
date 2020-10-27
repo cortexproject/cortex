@@ -18,7 +18,7 @@ type tableClient struct {
 
 // NewTableClient returns a new TableClient.
 func NewTableClient(ctx context.Context, cfg Config, registerer prometheus.Registerer) (chunk.TableClient, error) {
-	session, err := cfg.session("table-manager", registerer)
+	session, err := cfg.session("table-manager", registerer, true)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

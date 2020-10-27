@@ -25,30 +25,31 @@ import (
 
 // Config for a StorageClient
 type Config struct {
-	Addresses                string              `yaml:"addresses"`
-	Port                     int                 `yaml:"port"`
-	Keyspace                 string              `yaml:"keyspace"`
-	Consistency              string              `yaml:"consistency"`
-	ReplicationFactor        int                 `yaml:"replication_factor"`
-	DisableInitialHostLookup bool                `yaml:"disable_initial_host_lookup"`
-	SSL                      bool                `yaml:"SSL"`
-	HostVerification         bool                `yaml:"host_verification"`
-	CAPath                   string              `yaml:"CA_path"`
-	Auth                     bool                `yaml:"auth"`
-	Username                 string              `yaml:"username"`
-	Password                 flagext.Secret      `yaml:"password"`
-	PasswordFile             string              `yaml:"password_file"`
-	CustomAuthenticators     flagext.StringSlice `yaml:"custom_authenticators"`
-	Timeout                  time.Duration       `yaml:"timeout"`
-	ConnectTimeout           time.Duration       `yaml:"connect_timeout"`
-	ReconnectInterval        time.Duration       `yaml:"reconnect_interval"`
-	Retries                  int                 `yaml:"max_retries"`
-	MaxBackoff               time.Duration       `yaml:"retry_max_backoff"`
-	MinBackoff               time.Duration       `yaml:"retry_min_backoff"`
-	QueryConcurrency         int                 `yaml:"query_concurrency"`
-	NumConnections           int                 `yaml:"num_connections"`
-	ConvictHosts             bool                `yaml:"convict_hosts_on_failure"`
-	TableOptions             string              `yaml:"table_options"`
+	Addresses                  string              `yaml:"addresses"`
+	Port                       int                 `yaml:"port"`
+	Keyspace                   string              `yaml:"keyspace"`
+	Consistency                string              `yaml:"consistency"`
+	ReplicationFactor          int                 `yaml:"replication_factor"`
+	DisableInitialHostLookup   bool                `yaml:"disable_initial_host_lookup"`
+	SSL                        bool                `yaml:"SSL"`
+	HostVerification           bool                `yaml:"host_verification"`
+	CAPath                     string              `yaml:"CA_path"`
+	Auth                       bool                `yaml:"auth"`
+	Username                   string              `yaml:"username"`
+	Password                   flagext.Secret      `yaml:"password"`
+	PasswordFile               string              `yaml:"password_file"`
+	CustomAuthenticators       flagext.StringSlice `yaml:"custom_authenticators"`
+	Timeout                    time.Duration       `yaml:"timeout"`
+	ConnectTimeout             time.Duration       `yaml:"connect_timeout"`
+	ReconnectInterval          time.Duration       `yaml:"reconnect_interval"`
+	Retries                    int                 `yaml:"max_retries"`
+	MaxBackoff                 time.Duration       `yaml:"retry_max_backoff"`
+	MinBackoff                 time.Duration       `yaml:"retry_min_backoff"`
+	QueryConcurrency           int                 `yaml:"query_concurrency"`
+	NumConnections             int                 `yaml:"num_connections"`
+	ConvictHosts               bool                `yaml:"convict_hosts_on_failure"`
+	TableOptions               string              `yaml:"table_options"`
+	TableOperationsConsistency string              `yaml:"table_operations_consistency"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -77,6 +78,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
 	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 	f.StringVar(&cfg.TableOptions, "cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. By default it will use the default table options of your Cassandra cluster.")
+	f.StringVar(&cfg.TableOperationsConsistency, "cassandra.table-operations-consistency", "ALL", "Consistency level for Cassandra table and keyspace operations.")
 }
 
 func (cfg *Config) Validate() error {
@@ -89,7 +91,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
+func (cfg *Config) session(name string, reg prometheus.Registerer, isTableClient bool) (*gocql.Session, error) {
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
@@ -112,7 +114,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	if !cfg.ConvictHosts {
 		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
-	if err := cfg.setClusterConfig(cluster); err != nil {
+	if err := cfg.setClusterConfig(cluster, isTableClient); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -134,8 +136,14 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 }
 
 // apply config settings to a cassandra ClusterConfig
-func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
-	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
+func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig, isTableSession bool) error {
+	var consistency gocql.Consistency
+	var err error
+	if isTableSession {
+		consistency, err = gocql.ParseConsistencyWrapper(cfg.TableOperationsConsistency)
+	} else {
+		consistency, err = gocql.ParseConsistencyWrapper(cfg.Consistency)
+	}
 	if err != nil {
 		return errors.Wrap(err, "unable to parse the configured consistency")
 	}
@@ -192,7 +200,7 @@ func (cfg *Config) createKeyspace() error {
 	cluster.Timeout = 20 * time.Second
 	cluster.ConnectTimeout = 20 * time.Second
 
-	if err := cfg.setClusterConfig(cluster); err != nil {
+	if err := cfg.setClusterConfig(cluster, true); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -223,12 +231,12 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
-	readSession, err := cfg.session("index-read", registerer)
+	readSession, err := cfg.session("index-read", registerer, false)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("index-write", registerer)
+	writeSession, err := cfg.session("index-write", registerer, false)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -406,12 +414,12 @@ type ObjectClient struct {
 
 // NewObjectClient returns a new ObjectClient.
 func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*ObjectClient, error) {
-	readSession, err := cfg.session("chunks-read", registerer)
+	readSession, err := cfg.session("chunks-read", registerer, false)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	writeSession, err := cfg.session("chunks-write", registerer)
+	writeSession, err := cfg.session("chunks-write", registerer, false)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

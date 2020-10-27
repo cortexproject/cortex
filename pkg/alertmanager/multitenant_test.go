@@ -214,10 +214,10 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String(), nil)
-	req.Header.Add(user.OrgIDHeaderName, "user1")
+	ctx := user.InjectOrgID(req.Context(), "user1")
 	w := httptest.NewRecorder()
 
-	am.ServeHTTP(w, req)
+	am.ServeHTTP(w, req.WithContext(ctx))
 
 	resp := w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -237,7 +237,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	// Request when user configuration is paused.
 	w = httptest.NewRecorder()
-	am.ServeHTTP(w, req)
+	am.ServeHTTP(w, req.WithContext(ctx))
 
 	resp = w.Result()
 	body, _ = ioutil.ReadAll(resp.Body)
@@ -278,10 +278,10 @@ receivers:
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)
-	req.Header.Add(user.OrgIDHeaderName, "user1")
+	ctx := user.InjectOrgID(req.Context(), "user1")
 	w := httptest.NewRecorder()
 
-	am.ServeHTTP(w, req)
+	am.ServeHTTP(w, req.WithContext(ctx))
 
 	resp := w.Result()
 
@@ -302,7 +302,7 @@ receivers:
 
 	// Request when user configuration is paused.
 	w = httptest.NewRecorder()
-	am.ServeHTTP(w, req)
+	am.ServeHTTP(w, req.WithContext(ctx))
 
 	resp = w.Result()
 	body, _ := ioutil.ReadAll(resp.Body)

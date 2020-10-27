@@ -1,11 +1,11 @@
 ---
-title: "Running Cortex with Cassandra"
-linkTitle: "Running Cortex with Cassandra"
-weight: 4
-slug: cassandra
+title: "Running Cortex chunks storage with Cassandra"
+linkTitle: "Running Cortex chunks storage with Cassandra"
+weight: 2
+slug: running-chunks-storage-with-cassandra
 ---
 
-This guide covers how to run a single local Cortex instance - with the chunks storage engine - storing time series chunks and index in Cassandra.
+This guide covers how to run a single local Cortex instance - with the [**chunks storage**](../chunks-storage/_index.md) engine - storing time series chunks and index in Cassandra.
 
 In this guide we're going to:
 
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400
 Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
 For details about table options, see the official document of storage you are using.
 
-**WARNING**: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by Table Manager at runtime and seriously affect your Cortex.
+**WARNING**: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by [table-manager](../chunks-storage/table-manager.md) at runtime and seriously affect your Cortex.
 
 ## Configure Prometheus to send series to Cortex
 

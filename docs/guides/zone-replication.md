@@ -1,7 +1,7 @@
 ---
 title: "Zone Aware Replication"
 linkTitle: "Zone Aware Replication"
-weight: 5
+weight: 10
 slug: zone-aware-replication
 ---
 

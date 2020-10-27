@@ -1,15 +1,13 @@
 ---
-title: "Running Cortex with AWS Services"
-linkTitle: "Running Cortex with AWS Services"
-weight: 2
-slug: aws
+title: "AWS tips"
+linkTitle: "AWS tips"
+weight: 10
+slug: aws-tips
 ---
 
-[this is a work in progress]
+This page shares some tips and things to take in consideration when running Cortex chunks storage on AWS.
 
-See also the [Running in Production](running.md) document.
-
-## Credentials
+## AWS Credentials
 
 You can supply credentials to Cortex by setting environment variables
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN`
@@ -20,14 +18,13 @@ if you use MFA), or use a short-term token solution such as
 
 Note that the choices for the chunks storage backend are: "chunks" of
 timeseries data in S3 and index in DynamoDB, or everything in DynamoDB.
-Using just S3 is not an option, unless you use the [blocks storage](../../blocks-storage/) engine.
+Using just S3 is not an option, unless you use the [blocks storage](../blocks-storage/_index.md) engine.
 
 Broadly S3 is much more expensive to read and write, while DynamoDB is
 much more expensive to store over months.  S3 charges differently, so
 the cross-over will depend on the size of your chunks, and how long
 you keep them.  Very roughly: for 3KB chunks if you keep them longer
 than 8 months then S3 is cheaper.
-
 
 ## DynamoDB capacity provisioning
 
@@ -89,4 +86,4 @@ Several things to note here:
    older data, which is never written and only read sporadically.
 -  If you want to add AWS tags to the created DynamoDB tables you
    can do it by adding a `tags` map to your schema definition. See
-   [`schema configuration`](../configuration/schema-config-reference.md)
+   [`schema configuration`](./schema-config.md)

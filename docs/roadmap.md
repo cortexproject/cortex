@@ -1,7 +1,7 @@
 ---
 title: "Roadmap"
 linkTitle: "Roadmap"
-weight: 50
+weight: 10
 slug: roadmap
 ---
 

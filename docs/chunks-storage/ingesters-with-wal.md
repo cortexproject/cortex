@@ -5,7 +5,7 @@ weight: 5
 slug: ingesters-with-wal
 ---
 
-Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.
+By default, ingesters running with the chunks storage, store all their data in memory. If there is a crash, there could be loss of data. The Write-Ahead Log (WAL) helps fill this gap in reliability.
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
@@ -93,7 +93,7 @@ PS: Given you have to scale down 1 ingester at a time, you can pipeline the shut
 
 **Fallback option**
 
-There is a `flusher` target that can be used to flush the data in the WAL. It's config can be found [here](../configuration/config-file-reference.md#flusher-config). As flusher depends on the chunk store and the http API components, you need to also set all the config related to them similar to ingesters (see [api,storage,chunk_store,limits,runtime_config](../configuration/config-file-reference.md#supported-contents-and-default-values-of-the-config-file) and [schema](../configuration/schema-config-reference.md)). Pro tip: Re-use the ingester config and set the `target` as `flusher` with additional flusher config, the irrelevant config will be ignored.
+There is a `flusher` target that can be used to flush the data in the WAL. It's config can be found [here](../configuration/config-file-reference.md#flusher-config). As flusher depends on the chunk store and the http API components, you need to also set all the config related to them similar to ingesters (see [api,storage,chunk_store,limits,runtime_config](../configuration/config-file-reference.md#supported-contents-and-default-values-of-the-config-file) and [schema](schema-config.md)). Pro tip: Re-use the ingester config and set the `target` as `flusher` with additional flusher config, the irrelevant config will be ignored.
 
 You can run it as a Kubernetes job which will:
 

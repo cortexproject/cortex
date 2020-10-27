@@ -1,7 +1,7 @@
 ---
 title: "Authentication and Authorisation"
 linkTitle: "Authentication and Authorisation"
-weight: 6
+weight: 10
 slug: auth
 ---
 

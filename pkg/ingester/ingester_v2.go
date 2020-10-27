@@ -1097,17 +1097,12 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	level.Info(util.Logger).Log("msg", "opening existing TSDBs")
 
 	queue := make(chan string)
-	group, groupCtx := errgroup.WithContext(context.Background())
+	group, groupCtx := errgroup.WithContext(ctx)
 
 	// Create a pool of workers which will open existing TSDBs.
 	for n := 0; n < i.cfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup; n++ {
 		group.Go(func() error {
 			for userID := range queue {
-				// Interrupt in case a failure occurred in another goroutine.
-				if groupCtx.Err() != nil {
-					return nil
-				}
-
 				startTime := time.Now()
 
 				db, err := i.createTSDB(userID)

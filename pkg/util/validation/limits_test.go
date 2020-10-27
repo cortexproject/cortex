@@ -3,6 +3,8 @@ package validation
 import (
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -82,9 +84,32 @@ func TestLimitsLoadingFromYaml(t *testing.T) {
 	inp := `ingestion_rate: 0.5`
 
 	l := Limits{}
-	err := yaml.Unmarshal([]byte(inp), &l)
+	err := yaml.UnmarshalStrict([]byte(inp), &l)
 	require.NoError(t, err)
 
 	assert.Equal(t, 0.5, l.IngestionRate, "from yaml")
 	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+}
+
+func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{})
+
+	inp := `
+metric_relabel_configs:
+- action: drop
+  source_labels: [le]
+  regex: .+
+`
+	exp := relabel.DefaultRelabelConfig
+	exp.Action = relabel.Drop
+	regex, err := relabel.NewRegexp(".+")
+	require.NoError(t, err)
+	exp.Regex = regex
+	exp.SourceLabels = model.LabelNames([]model.LabelName{"le"})
+
+	l := Limits{}
+	err = yaml.UnmarshalStrict([]byte(inp), &l)
+	require.NoError(t, err)
+
+	assert.Equal(t, []*relabel.Config{&exp}, l.MetricRelabelConfigs)
 }

@@ -51,3 +51,4 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools
+- Metric relabeling in the distributor.

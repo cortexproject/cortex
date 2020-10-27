@@ -7,6 +7,16 @@ slug: production-tips
 
 This page shares some tips and things to take in consideration when setting up a production Cortex cluster based on the blocks storage.
 
+## Ingester
+
+### Ensure a high number of max open file descriptors
+
+The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed by a relatively large number of files which gets loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven't reached the retention period yet.
+
+If your Cortex cluster has many tenants or ingester is running with a long `-blocks-storage.tsdb.retention-period`, the ingester may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or enabling [shuffle sharding](../guides/shuffle-sharding.md).
+
+The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
+
 ## Querier
 
 ### Ensure caching is enabled
@@ -52,6 +62,8 @@ The store-gateway heavily relies on caching both to speed up the queries and to 
 ### Ensure a high number of max open file descriptors
 
 The store-gateway stores each block’s index-header on the local disk and loads it via mmap. This means that the store-gateway keeps a file descriptor open for each loaded block. If your Cortex cluster has many blocks in the bucket, the store-gateway may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or running more store-gateway instances with blocks sharding enabled.
+
+The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
 
 ## Compactor
 

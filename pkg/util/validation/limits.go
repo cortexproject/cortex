@@ -5,6 +5,8 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/prometheus/pkg/relabel"
+
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -46,6 +48,7 @@ type Limits struct {
 	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name"`
 	EnforceMetricName         bool                `yaml:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 
 	// Ingester enforced limits.
 	// Series
@@ -71,8 +74,10 @@ type Limits struct {
 	MaxQueriersPerTenant int           `yaml:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay time.Duration `yaml:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize int           `yaml:"ruler_tenant_shard_size"`
+	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize        int           `yaml:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup   int           `yaml:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int           `yaml:"ruler_max_rule_groups_per_tenant"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size"`
@@ -124,6 +129,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", 0, "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
+	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -372,9 +379,24 @@ func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
 }
 
+// MetricRelabelConfigs returns the metric relabel configs for a given user.
+func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
+	return o.getOverridesForUser(userID).MetricRelabelConfigs
+}
+
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) RulerTenantShardSize(userID string) int {
 	return o.getOverridesForUser(userID).RulerTenantShardSize
+}
+
+// RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.
+func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
+	return o.getOverridesForUser(userID).RulerMaxRulesPerRuleGroup
+}
+
+// RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
+func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
+	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.

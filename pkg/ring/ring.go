@@ -75,7 +75,11 @@ const (
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
 	BlocksRead
 
-	Ruler // Used for distributing rule groups between rulers.
+	// Ruler is the operation used for distributing rule groups between rulers.
+	Ruler
+
+	// Compactor is the operation used for distributing tenants/blocks across compactors.
+	Compactor
 )
 
 var (
@@ -507,10 +511,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	var actualZones []string
 
 	if r.cfg.ZoneAwarenessEnabled {
-		// When zone-awareness is enabled, we expect the shard size to be divisible
-		// by the number of zones, in order to have nodes balanced across zones.
-		// If it's not, we do round up.
-		numInstancesPerZone = int(math.Ceil(float64(size) / float64(len(r.ringZones))))
+		numInstancesPerZone = util.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
 		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size

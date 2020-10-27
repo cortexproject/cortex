@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -106,7 +107,7 @@ var (
 	}, []string{"user"})
 	emptyPreallocSeries = ingester_client.PreallocTimeseries{}
 
-	supportedShardingStrategies = []string{ShardingStrategyDefault, ShardingStrategyShuffle}
+	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
@@ -118,8 +119,7 @@ const (
 	typeMetadata = "metadata"
 
 	// Supported sharding strategies.
-	ShardingStrategyDefault = "default"
-	ShardingStrategyShuffle = "shuffle-sharding"
+
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -185,7 +185,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
-	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 }
 
 // Validate config and returns error on failure
@@ -194,7 +194,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
 		return errInvalidTenantShardSize
 	}
 
@@ -447,6 +447,11 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
+		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
+			l := relabel.Process(client.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			ts.Labels = client.FromLabelsToLabelAdapters(l)
+		}
+
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
@@ -535,7 +540,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	subRing := d.ingestersRing.(ring.ReadRing)
 
 	// Obtain a subring if required.
-	if d.cfg.ShardingStrategy == ShardingStrategyShuffle {
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		subRing = d.ingestersRing.ShuffleShard(userID, d.limits.IngestionTenantShardSize(userID))
 	}
 

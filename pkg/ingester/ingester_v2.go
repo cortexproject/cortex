@@ -48,7 +48,7 @@ type Shipper interface {
 }
 
 type userTSDB struct {
-	*tsdb.DB
+	db             *tsdb.DB
 	userID         string
 	refCache       *cortex_tsdb.RefCache
 	activeSeries   *ActiveSeries
@@ -66,6 +66,53 @@ type userTSDB struct {
 	ingestedRuleSamples *ewmaRate
 }
 
+// Explicitly wrapping the tsdb.DB functions that we use.
+
+func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
+	return u.db.Appender(ctx)
+}
+
+func (u *userTSDB) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return u.db.Querier(ctx, mint, maxt)
+}
+
+func (u *userTSDB) Head() *tsdb.Head {
+	return u.db.Head()
+}
+
+func (u *userTSDB) Blocks() []*tsdb.Block {
+	return u.db.Blocks()
+}
+
+func (u *userTSDB) Close() error {
+	return u.db.Close()
+}
+
+func (u *userTSDB) Compact() error {
+	return u.db.Compact()
+}
+
+// compactHead compacts the Head block at specified block durations avoiding a single huge block.
+func (u *userTSDB) compactHead(blockDuration int64) error {
+	h := u.Head()
+
+	minTime, maxTime := h.MinTime(), h.MaxTime()
+
+	for (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
+		// Data in Head spans across multiple block ranges, so we break it into blocks here.
+		// Block max time is exclusive, so we do a -1 here.
+		blockMaxTime := ((minTime/blockDuration)+1)*blockDuration - 1
+		if err := u.db.CompactHead(tsdb.NewRangeHead(h, minTime, blockMaxTime)); err != nil {
+			return err
+		}
+
+		// Get current min/max times after compaction.
+		minTime, maxTime = h.MinTime(), h.MaxTime()
+	}
+
+	return u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime))
+}
+
 // PreCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	if u.limiter == nil {
@@ -73,7 +120,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	}
 
 	// Total series limit.
-	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.DB.Head().NumSeries())); err != nil {
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
 		return makeLimitError(perUserSeriesLimit, err)
 	}
 
@@ -113,15 +160,15 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 
 // blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	if u.DB == nil {
+	if u.db == nil {
 		return nil
 	}
-	deletable := tsdb.DefaultBlocksToDelete(u.DB)(blocks)
+	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
 	if u.shipper == nil {
 		return deletable
 	}
 
-	shipperMeta, err := shipper.ReadMetaFile(u.Dir())
+	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
 	if err != nil {
 		// If there is any issue with the shipper, we should be conservative and not delete anything.
 		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
@@ -1022,7 +1069,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
 
-	userDB.DB = db
+	userDB.db = db
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
@@ -1313,12 +1360,12 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(util.Logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = userDB.CompactHead(tsdb.NewRangeHead(h, h.MinTime(), h.MaxTime()))
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		default:
 			reason = "regular"

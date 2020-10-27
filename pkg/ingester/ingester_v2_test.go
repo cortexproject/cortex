@@ -1806,13 +1806,66 @@ func TestIngester_flushing(t *testing.T) {
 				// Nothing shipped yet.
 				m.AssertNumberOfCalls(t, "Sync", 0)
 
-				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
 				time.Sleep(1 * time.Second)
 
 				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"flushMultipleBlocksWithDataSpanning3Days": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				// Pushing 5 samples, spanning over 3 days.
+				// First block
+				pushSingleSampleAtTime(t, i, 23*time.Hour.Milliseconds())
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()-1)
+
+				// Second block
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()+1)
+				pushSingleSampleAtTime(t, i, 25*time.Hour.Milliseconds())
+
+				// Third block, far in the future.
+				pushSingleSampleAtTime(t, i, 50*time.Hour.Milliseconds())
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+
+				// Wait for compaction to finish.
+				test.Poll(t, 5*time.Second, true, func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
+
+					h := db.Head()
+					return h.NumSeries() == 0
+				})
+
+				m.AssertNumberOfCalls(t, "Sync", 1)
+
+				userDB := i.getTSDB(userID)
+				require.NotNil(t, userDB)
+
+				blocks := userDB.Blocks()
+				require.Equal(t, 3, len(blocks))
+				require.Equal(t, 23*time.Hour.Milliseconds(), blocks[0].Meta().MinTime)
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[0].Meta().MaxTime) // Block maxt is exclusive.
+
+				// Even though we added 24*time.Hour.Milliseconds()+1, the Head compaction
+				// will leave Head's mint to 24*time.Hour.Milliseconds(). Hence the block mint.
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
+				require.Equal(t, 26*time.Hour.Milliseconds(), blocks[1].Meta().MaxTime)
+
+				require.Equal(t, 50*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.
 			},
 		},
 	} {
@@ -2109,6 +2162,13 @@ func pushSingleSample(t *testing.T, i *Ingester) {
 	require.NoError(t, err)
 }
 
+func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}
+
 func TestHeadCompactionOnStartup(t *testing.T) {
 	// Create a temporary directory for TSDB
 	tempDir, err := ioutil.TempDir("", "tsdb")
@@ -2255,7 +2315,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	require.Equal(t, 3, len(oldBlocks))
 
 	// Saying that we have shipped the second block, so only that should get deleted.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
 	}))
@@ -2276,7 +2336,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	require.NotEqual(t, oldBlocks[1].Meta().ULID, newBlocks[2].Meta().ULID) // The new block won't match previous 2nd block.
 
 	// Shipping 2 more blocks, hence all the blocks from first round.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
 	}))

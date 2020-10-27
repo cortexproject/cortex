@@ -49,7 +49,7 @@
 * [CHANGE] Increased default `-<prefix>.redis.timeout` from `100ms` to `500ms`. #3301
 * [CHANGE] `cortex_alertmanager_config_invalid` has been removed in favor of `cortex_alertmanager_config_last_reload_successful`. #3289
 * [CHANGE] Query-frontend: POST requests whose body size exceeds 10MiB will be rejected. The max body size can be customised via `-frontend.max-body-size`. #3276
-* [FEATURE] Cassandra: Add `-cassandra.table-operations-consistency` flag that allows a separate consistency level to be set for keyspace/table operations to Cassandra. #xxxx
+* [FEATURE] Cassandra: Add `-cassandra.table-operations-consistency` flag that allows a separate consistency level to be set for keyspace/table operations to Cassandra. #3402
 * [FEATURE] Shuffle sharding: added support for shuffle-sharding queriers in the query-frontend. When configured (`-frontend.max-queriers-per-tenant` globally, or using per-tenant limit `max_queriers_per_tenant`), each tenants's requests will be handled by different set of queriers. #3113 #3257
 * [FEATURE] Shuffle sharding: added support for shuffle-sharding ingesters on the read path. When ingesters shuffle-sharding is enabled and `-querier.shuffle-sharding-ingesters-lookback-period` is set, queriers will fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. #3252
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217

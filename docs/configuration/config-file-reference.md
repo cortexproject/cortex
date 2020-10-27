@@ -2052,7 +2052,7 @@ cassandra:
 
   # Consistency level for Cassandra table and keyspace operations.
   # CLI flag: -cassandra.table-operations-consistency
-  [table_operations_consistency: <string> | default = "ALL"]
+  [table_operations_consistency: <string> | default = "QUORUM"]
 
 boltdb:
   # Location of BoltDB index files.

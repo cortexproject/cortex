@@ -78,7 +78,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumConnections, "cassandra.num-connections", 2, "Number of TCP connections per host.")
 	f.BoolVar(&cfg.ConvictHosts, "cassandra.convict-hosts-on-failure", true, "Convict hosts of being down on failure.")
 	f.StringVar(&cfg.TableOptions, "cassandra.table-options", "", "Table options used to create index or chunk tables. This value is used as plain text in the table `WITH` like this, \"CREATE TABLE <generated_by_cortex> (...) WITH <cassandra.table-options>\". For details, see https://cortexmetrics.io/docs/production/cassandra. By default it will use the default table options of your Cassandra cluster.")
-	f.StringVar(&cfg.TableOperationsConsistency, "cassandra.table-operations-consistency", "ALL", "Consistency level for Cassandra table and keyspace operations.")
+	f.StringVar(&cfg.TableOperationsConsistency, "cassandra.table-operations-consistency", "QUORUM", "Consistency level for Cassandra table and keyspace operations.")
 }
 
 func (cfg *Config) Validate() error {

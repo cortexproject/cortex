@@ -2,6 +2,12 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
+  - `cortex_ingester_tsdb_wal_corruptions_total`
+  - `cortex_ingester_tsdb_head_truncations_failed_total`
+  - `cortex_ingester_tsdb_head_truncations_total`
+  - `cortex_ingester_tsdb_head_gc_duration_seconds`
+
 ## 1.5.0 in progress
 
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244

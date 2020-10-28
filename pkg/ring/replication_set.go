@@ -71,7 +71,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 			numErrs++
 
 			if r.MaxUnavailableZones > 0 {
-				// Non zone aware path
+				// Zone aware path
 				zoneFailureCount[err.ing.Zone]++
 
 				if len(zoneFailureCount) > r.MaxUnavailableZones {

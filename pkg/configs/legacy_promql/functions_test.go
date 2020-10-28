@@ -20,7 +20,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDeriv(t *testing.T) {
@@ -35,21 +35,21 @@ func TestDeriv(t *testing.T) {
 
 	metric := labels.FromStrings("__name__", "foo")
 	_, err := a.Add(metric, 1493712816939, 1.0)
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 
 	_, err = a.Add(metric, 1493712846939, 1.0)
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 
 	err = a.Commit()
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 
 	query, err := engine.NewInstantQuery(storage, "deriv(foo[30m])", timestamp.Time(1493712846939))
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 
 	result := query.Exec(context.Background())
-	testutil.Ok(t, result.Err)
+	assert.NoError(t, result.Err)
 
 	vec, _ := result.Vector()
-	testutil.Assert(t, len(vec) == 1, "Expected 1 result, got %d", len(vec))
-	testutil.Assert(t, vec[0].V == 0.0, "Expected 0.0 as value, got %f", vec[0].V)
+	assert.True(t, len(vec) == 1, "Expected 1 result, got %d", len(vec))
+	assert.True(t, vec[0].V == 0.0, "Expected 0.0 as value, got %f", vec[0].V)
 }

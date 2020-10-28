@@ -1810,4 +1810,15 @@ Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thano
 &lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
 &lt;span style="color:#000;font-weight:bold">}&lt;/span>
 &lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>
+&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Learn more</title><link>/docs/blocks-storage/learn-more/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/learn-more/</guid><description>
+&lt;p>In this page we&amp;rsquo;re listing some external resources to learn more about the Cortex blocks storage.&lt;/p>
+&lt;h2 id="talks">Talks&lt;/h2>
+&lt;h3 id="scaling-prometheus-how-we-got-some-thanos-into-cortex">Scaling Prometheus: How We Got Some Thanos Into Cortex&lt;/h3>
+&lt;iframe width="560" height="315" src="https://www.youtube.com/embed/Z5OJzRogAS4" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen>&lt;/iframe>
+&lt;h2 id="articles">Articles&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/">How to switch Cortex from chunks to blocks storage (and why you won’t look back)&lt;/a> (Oct 2020)&lt;/li>
+&lt;li>&lt;a href="https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/">Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity&lt;/a> (Oct 2020)&lt;/li>
+&lt;li>&lt;a href="https://grafana.com/blog/2020/08/12/scaling-prometheus-how-were-pushing-cortex-blocks-storage-to-its-limit-and-beyond/">Scaling Prometheus: How we’re pushing Cortex blocks storage to its limit and beyond&lt;/a> (Aug 2020)&lt;/li>
+&lt;li>&lt;a href="https://grafana.com/blog/2020/07/29/how-blocks-storage-in-cortex-reduces-operational-complexity-for-running-prometheus-at-massive-scale/">How blocks storage in Cortex reduces operational complexity for running Prometheus at massive scale&lt;/a> (Jul 2020)&lt;/li>
+&lt;/ul></description></item></channel></rss>

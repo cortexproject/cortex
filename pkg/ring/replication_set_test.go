@@ -56,17 +56,29 @@ func failingFunctionAfter(failAfter int, delay time.Duration) func(context.Conte
 	}
 }
 
+func failingFunctionForZones(zones ...string) func(context.Context, *IngesterDesc) (interface{}, error) {
+	return func(ctx context.Context, ing *IngesterDesc) (interface{}, error) {
+		for _, zone := range zones {
+			if ing.Zone == zone {
+				return nil, errors.New("Failed")
+			}
+		}
+		return 1, nil
+	}
+}
+
 func TestReplicationSet_Do(t *testing.T) {
 	tests := []struct {
-		name              string
-		ingesters         []IngesterDesc
-		maxErrors         int
-		f                 func(context.Context, *IngesterDesc) (interface{}, error)
-		delay             time.Duration
-		closeContextDelay time.Duration
-		want              []interface{}
-		wantErr           bool
-		expectedError     error
+		name                string
+		ingesters           []IngesterDesc
+		maxErrors           int
+		maxUnavailableZones int
+		f                   func(context.Context, *IngesterDesc) (interface{}, error)
+		delay               time.Duration
+		closeContextDelay   time.Duration
+		want                []interface{}
+		wantErr             bool
+		expectedError       error
 	}{
 		{
 			name: "no errors no delay",
@@ -112,12 +124,123 @@ func TestReplicationSet_Do(t *testing.T) {
 			want:              nil,
 			wantErr:           true,
 		},
+		{
+			name: "3 ingesters, 3 zones, no failures",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}},
+			f: func(c context.Context, id *IngesterDesc) (interface{}, error) {
+				return 1, nil
+			},
+			want: []interface{}{1, 1, 1},
+		},
+		{
+			name: "3 ingesters, 3 zones, 1 zone fails",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}},
+			f:                   failingFunctionForZones("zone1"),
+			maxUnavailableZones: 1, // (nr of zones) / 2
+			maxErrors:           1, // (nr of ingesters / nr of zones) * maxUnavailableZones
+			want:                []interface{}{1, 1},
+		},
+		{
+			name: "3 ingesters, 3 zones, 2 zones fail",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}},
+			f:                   failingFunctionForZones("zone1", "zone2"),
+			maxUnavailableZones: 1,
+			maxErrors:           1,
+			wantErr:             true,
+			expectedError:       errorTooManyZoneFailures,
+		},
+		{
+			name: "6 ingesters, 3 zones, 1 zone fails",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}, {
+				Zone: "zone3",
+			}},
+			f:                   failingFunctionForZones("zone1"),
+			maxUnavailableZones: 1,
+			maxErrors:           2,
+			want:                []interface{}{1, 1, 1, 1},
+		},
+		{
+			name: "5 ingesters, 5 zones, 3 zones fails",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}, {
+				Zone: "zone4",
+			}, {
+				Zone: "zone5",
+			}},
+			f:                   failingFunctionForZones("zone1", "zone2", "zone3"),
+			maxUnavailableZones: 2,
+			maxErrors:           2,
+			wantErr:             true,
+			expectedError:       errorTooManyZoneFailures,
+		},
+		{
+			name: "10 ingesters, 5 zones, 2 failures in zone 1",
+			ingesters: []IngesterDesc{{
+				Zone: "zone1",
+			}, {
+				Zone: "zone1",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone2",
+			}, {
+				Zone: "zone3",
+			}, {
+				Zone: "zone3",
+			}, {
+				Zone: "zone4",
+			}, {
+				Zone: "zone4",
+			}, {
+				Zone: "zone5",
+			}, {
+				Zone: "zone5",
+			}},
+			f:                   failingFunctionForZones("zone1"),
+			maxUnavailableZones: 2,
+			maxErrors:           4,
+			want:                []interface{}{1, 1, 1, 1, 1, 1},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := ReplicationSet{
-				Ingesters: tt.ingesters,
-				MaxErrors: tt.maxErrors,
+				Ingesters:           tt.ingesters,
+				MaxErrors:           tt.maxErrors,
+				MaxUnavailableZones: tt.maxUnavailableZones,
 			}
 			ctx := context.Background()
 			if tt.closeContextDelay > 0 {

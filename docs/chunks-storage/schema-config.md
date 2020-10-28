@@ -29,6 +29,7 @@ The `configs` block can contain multiple entries. Each config defines the storag
 This allows to have multiple non-overlapping schema configs over the time, in order to perform schema version upgrades or change storage settings (including changing the storage type).
 
 ![Schema config - periodic table](/images/chunks-storage/schema-config-periodic-tables.png)
+<!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
 
 The write path hits the table where the sample timestamp falls into (usually the last table, except short periods close to the end of a table and the beginning of the next one), while the read path hits the tables containing data for the query time range.
 

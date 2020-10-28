@@ -26,6 +26,7 @@ number_of_tables_to_keep = floor(retention_period / table_period) + 1
 ```
 
 ![Table-manager retention](/images/chunks-storage/table-manager-retention.png)
+<!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
 
 It's important to note that - due to the internal implementation - **the table `period` and the retention period must be multiples of `24h`** in order to get the expected behavior.
 
@@ -40,6 +41,7 @@ A table is considered **active** if the current time is within the range:
 - Table end period + [`-ingester.max-chunk-age`](../configuration/config-file-reference.md#ingester_config)
 
 ![Table-manager active_vs_inactive_tables](/images/chunks-storage/table-manager-active-vs-inactive-tables.png)
+<!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
 
 ### DynamoDB index store
 

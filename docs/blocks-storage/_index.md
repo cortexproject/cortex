@@ -45,7 +45,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 The series sharding and replication done by the distributor doesn't change based on the storage engine.
 
-It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples.
+It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller compared to the chunks storage for the same exact series and samples.
 
 For more information, please refer to the following dedicated sections:
 

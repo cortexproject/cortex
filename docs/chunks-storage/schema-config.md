@@ -58,7 +58,7 @@ store: <string>
 
 # The object store to use for the chunks. Supported values are:
 # s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
-# If none is specified, "store" is used for storing chunks as well. 
+# If none is specified, "store" is used for storing chunks as well.
 [object_store: <string>]
 
 # The schema version to use. Supported versions are: v1, v2, v3, v4, v5,

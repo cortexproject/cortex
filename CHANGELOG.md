@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+## 1.5.0 in progress
+
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
   - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
   - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.

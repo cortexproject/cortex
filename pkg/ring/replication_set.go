@@ -2,22 +2,32 @@ package ring
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"time"
 )
 
+var errorTooManyZoneFailures = errors.New("Too many zones failed")
+
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
-	Ingesters []IngesterDesc
-	MaxErrors int
+	Ingesters           []IngesterDesc
+	MaxErrors           int
+	MaxUnavailableZones int
+}
+
+type ingesterError struct {
+	err error
+	ing *IngesterDesc
 }
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
 	var (
-		errs        = make(chan error, len(r.Ingesters))
+		errs        = make(chan ingesterError, len(r.Ingesters))
 		resultsChan = make(chan interface{}, len(r.Ingesters))
 		minSuccess  = len(r.Ingesters) - r.MaxErrors
 		forceStart  = make(chan struct{}, r.MaxErrors)
@@ -38,9 +48,14 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 				case <-after.C:
 				}
 			}
+			fmt.Printf("About to run for addr %v and zone %v\n", ing.Addr, ing.Zone)
 			result, err := f(ctx, ing)
+			fmt.Printf("Addr %v and zone %v result %v\n", ing.Addr, ing.Zone, err)
 			if err != nil {
-				errs <- err
+				errs <- ingesterError{
+					err: err,
+					ing: ing,
+				}
 			} else {
 				resultsChan <- result
 			}
@@ -48,17 +63,37 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	}
 
 	var (
-		numErrs    int
-		numSuccess int
-		results    = make([]interface{}, 0, len(r.Ingesters))
+		numErrs          int
+		numSuccess       int
+		results          = make([]interface{}, 0, len(r.Ingesters))
+		zoneFailureCount = make(map[string]int)
 	)
+	fmt.Printf("minSuccess %v\n", minSuccess)
 	for numSuccess < minSuccess {
+		fmt.Printf("numSuccess %v\n", numSuccess)
 		select {
 		case err := <-errs:
 			numErrs++
-			if numErrs > r.MaxErrors {
-				return nil, err
+
+			if r.MaxUnavailableZones > 0 {
+				// Non zone aware path
+				fmt.Printf("Incrementing count for Zone %v\n", err.ing.Zone)
+				zoneFailureCount[err.ing.Zone]++
+				fmt.Printf("Count map %v\n", zoneFailureCount)
+
+				if len(zoneFailureCount) > r.MaxUnavailableZones {
+					return nil, errorTooManyZoneFailures
+				}
+			} else {
+				// Non zone aware path
+				// Errors per zone : only RF-1 zone can be failing
+				// if failingZones > r.MaxUnavailableZones
+
+				if numErrs > r.MaxErrors {
+					return nil, err.err
+				}
 			}
+
 			// force one of the delayed requests to start
 			forceStart <- struct{}{}
 

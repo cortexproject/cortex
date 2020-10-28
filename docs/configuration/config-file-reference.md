@@ -1984,6 +1984,14 @@ cassandra:
   # CLI flag: -cassandra.ca-path
   [CA_path: <string> | default = ""]
 
+  # Path to certificate file used by TLS.
+  # CLI flag: -cassandra.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to private key file used by TLS.
+  # CLI flag: -cassandra.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
   # Enable password authentication when connecting to cassandra.
   # CLI flag: -cassandra.auth
   [auth: <boolean> | default = false]

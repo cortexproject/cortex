@@ -1858,6 +1858,15 @@ func TestIngester_flushing(t *testing.T) {
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 1*time.Second, true, func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
+					return db.Head().NumSeries() == 0
+				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
 				time.Sleep(1 * time.Second)
 
 				verifyCompactedHead(t, i, true)
@@ -1888,16 +1897,19 @@ func TestIngester_flushing(t *testing.T) {
 
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
-				// Wait for compaction to finish.
-				test.Poll(t, 5*time.Second, true, func() interface{} {
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 1*time.Second, true, func() interface{} {
 					db := i.getTSDB(userID)
 					if db == nil {
 						return false
 					}
-
-					h := db.Head()
-					return h.NumSeries() == 0
+					return db.Head().NumSeries() == 0
 				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i, true)
 
 				m.AssertNumberOfCalls(t, "Sync", 1)
 

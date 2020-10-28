@@ -1127,6 +1127,8 @@ github.com/shurcooL/vfsgen v0.0.0-20200627165143-92b8a710ab6c/go.mod h1:TrYk7fJV
 github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 h1:pXY9qYc/MP5zdvqWEUH6SjNiu7VhSjuVFTFiTcphaLU=
 github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546/go.mod h1:TrYk7fJVaAttu97ZZKrO9UbRa8izdowaMIZcxYMbVaw=
 github.com/siebenmann/go-kstat v0.0.0-20160321171754-d34789b79745/go.mod h1:G81aIFAMS9ECrwBYR9YxhlPjWgrItd+Kje78O6+uqm8=
+github.com/simonswine/weaveworks-common v0.0.0-20201028181301-6f8e4bddb2b2 h1:1lDpld4k3dgP/N0UR9AoXbaWhz18jnl08Kf+Q+7N45A=
+github.com/simonswine/weaveworks-common v0.0.0-20201028181301-6f8e4bddb2b2/go.mod h1:hz10LOsAdzC3K/iXaKoFxOKTDRgxJl+BTGX1GY+TzO4=
 github.com/sirupsen/logrus v1.0.5/go.mod h1:pMByvHTf9Beacp5x1UXfOR9xyW/9antXMhjMPG0dEzc=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=

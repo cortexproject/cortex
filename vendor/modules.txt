@@ -628,7 +628,7 @@ github.com/uber/jaeger-client-go/utils
 # github.com/uber/jaeger-lib v2.4.0+incompatible
 github.com/uber/jaeger-lib/metrics
 github.com/uber/jaeger-lib/metrics/prometheus
-# github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099
+# github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099 => github.com/simonswine/weaveworks-common v0.0.0-20201028181301-6f8e4bddb2b2
 ## explicit
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
@@ -1027,3 +1027,4 @@ sigs.k8s.io/yaml
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 # github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
+# github.com/weaveworks/common => github.com/simonswine/weaveworks-common v0.0.0-20201028181301-6f8e4bddb2b2

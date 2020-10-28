@@ -87,3 +87,6 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 
 // Fix a panic (see: https://github.com/opentracing-contrib/go-grpc/pull/12)
 replace github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
+
+// TODO: dev work
+replace github.com/weaveworks/common => github.com/simonswine/weaveworks-common v0.0.0-20201028181301-6f8e4bddb2b2

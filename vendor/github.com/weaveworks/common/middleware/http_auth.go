@@ -6,14 +6,18 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+func (with *withPropagator) AuthenticateUser() Func {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, err := with.propagator.ExtractFromHTTPRequest(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // AuthenticateUser propagates the user ID from HTTP headers back to the request's context.
-var AuthenticateUser = Func(func(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-})
+var AuthenticateUser = WithPropagator(user.NewOrgIDPropagator()).AuthenticateUser()

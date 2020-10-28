@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/propagator"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -296,7 +297,7 @@ func New(cfg Config) (*Cortex, error) {
 	//
 	// Also don't check auth /frontend.Frontend/Process, as this handles
 	// queries for multiple users.
-	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
+	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled, propagator.New(),
 		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
 
 	cortex := &Cortex{

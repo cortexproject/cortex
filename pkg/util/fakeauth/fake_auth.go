@@ -13,10 +13,10 @@ import (
 )
 
 // SetupAuthMiddleware for the given server config.
-func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []string) middleware.Interface {
+func SetupAuthMiddleware(config *server.Config, enabled bool, propagator user.Propagator, noGRPCAuthOn []string) middleware.Interface {
 	if enabled {
 		config.GRPCMiddleware = append(config.GRPCMiddleware,
-			middleware.ServerUserHeaderInterceptor,
+			middleware.WithPropagator(propagator).ServerUserHeaderInterceptor,
 		)
 		config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
 			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
@@ -25,10 +25,10 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 						return handler(srv, ss)
 					}
 				}
-				return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+				return middleware.WithPropagator(propagator).StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 			},
 		)
-		return middleware.AuthenticateUser
+		return middleware.WithPropagator(propagator).AuthenticateUser()
 	}
 
 	config.GRPCMiddleware = append(config.GRPCMiddleware,

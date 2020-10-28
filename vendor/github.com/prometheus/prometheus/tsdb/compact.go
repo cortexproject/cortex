@@ -29,6 +29,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -488,6 +489,12 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, p
 	}
 
 	if meta.Stats.NumSamples == 0 {
+		level.Info(c.logger).Log(
+			"msg", "write block resulted in empty block",
+			"mint", meta.MinTime,
+			"maxt", meta.MaxTime,
+			"duration", time.Since(start),
+		)
 		return ulid.ULID{}, nil
 	}
 

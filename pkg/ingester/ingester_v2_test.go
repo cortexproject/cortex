@@ -2422,3 +2422,39 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		require.NotEqual(t, b.Meta().ULID, newBlocks2[1].Meta().ULID)
 	}
 }
+
+func TestIngesterPushErrorDuringFlush(t *testing.T) {
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push a sample, it should succeed.
+	pushSingleSample(t, i)
+
+	// We mock a flushing by setting the boolean.
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	require.False(t, db.flushInProgress.Load())
+	db.flushInProgress.Store(true)
+
+	// Ingestion should fail with a 503.
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = i.v2Push(ctx, req)
+	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("flush in progress"), userID).Error()), err)
+
+	// Ingestion is successful after a flush.
+	require.True(t, db.flushInProgress.Load())
+	db.flushInProgress.Store(false)
+	pushSingleSample(t, i)
+}

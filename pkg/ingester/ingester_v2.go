@@ -54,6 +54,9 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	flushInProgress atomic.Bool
+	pushesInFlight  sync.WaitGroup
+
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
 
@@ -500,6 +503,12 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 		return nil, fmt.Errorf("ingester stopping")
 	}
 	i.userStatesMtx.RUnlock()
+
+	if db.flushInProgress.Load() {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("flush in progress"), userID).Error())
+	}
+	db.pushesInFlight.Add(1)
+	defer db.pushesInFlight.Done()
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
@@ -1361,6 +1370,12 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
+
+			userDB.flushInProgress.Store(true)
+			defer userDB.flushInProgress.Store(false)
+			// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
+			// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
+			userDB.pushesInFlight.Wait()
 			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):

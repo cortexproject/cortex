@@ -8,6 +8,7 @@
   - `cortex_ingester_tsdb_head_truncations_total`
   - `cortex_ingester_tsdb_head_gc_duration_seconds`
 * [ENHANCEMENT] Added `cortex_alertmanager_config_hash` metric to expose hash of Alertmanager Config loaded per user. #3388
+* [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422
 
 ## 1.5.0 in progress
 

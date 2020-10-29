@@ -727,6 +727,7 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 	if err != nil {
 		return nil, err
 	}
+
 	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
@@ -754,10 +755,12 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label values without any time range bound. Once we implement querying from object store too,
-	// then we should use from and to supplied by the query.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -790,10 +793,12 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since we ingester runs with a very limited TSDB retention, we can (and should) query
-	// label values without any time range bound. Once we implement querying from object store too,
-	// then we should use from and to supplied by the query.
-	q, err := db.Querier(ctx, 0, math.MaxInt64)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}

@@ -341,7 +341,7 @@ func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, 
 func (m *mockDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName) ([]string, error) {
 	return nil, nil
 }
-func (m *mockDistributor) LabelNames(context.Context) ([]string, error) {
+func (m *mockDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, nil
 }
 func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {

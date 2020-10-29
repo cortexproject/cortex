@@ -676,7 +676,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 }
 
 // LabelNames returns all of the label names.
-func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
+func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err

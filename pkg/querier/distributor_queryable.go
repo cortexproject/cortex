@@ -26,7 +26,7 @@ type Distributor interface {
 	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName) ([]string, error)
-	LabelNames(context.Context) ([]string, error)
+	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
@@ -188,7 +188,7 @@ func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warning
 }
 
 func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	ln, err := q.distributor.LabelNames(q.ctx)
+	ln, err := q.distributor.LabelNames(q.ctx, model.Time(q.mint), model.Time(q.maxt))
 	return ln, nil, err
 }
 

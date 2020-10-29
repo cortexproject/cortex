@@ -45,7 +45,7 @@ For more information, please refer to the guide "[Ingesters rolling updates](./i
 
 ### Hash ring
 
-The hash ring is a distributed data structure used by Cortex for sharding, replication and service discovery. The hash ring data structure gets shared across Cortex replicas via Gossip or a key-value store.
+The hash ring is a distributed data structure used by Cortex for sharding, replication and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.
 
 For more information, please refer to the [Architecture](../architecture.md#the-hash-ring) documentation.
 

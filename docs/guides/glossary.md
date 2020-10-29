@@ -35,7 +35,7 @@ Series flushing is the operation run by ingesters to offload time series from me
 
 The HA Tracker is a feature of Cortex distributor which is used to deduplicate received series coming from two (or more) Prometheus servers configured in HA pairs.
 
-For more information, please refer to the guide "[Config for sending HA Pairs data to Cortex](../production/ha-pair-handling.md)".
+For more information, please refer to the guide "[Config for sending HA Pairs data to Cortex](../guides/ha-pair-handling.md)".
 
 ### Hand-over
 
@@ -76,7 +76,7 @@ For example, given the series `node_cpu_seconds_total{instance="10.0.0.1",mode="
 
 The schema (or schema config) is a configuration file used by the Cortex chunks storage to configure the backend index and chunks store, and manage storage version upgrades. The schema config is **not** used by the Cortex [blocks storage](#blocks-storage).
 
-For more information, please refer to the [Schema config reference](../configuration/schema-config-reference.md).
+For more information, please refer to the [Schema config reference](../chunks-storage/schema-config.md).
 
 ### Series
 
@@ -112,4 +112,7 @@ _See [Tenant](#tenant)._
 
 The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination. Despite the implementation is different, the WAL is supported both by Cortex chunks and blocks storage engines.
 
-For more information, please refer to the [Ingesters with WAL](../production/ingesters-with-wal.md) documentation.
+For more information, please refer to:
+
+- [Ingesters with WAL](../chunks-storage/ingesters-with-wal.md) when running **chunks storage**.
+- [Ingesters with WAL](../blocks-storage/_index.md#the-write-path) when running **blocks storage**.

@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
@@ -153,7 +154,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	wg := &sync.WaitGroup{}
 	jobs := make(chan job)
-	errs := util.NewMultiError()
+	errs := tsdb_errors.NewMulti()
 	errsMx := sync.Mutex{}
 
 	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -343,7 +344,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
 
-	errs := util.NewMultiError()
+	errs := tsdb_errors.NewMulti()
 
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).

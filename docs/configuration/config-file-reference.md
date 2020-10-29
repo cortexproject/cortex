@@ -159,10 +159,11 @@ runtime_config:
 [memberlist: <memberlist_config>]
 
 query_scheduler:
-  # Maximum number of outstanding requests per tenant per query-scheduler;
-  # requests beyond this error with HTTP 429.
+  # Maximum number of outstanding requests per tenant per query-scheduler.
+  # In-flight requests above this limit will fail with HTTP response status code
+  # 429.
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-  [maxoutstandingpertenant: <int> | default = 100]
+  [max_outstanding_requests_per_tenant: <int> | default = 100]
 ```
 
 ### `server_config`
@@ -777,15 +778,16 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
 
-# DNS hostname used for finding schedulers.
+# DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address
 [scheduler_address: <string> | default = ""]
 
-# How often to query DNS.
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
 # CLI flag: -frontend.scheduler-dns-lookup-period
 [scheduler_dns_lookup_period: <duration> | default = 10s]
 
-# Number of goroutines pushing requests to
+# Number of concurrent workers forwarding queries to single query-scheduler.
 # CLI flag: -frontend.scheduler-worker-concurrency
 [scheduler_worker_concurrency: <int> | default = 5]
 
@@ -852,9 +854,11 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
-# Name of network interface to read address from.
-# CLI flag: -frontend.interface
-[interface_names: <list of string> | default = [eth0 en0]]
+# Name of network interface to read address from. This address is sent to
+# query-scheduler and querier, which uses it to send the query response back to
+# query-frontend.
+# CLI flag: -frontend.instance-interface-names
+[instance_interface_names: <list of string> | default = [eth0 en0]]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -2633,7 +2637,8 @@ grpc_client_config:
 # CLI flag: -querier.scheduler-address
 [scheduler_address: <string> | default = ""]
 
-# How often to resolve scheduler hostname.
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
 # CLI flag: -querier.scheduler-dns-lookup-period
 [scheduler_dns_lookup_period: <duration> | default = 10s]
 ```

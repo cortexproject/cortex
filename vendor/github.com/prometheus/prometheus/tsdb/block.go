@@ -26,6 +26,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -172,7 +173,7 @@ type BlockMetaCompaction struct {
 	// ULIDs of all source head blocks that went into the block.
 	Sources []ulid.ULID `json:"sources,omitempty"`
 	// Indicates that during compaction it resulted in a block without any samples
-	// so it should be deleted on the next reload.
+	// so it should be deleted on the next reloadBlocks.
 	Deletable bool `json:"deletable,omitempty"`
 	// Short descriptions of the direct blocks that were used to create
 	// this block.

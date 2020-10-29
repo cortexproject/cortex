@@ -45,6 +45,9 @@ type alertmanagerMetrics struct {
 	silencesQueryDuration           *prometheus.Desc
 	silences                        *prometheus.Desc
 	silencesPropagatedMessagesTotal *prometheus.Desc
+
+	// The alertmanager config hash.
+	configHashValue *prometheus.Desc
 }
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
@@ -135,6 +138,10 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_silences",
 			"How many silences by state.",
 			[]string{"user", "state"}, nil),
+		configHashValue: prometheus.NewDesc(
+			"cortex_alertmanager_config_hash",
+			"Hash of the currently loaded alertmanager configuration.",
+			[]string{"user"}, nil),
 	}
 }
 
@@ -178,6 +185,7 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.silencesQueryDuration
 	out <- m.silences
 	out <- m.silencesPropagatedMessagesTotal
+	out <- m.configHashValue
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
@@ -207,4 +215,6 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.silencesQueryDuration, "alertmanager_silences_query_duration_seconds")
 	data.SendSumOfCounters(out, m.silencesPropagatedMessagesTotal, "alertmanager_silences_gossip_messages_propagated_total")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.silences, "alertmanager_silences", "state")
+
+	data.SendMaxOfGaugesPerUser(out, m.configHashValue, "alertmanager_config_hash")
 }

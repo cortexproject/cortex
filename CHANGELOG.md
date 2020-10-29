@@ -2,6 +2,16 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
+  - `cortex_ingester_tsdb_wal_corruptions_total`
+  - `cortex_ingester_tsdb_head_truncations_failed_total`
+  - `cortex_ingester_tsdb_head_truncations_total`
+  - `cortex_ingester_tsdb_head_gc_duration_seconds`
+* [ENHANCEMENT] Added `cortex_alertmanager_config_hash` metric to expose hash of Alertmanager Config loaded per user. #3388
+* [ENHANCEMENT] Query-Frontend / Query-Scheduler: New component called "Query-Scheduler" has been introduced. Query-Scheduler is simply a queue of requests, moved outside of Query-Frontend. This allows Query-Frontend to be scaled separately from number of queues. To make Query-Frontend and Querier use Query-Scheduler, they need to be started with `-frontend.scheduler-address` and `-querier.scheduler-address` options respectively. #3374
+
+## 1.5.0 in progress
+
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
   - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
   - `-blocks-storage.s3.http.response-header-timeout` is set to 2 minutes.
@@ -54,6 +64,7 @@
 * [FEATURE] Query-frontend: added `compression` config to support results cache with compression. #3217
 * [FEATURE] Add OpenStack Swift support to blocks storage. #3303
 * [FEATURE] Added support for applying Prometheus relabel configs on series received by the distributor. A `metric_relabel_configs` field has been added to the per-tenant limits configuration. #3329
+* [FEATURE] Support for Cassandra client SSL certificates. #3384
 * [ENHANCEMENT] Ruler: Introduces two new limits `-ruler.max-rules-per-rule-group` and `-ruler.max-rule-groups-per-tenant` to control the number of rules per rule group and the total number of rule groups for a given user. They are disabled by default. #3366
 * [ENHANCEMENT] Allow to specify multiple comma-separated Cortex services to `-target` CLI option (or its respective YAML config option). For example, `-target=all,compactor` can be used to start Cortex single-binary with compactor as well. #3275
 * [ENHANCEMENT] Expose additional HTTP configs for the S3 backend client. New flag are listed below: #3244
@@ -88,7 +99,9 @@
 * [ENHANCEMENT] Blocks storage: reduced number of bucket listing operations to list block content (applies to newly created blocks only). #3363
 * [ENHANCEMENT] Ruler: Include the tenant ID on the notifier logs. #3372
 * [ENHANCEMENT] Blocks storage Compactor: Added `-compactor.enabled-tenants` and `-compactor.disabled-tenants` to explicitly enable or disable compaction of specific tenants. #3385
-* [ENHANCEMENT] Query-Frontend / Query-Scheduler: New component called "Query-Scheduler" has been introduced. Query-Scheduler is simply a queue of requests, moved outside of Query-Frontend. This allows Query-Frontend to be scaled separately from number of queues. To make Query-Frontend and Querier use Query-Scheduler, they need to be started with `-frontend.scheduler-address` and `-querier.scheduler-address` options respectively. #3374
+* [ENHANCEMENT] Blocks storage ingester: Creating checkpoint only once even when there are multiple Head compactions in a single `Compact()` call. #3373
+* [BUGFIX] Blocks storage ingester: Read repair memory-mapped chunks file which can end up being empty on abrupt shutdowns combined with faulty disks. #3373
+* [BUGFIX] Blocks storage ingester: Close TSDB resources on failed startup preventing ingester OOMing. #3373
 * [BUGFIX] No-longer-needed ingester operations for queries triggered by queriers and rulers are now canceled. #3178
 * [BUGFIX] Ruler: directories in the configured `rules-path` will be removed on startup and shutdown in order to ensure they don't persist between runs. #3195
 * [BUGFIX] Handle hash-collisions in the query path. #3192

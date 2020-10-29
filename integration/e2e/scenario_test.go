@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"gopkg.in/yaml.v2"
@@ -23,7 +23,7 @@ const bktName = "cheesecake"
 
 func spinup(t *testing.T, networkName string) (*e2e.Scenario, *e2e.HTTPService, *e2e.HTTPService) {
 	s, err := e2e.NewScenario(networkName)
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 
 	m1 := e2edb.NewMinio(9000, bktName)
 	m2 := e2edb.NewMinio(9001, bktName)

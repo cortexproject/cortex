@@ -32,6 +32,7 @@ func TestAlertmanager(t *testing.T) {
 	)
 	require.NoError(t, s.StartAndWaitReady(alertmanager))
 	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Equals(1), "cortex_alertmanager_config_last_reload_successful"))
+	require.NoError(t, alertmanager.WaitSumMetrics(e2e.Greater(0), "cortex_alertmanager_config_hash"))
 
 	c, err := e2ecortex.NewClient("", "", alertmanager.HTTPEndpoint(), "", "user-1")
 	require.NoError(t, err)

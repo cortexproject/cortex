@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -87,7 +86,7 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 
 func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
 	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	cleanup := func() {
 		os.RemoveAll(dir)
 	}

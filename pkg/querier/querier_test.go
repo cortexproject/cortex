@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -262,7 +261,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	}
 
 	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
@@ -495,7 +494,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	dir, err := ioutil.TempDir("", "test_query")
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
@@ -646,7 +645,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	}
 
 	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 

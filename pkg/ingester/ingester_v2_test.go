@@ -1667,11 +1667,12 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 		"should fail and rollback if an error occur while loading a TSDB on concurrency > number of TSDBs": {
 			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
-				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid and
-				// opening TSDB should fail).
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid unless
+				// it's the last one and opening TSDB should fail).
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "wal", ""), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "chunks_head", ""), 0700))
 				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user0", "chunks_head", "00000001"), nil, 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user0", "chunks_head", "00000002"), nil, 0700))
 
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
 			},
@@ -1690,11 +1691,12 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user3", "dummy"), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user4", "dummy"), 0700))
 
-				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid and
-				// opening TSDB should fail).
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid unless
+				// it's the last one and opening TSDB should fail).
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "wal", ""), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "chunks_head", ""), 0700))
 				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user2", "chunks_head", "00000001"), nil, 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user2", "chunks_head", "00000002"), nil, 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
 				require.Equal(t, 0, len(i.TSDBState.dbs))
@@ -1858,6 +1860,15 @@ func TestIngester_flushing(t *testing.T) {
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
+					return db.Head().NumSeries()
+				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
 				time.Sleep(1 * time.Second)
 
 				verifyCompactedHead(t, i, true)
@@ -1888,16 +1899,19 @@ func TestIngester_flushing(t *testing.T) {
 
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
-				// Wait for compaction to finish.
-				test.Poll(t, 5*time.Second, true, func() interface{} {
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
 					db := i.getTSDB(userID)
 					if db == nil {
 						return false
 					}
-
-					h := db.Head()
-					return h.NumSeries() == 0
+					return db.Head().NumSeries()
 				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i, true)
 
 				m.AssertNumberOfCalls(t, "Sync", 1)
 

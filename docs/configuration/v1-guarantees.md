@@ -29,6 +29,8 @@ Cortex strives to be 100% API compatible with Prometheus (under `/api/prom/*`); 
 - Additional API around pushing metrics (under `/api/push`).
 - Additional API endpoints for management of Cortex itself, such as the ring.  These APIs are not part of the any compatibility guarantees.
 
+_For more information, please refer to the [limitations](../guides/limitations.md) doc._
+
 ## Experimental features
 
 Cortex is an actively developed project and we want to encourage the introduction of new features and capability.  As such, not everything in each release of Cortex is considered "production-ready". We don't provide any backwards compatibility guarantees on these and the config and flags might break.

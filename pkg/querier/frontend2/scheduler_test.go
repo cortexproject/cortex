@@ -331,6 +331,11 @@ func initFrontendLoop(t *testing.T, client SchedulerForFrontendClient, frontendA
 		FrontendAddress: frontendAddr,
 	}))
 
+	// Scheduler acks INIT by sending OK back.
+	resp, err := loop.Recv()
+	require.NoError(t, err)
+	require.True(t, resp.Status == OK)
+
 	return loop
 }
 

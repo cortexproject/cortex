@@ -166,6 +166,13 @@ func (s *Scheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopServe
 	}
 	defer s.frontendDisconnected(frontendAddress)
 
+	// Response to INIT. If scheduler is not running, we skip for-loop, send SHUTTING_DOWN and exit this method.
+	if s.State() == services.Running {
+		if err := frontend.Send(&SchedulerToFrontend{Status: OK}); err != nil {
+			return err
+		}
+	}
+
 	// We stop accepting new queries in Stopping state. By returning quickly, we disconnect frontends, which in turns
 	// cancels all their queries.
 	for s.State() == services.Running {

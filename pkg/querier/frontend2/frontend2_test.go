@@ -76,24 +76,28 @@ func setupFrontend2(t *testing.T, schedulerReplyFunc func(f *Frontend2, msg *Fro
 	return f, ms
 }
 
-func sendResponseWithDelay(f *Frontend2, delay time.Duration, queryID uint64, resp *httpgrpc.HTTPResponse) {
+func sendResponseWithDelay(f *Frontend2, delay time.Duration, userID string, queryID uint64, resp *httpgrpc.HTTPResponse) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
 
-	_, _ = f.QueryResult(context.Background(), &QueryResultRequest{
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, _ = f.QueryResult(ctx, &QueryResultRequest{
 		QueryID:      queryID,
 		HttpResponse: resp,
 	})
 }
 
 func TestFrontendBasicWorkflow(t *testing.T) {
-	body := "all fine here"
+	const (
+		body   = "all fine here"
+		userID = "test"
+	)
 
 	f, _ := setupFrontend2(t, func(f *Frontend2, msg *FrontendToScheduler) *SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
-		go sendResponseWithDelay(f, 100*time.Millisecond, msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
 			Code: 200,
 			Body: []byte(body),
 		})
@@ -101,7 +105,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		return &SchedulerToFrontend{Status: OK}
 	})
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
@@ -110,7 +114,10 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 func TestFrontendRetryEnqueue(t *testing.T) {
 	// Frontend uses worker concurrency to compute number of retries. We use one less failure.
 	failures := atomic.NewInt64(testFrontendWorkerConcurrency - 1)
-	body := "hello world"
+	const (
+		body   = "hello world"
+		userID = "test"
+	)
 
 	f, _ := setupFrontend2(t, func(f *Frontend2, msg *FrontendToScheduler) *SchedulerToFrontend {
 		fail := failures.Dec()
@@ -118,7 +125,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 			return &SchedulerToFrontend{Status: SHUTTING_DOWN}
 		}
 
-		go sendResponseWithDelay(f, 100*time.Millisecond, msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
 			Code: 200,
 			Body: []byte(body),
 		})
@@ -126,7 +133,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		return &SchedulerToFrontend{Status: OK}
 	})
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 }
 
@@ -235,6 +242,11 @@ func (m *mockScheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopS
 	m.mu.Lock()
 	m.frontendAddr[init.FrontendAddress]++
 	m.mu.Unlock()
+
+	// Ack INIT from frontend.
+	if err := frontend.Send(&SchedulerToFrontend{Status: OK}); err != nil {
+		return err
+	}
 
 	for {
 		msg, err := frontend.Recv()

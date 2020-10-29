@@ -2,13 +2,13 @@ package frontend2
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
@@ -231,6 +231,13 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 		FrontendAddress: w.frontendAddr,
 	}); err != nil {
 		return err
+	}
+
+	if resp, err := loop.Recv(); err != nil || resp.Status != OK {
+		if err != nil {
+			return err
+		}
+		return errors.Errorf("unexpected status received: %v", resp.Status)
 	}
 
 	for {

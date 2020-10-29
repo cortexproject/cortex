@@ -128,6 +128,8 @@ func (m *QuerierToScheduler) GetQuerierID() string {
 }
 
 type SchedulerToQuerier struct {
+	// Query ID as reported by frontend. When querier sends the response back to frontend (using frontendAddress),
+	// it identifies the query by using this ID.
 	QueryID     uint64                `protobuf:"varint,1,opt,name=queryID,proto3" json:"queryID,omitempty"`
 	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
 	// Where should querier send HTTP Response to (using FrontendForQuerier interface).
@@ -286,7 +288,8 @@ type FrontendToScheduler struct {
 	Type FrontendToSchedulerType `protobuf:"varint,1,opt,name=type,proto3,enum=frontend2.FrontendToSchedulerType" json:"type,omitempty"`
 	// Used by INIT message. Will be put into all requests passed to querier.
 	FrontendAddress string `protobuf:"bytes,2,opt,name=frontendAddress,proto3" json:"frontendAddress,omitempty"`
-	// Used by ENQUEUE and CANCEL. Each enqueued query must have queryID higher than previous one.
+	// Used by ENQUEUE and CANCEL.
+	// Each frontend manages its own queryIDs. Different frontends may use same set of query IDs.
 	QueryID uint64 `protobuf:"varint,3,opt,name=queryID,proto3" json:"queryID,omitempty"`
 	// Following are used by ENQUEUE only.
 	UserID      string                `protobuf:"bytes,4,opt,name=userID,proto3" json:"userID,omitempty"`
@@ -745,8 +748,8 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type SchedulerForQuerierClient interface {
-	// After calling this method, both Querier and Scheduler enters a loop, in which querier waits for
-	// a "SchedulerToQuerier" messages containing HTTP requests and processes them. After processing the request,
+	// After calling this method, both Querier and Scheduler enter a loop, in which querier waits for
+	// "SchedulerToQuerier" messages containing HTTP requests and processes them. After processing the request,
 	// querier signals that it is ready to accept another one by sending empty QuerierToScheduler message.
 	//
 	// Long-running loop is used to detect broken connection between scheduler and querier. This is important
@@ -795,8 +798,8 @@ func (x *schedulerForQuerierQuerierLoopClient) Recv() (*SchedulerToQuerier, erro
 
 // SchedulerForQuerierServer is the server API for SchedulerForQuerier service.
 type SchedulerForQuerierServer interface {
-	// After calling this method, both Querier and Scheduler enters a loop, in which querier waits for
-	// a "SchedulerToQuerier" messages containing HTTP requests and processes them. After processing the request,
+	// After calling this method, both Querier and Scheduler enter a loop, in which querier waits for
+	// "SchedulerToQuerier" messages containing HTTP requests and processes them. After processing the request,
 	// querier signals that it is ready to accept another one by sending empty QuerierToScheduler message.
 	//
 	// Long-running loop is used to detect broken connection between scheduler and querier. This is important

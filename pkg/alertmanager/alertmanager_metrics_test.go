@@ -51,6 +51,11 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_alerts_received_total{user="user1"} 10
 		cortex_alertmanager_alerts_received_total{user="user2"} 100
 		cortex_alertmanager_alerts_received_total{user="user3"} 1000
+		# HELP cortex_alertmanager_config_hash Hash of the currently loaded alertmanager configuration.
+		# TYPE cortex_alertmanager_config_hash gauge
+		cortex_alertmanager_config_hash{user="user1"} 0
+		cortex_alertmanager_config_hash{user="user2"} 0
+		cortex_alertmanager_config_hash{user="user3"} 0
 		# HELP cortex_alertmanager_nflog_gc_duration_seconds Duration of the last notification log garbage collection cycle.
 		# TYPE cortex_alertmanager_nflog_gc_duration_seconds summary
 		cortex_alertmanager_nflog_gc_duration_seconds_sum 111

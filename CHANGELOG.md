@@ -7,6 +7,7 @@
   - `cortex_ingester_tsdb_head_truncations_failed_total`
   - `cortex_ingester_tsdb_head_truncations_total`
   - `cortex_ingester_tsdb_head_gc_duration_seconds`
+* [ENHANCEMENT] Added `cortex_alertmanager_config_hash` metric to expose hash of Alertmanager Config loaded per user. #3388
 
 ## 1.5.0 in progress
 

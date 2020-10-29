@@ -26,13 +26,13 @@ import (
 
 // Config for a Frontend2.
 type Config struct {
-	SchedulerAddr     string                   `yaml:"scheduler_address"`
+	SchedulerAddress  string                   `yaml:"scheduler_address"`
 	DNSLookupPeriod   time.Duration            `yaml:"scheduler_dns_lookup_period"`
 	WorkerConcurrency int                      `yaml:"scheduler_worker_concurrency"`
 	GRPCClientConfig  grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
-	InfNames []string `yaml:"interface_names"`
+	InfNames []string `yaml:"instance_interface_names"`
 
 	// If set, address is not computed from interfaces.
 	Addr string `yaml:"address" doc:"hidden"`
@@ -40,14 +40,14 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.SchedulerAddr, "frontend.scheduler-address", "", "DNS hostname used for finding schedulers.")
-	f.DurationVar(&cfg.DNSLookupPeriod, "frontend.scheduler-dns-lookup-period", 10*time.Second, "How often to query DNS.")
-	f.IntVar(&cfg.WorkerConcurrency, "frontend.scheduler-worker-concurrency", 5, "Number of goroutines pushing requests to ")
+	f.StringVar(&cfg.SchedulerAddress, "frontend.scheduler-address", "", "DNS hostname used for finding query-schedulers.")
+	f.DurationVar(&cfg.DNSLookupPeriod, "frontend.scheduler-dns-lookup-period", 10*time.Second, "How often to resolve the scheduler-address, in order to look for new query-scheduler instances.")
+	f.IntVar(&cfg.WorkerConcurrency, "frontend.scheduler-worker-concurrency", 5, "Number of concurrent workers forwarding queries to single query-scheduler.")
 
 	cfg.InfNames = []string{"eth0", "en0"}
-	f.Var((*flagext.StringSlice)(&cfg.InfNames), "frontend.interface", "Name of network interface to read address from.")
-	f.StringVar(&cfg.Addr, "frontend.address", "", "IP address to advertise to querier (via scheduler) (resolved via interfaces by default).")
-	f.IntVar(&cfg.Port, "frontend.port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
+	f.Var((*flagext.StringSlice)(&cfg.InfNames), "frontend.instance-interface-names", "Name of network interface to read address from. This address is sent to query-scheduler and querier, which uses it to send the query response back to query-frontend.")
+	f.StringVar(&cfg.Addr, "frontend.instance-address", "", "IP address to advertise to querier (via scheduler) (resolved via interfaces by default).")
+	f.IntVar(&cfg.Port, "frontend.instance-port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
 }
@@ -80,9 +80,18 @@ type frontendRequest struct {
 	response chan *httpgrpc.HTTPResponse
 }
 
+type enqueueStatus int
+
+const (
+	// Sent to scheduler successfully, and frontend should wait for response now.
+	wait_for_response enqueueStatus = iota
+
+	// Failed to forward request to scheduler, frontend will try again.
+	failed
+)
+
 type enqueueResult struct {
-	success bool // True if request was sent to scheduler successfully, and frontend should wait for response.
-	retry   bool // Whether request can be retried.
+	status enqueueStatus
 
 	cancelCh chan<- uint64 // Channel that can be used for request cancellation. If nil, cancellation is not possible.
 }
@@ -103,19 +112,20 @@ func NewFrontend2(cfg Config, log log.Logger, reg prometheus.Registerer) (*Front
 		schedulerWorkers: schedulerWorkers,
 		requests:         newRequestsInProgress(),
 	}
-	// Randomize to avoid getting responses from queries sent before restart (which could lead to leak between tenants).
+	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
+	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
 	// This isn't perfect, but better than nothing.
 	f.lastQueryID.Store(rand.Uint64())
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_frontend_queries_in_progress",
+		Name: "cortex_query_frontend_queries_in_progress",
 		Help: "Number of queries in progress handled by this frontend.",
 	}, func() float64 {
 		return float64(f.requests.count())
 	})
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_frontend_connected_schedulers",
+		Name: "cortex_query_frontend_connected_schedulers",
 		Help: "Number of schedulers this frontend is connected to.",
 	}, func() float64 {
 		return float64(f.schedulerWorkers.getWorkersCount())
@@ -188,13 +198,12 @@ enqueueAgain:
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case enqRes := <-freq.enqueue:
-		if enqRes.success {
-			cancelCh = enqRes.cancelCh
-			break
-		}
 
-		if enqRes.retry {
+	case enqRes := <-freq.enqueue:
+		if enqRes.status == wait_for_response {
+			cancelCh = enqRes.cancelCh
+			break // go wait for response.
+		} else if enqRes.status == failed {
 			retries--
 			if retries > 0 {
 				goto enqueueAgain
@@ -221,14 +230,22 @@ enqueueAgain:
 	}
 }
 
-func (f *Frontend2) QueryResult(_ context.Context, qrReq *QueryResultRequest) (*QueryResultResponse, error) {
+func (f *Frontend2) QueryResult(ctx context.Context, qrReq *QueryResultRequest) (*QueryResultResponse, error) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	req := f.requests.get(qrReq.QueryID)
-	if req != nil {
+	// It is possible that some old response belonging to different user was received, if frontend has restarted.
+	// To avoid leaking query results between users, we verify the user here.
+	// To avoid mixing results from different queries, we randomize queryID counter on start.
+	if req != nil && req.userID == userID {
 		select {
 		case req.response <- qrReq.HttpResponse:
 			// Should always be possible, unless QueryResult is called multiple times with the same queryID.
 		default:
-			// If we cannot write to the channel, just ignore it.
+			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
 		}
 	}
 

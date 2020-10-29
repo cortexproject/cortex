@@ -18,9 +18,9 @@ import (
 
 // This struct combines several configuration options together to preserve backwards compatibility.
 type CombinedFrontendConfig struct {
-	Handler   HandlerConfig    `yaml:",inline"`
-	Frontend  Config           `yaml:",inline"`
-	Frontend2 frontend2.Config `yaml:",inline"`
+	Handler    HandlerConfig    `yaml:",inline"`
+	FrontendV1 Config           `yaml:",inline"`
+	FrontendV2 frontend2.Config `yaml:",inline"`
 
 	CompressResponses bool   `yaml:"compress_responses"`
 	DownstreamURL     string `yaml:"downstream_url"`
@@ -28,41 +28,47 @@ type CombinedFrontendConfig struct {
 
 func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Handler.RegisterFlags(f)
-	cfg.Frontend.RegisterFlags(f)
-	cfg.Frontend2.RegisterFlags(f)
+	cfg.FrontendV1.RegisterFlags(f)
+	cfg.FrontendV2.RegisterFlags(f)
 
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
-func (cfg *CombinedFrontendConfig) InitFrontend(limits Limits, grpcListenPort int, log log.Logger, reg prometheus.Registerer) (http.RoundTripper, *Frontend, *frontend2.Frontend2, error) {
+// Initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
+// all if downstream Prometheus URL is used instead.
+//
+// Returned RoundTripper can be wrapped in more round-tripper middlewares, and then eventually registered
+// into HTTP server using the Handler from this package. Returned RoundTripper is always non-nil
+// (if there are no errors), and it uses the returned frontend (if any).
+func InitFrontend(cfg CombinedFrontendConfig, limits Limits, grpcListenPort int, log log.Logger, reg prometheus.Registerer) (http.RoundTripper, *Frontend, *frontend2.Frontend2, error) {
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
 		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL)
 		return rt, nil, nil, err
 
-	case cfg.Frontend2.SchedulerAddr != "":
+	case cfg.FrontendV2.SchedulerAddress != "":
 		// If query-scheduler address is configured, use Frontend2.
-		if cfg.Frontend2.Addr == "" {
-			addr, err := util.GetFirstAddressOf(cfg.Frontend2.InfNames)
+		if cfg.FrontendV2.Addr == "" {
+			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames)
 			if err != nil {
 				return nil, nil, nil, errors.Wrap(err, "failed to get frontend address")
 			}
 
-			cfg.Frontend2.Addr = addr
+			cfg.FrontendV2.Addr = addr
 		}
 
-		if cfg.Frontend2.Port == 0 {
-			cfg.Frontend2.Port = grpcListenPort
+		if cfg.FrontendV2.Port == 0 {
+			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := frontend2.NewFrontend2(cfg.Frontend2, log, reg)
+		fr, err := frontend2.NewFrontend2(cfg.FrontendV2, log, reg)
 		return AdaptGrpcRoundTripperToHTTPRoundTripper(fr), nil, fr, err
 
 	default:
 		// No scheduler = use original frontend.
-		fr, err := New(cfg.Frontend, limits, log, reg)
+		fr, err := New(cfg.FrontendV1, limits, log, reg)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -83,9 +89,12 @@ func (cfg *CombinedWorkerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WorkerV2.RegisterFlags(f)
 }
 
-func (cfg *CombinedWorkerConfig) InitQuerierWorker(querierCfg querier.Config, handler http.Handler, log log.Logger) (services.Service, error) {
+// Initializes querier-worker, which uses either configured query-scheduler or query-frontend,
+// or if none is specified and no worker is necessary returns nil (in that case queries are
+// received directly from HTTP server).
+func InitQuerierWorker(cfg CombinedWorkerConfig, querierCfg querier.Config, handler http.Handler, log log.Logger) (services.Service, error) {
 	switch {
-	case cfg.WorkerV2.SchedulerAddr != "":
+	case cfg.WorkerV2.SchedulerAddress != "":
 		// Copy settings from querier v1 config struct.
 		cfg.WorkerV2.GRPCClientConfig = cfg.WorkerV1.GRPCClientConfig
 		cfg.WorkerV2.MatchMaxConcurrency = cfg.WorkerV1.MatchMaxConcurrency
@@ -93,15 +102,14 @@ func (cfg *CombinedWorkerConfig) InitQuerierWorker(querierCfg querier.Config, ha
 		cfg.WorkerV2.Parallelism = cfg.WorkerV1.Parallelism
 		cfg.WorkerV2.QuerierID = cfg.WorkerV1.QuerierID
 
-		level.Info(log).Log("msg", "Starting querier worker v2 with scheduler", "scheduler", cfg.WorkerV2.SchedulerAddr)
+		level.Info(log).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.WorkerV2.SchedulerAddress)
 		return frontend2.NewQuerierSchedulerWorkers(cfg.WorkerV2, httpgrpc_server.NewServer(handler), prometheus.DefaultRegisterer, log)
 
 	case cfg.WorkerV1.FrontendAddress != "":
-		level.Info(log).Log("msg", "Starting querier worker v1 with frontend", "frontend", cfg.WorkerV1.FrontendAddress)
+		level.Info(log).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.WorkerV1.FrontendAddress)
 		return NewWorker(cfg.WorkerV1, querierCfg, httpgrpc_server.NewServer(handler), log)
 
 	default:
-		// No querier worker is necessary, querier will receive queries directly from HTTP server.
 		return nil, nil
 	}
 }

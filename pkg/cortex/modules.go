@@ -284,7 +284,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	} else {
 		// Single binary mode requires a query frontend endpoint for the worker. If no frontend or scheduler endpoint
 		// is configured, Cortex will default to using frontend on localhost on it's own GRPC listening port.
-		if t.Cfg.Worker.WorkerV1.FrontendAddress == "" || t.Cfg.Worker.WorkerV2.SchedulerAddr == "" {
+		if t.Cfg.Worker.WorkerV1.FrontendAddress == "" || t.Cfg.Worker.WorkerV2.SchedulerAddress == "" {
 			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 			t.Cfg.Worker.WorkerV1.FrontendAddress = address
@@ -297,7 +297,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker will be created.
-	return t.Cfg.Worker.InitQuerierWorker(t.Cfg.Querier, internalQuerierRouter, util.Logger)
+	return frontend.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
 }
 
 func (t *Cortex) initStoreQueryables() (services.Service, error) {
@@ -503,7 +503,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 }
 
 func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
-	roundTripper, frontendV1, frontendV2, err := t.Cfg.Frontend.InitFrontend(t.Overrides, t.Cfg.Server.GRPCListenPort, util.Logger, prometheus.DefaultRegisterer)
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.Overrides, t.Cfg.Server.GRPCListenPort, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +739,7 @@ func (t *Cortex) initPurger() (services.Service, error) {
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
-	s, err := frontend2.NewScheduler(t.Cfg.QuerySchedulerConfig, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
+	s, err := frontend2.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, errors.Wrap(err, "query-scheduler init")
 	}

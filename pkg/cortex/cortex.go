@@ -100,12 +100,12 @@ type Config struct {
 	StoreGateway   storegateway.Config             `yaml:"store_gateway"`
 	PurgerConfig   purger.Config                   `yaml:"purger"`
 
-	Ruler                ruler.Config                               `yaml:"ruler"`
-	Configs              configs.Config                             `yaml:"configs"`
-	Alertmanager         alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig        runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV         memberlist.KVConfig                        `yaml:"memberlist"`
-	QuerySchedulerConfig frontend2.SchedulerConfig                  `yaml:"query_scheduler"`
+	Ruler          ruler.Config                               `yaml:"ruler"`
+	Configs        configs.Config                             `yaml:"configs"`
+	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler frontend2.SchedulerConfig                  `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -151,7 +151,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
-	c.QuerySchedulerConfig.RegisterFlags(f)
+	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")

@@ -1,4 +1,4 @@
-package frontend2
+package util
 
 import (
 	"context"
@@ -13,8 +13,10 @@ import (
 
 // Notifications about address resolution. All notifications are sent on the same goroutine.
 type DNSNotifications interface {
+	// New address has been discovered by DNS watcher for supplied hostname.
 	AddressAdded(address string)
 
+	// Previously-discovered address is no longer resolved for the hostname.
 	AddressRemoved(address string)
 }
 

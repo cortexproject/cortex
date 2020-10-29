@@ -42,7 +42,7 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, requestsCh 
 		workers:         map[string]*frontendSchedulerWorker{},
 	}
 
-	w, err := NewDNSWatcher(cfg.SchedulerAddr, cfg.DNSLookupPeriod, f)
+	w, err := util.NewDNSWatcher(cfg.SchedulerAddress, cfg.DNSLookupPeriod, f)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 		return
 	}
 
-	// If not, start a new one.
+	// No worker for this address yet, start a new one.
 	w = newFrontendSchedulerWorker(conn, address, f.frontendAddress, f.requestsCh, f.cfg.WorkerConcurrency, f.log)
 
 	f.mu.Lock()
@@ -97,7 +97,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 	// Can be nil if stopping has been called already.
 	if f.workers != nil {
 		f.workers[address] = w
-		go w.start()
+		w.start()
 	}
 }
 
@@ -248,35 +248,35 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 			})
 
 			if err != nil {
-				req.enqueue <- enqueueResult{success: false, retry: true}
+				req.enqueue <- enqueueResult{status: failed}
 				return err
 			}
 
 			resp, err := loop.Recv()
 			if err != nil {
-				req.enqueue <- enqueueResult{success: false, retry: true}
+				req.enqueue <- enqueueResult{status: failed}
 				return err
 			}
 
 			switch resp.Status {
 			case OK:
-				req.enqueue <- enqueueResult{success: true, cancelCh: w.cancelCh}
+				req.enqueue <- enqueueResult{status: wait_for_response, cancelCh: w.cancelCh}
 				// Response will come from querier.
 
 			case SHUTTING_DOWN:
-				// Scheduler is shutting down, report failure to enqueue and stop the loop.
-				req.enqueue <- enqueueResult{success: false, retry: true}
+				// Scheduler is shutting down, report failure to enqueue and stop this loop.
+				req.enqueue <- enqueueResult{status: failed}
 				return errors.New("scheduler is shutting down")
 
 			case ERROR:
-				req.enqueue <- enqueueResult{success: true, retry: false}
+				req.enqueue <- enqueueResult{status: wait_for_response}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusInternalServerError,
 					Body: []byte(err.Error()),
 				}
 
 			case TOO_MANY_REQUESTS_PER_TENANT:
-				req.enqueue <- enqueueResult{success: true, retry: false}
+				req.enqueue <- enqueueResult{status: wait_for_response}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusTooManyRequests,
 					Body: []byte("too many outstanding requests"),

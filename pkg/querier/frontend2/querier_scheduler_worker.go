@@ -35,8 +35,8 @@ type RequestHandler interface {
 }
 
 type QuerierWorkersConfig struct {
-	SchedulerAddr   string        `yaml:"scheduler_address"`
-	DNSLookupPeriod time.Duration `yaml:"scheduler_dns_lookup_period"`
+	SchedulerAddress string        `yaml:"scheduler_address"`
+	DNSLookupPeriod  time.Duration `yaml:"scheduler_dns_lookup_period"`
 
 	// Following settings are not exposed via YAML or CLI Flags, but instead copied from "v1" worker config.
 	GRPCClientConfig      grpcclient.ConfigWithTLS `yaml:"-"` // In v1 this is called "frontend client", here we use it for scheduler.
@@ -47,8 +47,8 @@ type QuerierWorkersConfig struct {
 }
 
 func (cfg *QuerierWorkersConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.SchedulerAddr, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. If set, takes precedence over -querier.frontend-address.")
-	f.DurationVar(&cfg.DNSLookupPeriod, "querier.scheduler-dns-lookup-period", 10*time.Second, "How often to resolve scheduler hostname.")
+	f.StringVar(&cfg.SchedulerAddress, "querier.scheduler-address", "", "Hostname (and port) of scheduler that querier will periodically resolve, connect to and receive queries from. If set, takes precedence over -querier.frontend-address.")
+	f.DurationVar(&cfg.DNSLookupPeriod, "querier.scheduler-dns-lookup-period", 10*time.Second, "How often to resolve the scheduler-address, in order to look for new query-scheduler instances.")
 }
 
 type querierSchedulerWorkers struct {
@@ -70,7 +70,7 @@ type querierSchedulerWorkers struct {
 }
 
 func NewQuerierSchedulerWorkers(cfg QuerierWorkersConfig, handler RequestHandler, reg prometheus.Registerer, log log.Logger) (services.Service, error) {
-	if cfg.SchedulerAddr == "" {
+	if cfg.SchedulerAddress == "" {
 		return nil, errors.New("no scheduler address")
 	}
 
@@ -83,7 +83,7 @@ func NewQuerierSchedulerWorkers(cfg QuerierWorkersConfig, handler RequestHandler
 	}
 
 	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_querier_scheduler_worker_clients",
+		Name: "cortex_querier_scheduler_worker_frontend_clients",
 		Help: "The current number of frontend clients.",
 	})
 
@@ -109,7 +109,7 @@ func NewQuerierSchedulerWorkers(cfg QuerierWorkersConfig, handler RequestHandler
 	p := client.NewPool("frontend", poolConfig, nil, f.createFrontendClient, frontendClientsGauge, log)
 	f.frontendPool = p
 
-	w, err := NewDNSWatcher(cfg.SchedulerAddr, cfg.DNSLookupPeriod, f)
+	w, err := util.NewDNSWatcher(cfg.SchedulerAddress, cfg.DNSLookupPeriod, f)
 	if err != nil {
 		return nil, err
 	}

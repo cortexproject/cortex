@@ -37,7 +37,7 @@ func setupFrontend2(t *testing.T, schedulerReplyFunc func(f *Frontend2, msg *Fro
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	cfg.SchedulerAddr = l.Addr().String()
+	cfg.SchedulerAddress = l.Addr().String()
 	cfg.WorkerConcurrency = testFrontendWorkerConcurrency
 	cfg.Addr = h
 	cfg.Port = grpcPort

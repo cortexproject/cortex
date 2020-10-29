@@ -62,11 +62,11 @@ type connectedFrontend struct {
 }
 
 type SchedulerConfig struct {
-	MaxOutstandingPerTenant int
+	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
 }
 
 func (cfg *SchedulerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler; requests beyond this error with HTTP 429.")
+	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
 }
 
 // NewScheduler creates a new Scheduler.
@@ -81,12 +81,12 @@ func NewScheduler(cfg SchedulerConfig, limits Limits, log log.Logger, registerer
 
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_scheduler_queue_duration_seconds",
-			Help:    "Time spend by requests queued.",
+			Help:    "Time spend by requests in queue before getting picked up by a querier.",
 			Buckets: prometheus.DefBuckets,
 		}),
 		connectedWorkers: promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_query_scheduler_connected_workers",
-			Help: "Number of worker clients currently connected to the frontend.",
+			Help: "Number of querier worker clients currently connected to the query-scheduler.",
 		}, func() float64 { return float64(connectedQuerierWorkers.Load()) }),
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_query_scheduler_queue_length",

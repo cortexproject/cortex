@@ -643,14 +643,16 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	req := &client.LabelValuesRequest{
-		LabelName: string(labelName),
+		LabelName:        string(labelName),
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
 	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)

@@ -1,7 +1,7 @@
 ---
 title: "Blocks Storage"
 linkTitle: "Blocks Storage"
-weight: 8
+weight: 3
 menu:
 ---
 
@@ -12,6 +12,7 @@ The supported backends for the blocks storage are:
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
+* [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
 * [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
 _Internally, some components are based on [Thanos](https://thanos.io), but no Thanos knowledge is required in order to run it._
@@ -30,7 +31,7 @@ The **[store-gateway](./store-gateway.md)** is responsible to query blocks and i
 
 The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. The compactor is optional but highly recommended.
 
-Finally, the **table-manager** and the [**schema**](../configuration/schema-config-reference.md) configuration are **not used** by the blocks storage.
+Finally, the [**table-manager**](../chunks-storage/table-manager.md) and the [**schema config**](../chunks-storage/schema-config.md) are **not used** by the blocks storage.
 
 ### The write path
 
@@ -44,7 +45,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 The series sharding and replication done by the distributor doesn't change based on the storage engine.
 
-It's important to note that - differently than the [chunks storage](../architecture.md#chunks-storage-default) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples.
+It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller compared to the chunks storage for the same exact series and samples.
 
 For more information, please refer to the following dedicated sections:
 

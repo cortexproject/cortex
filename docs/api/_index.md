@@ -1,7 +1,7 @@
 ---
 title: "HTTP API"
 linkTitle: "HTTP API"
-weight: 5
+weight: 7
 slug: api
 menu:
 no_section_index_title: true
@@ -83,7 +83,7 @@ When multi-tenancy is enabled, endpoints requiring authentication are expected t
 
 Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
 
-_For more information, please refer to the dedicated [Authentication and Authorisation](../production/auth.md) guide._
+_For more information, please refer to the dedicated [Authentication and Authorisation](../guides/authentication-and-authorisation.md) guide._
 
 ## All services
 

@@ -1,7 +1,7 @@
 ---
 title: "gRPC storage plugin"
 linkTitle: "gRPC storage plugin"
-weight: 3
+weight: 10
 slug: grpc-based-plugin
 ---
 

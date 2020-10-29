@@ -1,7 +1,7 @@
 ---
-title: "Caching in Cortex"
-linkTitle: "Caching in Cortex"
-weight: 5
+title: "Caching"
+linkTitle: "Caching"
+weight: 4
 slug: caching
 ---
 

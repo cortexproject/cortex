@@ -1,8 +1,8 @@
 ---
 title: "Running Cortex on Kubernetes"
 linkTitle: "Running Cortex on Kubernetes"
-weight: 100
-slug: kubernetes
+weight: 3
+slug: running-cortex-on-kubernetes
 ---
 
 Because Cortex is designed to run multiple instances of each component

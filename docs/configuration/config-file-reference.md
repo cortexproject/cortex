@@ -1362,8 +1362,9 @@ The `table_manager_config` configures the Cortex table-manager.
 # CLI flag: -table-manager.retention-deletes-enabled
 [retention_deletes_enabled: <boolean> | default = false]
 
-# Tables older than this retention period are deleted. Note: This setting is
-# destructive to data!(default: 0, which disables deletion)
+# Tables older than this retention period are deleted. Must be either 0
+# (disabled) or a multiple of 24h. When enabled, be aware this setting is
+# destructive to data!
 # CLI flag: -table-manager.retention-period
 [retention_period: <duration> | default = 0s]
 

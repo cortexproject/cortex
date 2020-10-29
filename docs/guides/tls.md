@@ -1,7 +1,7 @@
 ---
 title: "Securing communication between Cortex components with TLS"
 linkTitle: "Securing communication between Cortex components with TLS"
-weight: 5
+weight: 10
 slug: tls
 ---
 

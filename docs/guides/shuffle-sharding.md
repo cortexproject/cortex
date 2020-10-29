@@ -1,7 +1,7 @@
 ---
 title: "Shuffle Sharding"
 linkTitle: "Shuffle Sharding"
-weight: 5
+weight: 10
 slug: shuffle-sharding
 ---
 

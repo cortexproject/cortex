@@ -142,13 +142,13 @@ jobs:
       - name: Integration Tests
         run: |
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
-          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${TAG:-$(./tools/image-tag)}"
+          export IMAGE_TAG=$(make image-tag)
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
           go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
-          TAG: ${{ github.event.push.tag_name }}
 
   integration-configs-db:
     needs: build
@@ -241,11 +241,11 @@ jobs:
           if [ -n "$QUAY_REGISTRY_PASSWORD" ]; then
             docker login -u "$QUAY_REGISTRY_USER" -p "$QUAY_REGISTRY_PASSWORD" quay.io;
           fi
-          IMAGE_TAG=$GIT_TAG ./push-images $NOQUAY
+          export IMAGE_TAG=$(make image-tag)
+          ./push-images $NOQUAY
         env:
           DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
           DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
           QUAY_REGISTRY_USER: ${{secrets.QUAY_REGISTRY_USER}}
           QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_REGISTRY_PASSWORD}}
-          GIT_TAG: ${{github.event.release.tag_name}}
           NOQUAY: ${{secrets.NOQUAY}}

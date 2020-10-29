@@ -1292,9 +1292,8 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -table-manager.retention-deletes-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[retention_deletes_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Tables older than this retention period are deleted. Must be either 0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># (disabled) or a multiple of 24h. When enabled, be aware this setting is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># destructive to data!&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Tables older than this retention period are deleted. Note: This setting is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># destructive to data!(default: 0, which disables deletion)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -table-manager.retention-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[retention_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4023,11 +4022,11 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-ingester.join-after&lt;/code>&lt;/p>
-&lt;p>How long to wait in PENDING state during the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">hand-over process&lt;/a> (supported only by the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a>). (default 0s)&lt;/p>
+&lt;p>How long to wait in PENDING state during the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">hand-over process&lt;/a> (supported only by the chunks storage). (default 0s)&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-ingester.max-transfer-retries&lt;/code>&lt;/p>
-&lt;p>How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">hand-over process&lt;/a> (supported only by the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a>). Negative value or zero disables hand-over process completely. (default 10)&lt;/p>
+&lt;p>How many times a LEAVING ingester tries to find a PENDING ingester during the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">hand-over process&lt;/a> (supported only by the chunks storage). Negative value or zero disables hand-over process completely. (default 10)&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-ingester.normalise-tokens&lt;/code>&lt;/p>
@@ -4299,7 +4298,107 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The Prometheus URL to which the query-frontend should connect to.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">downstream_url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//prometheus.mydomain.com&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Schema Configuration</title><link>/docs/configuration/schema-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/schema-configuration/</guid><description>
+&lt;p>Cortex chunks storage uses a NoSQL Store to store its index and optionally an Object store to store its chunks. Cortex has overtime evolved its schema to be more optimal and better fit the use cases and query patterns that arose.&lt;/p>
+&lt;p>The schema configuration is used only by the chunks storage, while it&amp;rsquo;s not used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> engine.&lt;/p>
+&lt;h2 id="schema-versions">Schema versions&lt;/h2>
+&lt;p>Currently there are 11 schemas that are used in production but we recommend running with the &lt;strong>v9 schema&lt;/strong> for most use cases and &lt;strong>v10 schema&lt;/strong> if you expect to have very high cardinality metrics. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.&lt;/p>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;p>You can configure the schemas using a YAML config file, that you can point to using the &lt;code>-schema-config-file&lt;/code> flag. It has the following YAML spec:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">configs&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[]&lt;/span>&amp;lt;period_config&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Where &lt;code>period_config&lt;/code> is&lt;/p>
+&lt;pre>&lt;code># In YYYY-MM-DD format, for example: 2020-03-01.
+from: &amp;lt;string&amp;gt;
+# The index client to use, valid options: aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.
+store: &amp;lt;string&amp;gt;
+# The object client to use. If none is specified, `store` is used for storing chunks as well. Valid options: s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.
+object_store: &amp;lt;string&amp;gt;
+# The schema version to use. Valid ones are v1, v2, v3,... v6, v9, v10, v11. Recommended for production: v9 for most use cases or v10 if you expect to have very high cardinality metrics.
+schema: &amp;lt;string&amp;gt;
+index: &amp;lt;periodic_table_config&amp;gt;
+chunks: &amp;lt;periodic_table_config&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>Where &lt;code>periodic_table_config&lt;/code> is&lt;/p>
+&lt;pre>&lt;code># The prefix to use for the tables.
+prefix: &amp;lt;string&amp;gt;
+# We typically run Cortex with new tables every week to keep the index size low and to make retention easier. This sets the period at which new tables are created and used. Typically 1w (1week).
+period: &amp;lt;duration&amp;gt;
+# The tags that can be set on the dynamo table.
+tags: &amp;lt;map[string]string&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>Now an example of this file (also something recommended when starting out) is:&lt;/p>
+&lt;pre>&lt;code>configs:
+- from: &amp;quot;2020-03-01&amp;quot; # Or typically a week before the Cortex cluster was created.
+schema: v9
+index:
+period: 1w
+prefix: cortex_index_
+# Chunks section is optional and required only if you're not using a
+# separate object store.
+chunks:
+period: 1w
+prefix: cortex_chunks
+store: aws-dynamo/bigtable-hashed/cassandra/boltdb
+object_store: &amp;lt;above options&amp;gt;/s3/gcs/azure/filesystem
+&lt;/code>&lt;/pre>&lt;p>An example of an advanced schema file with a lot of changes:&lt;/p>
+&lt;pre>&lt;code>configs:
+# Starting from 2018-08-23 Cortex should store chunks and indexes
+# on Google BigTable using weekly periodic tables. The chunks table
+# names will be prefixed with &amp;quot;dev_chunks_&amp;quot;, while index tables will be
+# prefixed with &amp;quot;dev_index_&amp;quot;.
+- from: &amp;quot;2018-08-23&amp;quot;
+schema: v9
+chunks:
+period: 1w
+prefix: dev_chunks_
+index:
+period: 1w
+prefix: dev_index_
+store: gcp-columnkey
+# Starting 2018-02-13 we moved from BigTable to GCS for storing the chunks.
+- from: &amp;quot;2019-02-13&amp;quot;
+schema: v9
+chunks:
+period: 1w
+prefix: dev_chunks_
+index:
+period: 1w
+prefix: dev_index_
+object_store: gcs
+store: gcp-columnkey
+# Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed
+# which improves the distribution of keys.
+- from: &amp;quot;2019-02-24&amp;quot;
+schema: v9
+chunks:
+period: 1w
+prefix: dev_chunks_
+index:
+period: 1w
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+# Starting 2019-03-05 we moved from v9 schema to v10 schema.
+- from: &amp;quot;2019-03-05&amp;quot;
+schema: v10
+chunks:
+period: 1w
+prefix: dev_chunks_
+index:
+period: 1w
+prefix: dev_index_
+object_store: gcs
+store: bigtable-hashed
+&lt;/code>&lt;/pre>&lt;p>Note how we started out with v9 and just Bigtable, but later migrated to GCS as the object store, finally moving to v10. This is a complex schema file showing several changes changes over the time, while a typical schema config file usually has just one or two schema versions.&lt;/p>
+&lt;h3 id="migrating-from-flags-to-schema-file">Migrating from flags to schema file&lt;/h3>
+&lt;p>Legacy versions of Cortex did support the ability to configure schema via flags. If you are still using flags, you need to migrate your configuration from flags to the config file.&lt;/p>
+&lt;p>If you&amp;rsquo;re using:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>chunk.storage-client&lt;/code>: then set the corresponding &lt;code>object_store&lt;/code> field correctly in the schema file.&lt;/li>
+&lt;li>&lt;code>dynamodb.daily-buckets-from&lt;/code>: then set the corresponding &lt;code>from&lt;/code> date with &lt;code>v2&lt;/code> schema.&lt;/li>
+&lt;li>&lt;code>dynamodb.base64-buckets-from&lt;/code>: then set the corresponding &lt;code>from&lt;/code> date with &lt;code>v3&lt;/code> schema.&lt;/li>
+&lt;li>&lt;code>dynamodb.v{4,5,6,9}-schema-from&lt;/code>: then set the corresponding &lt;code>from&lt;/code> date with schema &lt;code>v{4,5,6,9}&lt;/code>&lt;/li>
+&lt;li>&lt;code>bigtable.column-key-from&lt;/code>: then set the corresponding &lt;code>from&lt;/code> date and use the &lt;code>store&lt;/code> as &lt;code>bigtable-columnkey&lt;/code>.&lt;/li>
+&lt;li>&lt;code>dynamodb.use-periodic-tables&lt;/code>: then set the right &lt;code>index&lt;/code> and &lt;code>chunk&lt;/code> fields with corresponding values from &lt;code>dynamodb.periodic-table.{prefix, period, tag}&lt;/code> and &lt;code>dynamodb.chunk-table.{prefix, period, tag}&lt;/code> flags. Note that the default period is 7 days, so please set the &lt;code>period&lt;/code> as &lt;code>168h&lt;/code> in the config file if none is set in the flags.&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p>Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p>
@@ -4411,13 +4510,12 @@ and development.&lt;/p>
 &lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
 &lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
 &lt;ul>
-&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
+&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the chunks storage (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
 &lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters.&lt;/li>
 &lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
 &lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
 &lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
 &lt;/ul>
-&lt;p>&lt;em>For more information, please refer to the &lt;a href="/docs/guides/limitations/">limitations&lt;/a> doc.&lt;/em>&lt;/p>
 &lt;h2 id="experimental-features">Experimental features&lt;/h2>
 &lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
 &lt;p>Currently experimental features are:&lt;/p>

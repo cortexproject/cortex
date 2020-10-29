@@ -169,6 +169,7 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.numNotifications
 	out <- m.numFailedNotifications
 	out <- m.notificationLatencySeconds
+	out <- m.markerAlerts
 	out <- m.nflogGCDuration
 	out <- m.nflogSnapshotDuration
 	out <- m.nflogSnapshotSize
@@ -176,15 +177,14 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.nflogQueryErrorsTotal
 	out <- m.nflogQueryDuration
 	out <- m.nflogPropagatedMessagesTotal
-	out <- m.markerAlerts
 	out <- m.silencesGCDuration
 	out <- m.silencesSnapshotDuration
 	out <- m.silencesSnapshotSize
 	out <- m.silencesQueriesTotal
 	out <- m.silencesQueryErrorsTotal
 	out <- m.silencesQueryDuration
-	out <- m.silences
 	out <- m.silencesPropagatedMessagesTotal
+	out <- m.silences
 	out <- m.configHashValue
 }
 

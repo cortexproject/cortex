@@ -84,7 +84,7 @@ type enqueueStatus int
 
 const (
 	// Sent to scheduler successfully, and frontend should wait for response now.
-	wait_for_response enqueueStatus = iota
+	waitForResponse enqueueStatus = iota
 
 	// Failed to forward request to scheduler, frontend will try again.
 	failed
@@ -200,7 +200,7 @@ enqueueAgain:
 		return nil, ctx.Err()
 
 	case enqRes := <-freq.enqueue:
-		if enqRes.status == wait_for_response {
+		if enqRes.status == waitForResponse {
 			cancelCh = enqRes.cancelCh
 			break // go wait for response.
 		} else if enqRes.status == failed {

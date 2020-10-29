@@ -267,7 +267,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 
 			switch resp.Status {
 			case OK:
-				req.enqueue <- enqueueResult{status: wait_for_response, cancelCh: w.cancelCh}
+				req.enqueue <- enqueueResult{status: waitForResponse, cancelCh: w.cancelCh}
 				// Response will come from querier.
 
 			case SHUTTING_DOWN:
@@ -276,14 +276,14 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 				return errors.New("scheduler is shutting down")
 
 			case ERROR:
-				req.enqueue <- enqueueResult{status: wait_for_response}
+				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusInternalServerError,
 					Body: []byte(err.Error()),
 				}
 
 			case TOO_MANY_REQUESTS_PER_TENANT:
-				req.enqueue <- enqueueResult{status: wait_for_response}
+				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusTooManyRequests,
 					Body: []byte("too many outstanding requests"),

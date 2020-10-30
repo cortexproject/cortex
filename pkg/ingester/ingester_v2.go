@@ -101,7 +101,9 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 	u.forcedCompactionInProgress = true
 	u.forcedCompactionInProgressMtx.Unlock()
 	defer func() {
+		u.forcedCompactionInProgressMtx.Lock()
 		u.forcedCompactionInProgress = false
+		u.forcedCompactionInProgressMtx.Unlock()
 	}()
 	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
 	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.

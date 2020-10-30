@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -40,10 +42,11 @@ func newBlocksStoreReplicationSet(
 	tlsCfg tls.ClientConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	propagator user.Propagator,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:       storesRing,
-		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
+		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg, propagator),
 		shardingStrategy: shardingStrategy,
 		limits:           limits,
 	}

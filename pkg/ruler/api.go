@@ -17,8 +17,9 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v3"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
@@ -134,7 +135,7 @@ func NewAPI(r *Ruler, s rules.RuleStore) *API {
 
 func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, err := user.Resolve.UserID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
@@ -226,7 +227,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util.WithContext(req.Context(), util.Logger)
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, err := user.Resolve.UserID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
@@ -355,7 +356,7 @@ func parseGroupName(params map[string]string) (string, error) {
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, err := user.Resolve.UserID(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}

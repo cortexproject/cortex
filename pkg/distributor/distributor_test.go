@@ -22,9 +22,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -44,7 +46,7 @@ import (
 var (
 	errFail = fmt.Errorf("Fail")
 	success = &client.WriteResponse{}
-	ctx     = user.InjectOrgID(context.Background(), "user")
+	ctx     = user.InjectTenantIDs(context.Background(), []string{"user"})
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -359,7 +361,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 }
 
 func TestDistributor_PushHAInstances(t *testing.T) {
-	ctx = user.InjectOrgID(context.Background(), "user")
+	ctx = user.InjectTenantIDs(context.Background(), []string{"user"})
 
 	for i, tc := range []struct {
 		enableTracker    bool
@@ -427,7 +429,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					d.HATracker = r
 				}
 
-				userID, err := user.ExtractOrgID(ctx)
+				userID, err := user.Resolve.UserID(ctx)
 				assert.NoError(t, err)
 				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
@@ -621,7 +623,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
-	ctx = user.InjectOrgID(context.Background(), "user")
+	ctx = user.InjectTenantIDs(context.Background(), []string{"user"})
 
 	type testcase struct {
 		inputSeries    labels.Labels
@@ -785,7 +787,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	limits.DropLabels = []string{"dropped"}
 	limits.AcceptHASamples = true
 
-	ctx = user.InjectOrgID(context.Background(), "user")
+	ctx = user.InjectTenantIDs(context.Background(), []string{"user"})
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
@@ -949,7 +951,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			defer stopAll(ds, r)
 
 			// Push fixtures
-			ctx := user.InjectOrgID(context.Background(), "test")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 			for _, series := range fixtures {
 				req := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -1009,7 +1011,7 @@ func TestDistributor_MetricsMetadata(t *testing.T) {
 			defer stopAll(ds, r)
 
 			// Push metadata
-			ctx := user.InjectOrgID(context.Background(), "test")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 			req := makeWriteRequest(0, 0, 10)
 			_, err := ds[0].Push(ctx, req)
@@ -1146,7 +1148,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		overrides, err := validation.NewOverrides(*cfg.limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil)
+		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, propagator.New())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
@@ -1310,7 +1312,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		i.metadata = map[uint32]map[client.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := user.ExtractOrgID(ctx)
+	orgid, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1538,7 +1540,7 @@ outer:
 }
 
 func TestDistributorValidation(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), "1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 	now := model.Now()
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
 
@@ -1722,7 +1724,7 @@ func TestSortLabels(t *testing.T) {
 }
 
 func TestDistributor_Push_Relabel(t *testing.T) {
-	ctx = user.InjectOrgID(context.Background(), "user")
+	ctx = user.InjectTenantIDs(context.Background(), []string{"user"})
 
 	type testcase struct {
 		inputSeries          labels.Labels

@@ -17,7 +17,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -86,7 +88,7 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 	if cfg.UserID != "" {
 		apiCfg.RoundTripper = &nethttp.Transport{
 			RoundTripper: promhttp.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				_ = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), cfg.UserID), req)
+				_ = propagator.New().InjectIntoHTTPRequest(user.InjectTenantIDs(context.Background(), []string{cfg.UserID}), req)
 				return api.DefaultRoundTripper.RoundTrip(req)
 			}),
 		}

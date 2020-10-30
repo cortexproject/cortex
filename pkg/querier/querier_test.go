@@ -25,7 +25,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -287,7 +288,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "0")
+				ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 				r := query.Exec(ctx)
 				_, err = r.Matrix()
 
@@ -380,7 +381,7 @@ func TestNoFutureQueries(t *testing.T) {
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "0")
+				ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 				r := query.Exec(ctx)
 				_, err = r.Matrix()
 
@@ -460,7 +461,7 @@ func TestQuerier_ValidateQueryTimeRange(t *testing.T) {
 			query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "test")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 			r := query.Exec(ctx)
 
 			if testData.expected != nil {
@@ -508,7 +509,7 @@ func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q quer
 	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
 	require.NoError(t, err)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 	r := query.Exec(ctx)
 	m, err := r.Matrix()
 	require.NoError(t, err)
@@ -675,7 +676,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "0")
+				ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 				r := query.Exec(ctx)
 				_, err = r.Matrix()
 

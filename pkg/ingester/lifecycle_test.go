@@ -11,9 +11,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -111,7 +112,7 @@ func TestIngesterChunksTransfer(t *testing.T) {
 
 	// Now write a sample to this ingester
 	req, expectedResponse, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "foo"}}, 456, 123000)
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	_, err = ing1.Push(ctx, req)
 	require.NoError(t, err)
 
@@ -126,7 +127,7 @@ func TestIngesterChunksTransfer(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing2))
 
 	// Let ing2 send chunks to ing1
-	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config) (client.HealthAndIngesterClient, error) {
+	ing1.cfg.ingesterClientFactory = func(addr string, _ client.Config, _ user.Propagator) (client.HealthAndIngesterClient, error) {
 		return ingesterClientAdapater{
 			ingester: ing2,
 		}, nil
@@ -291,7 +292,7 @@ func TestIngesterFlush(t *testing.T) {
 			},
 		}
 	)
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	_, err := ing.Push(ctx, client.ToWriteRequest(lbls, sampleData, nil, client.API))
 	require.NoError(t, err)
 

@@ -16,8 +16,9 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 )
@@ -45,9 +46,10 @@ type DefaultMultiTenantManager struct {
 	configUpdatesTotal            *prometheus.CounterVec
 	registry                      prometheus.Registerer
 	logger                        log.Logger
+	propagator                    user.Propagator
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger, propagator user.Propagator) (*DefaultMultiTenantManager, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -86,8 +88,9 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 			Name:      "ruler_config_updates_total",
 			Help:      "Total number of config updates triggered by a user",
 		}, []string{"user"}),
-		registry: reg,
-		logger:   logger,
+		registry:   reg,
+		logger:     logger,
+		propagator: propagator,
 	}, nil
 }
 
@@ -193,8 +196,8 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 			// Note: The passed-in context comes from the Prometheus notifier
 			// and does *not* contain the userID. So it needs to be added to the context
 			// here before using the context to inject the userID into the HTTP request.
-			ctx = user.InjectOrgID(ctx, userID)
-			if err := user.InjectOrgIDIntoHTTPRequest(ctx, req); err != nil {
+			ctx = user.InjectTenantIDs(ctx, []string{userID})
+			if err := r.propagator.InjectIntoHTTPRequest(ctx, req); err != nil {
 				return nil, err
 			}
 			// Jaeger complains the passed-in context has an invalid span ID, so start a new root span

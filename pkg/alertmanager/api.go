@@ -14,8 +14,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/template"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/user"
 )
 
 const (
@@ -36,7 +37,7 @@ type UserConfig struct {
 func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), am.logger)
 
-	userID, err := user.ExtractOrgID(r.Context())
+	userID, err := user.Resolve.UserID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
@@ -73,7 +74,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), am.logger)
-	userID, err := user.ExtractOrgID(r.Context())
+	userID, err := user.Resolve.UserID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
@@ -114,7 +115,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util.WithContext(r.Context(), am.logger)
-	userID, err := user.ExtractOrgID(r.Context())
+	userID, err := user.Resolve.UserID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)

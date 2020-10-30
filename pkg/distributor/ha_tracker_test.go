@@ -10,7 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/mtime"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -21,8 +22,8 @@ import (
 )
 
 var (
-	ctxUser1 = user.InjectOrgID(context.Background(), "user1")
-	ctxUser2 = user.InjectOrgID(context.Background(), "user1")
+	ctxUser1 = user.InjectTenantIDs(context.Background(), []string{"user1"})
+	ctxUser2 = user.InjectTenantIDs(context.Background(), []string{"user1"})
 )
 
 func checkReplicaTimestamp(ctx context.Context, c *haTracker, user, cluster, replica string, expected time.Time) error {

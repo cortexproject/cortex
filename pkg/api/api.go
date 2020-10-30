@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -59,7 +60,7 @@ type API struct {
 	indexPage      *IndexPageContent
 }
 
-func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
+func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger, propagator user.Propagator) (*API, error) {
 	// Ensure the encoded path is used. Required for the rules API
 	s.HTTP.UseEncodedPath()
 
@@ -84,7 +85,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
 	if cfg.HTTPAuthMiddleware == nil {
-		api.authMiddleware = middleware.AuthenticateUser
+		api.authMiddleware = middleware.WithPropagator(propagator).AuthenticateUser()
 	}
 
 	return api, nil

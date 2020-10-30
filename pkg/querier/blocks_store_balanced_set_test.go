@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/propagator"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -24,7 +25,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	s := newBlocksStoreBalancedSet(serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), reg)
+	s := newBlocksStoreBalancedSet(serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), reg, propagator.New())
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 	defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
@@ -134,7 +135,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			s := newBlocksStoreBalancedSet(testData.serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), nil)
+			s := newBlocksStoreBalancedSet(testData.serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), nil, propagator.New())
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 

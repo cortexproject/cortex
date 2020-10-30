@@ -23,8 +23,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -419,7 +420,7 @@ func getQuerierID(server Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return err
 	}

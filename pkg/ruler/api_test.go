@@ -13,7 +13,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -370,7 +371,7 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 	t.Helper()
 
 	req := httptest.NewRequest(method, url, body)
-	ctx := user.InjectOrgID(req.Context(), userID)
+	ctx := user.InjectTenantIDs(req.Context(), []string{userID})
 
 	return req.WithContext(ctx)
 }

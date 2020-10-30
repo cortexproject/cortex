@@ -14,7 +14,8 @@ import (
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/segmentio/fasthash/fnv1a"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ingester/index"
@@ -172,7 +173,7 @@ func (us *userStates) teardown() {
 }
 
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("no user id")
 	}

@@ -25,7 +25,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -84,7 +86,7 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
-func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
+func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, user.Propagator, func()) {
 	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
 	assert.NoError(t, err)
 	cleanup := func() {
@@ -110,25 +112,25 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, cleanup
+	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, propagator.New(), cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
-	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides), prometheus.NewRegistry(), logger)
+	engine, noopQueryable, pusher, logger, overrides, propagator, cleanup := testSetup(t, cfg)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides), prometheus.NewRegistry(), logger, propagator)
 	require.NoError(t, err)
 
 	return manager, cleanup
 }
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
-	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
+	engine, noopQueryable, pusher, logger, overrides, propagator, cleanup := testSetup(t, cfg)
 	storage, err := NewRuleStorage(cfg.StoreConfig, promRules.FileLoader{})
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides)
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, util.Logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, util.Logger, propagator)
 	require.NoError(t, err)
 
 	ruler, err := NewRuler(
@@ -138,6 +140,7 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 		logger,
 		storage,
 		overrides,
+		propagator,
 	)
 	require.NoError(t, err)
 
@@ -162,7 +165,9 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	// We do expect 1 API call for the user create with the getOrCreateNotifier()
 	wg.Add(1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+		ctx, err := propagator.New().ExtractFromHTTPRequest(r)
+		assert.NoError(t, err)
+		userID, err := user.Resolve.UserID(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
 		wg.Done()
@@ -210,7 +215,7 @@ func TestRuler_Rules(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	// test user1
-	ctx := user.InjectOrgID(context.Background(), "user1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"user1"})
 	rls, err := r.Rules(ctx, &RulesRequest{})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)
@@ -219,7 +224,7 @@ func TestRuler_Rules(t *testing.T) {
 	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 
 	// test user2
-	ctx = user.InjectOrgID(context.Background(), "user2")
+	ctx = user.InjectTenantIDs(context.Background(), []string{"user2"})
 	rls, err = r.Rules(ctx, &RulesRequest{})
 	require.NoError(t, err)
 	require.Len(t, rls.Groups, 1)

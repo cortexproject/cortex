@@ -9,7 +9,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -44,7 +45,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	f, err := setupFrontend(config)
 	require.NoError(t, err)
 
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	expired, cancel := context.WithCancel(ctx)
 	cancel()
 
@@ -72,7 +73,7 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID, 0)))
 
 	// add one request to a second tenant queue
-	ctx2 := user.InjectOrgID(context.Background(), userID2)
+	ctx2 := user.InjectTenantIDs(context.Background(), []string{userID2})
 	err = f.queueRequest(ctx2, testReq(ctx2))
 	require.Nil(t, err)
 
@@ -102,7 +103,7 @@ func TestRoundRobinQueues(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		userID := fmt.Sprint(i / 10)
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 		err = f.queueRequest(ctx, testReq(ctx))
 		require.NoError(t, err)
@@ -116,7 +117,7 @@ func TestRoundRobinQueues(t *testing.T) {
 		require.NotNil(t, req)
 		idx = nidx
 
-		userID, err := user.ExtractOrgID(req.originalCtx)
+		userID, err := user.Resolve.UserID(req.originalCtx)
 		require.NoError(t, err)
 		intUserID, err := strconv.Atoi(userID)
 		require.NoError(t, err)
@@ -148,7 +149,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
 				userID := strconv.Itoa(j)
-				ctx := user.InjectOrgID(context.Background(), userID)
+				ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 				err = f.queueRequest(ctx, testReq(ctx))
 				if err != nil {
@@ -210,7 +211,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 
 		for j := 0; j < numTenants; j++ {
 			userID := strconv.Itoa(j)
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 			r := testReq(ctx)
 
 			requests = append(requests, r)

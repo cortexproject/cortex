@@ -8,13 +8,14 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 )
 
-var ctx = user.InjectOrgID(context.Background(), "1")
+var ctx = user.InjectTenantIDs(context.Background(), []string{"1"})
 
 type mockStore struct {
 	chunk.IndexClient

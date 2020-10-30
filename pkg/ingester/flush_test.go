@@ -11,7 +11,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -97,7 +98,7 @@ func TestFlushPanicIssue2743(t *testing.T) {
 }
 
 func pushSample(t *testing.T, ing *Ingester, sample client.Sample) {
-	_, err := ing.Push(user.InjectOrgID(context.Background(), userID), client.ToWriteRequest(singleTestLabel, []client.Sample{sample}, nil, client.API))
+	_, err := ing.Push(user.InjectTenantIDs(context.Background(), []string{userID}), client.ToWriteRequest(singleTestLabel, []client.Sample{sample}, nil, client.API))
 	require.NoError(t, err)
 }
 

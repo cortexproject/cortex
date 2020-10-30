@@ -23,8 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -184,7 +185,7 @@ func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetri
 
 	// Append metadata.
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		_, err := ing.Push(ctx, client.ToWriteRequest(nil, nil, testData[userID], client.API))
 		require.NoError(t, err)
 	}
@@ -203,7 +204,7 @@ func pushTestSamples(t testing.TB, ing *Ingester, numSeries, samplesPerSeries, o
 
 	// Append samples.
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), nil, client.API))
 		require.NoError(t, err)
 	}
@@ -214,7 +215,7 @@ func pushTestSamples(t testing.TB, ing *Ingester, numSeries, samplesPerSeries, o
 func retrieveTestSamples(t *testing.T, ing *Ingester, userIDs []string, testData map[string]model.Matrix) {
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		res, req, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
 		assert.Equal(t, testData[userID], res)
@@ -261,7 +262,7 @@ func TestIngesterMetadataAppend(t *testing.T) {
 			userIDs, _ := pushTestMetadata(t, ing, tc.numMetadata, tc.metadataPerMetric)
 
 			for _, userID := range userIDs {
-				ctx := user.InjectOrgID(context.Background(), userID)
+				ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 				resp, err := ing.MetricsMetadata(ctx, nil)
 
 				if tc.err != nil {
@@ -294,7 +295,7 @@ func TestIngesterPurgeMetadata(t *testing.T) {
 
 	time.Sleep(40 * time.Millisecond)
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		ing.purgeUserMetricsMetadata()
 
 		resp, err := ing.MetricsMetadata(ctx, nil)
@@ -357,7 +358,7 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 
 	// Read samples back via ingester queries.
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		_, req, err := runTestQueryTimes(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+", model.Latest.Add(-15*time.Second), model.Latest)
 		require.NoError(t, err)
 
@@ -392,7 +393,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 
 	// Check data is still retained by ingester
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		res, _, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
 		assert.Equal(t, testData[userID], res)
@@ -403,7 +404,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 
 	// Check data has gone from ingester
 	for _, userID := range userIDs {
-		ctx := user.InjectOrgID(context.Background(), userID)
+		ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 		res, _, err := runTestQuery(ctx, t, ing, labels.MatchRegexp, model.JobLabel, ".+")
 		require.NoError(t, err)
 		assert.Equal(t, model.Matrix{}, res)
@@ -485,7 +486,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "foo", Value: ""},
 		{Name: "bar", Value: ""},
 	}
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	err := ing.append(ctx, userID, lp, 1, 0, client.API, nil)
 	require.NoError(t, err)
 
@@ -569,7 +570,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 			metadata2 := &client.MetricMetadata{MetricName: "testmetric2", Help: "a help for testmetric2", Type: client.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 			_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 			require.NoError(t, err)
 
@@ -690,7 +691,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 			metadata2 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric2", Type: client.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 			_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
 			require.NoError(t, err)
 
@@ -750,7 +751,7 @@ func TestIngesterValidation(t *testing.T) {
 	_, ing := newDefaultTestStore(t)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	userID := "1"
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	m := labelPairs{{Name: labels.MetricName, Value: "testmetric"}}
 
 	// As a setup, let's append samples.
@@ -803,7 +804,7 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 		ctx    = context.Background()
 	)
 	wg.Add(parallelism)
-	ctx = user.InjectOrgID(ctx, "1")
+	ctx = user.InjectTenantIDs(ctx, []string{"1"})
 	for i := 0; i < parallelism; i++ {
 		seriesPerGoroutine := series / parallelism
 		go func(from, through int) {
@@ -869,7 +870,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 	)
 
 	allLabels, allSamples := benchmarkData(series)
-	ctx := user.InjectOrgID(context.Background(), "1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 
 	encodings := []struct {
 		name string
@@ -907,7 +908,7 @@ func BenchmarkIngester_QueryStream(b *testing.B) {
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
 	_, ing := newTestStore(b, cfg, clientCfg, limits, nil)
-	ctx := user.InjectOrgID(context.Background(), "1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 
 	const (
 		series  = 2000
@@ -1013,7 +1014,7 @@ func TestIngesterActiveSeries(t *testing.T) {
 
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 			// Wait until the ingester is ACTIVE
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {

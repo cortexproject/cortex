@@ -12,7 +12,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -398,7 +399,7 @@ func TestResultsCache(t *testing.T) {
 		calls++
 		return parsedResponse, nil
 	}))
-	ctx := user.InjectOrgID(context.Background(), "1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 	resp, err := rc.Do(ctx, parsedRequest)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
@@ -442,7 +443,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		assert.Equal(t, r, req)
 		return parsedResponse, nil
 	}))
-	ctx := user.InjectOrgID(context.Background(), "1")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 
 	// Request should result in a query.
 	resp, err := rc.Do(ctx, req)
@@ -499,7 +500,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 
 			// create cache with handler
 			rc := rcm.Wrap(tc.Handler)
-			ctx := user.InjectOrgID(context.Background(), "1")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 
 			// create request with start end within the key extents
 			req := parsedRequest.WithStartEnd(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3))
@@ -644,7 +645,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 			}))
 
 			for _, req := range tc.requests {
-				ctx := user.InjectOrgID(context.Background(), "1")
+				ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 				_, err := rc.Do(ctx, req)
 				require.NoError(t, err)
 			}

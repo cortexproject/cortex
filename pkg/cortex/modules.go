@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -76,7 +77,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
-	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util.Logger)
+	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util.Logger, t.Propagator)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +177,7 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	// ruler's dependency)
 	canJoinDistributorsRing := t.Cfg.isModuleEnabled(Distributor) || t.Cfg.isModuleEnabled(All)
 
-	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer)
+	t.Distributor, err = distributor.New(t.Cfg.Distributor, t.Cfg.IngesterClient, t.Overrides, t.Ring, canJoinDistributorsRing, prometheus.DefaultRegisterer, t.Propagator)
 	if err != nil {
 		return
 	}
@@ -307,7 +308,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
-	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer); err != nil {
+	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer, t.Propagator); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
 	} else {
 		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
@@ -321,7 +322,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 			return nil, fmt.Errorf("second store engine used by querier '%s' must be different than primary engine '%s'", t.Cfg.Querier.SecondStoreEngine, t.Cfg.Storage.Engine)
 		}
 
-		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer)
+		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer, t.Propagator)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)
 		}
@@ -347,7 +348,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	}
 }
 
-func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, limits *validation.Overrides, reg prometheus.Registerer, propagator user.Propagator) (prom_storage.Queryable, error) {
 	switch engine {
 	case storage.StorageEngineChunks:
 		if chunkStore == nil {
@@ -362,7 +363,7 @@ func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, l
 			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 		}
 
-		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.BlocksStorage, limits, util.Logger, reg)
+		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.BlocksStorage, limits, util.Logger, reg, propagator)
 
 	default:
 		return nil, fmt.Errorf("unknown storage engine '%s'", engine)
@@ -488,6 +489,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
+		t.Propagator,
 	)
 
 	if err != nil {
@@ -600,7 +602,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	queryable, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer)
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides)
-	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util.Logger)
+	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util.Logger, t.Propagator)
 	if err != nil {
 		return nil, err
 	}
@@ -612,6 +614,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		util.Logger,
 		t.RulerStorage,
 		t.Overrides,
+		t.Propagator,
 	)
 	if err != nil {
 		return
@@ -634,7 +637,7 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 		return
 	}
 
-	t.ConfigAPI = configAPI.New(t.ConfigDB, t.Cfg.Configs.API)
+	t.ConfigAPI = configAPI.New(t.ConfigDB, t.Cfg.Configs.API, t.Propagator)
 	t.ConfigAPI.RegisterRoutes(t.Server.HTTP)
 	return services.NewIdleService(nil, func(_ error) error {
 		t.ConfigDB.Close()

@@ -14,7 +14,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -22,7 +24,7 @@ import (
 
 func TestRoundTrip(t *testing.T) {
 	s := httptest.NewServer(
-		middleware.AuthenticateUser.Wrap(
+		middleware.WithPropagator(propagator.New()).AuthenticateUser().Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var err error
 				if r.RequestURI == query {
@@ -61,6 +63,7 @@ func TestRoundTrip(t *testing.T) {
 		0,
 		nil,
 		nil,
+		propagator.New(),
 	)
 
 	if err != nil {
@@ -80,9 +83,9 @@ func TestRoundTrip(t *testing.T) {
 			// query-frontend doesn't actually authenticate requests, we rely on
 			// the queriers to do this.  Hence we ensure the request doesn't have a
 			// org ID in the ctx, but does have the header.
-			ctx := user.InjectOrgID(context.Background(), "1")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			err = propagator.New().InjectIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
 
 			resp, err := tw(downstream).RoundTrip(req)
@@ -119,6 +122,7 @@ func Test_ShardingConfigError(t *testing.T) {
 		0,
 		nil,
 		nil,
+		propagator.New(),
 	)
 
 	require.EqualError(t, err, errInvalidMinShardingLookback.Error())

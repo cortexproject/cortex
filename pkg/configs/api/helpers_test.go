@@ -9,13 +9,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/db/dbtest"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 )
 
 var (
@@ -31,7 +31,7 @@ func setup(t *testing.T) {
 		Notifications: NotificationsConfig{
 			DisableEmail: true,
 		},
-	})
+	}, propagator.New())
 	counter = 0
 }
 
@@ -42,7 +42,7 @@ func setupWithEmailEnabled(t *testing.T) {
 		Notifications: NotificationsConfig{
 			DisableEmail: false,
 		},
-	})
+	}, propagator.New())
 	counter = 0
 }
 
@@ -65,8 +65,8 @@ func requestAsUser(t *testing.T, userID string, method, urlStr string, contentTy
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest(method, urlStr, body)
 	require.NoError(t, err)
-	r = r.WithContext(user.InjectOrgID(r.Context(), userID))
-	err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+	r = r.WithContext(user.InjectTenantIDs(r.Context(), []string{userID}))
+	err = propagator.New().InjectIntoHTTPRequest(r.Context(), r)
 	require.NoError(t, err)
 	if contentType != "" {
 		r.Header.Set("Content-Type", contentType)

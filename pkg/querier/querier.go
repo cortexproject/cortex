@@ -14,7 +14,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -287,7 +288,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

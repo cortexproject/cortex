@@ -7,7 +7,8 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -36,7 +37,7 @@ func LimitsMiddleware(l Limits) Middleware {
 }
 
 func (l limits) Do(ctx context.Context, r Request) (Response, error) {
-	userid, err := user.ExtractOrgID(ctx)
+	userid, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -57,7 +58,7 @@ type RequestResponse struct {
 
 // DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
 func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
-	userid, err := user.ExtractOrgID(ctx)
+	userid, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

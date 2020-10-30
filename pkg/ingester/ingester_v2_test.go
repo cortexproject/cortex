@@ -31,11 +31,12 @@ import (
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/propagator"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -325,7 +326,7 @@ func TestIngester_v2Push(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 			defer cleanup()
 
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 			// Wait until the ingester is ACTIVE
 			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -394,7 +395,7 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	defer cleanup()
 
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 	// Wait until the ingester is ACTIVE
 	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
@@ -488,7 +489,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		}
 
 		for _, req := range reqs {
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 			_, err := i.v2Push(ctx, req)
 			require.NoError(t, err)
 		}
@@ -571,7 +572,7 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 		}
 
 		for _, req := range reqs {
-			ctx := user.InjectOrgID(context.Background(), userID)
+			ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 			_, err := i.v2Push(ctx, req)
 			require.NoError(t, err)
 		}
@@ -610,7 +611,7 @@ func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing
 	)
 
 	registry := prometheus.NewRegistry()
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
@@ -695,7 +696,7 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	})
 
 	// Push series
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	for _, series := range series {
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -740,7 +741,7 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	})
 
 	// Push series
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	for _, series := range series {
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -860,7 +861,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 	})
 
 	// Push series
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	for _, series := range series {
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -892,7 +893,7 @@ func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 
 	// Mock request
 	userID := "test"
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req := &client.QueryRequest{}
 
 	res, err := i.v2Query(ctx, req)
@@ -913,7 +914,7 @@ func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T)
 
 	// Mock request
 	userID := "test"
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req := &client.LabelValuesRequest{}
 
 	res, err := i.v2LabelValues(ctx, req)
@@ -934,7 +935,7 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) 
 
 	// Mock request
 	userID := "test"
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req := &client.LabelNamesRequest{}
 
 	res, err := i.v2LabelNames(ctx, req)
@@ -961,7 +962,7 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 
 	// Mock request
 	userID := "test"
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req := &client.WriteRequest{}
 
 	res, err := i.v2Push(ctx, req)
@@ -1160,7 +1161,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	})
 
 	// Push fixtures
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	for _, series := range fixtures {
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -1194,7 +1195,7 @@ func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
 
 	now := util.TimeToMillis(time.Now())
 	i := createIngesterWithSeries(t, userID, numSeries, now)
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	req := &client.MetricsForLabelMatchersRequest{
 		StartTimestampMs: now,
@@ -1223,7 +1224,7 @@ func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
 
 	now := util.TimeToMillis(time.Now())
 	i := createIngesterWithSeries(b, userID, numSeries, now)
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	b.ResetTimer()
 
@@ -1262,7 +1263,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timest
 	})
 
 	// Push fixtures.
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 	for o := 0; o < numSeries; o += maxBatchSize {
 		batchSize := util.Min(maxBatchSize, numSeries-o)
@@ -1305,14 +1306,14 @@ func TestIngester_v2QueryStream(t *testing.T) {
 	})
 
 	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
 	req, _, expectedResponse := mockWriteRequest(lbls, 123000, 456)
 	_, err = i.v2Push(ctx, req)
 	require.NoError(t, err)
 
 	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.WithPropagator(propagator.New()).StreamServerUserHeaderInterceptor))
 	defer serv.GracefulStop()
 	client.RegisterIngesterServer(serv, i)
 
@@ -1324,7 +1325,7 @@ func TestIngester_v2QueryStream(t *testing.T) {
 	}()
 
 	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig(), propagator.New())
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1368,7 +1369,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	})
 
 	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{"what+" + userID})
 
 	const samplesCount = 100000
 	samples := make([]client.Sample, 0, samplesCount)
@@ -1393,7 +1394,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.WithPropagator(propagator.New()).StreamServerUserHeaderInterceptor))
 	defer serv.GracefulStop()
 	client.RegisterIngesterServer(serv, i)
 
@@ -1405,7 +1406,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	}()
 
 	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig(), propagator.New())
 	require.NoError(t, err)
 	defer c.Close()
 
@@ -1489,7 +1490,7 @@ func BenchmarkIngester_v2QueryStream(b *testing.B) {
 	})
 
 	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 	const samplesCount = 1000
 	samples := make([]client.Sample, 0, samplesCount)
@@ -2055,7 +2056,7 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	})
 
 	// Push series
-	ctx := user.InjectOrgID(context.Background(), "test")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 
 	for _, series := range series {
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
@@ -2103,7 +2104,7 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 	for _, series := range series {
-		ctx := user.InjectOrgID(context.Background(), series.user)
+		ctx := user.InjectTenantIDs(context.Background(), []string{series.user})
 		req, _, _ := mockWriteRequest(series.lbls, series.value, series.timestamp)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
@@ -2219,14 +2220,14 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 }
 
 func pushSingleSample(t *testing.T, i *Ingester) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }
 
 func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
@@ -2363,7 +2364,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	})
 
 	// Push some data to create 3 blocks.
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	for j := int64(0); j < 5; j++ {
 		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
 		_, err := i.v2Push(ctx, req)

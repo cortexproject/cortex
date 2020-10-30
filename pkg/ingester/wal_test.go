@@ -15,7 +15,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -88,7 +89,7 @@ func TestWAL(t *testing.T) {
 	outOfOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
 	inOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
 
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	_, err = ing.Push(ctx, client.ToWriteRequest(
 		[]labels.Labels{metric, metric},
 		[]client.Sample{outOfOrderSample, inOrderSample}, nil, client.API))

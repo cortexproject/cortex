@@ -12,8 +12,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 )
 
 const seconds = 1e3 // 1e3 milliseconds per second.
@@ -263,7 +265,7 @@ func TestSplitByDay(t *testing.T) {
 
 			var actualCount atomic.Int32
 			s := httptest.NewServer(
-				middleware.AuthenticateUser.Wrap(
+				middleware.WithPropagator(propagator.New()).AuthenticateUser().Wrap(
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						actualCount.Inc()
 						_, _ = w.Write([]byte(responseBody))
@@ -279,12 +281,12 @@ func TestSplitByDay(t *testing.T) {
 			roundtripper := NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
-			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(interval, fakeLimits{}, PrometheusCodec, nil))
+			}, PrometheusCodec, propagator.New(), LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(interval, fakeLimits{}, PrometheusCodec, nil))
 
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "1")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 			req = req.WithContext(ctx)
 
 			resp, err := roundtripper.RoundTrip(req)

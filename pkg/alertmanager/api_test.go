@@ -13,7 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {
@@ -131,7 +132,7 @@ template_files:
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader([]byte(tc.cfg)))
-			ctx := user.InjectOrgID(req.Context(), "testing")
+			ctx := user.InjectTenantIDs(req.Context(), []string{"testing"})
 			w := httptest.NewRecorder()
 			am.SetUserConfig(w, req.WithContext(ctx))
 			resp := w.Result()

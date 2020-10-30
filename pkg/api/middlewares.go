@@ -4,7 +4,8 @@ import (
 	"net/http"
 
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -14,7 +15,7 @@ import (
 func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, err := user.ExtractOrgID(r.Context())
+			userID, err := user.Resolve.UserID(r.Context())
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return

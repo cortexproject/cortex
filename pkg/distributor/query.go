@@ -9,7 +9,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -76,7 +77,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 // GetIngestersForQuery returns a replication set including all ingesters that should be queried
 // to fetch series matching input label matchers.
 func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
 	}
@@ -107,7 +108,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 // GetIngestersForMetadata returns a replication set including all ingesters that should be queried
 // to fetch metadata (eg. label names/values or series).
 func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
 	}

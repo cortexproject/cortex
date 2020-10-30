@@ -19,7 +19,8 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -112,7 +113,7 @@ func TestApiStatusCodes(t *testing.T) {
 				rec := httptest.NewRecorder()
 
 				req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
-				req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
+				req = req.WithContext(user.InjectTenantIDs(context.Background(), []string{"test org"}))
 
 				r.ServeHTTP(rec, req)
 

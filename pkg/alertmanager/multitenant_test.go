@@ -15,7 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -214,7 +215,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String(), nil)
-	ctx := user.InjectOrgID(req.Context(), "user1")
+	ctx := user.InjectTenantIDs(req.Context(), []string{"user1"})
 	w := httptest.NewRecorder()
 
 	am.ServeHTTP(w, req.WithContext(ctx))
@@ -278,7 +279,7 @@ receivers:
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)
-	ctx := user.InjectOrgID(req.Context(), "user1")
+	ctx := user.InjectTenantIDs(req.Context(), []string{"user1"})
 	w := httptest.NewRecorder()
 
 	am.ServeHTTP(w, req.WithContext(ctx))

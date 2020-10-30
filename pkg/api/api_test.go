@@ -6,6 +6,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
 )
 
 type FakeLogger struct{}
@@ -22,7 +24,7 @@ func TestNewApiWithoutSourceIPExtractor(t *testing.T) {
 	server, err := server.New(serverCfg)
 	require.NoError(t, err)
 
-	api, err := New(cfg, serverCfg, server, &FakeLogger{})
+	api, err := New(cfg, serverCfg, server, &FakeLogger{}, propagator.New())
 
 	require.NoError(t, err)
 	require.Nil(t, api.sourceIPs)
@@ -37,7 +39,7 @@ func TestNewApiWithSourceIPExtractor(t *testing.T) {
 	server, err := server.New(serverCfg)
 	require.NoError(t, err)
 
-	api, err := New(cfg, serverCfg, server, &FakeLogger{})
+	api, err := New(cfg, serverCfg, server, &FakeLogger{}, propagator.New())
 
 	require.NoError(t, err)
 	require.NotNil(t, api.sourceIPs)
@@ -55,7 +57,7 @@ func TestNewApiWithInvalidSourceIPExtractor(t *testing.T) {
 		MetricsNamespace:   "with_invalid_source_ip_extractor",
 	}
 
-	api, err := New(cfg, serverCfg, &s, &FakeLogger{})
+	api, err := New(cfg, serverCfg, &s, &FakeLogger{}, propagator.New())
 	require.Error(t, err)
 	require.Nil(t, api)
 }

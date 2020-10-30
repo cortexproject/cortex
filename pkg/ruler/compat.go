@@ -11,7 +11,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
@@ -45,7 +46,7 @@ func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
 func (a *pusherAppender) Commit() error {
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
+	_, err := a.pusher.Push(user.InjectTenantIDs(a.ctx, []string{a.userID}), client.ToWriteRequest(a.labels, a.samples, nil, client.RULE))
 	a.labels = nil
 	a.samples = nil
 	return err
@@ -116,7 +117,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Appendable:      &PusherAppendable{pusher: p, userID: userID},
 			Queryable:       q,
 			QueryFunc:       engineQueryFunc(engine, q, overrides, userID),
-			Context:         user.InjectOrgID(ctx, userID),
+			Context:         user.InjectTenantIDs(ctx, []string{userID}),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
 			Logger:          log.With(logger, "user", userID),

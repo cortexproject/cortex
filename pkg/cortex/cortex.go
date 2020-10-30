@@ -9,6 +9,8 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/cortexproject/cortex/pkg/user"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -268,6 +270,7 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware frontend.Tripperware
+	Propagator               user.Propagator
 
 	Ruler        *ruler.Ruler
 	RulerStorage rules.RuleStore
@@ -297,11 +300,13 @@ func New(cfg Config) (*Cortex, error) {
 	//
 	// Also don't check auth /frontend.Frontend/Process, as this handles
 	// queries for multiple users.
-	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled, propagator.New(),
+	propagator := propagator.New()
+	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled, propagator,
 		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
 
 	cortex := &Cortex{
-		Cfg: cfg,
+		Cfg:        cfg,
+		Propagator: propagator,
 	}
 
 	cortex.setupThanosTracing()

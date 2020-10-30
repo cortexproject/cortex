@@ -19,7 +19,8 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -202,10 +203,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, propagator user.Propagator) (*Distributor, error) {
 	if cfg.IngesterClientFactory == nil {
 		cfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
-			return ingester_client.MakeIngesterClient(addr, clientConfig)
+			return ingester_client.MakeIngesterClient(addr, clientConfig, propagator)
 		}
 	}
 
@@ -384,7 +385,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +563,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		// Use a background context to make sure all ingesters get samples even if we return early
 		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 		defer cancel()
-		localCtx = user.InjectOrgID(localCtx, userID)
+		localCtx = user.InjectTenantIDs(localCtx, []string{userID})
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
@@ -828,7 +829,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	perUserTotals := make(map[string]UserStats)
 
 	req := &client.UserStatsRequest{}
-	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
+	ctx = user.InjectTenantIDs(ctx, []string{"1"}) // fake: ingester insists on having an org ID
 	// Not using d.ForReplicationSet(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
 	if err != nil {

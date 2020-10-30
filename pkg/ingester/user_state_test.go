@@ -14,7 +14,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 )
 
 // Test forSeriesMatching correctly batches up series.
@@ -50,7 +51,7 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 			userIDs, _ := pushTestSamples(t, ing, tc.numSeries, 100, 0)
 
 			for _, userID := range userIDs {
-				ctx := user.InjectOrgID(context.Background(), userID)
+				ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 				instance, ok, err := ing.userStates.getViaContext(ctx)
 				require.NoError(t, err)
 				require.True(t, ok)

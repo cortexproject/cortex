@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/user"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/oklog/ulid"
@@ -31,7 +33,7 @@ type blocksStoreBalancedSet struct {
 	dnsProvider      *dns.Provider
 }
 
-func newBlocksStoreBalancedSet(serviceAddresses []string, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) *blocksStoreBalancedSet {
+func newBlocksStoreBalancedSet(serviceAddresses []string, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer, propagator user.Propagator) *blocksStoreBalancedSet {
 	const dnsResolveInterval = 10 * time.Second
 
 	dnsProviderReg := extprom.WrapRegistererWithPrefix("cortex_storegateway_client_", reg)
@@ -39,7 +41,7 @@ func newBlocksStoreBalancedSet(serviceAddresses []string, tlsCfg tls.ClientConfi
 	s := &blocksStoreBalancedSet{
 		serviceAddresses: serviceAddresses,
 		dnsProvider:      dns.NewProvider(logger, dnsProviderReg, dns.GolangResolverType),
-		clientsPool:      newStoreGatewayClientPool(nil, tlsCfg, logger, reg),
+		clientsPool:      newStoreGatewayClientPool(nil, tlsCfg, logger, reg, propagator),
 	}
 
 	s.Service = services.NewTimerService(dnsResolveInterval, s.starting, s.resolve, nil)

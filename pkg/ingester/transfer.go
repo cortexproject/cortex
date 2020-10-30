@@ -11,7 +11,9 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -313,13 +315,13 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 	}
 
 	level.Info(util.Logger).Log("msg", "sending chunks", "to_ingester", targetIngester.Addr)
-	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.clientConfig)
+	c, err := i.cfg.ingesterClientFactory(targetIngester.Addr, i.clientConfig, propagator.New())
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	ctx = user.InjectOrgID(ctx, "-1")
+	ctx = user.InjectTenantIDs(ctx, []string{"-1"})
 	stream, err := c.TransferChunks(ctx)
 	if err != nil {
 		return errors.Wrap(err, "TransferChunks")

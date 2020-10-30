@@ -18,7 +18,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -344,7 +345,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 
 	level.Info(logger).Log("msg", "executing plan")
 
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 
 	for i := range plan.ChunksGroup {
 		level.Debug(logger).Log("msg", "deleting chunks", "labels", plan.ChunksGroup[i].Labels)
@@ -528,7 +529,7 @@ func (p *Purger) pullDeleteRequestsToPlanDeletes() error {
 // After building delete plans it updates status of delete request to StatusDeleting and sends it for execution
 func (p *Purger) buildDeletePlan(req deleteRequestWithLogger) (err error) {
 	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, req.UserID)
+	ctx = user.InjectTenantIDs(ctx, []string{req.UserID})
 
 	defer func() {
 		if err != nil {

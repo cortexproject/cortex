@@ -15,8 +15,9 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -226,8 +227,8 @@ func (d *DeleteSeriesTest) sendDeleteRequest() (err error) {
 	}
 
 	if d.cfg.UserID != "" {
-		r = r.WithContext(user.InjectOrgID(r.Context(), d.cfg.UserID))
-		err = user.InjectOrgIDIntoHTTPRequest(r.Context(), r)
+		r = r.WithContext(user.InjectTenantIDs(r.Context(), []string{d.cfg.UserID}))
+		err = propagator.New().InjectIntoHTTPRequest(r.Context(), r)
 		if err != nil {
 			return err
 		}

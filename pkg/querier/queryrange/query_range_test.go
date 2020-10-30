@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
@@ -56,7 +57,7 @@ func TestRequest(t *testing.T) {
 			r, err := http.NewRequest("GET", tc.url, nil)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "1")
+			ctx := user.InjectTenantIDs(context.Background(), []string{"1"})
 			r = r.WithContext(ctx)
 
 			req, err := PrometheusCodec.DecodeRequest(ctx, r)

@@ -30,7 +30,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -138,6 +139,7 @@ func NewTripperware(
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
+	propagator user.Propagator,
 ) (frontend.Tripperware, cache.Cache, error) {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -199,7 +201,7 @@ func NewTripperware(
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, codec, propagator, queryRangeMiddleware...)
 			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"
@@ -207,7 +209,7 @@ func NewTripperware(
 					op = "query_range"
 				}
 
-				user, err := user.ExtractOrgID(r.Context())
+				user, err := user.Resolve.UserID(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, err
@@ -225,17 +227,19 @@ func NewTripperware(
 }
 
 type roundTripper struct {
-	next    http.RoundTripper
-	handler Handler
-	codec   Codec
+	next       http.RoundTripper
+	handler    Handler
+	codec      Codec
+	propagator user.Propagator
 }
 
 // NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper
 // using the codec to translate requests and responses.
-func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middleware) http.RoundTripper {
+func NewRoundTripper(next http.RoundTripper, codec Codec, propagator user.Propagator, middlewares ...Middleware) http.RoundTripper {
 	transport := roundTripper{
-		next:  next,
-		codec: codec,
+		next:       next,
+		codec:      codec,
+		propagator: propagator,
 	}
 	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
 	return transport
@@ -267,7 +271,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
+	if err := q.propagator.InjectIntoHTTPRequest(ctx, request); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 

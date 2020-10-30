@@ -19,10 +19,10 @@ import (
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 	amtemplate "github.com/prometheus/alertmanager/template"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -51,20 +51,30 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // API implements the configs api.
 type API struct {
 	http.Handler
-	db  db.DB
-	cfg Config
+	db         db.DB
+	cfg        Config
+	propagator user.Propagator
 }
 
 // New creates a new API
-func New(database db.DB, cfg Config) *API {
+func New(database db.DB, cfg Config, propagator user.Propagator) *API {
 	a := &API{
-		db:  database,
-		cfg: cfg,
+		db:         database,
+		cfg:        cfg,
+		propagator: propagator,
 	}
 	r := mux.NewRouter()
 	a.RegisterRoutes(r)
 	a.Handler = r
 	return a
+}
+
+func (a *API) authenticateUser(r *http.Request) (string, error) {
+	ctx, err := a.propagator.ExtractFromHTTPRequest(r)
+	if err != nil {
+		return "", err
+	}
+	return user.Resolve.UserID(ctx)
 }
 
 func (a *API) admin(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +118,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 
 // getConfig returns the request configuration.
 func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	userID, err := a.authenticateUser(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -146,7 +156,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	userID, err := a.authenticateUser(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -296,7 +306,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deactivateConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	userID, err := a.authenticateUser(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -318,7 +328,7 @@ func (a *API) deactivateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) restoreConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+	userID, err := a.authenticateUser(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

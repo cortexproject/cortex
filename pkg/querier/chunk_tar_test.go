@@ -16,7 +16,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
@@ -70,7 +71,7 @@ func runRangeQuery(t testing.TB, query string, from, through time.Time, step tim
 	rangeQuery, err := engine.NewRangeQuery(queryable, query, from, through, step)
 	require.NoError(t, err)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 	r := rangeQuery.Exec(ctx)
 	_, err = r.Matrix()
 	require.NoError(t, err)

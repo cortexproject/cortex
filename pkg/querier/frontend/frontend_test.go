@@ -27,10 +27,12 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/user"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -41,6 +43,13 @@ const (
 	responseBody = `{"status":"success","data":{"resultType":"Matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
+func injectTenantIDsIntoRequest(ctx context.Context, req *http.Request, tenantIDs []string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return propagator.New().InjectIntoHTTPRequest(user.InjectTenantIDs(ctx, tenantIDs), req)
+}
+
 func TestFrontend(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte("Hello World"))
@@ -49,7 +58,7 @@ func TestFrontend(t *testing.T) {
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
 		require.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
+		err = injectTenantIDsIntoRequest(nil, req, []string{"1"})
 		require.NoError(t, err)
 
 		resp, err := http.DefaultClient.Do(req)
@@ -92,7 +101,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/%s", addr, query), nil)
 		require.NoError(t, err)
 		req = req.WithContext(ctx)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		err = injectTenantIDsIntoRequest(ctx, req, []string{"1"})
 		require.NoError(t, err)
 
 		req, tr := nethttp.TraceRequest(opentracing.GlobalTracer(), req)
@@ -147,7 +156,7 @@ func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
 
 		ctx := context.Background()
 		req = req.WithContext(ctx)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		err = injectTenantIDsIntoRequest(ctx, req, []string{"1"})
 		require.NoError(t, err)
 
 		client := http.Client{
@@ -183,7 +192,7 @@ func TestFrontendCancel(t *testing.T) {
 	test := func(addr string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
 		require.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
+		err = injectTenantIDsIntoRequest(nil, req, []string{"1"})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -291,7 +300,7 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 		ctx := context.Background()
 		req = req.WithContext(ctx)
 		assert.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		err = injectTenantIDsIntoRequest(ctx, req, []string{"1"})
 		assert.NoError(t, err)
 
 		client := http.Client{
@@ -349,7 +358,7 @@ func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
 		ctx := context.Background()
 		req = req.WithContext(ctx)
 		assert.NoError(t, err)
-		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(ctx, "1"), req)
+		err = injectTenantIDsIntoRequest(ctx, req, []string{"1"})
 		assert.NoError(t, err)
 
 		client := http.Client{
@@ -404,7 +413,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 
 	r := mux.NewRouter()
 	r.PathPrefix("/").Handler(middleware.Merge(
-		middleware.AuthenticateUser,
+		middleware.WithPropagator(propagator.New()).AuthenticateUser(),
 		middleware.Tracer{},
 	).Wrap(frontend.Handler()))
 

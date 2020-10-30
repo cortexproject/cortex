@@ -21,9 +21,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -210,6 +211,7 @@ type Ruler struct {
 	store       rules.RuleStore
 	manager     MultiTenantManager
 	limits      RulesLimits
+	propagator  user.Propagator
 
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
@@ -219,14 +221,15 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore, limits RulesLimits) (*Ruler, error) {
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore, limits RulesLimits, propagator user.Propagator) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:      cfg,
-		store:    ruleStore,
-		manager:  manager,
-		registry: reg,
-		logger:   logger,
-		limits:   limits,
+		cfg:        cfg,
+		store:      ruleStore,
+		manager:    manager,
+		registry:   reg,
+		logger:     logger,
+		limits:     limits,
+		propagator: propagator,
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -584,7 +587,7 @@ func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring rin
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
@@ -689,7 +692,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 		return nil, err
 	}
 
-	ctx, err = user.InjectIntoGRPCRequest(ctx)
+	ctx, err = r.propagator.InjectIntoGRPCRequest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
@@ -724,7 +727,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := user.Resolve.UserID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}

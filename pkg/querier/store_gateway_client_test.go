@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+
+	"github.com/cortexproject/cortex/pkg/propagator"
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -41,14 +43,14 @@ func Test_newStoreGatewayClientFactory(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := newStoreGatewayClientFactory(cfg, tlsCfg, reg)
+	factory := newStoreGatewayClientFactory(cfg, tlsCfg, reg, propagator.New())
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())
 		require.NoError(t, err)
 		defer client.Close() //nolint:errcheck
 
-		ctx := user.InjectOrgID(context.Background(), "test")
+		ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 		stream, err := client.(*storeGatewayClient).Series(ctx, &storepb.SeriesRequest{})
 		assert.NoError(t, err)
 

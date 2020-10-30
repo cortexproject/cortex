@@ -17,7 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -784,7 +785,7 @@ func TestChunkStoreError(t *testing.T) {
 }
 
 func TestStoreMaxLookBack(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), userID)
+	ctx := user.InjectTenantIDs(context.Background(), []string{userID})
 	metric := labels.Labels{
 		{Name: labels.MetricName, Value: "foo"},
 		{Name: "bar", Value: "baz"},

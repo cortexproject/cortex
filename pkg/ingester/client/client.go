@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/user"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
@@ -33,8 +34,8 @@ type closableHealthAndIngesterClient struct {
 }
 
 // MakeIngesterClient makes a new IngesterClient
-func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error) {
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration))
+func MakeIngesterClient(addr string, cfg Config, propagator user.Propagator) (HealthAndIngesterClient, error) {
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(ingesterClientRequestDuration, propagator))
 	if err != nil {
 		return nil, err
 	}

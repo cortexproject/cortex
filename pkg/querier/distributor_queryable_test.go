@@ -13,7 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -121,7 +122,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
-				ctx := user.InjectOrgID(context.Background(), "test")
+				ctx := user.InjectTenantIDs(context.Background(), []string{"test"})
 				queryable := newDistributorQueryable(distributor, streamingEnabled, nil, testData.queryIngestersWithin)
 				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
@@ -194,7 +195,7 @@ func TestIngesterStreaming(t *testing.T) {
 		},
 		nil)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 	queryable := newDistributorQueryable(d, true, mergeChunks, 0)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
@@ -270,7 +271,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		},
 		nil)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx := user.InjectTenantIDs(context.Background(), []string{"0"})
 	queryable := newDistributorQueryable(d, true, mergeChunks, 0)
 	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)

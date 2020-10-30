@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -189,7 +190,7 @@ func NewQuerierHandler(
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 	)
 
-	router := mux.NewRouter().PathPrefix(cfg.ServerPrefix)
+	router := mux.NewRouter()
 
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
 	// running Cortex as a single binary.
@@ -204,35 +205,39 @@ func NewQuerierHandler(
 	middlewares := middleware.Merge(inst, cacheGenHeaderMiddleware)
 	router.Use(middlewares.Wrap)
 
-	promRouter := route.New().WithPrefix(cfg.ServerPrefix + cfg.PrometheusHTTPPrefix + "/api/v1")
+	// Define the prefixes for all routes
+	prefix := cfg.ServerPrefix + cfg.PrometheusHTTPPrefix
+	legacyPrefix := cfg.ServerPrefix + cfg.LegacyHTTPPrefix
+
+	promRouter := route.New().WithPrefix(prefix + "/api/v1")
 	api.Register(promRouter)
 
-	legacyPromRouter := route.New().WithPrefix(cfg.ServerPrefix + cfg.LegacyHTTPPrefix + "/api/v1")
+	legacyPromRouter := route.New().WithPrefix(legacyPrefix + "/api/v1")
 	api.Register(legacyPromRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Methods("POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(promRouter)
+	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
+	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
+	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
+	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
+	router.Path(prefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
+	router.Path(prefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
+	router.Path(prefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
+	router.Path(prefix + "/api/v1/metadata").Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
-	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
-	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
+	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
+	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
+	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(legacyPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(legacyPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
+	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
+	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
 	// Add a middleware to extract the trace context and add a header.
 	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {

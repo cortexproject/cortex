@@ -189,7 +189,7 @@ func NewQuerierHandler(
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 	)
 
-	router := mux.NewRouter()
+	router := mux.NewRouter().PathPrefix(cfg.ServerPrefix)
 
 	// Use a separate metric for the querier in order to differentiate requests from the query-frontend when
 	// running Cortex as a single binary.

@@ -682,7 +682,10 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 		return nil, err
 	}
 
-	req := &client.LabelNamesRequest{}
+	req := &client.LabelNamesRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})

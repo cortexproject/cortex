@@ -8,10 +8,6 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
@@ -28,6 +24,12 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
+	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (

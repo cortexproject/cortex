@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -77,33 +78,34 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	API            api.Config               `yaml:"api"`
-	Server         server.Config            `yaml:"server"`
-	Distributor    distributor.Config       `yaml:"distributor"`
-	Querier        querier.Config           `yaml:"querier"`
-	IngesterClient client.Config            `yaml:"ingester_client"`
-	Ingester       ingester.Config          `yaml:"ingester"`
-	Flusher        flusher.Config           `yaml:"flusher"`
-	Storage        storage.Config           `yaml:"storage"`
-	ChunkStore     chunk.StoreConfig        `yaml:"chunk_store"`
-	Schema         chunk.SchemaConfig       `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig   validation.Limits        `yaml:"limits"`
-	Prealloc       client.PreallocConfig    `yaml:"prealloc" doc:"hidden"`
-	Worker         frontend.WorkerConfig    `yaml:"frontend_worker"`
-	Frontend       frontend.Config          `yaml:"frontend"`
-	QueryRange     queryrange.Config        `yaml:"query_range"`
-	TableManager   chunk.TableManagerConfig `yaml:"table_manager"`
-	Encoding       encoding.Config          `yaml:"-"` // No yaml for this, it only works with flags.
-	BlocksStorage  tsdb.BlocksStorageConfig `yaml:"blocks_storage"`
-	Compactor      compactor.Config         `yaml:"compactor"`
-	StoreGateway   storegateway.Config      `yaml:"store_gateway"`
-	PurgerConfig   purger.Config            `yaml:"purger"`
+	API            api.Config                      `yaml:"api"`
+	Server         server.Config                   `yaml:"server"`
+	Distributor    distributor.Config              `yaml:"distributor"`
+	Querier        querier.Config                  `yaml:"querier"`
+	IngesterClient client.Config                   `yaml:"ingester_client"`
+	Ingester       ingester.Config                 `yaml:"ingester"`
+	Flusher        flusher.Config                  `yaml:"flusher"`
+	Storage        storage.Config                  `yaml:"storage"`
+	ChunkStore     chunk.StoreConfig               `yaml:"chunk_store"`
+	Schema         chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig   validation.Limits               `yaml:"limits"`
+	Prealloc       client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
+	Worker         frontend.CombinedWorkerConfig   `yaml:"frontend_worker"`
+	Frontend       frontend.CombinedFrontendConfig `yaml:"frontend"`
+	QueryRange     queryrange.Config               `yaml:"query_range"`
+	TableManager   chunk.TableManagerConfig        `yaml:"table_manager"`
+	Encoding       encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
+	BlocksStorage  tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
+	Compactor      compactor.Config                `yaml:"compactor"`
+	StoreGateway   storegateway.Config             `yaml:"store_gateway"`
+	PurgerConfig   purger.Config                   `yaml:"purger"`
 
-	Ruler         ruler.Config                               `yaml:"ruler"`
-	Configs       configs.Config                             `yaml:"configs"`
-	Alertmanager  alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV  memberlist.KVConfig                        `yaml:"memberlist"`
+	Ruler          ruler.Config                               `yaml:"ruler"`
+	Configs        configs.Config                             `yaml:"configs"`
+	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler frontend2.SchedulerConfig                  `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -149,6 +151,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
+	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
@@ -266,7 +269,7 @@ type Cortex struct {
 	TombstonesLoader         *purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	QuerierEngine            *promql.Engine
-	QueryFrontendTripperware frontend.Tripperware
+	QueryFrontendTripperware queryrange.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rules.RuleStore
@@ -293,11 +296,15 @@ func New(cfg Config) (*Cortex, error) {
 
 	// Don't check auth header on TransferChunks, as we weren't originally
 	// sending it and this could cause transfers to fail on update.
-	//
-	// Also don't check auth /frontend.Frontend/Process, as this handles
-	// queries for multiple users.
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
-		[]string{"/cortex.Ingester/TransferChunks", "/frontend.Frontend/Process"})
+		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
+		[]string{
+			"/grpc.health.v1.Health/Check",
+			"/cortex.Ingester/TransferChunks",
+			"/frontend.Frontend/Process",
+			"/frontend2.SchedulerForFrontend/FrontendLoop",
+			"/frontend2.SchedulerForQuerier/QuerierLoop",
+		})
 
 	cortex := &Cortex{
 		Cfg: cfg,

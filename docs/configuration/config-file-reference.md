@@ -157,6 +157,13 @@ runtime_config:
 
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
+
+query_scheduler:
+  # Maximum number of outstanding requests per tenant per query-scheduler.
+  # In-flight requests above this limit will fail with HTTP response status code
+  # 429.
+  # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
+  [max_outstanding_requests_per_tenant: <int> | default = 100]
 ```
 
 ### `server_config`
@@ -757,10 +764,101 @@ store_gateway_client:
 The `query_frontend_config` configures the Cortex query-frontend.
 
 ```yaml
+# Log queries that are slower than the specified duration. Set to 0 to disable.
+# Set to < 0 to enable on all queries.
+# CLI flag: -frontend.log-queries-longer-than
+[log_queries_longer_than: <duration> | default = 0s]
+
+# Max body size for downstream prometheus.
+# CLI flag: -frontend.max-body-size
+[max_body_size: <int> | default = 10485760]
+
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
+
+# DNS hostname used for finding query-schedulers.
+# CLI flag: -frontend.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
+# CLI flag: -frontend.scheduler-dns-lookup-period
+[scheduler_dns_lookup_period: <duration> | default = 10s]
+
+# Number of concurrent workers forwarding queries to single query-scheduler.
+# CLI flag: -frontend.scheduler-worker-concurrency
+[scheduler_worker_concurrency: <int> | default = 5]
+
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -frontend.grpc-client-config.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -frontend.grpc-client-config.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Deprecated: Use gzip compression when sending messages.  If true, overrides
+  # grpc-compression flag.
+  # CLI flag: -frontend.grpc-client-config.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -frontend.grpc-client-config.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -frontend.grpc-client-config.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -frontend.grpc-client-config.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -frontend.grpc-client-config.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -frontend.grpc-client-config.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -frontend.grpc-client-config.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -frontend.grpc-client-config.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -frontend.grpc-client-config.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -frontend.grpc-client-config.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -frontend.grpc-client-config.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Name of network interface to read address from. This address is sent to
+# query-scheduler and querier, which uses it to send the query response back to
+# query-frontend.
+# CLI flag: -frontend.instance-interface-names
+[instance_interface_names: <list of string> | default = [eth0 en0]]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -769,15 +867,6 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
-
-# Max body size for downstream prometheus.
-# CLI flag: -frontend.max-body-size
-[max_body_size: <int> | default = 10485760]
-
-# Log queries that are slower than the specified duration. Set to 0 to disable.
-# Set to < 0 to enable on all queries.
-# CLI flag: -frontend.log-queries-longer-than
-[log_queries_longer_than: <duration> | default = 0s]
 ```
 
 ### `query_range_config`
@@ -2455,7 +2544,10 @@ grpc_client_config:
 The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
 
 ```yaml
-# Address of query frontend service, in host:port format.
+# Address of query frontend service, in host:port format. If
+# -querier.scheduler-address is set as well, querier will use scheduler instead.
+# If neither -querier.frontend-address or -querier.scheduler-address is set,
+# queries must arrive via HTTP endpoint.
 # CLI flag: -querier.frontend-address
 [frontend_address: <string> | default = ""]
 
@@ -2539,6 +2631,17 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Hostname (and port) of scheduler that querier will periodically resolve,
+# connect to and receive queries from. If set, takes precedence over
+# -querier.frontend-address.
+# CLI flag: -querier.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to resolve the scheduler-address, in order to look for new
+# query-scheduler instances.
+# CLI flag: -querier.scheduler-dns-lookup-period
+[scheduler_dns_lookup_period: <duration> | default = 10s]
 ```
 
 ### `etcd_config`
@@ -2904,10 +3007,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
-# will handle requests for the tenant. Each frontend will select the same set of
-# queriers for the same tenant (given that all queriers are connected to all
-# frontends). This option only works with queriers connecting to the
-# query-frontend, not when using downstream URL.
+# will handle requests for the tenant. Each frontend (or query-scheduler, if
+# used) will select the same set of queriers for the same tenant (given that all
+# queriers are connected to all frontends / query-schedulers). This option only
+# works with queriers connecting to the query-frontend / query-scheduler, not
+# when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 

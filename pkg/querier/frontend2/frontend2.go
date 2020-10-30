@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -157,7 +158,7 @@ func (f *Frontend2) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
-		carrier := (*httpgrpcHeadersCarrier)(req)
+		carrier := (*grpcutil.HttpgrpcHeadersCarrier)(req)
 		if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier); err != nil {
 			return nil, err
 		}

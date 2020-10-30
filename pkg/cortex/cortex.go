@@ -36,12 +36,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -105,7 +105,7 @@ type Config struct {
 	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
-	QueryScheduler frontend2.SchedulerConfig                  `yaml:"query_scheduler"`
+	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.

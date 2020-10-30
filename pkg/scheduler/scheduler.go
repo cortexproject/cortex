@@ -1,4 +1,4 @@
-package frontend2
+package scheduler
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -62,16 +64,16 @@ type connectedFrontend struct {
 	cancel context.CancelFunc
 }
 
-type SchedulerConfig struct {
+type Config struct {
 	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
 }
 
-func (cfg *SchedulerConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg SchedulerConfig, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
 	s := &Scheduler{
 		log:    log,
 		limits: limits,
@@ -105,40 +107,6 @@ func NewScheduler(cfg SchedulerConfig, limits Limits, log log.Logger, registerer
 	return s, nil
 }
 
-// Used to transfer trace information from/to HTTP request.
-type httpgrpcHeadersCarrier httpgrpc.HTTPRequest
-
-func (c *httpgrpcHeadersCarrier) Set(key, val string) {
-	c.Headers = append(c.Headers, &httpgrpc.Header{
-		Key:    key,
-		Values: []string{val},
-	})
-}
-
-func (c *httpgrpcHeadersCarrier) ForeachKey(handler func(key, val string) error) error {
-	for _, h := range c.Headers {
-		for _, v := range h.Values {
-			if err := handler(h.Key, v); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func getParentSpanForRequest(tracer opentracing.Tracer, req *httpgrpc.HTTPRequest) (opentracing.SpanContext, error) {
-	if tracer == nil {
-		return nil, nil
-	}
-
-	carrier := (*httpgrpcHeadersCarrier)(req)
-	extracted, err := tracer.Extract(opentracing.HTTPHeaders, carrier)
-	if err == opentracing.ErrSpanContextNotFound {
-		err = nil
-	}
-	return extracted, err
-}
-
 // Limits needed for the Query Frontend - interface used for decoupling.
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
@@ -162,7 +130,7 @@ type schedulerRequest struct {
 }
 
 // This method handles connection from frontend.
-func (s *Scheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopServer) error {
+func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) error {
 	frontendAddress, frontendCtx, err := s.frontendConnected(frontend)
 	if err != nil {
 		return err
@@ -171,7 +139,7 @@ func (s *Scheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopServe
 
 	// Response to INIT. If scheduler is not running, we skip for-loop, send SHUTTING_DOWN and exit this method.
 	if s.State() == services.Running {
-		if err := frontend.Send(&SchedulerToFrontend{Status: OK}); err != nil {
+		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
 			return err
 		}
 	}
@@ -188,23 +156,23 @@ func (s *Scheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopServe
 			break // break out of the loop, and send SHUTTING_DOWN message.
 		}
 
-		var resp *SchedulerToFrontend
+		var resp *schedulerpb.SchedulerToFrontend
 
 		switch msg.GetType() {
-		case ENQUEUE:
+		case schedulerpb.ENQUEUE:
 			err = s.enqueueRequest(frontendCtx, frontendAddress, msg)
 			switch {
 			case err == nil:
-				resp = &SchedulerToFrontend{Status: OK}
+				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 			case err == errTooManyRequests:
-				resp = &SchedulerToFrontend{Status: TOO_MANY_REQUESTS_PER_TENANT}
+				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.TOO_MANY_REQUESTS_PER_TENANT}
 			default:
-				resp = &SchedulerToFrontend{Status: ERROR, Error: err.Error()}
+				resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR, Error: err.Error()}
 			}
 
-		case CANCEL:
+		case schedulerpb.CANCEL:
 			s.cancelRequest(frontendAddress, msg.QueryID)
-			resp = &SchedulerToFrontend{Status: OK}
+			resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 
 		default:
 			level.Error(s.log).Log("msg", "unknown request type from frontend", "addr", frontendAddress, "type", msg.GetType())
@@ -219,15 +187,15 @@ func (s *Scheduler) FrontendLoop(frontend SchedulerForFrontend_FrontendLoopServe
 	}
 
 	// Report shutdown back to frontend, so that it can retry with different scheduler. Also stop the frontend loop.
-	return frontend.Send(&SchedulerToFrontend{Status: SHUTTING_DOWN})
+	return frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN})
 }
 
-func (s *Scheduler) frontendConnected(frontend SchedulerForFrontend_FrontendLoopServer) (string, context.Context, error) {
+func (s *Scheduler) frontendConnected(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) (string, context.Context, error) {
 	msg, err := frontend.Recv()
 	if err != nil {
 		return "", nil, err
 	}
-	if msg.Type != INIT || msg.FrontendAddress == "" {
+	if msg.Type != schedulerpb.INIT || msg.FrontendAddress == "" {
 		return "", nil, errors.New("no frontend address")
 	}
 
@@ -259,7 +227,7 @@ func (s *Scheduler) frontendDisconnected(frontendAddress string) {
 	}
 }
 
-func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr string, msg *FrontendToScheduler) error {
+func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr string, msg *schedulerpb.FrontendToScheduler) error {
 	// Create new context for this request, to support cancellation.
 	ctx, cancel := context.WithCancel(frontendContext)
 	shouldCancel := true
@@ -272,7 +240,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	// Extract tracing information from headers in HTTP request. FrontendContext doesn't have the correct tracing
 	// information, since that is a long-running request.
 	tracer := opentracing.GlobalTracer()
-	parentSpanContext, err := getParentSpanForRequest(tracer, msg.HttpRequest)
+	parentSpanContext, err := chunk.GetParentSpanForRequest(tracer, msg.HttpRequest)
 	if err != nil {
 		return err
 	}
@@ -329,7 +297,7 @@ func (s *Scheduler) cancelRequest(frontendAddr string, queryID uint64) {
 }
 
 // QuerierLoop is started by querier to receive queries from scheduler.
-func (s *Scheduler) QuerierLoop(querier SchedulerForQuerier_QuerierLoopServer) error {
+func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer) error {
 	resp, err := querier.Recv()
 	if err != nil {
 		return err
@@ -366,7 +334,7 @@ func (s *Scheduler) QuerierLoop(querier SchedulerForQuerier_QuerierLoopServer) e
 	return errSchedulerIsNotRunning
 }
 
-func (s *Scheduler) forwardRequestToQuerier(querier SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest) error {
+func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest) error {
 	// Make sure to cancel request at the end to cleanup resources.
 	defer s.cancelRequest(req.frontendAddress, req.queryID)
 
@@ -374,7 +342,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier SchedulerForQuerier_QuerierL
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
 	go func() {
-		err := querier.Send(&SchedulerToQuerier{
+		err := querier.Send(&schedulerpb.SchedulerToQuerier{
 			UserID:          req.userID,
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,

@@ -150,8 +150,12 @@ lint:
 		github.com/prometheus/prometheus/tsdb/errors=util,\
 		sync/atomic=go.uber.org/atomic" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
+	# Ensure clean pkg structure.
+	faillint -paths "github.com/cortexproject/cortex/pkg/scheduler"   ./pkg/querier/...
+	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
+
 	# Validate Kubernetes spec files. Requires:
-	# https://kubeval.instrumenta.dev
+	# https://kubeval.instrumenta.dev
 	kubeval ./k8s/*
 
 test:

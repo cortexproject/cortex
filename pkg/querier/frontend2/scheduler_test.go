@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/opentracing/opentracing-go"
+	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go/config"
 	"github.com/weaveworks/common/httpgrpc"
@@ -164,10 +165,20 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
 	})
 
-	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
+	// Wait until the frontend has connected to the scheduler.
+	test.Poll(t, time.Second, float64(1), func() interface{} {
+		return promtest.ToFloat64(scheduler.connectedFrontendClients)
+	})
 
 	// Disconnect frontend.
 	require.NoError(t, frontendLoop.CloseSend())
+
+	// Wait until the frontend has disconnected.
+	test.Poll(t, time.Second, float64(0), func() interface{} {
+		return promtest.ToFloat64(scheduler.connectedFrontendClients)
+	})
+
+	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
 
 	verifyQuerierDoesntReceiveRequest(t, querierLoop, 500*time.Millisecond)
 	verifyNoPendingRequestsLeft(t, scheduler)

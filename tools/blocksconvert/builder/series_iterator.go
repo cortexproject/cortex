@@ -7,17 +7,19 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb/errors"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type seriesIterator struct {
 	files []*seriesFile
-	errs  errors.MultiError
+	errs  util.MultiError
 }
 
 func newSeriesIterator(files []*seriesFile) *seriesIterator {
 	si := &seriesIterator{
 		files: files,
+		errs:  util.NewMultiError(),
 	}
 	si.buildHeap()
 	return si
@@ -83,7 +85,7 @@ func (sit *seriesIterator) Error() error {
 }
 
 func (sit *seriesIterator) Close() error {
-	var errs errors.MultiError
+	errs := util.NewMultiError()
 	for _, f := range sit.files {
 		errs.Add(f.close())
 	}

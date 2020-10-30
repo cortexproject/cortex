@@ -8,11 +8,14 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -24,12 +27,6 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
-	"gopkg.in/yaml.v2"
-
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -229,13 +226,13 @@ func NewQuerierHandler(
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
 	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
+	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
 	// Add a middleware to extract the trace context and add a header.
 	return nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {

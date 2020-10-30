@@ -1,7 +1,7 @@
 ---
 title: "HTTP API"
 linkTitle: "HTTP API"
-weight: 5
+weight: 7
 slug: api
 menu:
 no_section_index_title: true
@@ -83,7 +83,7 @@ When multi-tenancy is enabled, endpoints requiring authentication are expected t
 
 Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
 
-_For more information, please refer to the dedicated [Authentication and Authorisation](../production/auth.md) guide._
+_For more information, please refer to the dedicated [Authentication and Authorisation](../guides/authentication-and-authorisation.md) guide._
 
 ## All services
 
@@ -181,7 +181,7 @@ GET,POST /ingester/flush
 GET,POST /flush
 ```
 
-Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
+Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
 
 ### Shutdown
 
@@ -555,6 +555,10 @@ DELETE <legacy-http-prefix>/rules/{namespace}/{groupName}
 
 Deletes a rule group by namespace and group name. This endpoints returns `202` on success.
 
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
+
 ### Delete namespace
 
 ```
@@ -635,6 +639,8 @@ alertmanager_config: |
   global:
     smtp_smarthost: 'localhost:25'
     smtp_from: 'youraddress@example.org'
+  templates:
+    - 'default_template'
   route:
     receiver: example-email
   receivers:
@@ -760,7 +766,16 @@ The following schema is used both when retrieving the current configs from the A
 - **`config.rules_files`**<br />
   The contents of a rules file should be as described [here](http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/), encoded as a single string to fit within the overall JSON payload.
 - **`config.template_files`**<br />
-  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload.
+  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload. These entries should match the `templates` entries in `alertmanager_config`. Example:
+  ```yaml
+  template_files:
+    myorg.tmpl: |
+      {{ define "__alertmanager" }}AlertManager{{ end }}
+      {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+  alertmanager_config: |
+    templates:
+      - 'myorg.tmpl'
+  ```
 
 ### Get rule files
 

@@ -208,7 +208,7 @@ func TestPurger_BuildPlan(t *testing.T) {
 				require.NoError(t, err)
 				planPath := fmt.Sprintf("%s:%s/", userID, deleteRequest.RequestID)
 
-				plans, _, err := storageClient.List(context.Background(), planPath)
+				plans, _, err := storageClient.List(context.Background(), planPath, "/")
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedNumberOfPlans, len(plans))
 
@@ -358,9 +358,6 @@ func TestPurger_Restarts(t *testing.T) {
 
 	// load in process delete requests by calling Run
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), newPurger))
-
-	// there must be 1 pending delete request
-	require.Equal(t, float64(1), testutil.ToFloat64(newPurger.metrics.pendingDeleteRequestsCount))
 
 	defer newPurger.StopAsync()
 

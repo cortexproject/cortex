@@ -2,6 +2,6 @@
 title: "Proposals"
 linkTitle: "Proposals"
 no_section_index_title: true
-weight: 12
+weight: 9
 menu:
 ---

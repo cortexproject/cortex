@@ -6,15 +6,22 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -34,8 +41,9 @@ func TestTsdbBuilder(t *testing.T) {
 
 	seriesCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	samplesCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	inMemory := prometheus.NewGauge(prometheus.GaugeOpts{})
 
-	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, util.Logger, seriesCounter, samplesCounter)
+	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, 33, util.Logger, seriesCounter, samplesCounter, inMemory)
 	require.NoError(t, err)
 
 	seriesCount := 200
@@ -76,37 +84,97 @@ func TestTsdbBuilder(t *testing.T) {
 	require.NoError(t, err)
 
 	blocks := db.Blocks()
-	require.Equal(t, 1, len(blocks))
-	require.Equal(t, id, blocks[0].Meta().ULID)
-	require.Equal(t, uint64(seriesCount), blocks[0].Meta().Stats.NumSeries)
-	require.Equal(t, uint64(totalSamples.Load()), blocks[0].Meta().Stats.NumSamples)
+
+	// Verify basic blocks details.
+	{
+		require.Equal(t, 1, len(blocks))
+		require.Equal(t, id, blocks[0].Meta().ULID)
+		require.Equal(t, id, blocks[0].Meta().Compaction.Sources[0])
+		require.Equal(t, uint64(seriesCount), blocks[0].Meta().Stats.NumSeries)
+		require.Equal(t, uint64(totalSamples.Load()), blocks[0].Meta().Stats.NumSamples)
+	}
 
 	// Make sure we can query expected number of samples back.
-	q, err := db.Querier(context.Background(), util.TimeToMillis(yesterdayStart), util.TimeToMillis(yesterdayEnd))
-	require.NoError(t, err)
-	res := q.Select(true, nil, labels.MustNewMatcher(labels.MatchNotEqual, labels.MetricName, "")) // Select all
+	{
+		q, err := db.Querier(context.Background(), util.TimeToMillis(yesterdayStart), util.TimeToMillis(yesterdayEnd))
+		require.NoError(t, err)
+		res := q.Select(true, nil, labels.MustNewMatcher(labels.MatchNotEqual, labels.MetricName, "")) // Select all
 
-	for i := 0; i < seriesCount; i++ {
-		require.True(t, res.Next())
-		s := res.At()
+		for i := 0; i < seriesCount; i++ {
+			require.True(t, res.Next())
+			s := res.At()
 
-		lbls, samples := metricInfo(i)
-		require.True(t, labels.Equal(lbls, s.Labels()))
+			lbls, samples := metricInfo(i)
+			require.True(t, labels.Equal(lbls, s.Labels()))
 
-		cnt := 0
-		it := s.Iterator()
-		for it.Next() {
-			cnt++
+			cnt := 0
+			it := s.Iterator()
+			for it.Next() {
+				cnt++
+			}
+
+			require.NoError(t, it.Err())
+			require.Equal(t, samples, cnt)
 		}
-
-		require.NoError(t, it.Err())
-		require.Equal(t, samples, cnt)
+		require.NoError(t, res.Err())
+		require.False(t, res.Next())
+		require.NoError(t, q.Close())
 	}
-	require.NoError(t, res.Err())
-	require.False(t, res.Next())
-	require.NoError(t, q.Close())
+
+	// Verify that chunks are stored in sorted order (based on series).
+	{
+		idx, err := blocks[0].Index()
+		require.NoError(t, err)
+
+		allPostings, err := idx.Postings(index.AllPostingsKey())
+		require.NoError(t, err)
+
+		lastChunkRef := uint64(0)
+		// Postings must be sorted wrt. series. Here we check if chunks are sorted too.
+		for allPostings.Next() {
+			seriesID := allPostings.At()
+			var lset labels.Labels
+			var chks []chunks.Meta
+
+			require.NoError(t, idx.Series(seriesID, &lset, &chks))
+
+			for _, c := range chks {
+				require.True(t, lastChunkRef < c.Ref, "lastChunkRef: %d, c.Ref: %d", lastChunkRef, c.Ref)
+				lastChunkRef = c.Ref
+			}
+		}
+		require.NoError(t, allPostings.Err())
+		require.NoError(t, idx.Close())
+	}
 
 	require.NoError(t, db.Close())
+
+	m, err := metadata.Read(filepath.Join(dir, id.String()))
+	require.NoError(t, err)
+
+	otherID := ulid.MustNew(ulid.Now(), nil)
+
+	// Make sure that deduplicate filter doesn't remove this block (thanks to correct sources).
+	df := block.NewDeduplicateFilter()
+	inp := map[ulid.ULID]*metadata.Meta{
+		otherID: {
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    otherID,
+				MinTime: 0,
+				MaxTime: 0,
+				Compaction: tsdb.BlockMetaCompaction{
+					Sources: []ulid.ULID{otherID},
+				},
+				Version: 0,
+			},
+		},
+
+		id: m,
+	}
+
+	err = df.Filter(context.Background(), inp, extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"}))
+	require.NoError(t, err)
+	require.NotNil(t, inp[id])
 }
 
 func metricInfo(ix int) (labels.Labels, int) {

@@ -29,6 +29,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -1623,7 +1624,7 @@ func (r *Reader) LabelNames() ([]string, error) {
 	return labelNames, nil
 }
 
-// NewStringListIterator returns a StringIter for the given sorted list of strings.
+// NewStringListIter returns a StringIter for the given sorted list of strings.
 func NewStringListIter(s []string) StringIter {
 	return &stringListIter{l: s}
 }

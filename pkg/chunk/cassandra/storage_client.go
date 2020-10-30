@@ -34,6 +34,8 @@ type Config struct {
 	SSL                      bool                `yaml:"SSL"`
 	HostVerification         bool                `yaml:"host_verification"`
 	CAPath                   string              `yaml:"CA_path"`
+	CertPath                 string              `yaml:"tls_cert_path"`
+	KeyPath                  string              `yaml:"tls_key_path"`
 	Auth                     bool                `yaml:"auth"`
 	Username                 string              `yaml:"username"`
 	Password                 flagext.Secret      `yaml:"password"`
@@ -62,6 +64,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SSL, "cassandra.ssl", false, "Use SSL when connecting to cassandra instances.")
 	f.BoolVar(&cfg.HostVerification, "cassandra.host-verification", true, "Require SSL certificate validation.")
 	f.StringVar(&cfg.CAPath, "cassandra.ca-path", "", "Path to certificate file to verify the peer.")
+	f.StringVar(&cfg.CertPath, "cassandra.tls-cert-path", "", "Path to certificate file used by TLS.")
+	f.StringVar(&cfg.KeyPath, "cassandra.tls-key-path", "", "Path to private key file used by TLS.")
 	f.BoolVar(&cfg.Auth, "cassandra.auth", false, "Enable password authentication when connecting to cassandra.")
 	f.StringVar(&cfg.Username, "cassandra.username", "", "Username to use when connecting to cassandra.")
 	f.Var(&cfg.Password, "cassandra.password", "Password to use when connecting to cassandra.")
@@ -86,19 +90,19 @@ func (cfg *Config) Validate() error {
 	if cfg.SSL && cfg.HostVerification && len(strings.Split(cfg.Addresses, ",")) != 1 {
 		return errors.Errorf("Host verification is only possible for a single host.")
 	}
+	if cfg.SSL && cfg.CertPath != "" && cfg.KeyPath == "" {
+		return errors.Errorf("TLS certificate specified, but private key configuration is missing.")
+	}
+	if cfg.SSL && cfg.KeyPath != "" && cfg.CertPath == "" {
+		return errors.Errorf("TLS private key specified, but certificate configuration is missing.")
+	}
 	return nil
 }
 
 func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, error) {
-	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
-	cluster.Consistency = consistency
 	cluster.BatchObserver = observer{}
 	cluster.QueryObserver = observer{}
 	cluster.Timeout = cfg.Timeout
@@ -118,7 +122,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	if !cfg.ConvictHosts {
 		cluster.ConvictionPolicy = noopConvictionPolicy{}
 	}
-	if err = cfg.setClusterConfig(cluster); err != nil {
+	if err := cfg.setClusterConfig(cluster); err != nil {
 		return nil, errors.WithStack(err)
 	}
 
@@ -141,20 +145,38 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 
 // apply config settings to a cassandra ClusterConfig
 func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
+	consistency, err := gocql.ParseConsistencyWrapper(cfg.Consistency)
+	if err != nil {
+		return errors.Wrap(err, "unable to parse the configured consistency")
+	}
+
+	cluster.Consistency = consistency
 	cluster.DisableInitialHostLookup = cfg.DisableInitialHostLookup
 
 	if cfg.SSL {
+		tlsConfig := &tls.Config{}
+
+		if cfg.CertPath != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+			if err != nil {
+				return errors.Wrap(err, "Unable to load TLS certificate and private key")
+			}
+
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		}
+
 		if cfg.HostVerification {
+			tlsConfig.ServerName = strings.Split(cfg.Addresses, ",")[0]
+
 			cluster.SslOpts = &gocql.SslOptions{
 				CaPath:                 cfg.CAPath,
 				EnableHostVerification: true,
-				Config: &tls.Config{
-					ServerName: strings.Split(cfg.Addresses, ",")[0],
-				},
+				Config:                 tlsConfig,
 			}
 		} else {
 			cluster.SslOpts = &gocql.SslOptions{
 				EnableHostVerification: false,
+				Config:                 tlsConfig,
 			}
 		}
 	}
@@ -223,8 +245,6 @@ type StorageClient struct {
 
 // NewStorageClient returns a new StorageClient.
 func NewStorageClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*StorageClient, error) {
-	pkgutil.WarnExperimentalUse("Cassandra Backend")
-
 	readSession, err := cfg.session("index-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -408,8 +428,6 @@ type ObjectClient struct {
 
 // NewObjectClient returns a new ObjectClient.
 func NewObjectClient(cfg Config, schemaCfg chunk.SchemaConfig, registerer prometheus.Registerer) (*ObjectClient, error) {
-	pkgutil.WarnExperimentalUse("Cassandra Backend")
-
 	readSession, err := cfg.session("chunks-read", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)

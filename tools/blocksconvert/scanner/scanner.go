@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,34 +21,45 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
 type Config struct {
-	TableName   string
+	TableNames  string
 	TablesLimit int
+
+	PeriodStart flagext.DayValue
+	PeriodEnd   flagext.DayValue
 
 	OutputDirectory string
 	Concurrency     int
 
+	VerifyPlans bool
 	UploadFiles bool
 	KeepFiles   bool
 
+	AllowedUsers       string
 	IgnoredUserPattern string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.TableName, "table", "", "Table to generate plan files from. If not used, tables are discovered via schema.")
+	f.StringVar(&cfg.TableNames, "scanner.tables", "", "Comma-separated tables to generate plan files from. If not used, all tables found via schema and scanning of Index store will be used.")
 	f.StringVar(&cfg.OutputDirectory, "scanner.output-dir", "", "Local directory used for storing temporary plan files (will be created if missing).")
-	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors.")
+	f.IntVar(&cfg.Concurrency, "scanner.concurrency", 16, "Number of concurrent index processors, and plan uploads.")
 	f.BoolVar(&cfg.UploadFiles, "scanner.upload", true, "Upload plan files.")
 	f.BoolVar(&cfg.KeepFiles, "scanner.keep-files", false, "Keep plan files locally after uploading.")
 	f.IntVar(&cfg.TablesLimit, "scanner.tables-limit", 0, "Number of tables to convert. 0 = all.")
-	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-user", "", "Regex pattern with ignored users.")
+	f.StringVar(&cfg.AllowedUsers, "scanner.allowed-users", "", "Allowed users that can be converted, comma-separated. If set, only these users have plan files generated.")
+	f.StringVar(&cfg.IgnoredUserPattern, "scanner.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Only used if all -scanner.allowed-users is not set (i.e. all users are allowed by default).")
+	f.BoolVar(&cfg.VerifyPlans, "scanner.verify-plans", true, "Verify plans before uploading to bucket. Enabled by default for extra check. Requires extra memory for large plans.")
+	f.Var(&cfg.PeriodStart, "scanner.scan-period-start", "If specified, this is lower end of time period to scan. Specified date is included in the range. (format: \"2006-01-02\")")
+	f.Var(&cfg.PeriodEnd, "scanner.scan-period-end", "If specified, this is upper end of time period to scan. Specified date is not included in the range. (format: \"2006-01-02\")")
 }
 
 type Scanner struct {
@@ -68,9 +80,14 @@ type Scanner struct {
 	indexReaderRowsRead           prometheus.Counter
 	indexReaderParsedIndexEntries prometheus.Counter
 	ignoredEntries                prometheus.Counter
+	foundTables                   prometheus.Counter
+	processedTables               prometheus.Counter
+	currentTableRanges            prometheus.Gauge
+	currentTableScannedRanges     prometheus.Gauge
 
-	schema  chunk.SchemaConfig
-	ignored *regexp.Regexp
+	schema       chunk.SchemaConfig
+	ignoredUsers *regexp.Regexp
+	allowedUsers blocksconvert.AllowedUsers
 }
 
 func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (*Scanner, error) {
@@ -92,8 +109,13 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		}
 	}
 
+	var users = blocksconvert.AllowAllUsers
+	if cfg.AllowedUsers != "" {
+		users = blocksconvert.ParseAllowedUsers(cfg.AllowedUsers)
+	}
+
 	var ignoredUserRegex *regexp.Regexp = nil
-	if cfg.IgnoredUserPattern != "" {
+	if users.AllUsersAllowed() && cfg.IgnoredUserPattern != "" {
 		re, err := regexp.Compile(cfg.IgnoredUserPattern)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to compile ignored user regex")
@@ -113,7 +135,8 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		bucket:       bucketClient,
 		bucketPrefix: scfg.BucketPrefix,
 		reg:          reg,
-		ignored:      ignoredUserRegex,
+		allowedUsers: users,
+		ignoredUsers: ignoredUserRegex,
 
 		indexReaderRowsRead: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_bigtable_read_rows_total",
@@ -122,6 +145,14 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		indexReaderParsedIndexEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_bigtable_parsed_index_entries_total",
 			Help: "Number of parsed index entries",
+		}),
+		currentTableRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_ranges_in_current_table",
+			Help: "Number of ranges to scan from current table.",
+		}),
+		currentTableScannedRanges: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_blocksconvert_scanner_bigtable_scanned_ranges_from_current_table",
+			Help: "Number of scanned ranges from current table. Resets to 0 every time a table is getting scanned or its scan has completed.",
 		}),
 
 		series: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -141,6 +172,15 @@ func NewScanner(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		ignoredEntries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_scanner_ignored_index_entries_total",
 			Help: "Number of ignored index entries because of ignoring users.",
+		}),
+
+		foundTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_found_tables_total",
+			Help: "Number of tables found for processing.",
+		}),
+		processedTables: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_blocksconvert_scanner_processed_tables_total",
+			Help: "Number of processed tables so far.",
 		}),
 	}
 
@@ -172,7 +212,7 @@ func (s *Scanner) running(ctx context.Context) error {
 				continue
 			}
 
-			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries)
+			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue
@@ -195,35 +235,58 @@ func (s *Scanner) running(ctx context.Context) error {
 
 	level.Info(s.logger).Log("msg", "total found tables", "count", len(allTables))
 
+	if s.cfg.TableNames != "" {
+		// Find tables from parameter.
+		tableNames := map[string]bool{}
+		for _, t := range strings.Split(s.cfg.TableNames, ",") {
+			tableNames[strings.TrimSpace(t)] = true
+		}
+
+		for ix := 0; ix < len(allTables); {
+			t := allTables[ix]
+			if !tableNames[t.table] {
+				// remove table.
+				allTables = append(allTables[:ix], allTables[ix+1:]...)
+				continue
+			}
+			ix++
+		}
+
+		level.Error(s.logger).Log("msg", "applied tables filter", "selected", len(allTables))
+	}
+
 	// Recent tables go first.
 	sort.Slice(allTables, func(i, j int) bool {
 		return allTables[i].start.After(allTables[j].start)
 	})
 
-	if s.cfg.TableName != "" {
-		// Find single table.
-		foundIx := -1
-		for ix := 0; ix < len(allTables); ix++ {
-			if allTables[ix].table == s.cfg.TableName {
-				foundIx = ix
-				break
-			}
+	for ix := 0; ix < len(allTables); {
+		t := allTables[ix]
+		if s.cfg.PeriodStart.IsSet() && !t.end.IsZero() && t.end.Unix() <= s.cfg.PeriodStart.Unix() {
+			level.Info(s.logger).Log("msg", "table ends before period-start, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_start", s.cfg.PeriodStart.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
 		}
-		if foundIx >= 0 {
-			allTables = allTables[foundIx : foundIx+1]
-		} else {
-			level.Error(s.logger).Log("msg", "specified table not found", "table", s.cfg.TableName)
-			allTables = nil
+		if s.cfg.PeriodEnd.IsSet() && t.start.Unix() >= s.cfg.PeriodEnd.Unix() {
+			level.Info(s.logger).Log("msg", "table starts after period-end, ignoring", "table", t.table, "table_start", t.start.String(), "table_end", t.end.String(), "period_end", s.cfg.PeriodEnd.String())
+			allTables = append(allTables[:ix], allTables[ix+1:]...)
+			continue
 		}
-	} else if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
+		ix++
+	}
+
+	if s.cfg.TablesLimit > 0 && len(allTables) > s.cfg.TablesLimit {
 		level.Info(s.logger).Log("msg", "applied tables limit", "limit", s.cfg.TablesLimit)
 		allTables = allTables[:s.cfg.TablesLimit]
 	}
+
+	s.foundTables.Add(float64(len(allTables)))
 
 	for _, t := range allTables {
 		if err := s.processTable(ctx, t.table, t.reader); err != nil {
 			return errors.Wrapf(err, "failed to process table %s", t.table)
 		}
+		s.processedTables.Inc()
 	}
 
 	// All good, just wait until context is done, to avoid restarts.
@@ -236,6 +299,7 @@ type tableToProcess struct {
 	table  string
 	reader IndexReader
 	start  time.Time
+	end    time.Time // Will not be set for non-periodic tables. Exclusive.
 }
 
 func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
@@ -270,6 +334,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 				table:  t,
 				reader: indexReader,
 				start:  start,
+				end:    start.Add(tablesConfig.Period),
 			}
 		}
 
@@ -294,22 +359,24 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	dir := filepath.Join(s.cfg.OutputDirectory, table)
 	level.Info(tableLog).Log("msg", "scanning table", "output", dir)
 
-	ignoredUsers, err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.openFiles, s.series, s.ignored, s.indexEntries, s.ignoredEntries)
+	ignoredUsers, err := scanSingleTable(ctx, indexReader, table, dir, s.cfg.Concurrency, s.allowedUsers, s.ignoredUsers, s.openFiles, s.series, s.indexEntries, s.ignoredEntries)
 	if err != nil {
 		return errors.Wrapf(err, "failed to scan table %s and generate plan files", table)
 	}
 
 	tableLog.Log("msg", "ignored users", "count", len(ignoredUsers), "users", strings.Join(ignoredUsers, ","))
 
-	err = verifyPlanFiles(ctx, dir, tableLog)
-	if err != nil {
-		return errors.Wrap(err, "failed to verify plans")
+	if s.cfg.VerifyPlans {
+		err = verifyPlanFiles(ctx, dir, tableLog)
+		if err != nil {
+			return errors.Wrap(err, "failed to verify plans")
+		}
 	}
 
 	if s.bucket != nil {
 		level.Info(tableLog).Log("msg", "uploading generated plan files for table", "source", dir)
 
-		err := objstore.UploadDir(ctx, tableLog, s.bucket, dir, s.bucketPrefix)
+		err := uploadPlansConcurrently(ctx, tableLog, dir, s.bucket, s.bucketPrefix, s.cfg.Concurrency)
 		if err != nil {
 			return errors.Wrapf(err, "failed to upload plan files for table %s to bucket", table)
 		}
@@ -331,6 +398,68 @@ func (s *Scanner) processTable(ctx context.Context, table string, indexReader In
 	return nil
 }
 
+func uploadPlansConcurrently(ctx context.Context, log log.Logger, dir string, bucket objstore.Bucket, bucketPrefix string, concurrency int) error {
+	df, err := os.Stat(dir)
+	if err != nil {
+		return errors.Wrap(err, "stat dir")
+	}
+	if !df.IsDir() {
+		return errors.Errorf("%s is not a directory", dir)
+	}
+
+	// Path relative to dir, and only use Slash as separator. BucketPrefix is prepended to it when uploading.
+	paths := make(chan string)
+
+	g, ctx := errgroup.WithContext(ctx)
+	for i := 0; i < concurrency; i++ {
+		g.Go(func() error {
+			for p := range paths {
+				src := filepath.Join(dir, filepath.FromSlash(p))
+				dst := path.Join(bucketPrefix, p)
+
+				err := objstore.UploadFile(ctx, log, bucket, src, dst)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	g.Go(func() error {
+		defer close(paths)
+
+		return filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			if fi.IsDir() {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(dir, path)
+			if err != nil {
+				return err
+			}
+
+			relPath = filepath.ToSlash(relPath)
+
+			select {
+			case paths <- relPath:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	})
+
+	return g.Wait()
+}
+
 func shouldSkipOperationBecauseFileExists(file string) bool {
 	// If file exists, we should skip the operation.
 	_, err := os.Stat(file)
@@ -338,7 +467,19 @@ func shouldSkipOperationBecauseFileExists(file string) bool {
 	return err == nil
 }
 
-func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName string, outDir string, concurrency int, openFiles prometheus.Gauge, series prometheus.Counter, ignored *regexp.Regexp, indexEntries *prometheus.CounterVec, ignoredEntries prometheus.Counter) ([]string, error) {
+func scanSingleTable(
+	ctx context.Context,
+	indexReader IndexReader,
+	tableName string,
+	outDir string,
+	concurrency int,
+	allowed blocksconvert.AllowedUsers,
+	ignored *regexp.Regexp,
+	openFiles prometheus.Gauge,
+	series prometheus.Counter,
+	indexEntries *prometheus.CounterVec,
+	ignoredEntries prometheus.Counter,
+) ([]string, error) {
 	err := os.RemoveAll(outDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to delete directory %s", outDir)
@@ -359,7 +500,7 @@ func scanSingleTable(ctx context.Context, indexReader IndexReader, tableName str
 	var ps []IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
-		ps = append(ps, newProcessor(outDir, result, ignored, series, indexEntries, ignoredEntries))
+		ps = append(ps, newProcessor(outDir, result, allowed, ignored, series, indexEntries, ignoredEntries))
 	}
 
 	err = indexReader.ReadIndexEntries(ctx, tableName, ps)

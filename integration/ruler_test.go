@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
@@ -30,12 +32,12 @@ func TestRulerAPI(t *testing.T) {
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, RulerConfigs["-ruler.storage.s3.buckets"])
+	minio := e2edb.NewMinio(9000, RulerFlags()["-ruler.storage.s3.buckets"])
 	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
 
 	// Start Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags, RulerConfigs), "")
+	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags()), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured
@@ -77,7 +79,7 @@ func TestRulerAPI(t *testing.T) {
 
 	// Delete the set rule groups
 	require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
-	require.NoError(t, c.DeleteNamespace(namespaceTwo))
+	require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
 
 	// Wait until the users manager has been terminated
 	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
@@ -101,6 +103,7 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	configOverrides := map[string]string{
 		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
+		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 	}
 
 	// Start Cortex components.
@@ -131,6 +134,67 @@ func TestRulerAPISingleBinary(t *testing.T) {
 
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"prometheus_engine_queries"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "engine", "ruler"))))
+
+	// Test Cleanup and Restart
+
+	// Stop the running cortex
+	require.NoError(t, cortex.Stop())
+
+	// Restart Cortex with identical configs
+	cortexRestarted := e2ecortex.NewSingleBinaryWithConfigFile("cortex-restarted", cortexConfigFile, configOverrides, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortexRestarted))
+
+	// Wait until the user manager is created
+	require.NoError(t, cortexRestarted.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+}
+
+func TestRulerEvaluationDelay(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	namespace := "ns"
+	user := "fake"
+
+	configOverrides := map[string]string{
+		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler.poll-interval":             "2s",
+		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
+		"-ruler.evaluation-delay-duration": "5m", // 5 minutes is clarifying when seeing when a rule is evaluated
+	}
+
+	// Start Cortex components.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerEvalTimeConfigYaml)))
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Create a client with the ruler address configured
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "")
+	require.NoError(t, err)
+
+	// Wait until the rule is evaluated
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Greater(0), "cortex_prometheus_rule_evaluations_total"))
+
+	now := time.Now()
+
+	result, err := c.QueryRange("time_eval", now.Add(-10*time.Minute), now, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+
+	// Iterate through the values recorded and ensure they exist in the past.
+	matrix := result.(model.Matrix)
+
+	// 290 seconds gives 10 seconds of slack between the rule evaluation and the query
+	// to account for CI latency, but ensures the latest evalation was in the past.
+	var maxDiff int64 = 290
+
+	for _, m := range matrix {
+		for _, v := range m.Values {
+			diff := now.Unix() - int64(v.Value)
+			require.GreaterOrEqual(t, diff, maxDiff)
+		}
+	}
 }
 
 func TestRulerAlertmanager(t *testing.T) {
@@ -143,17 +207,17 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	// Start dependencies.
 	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, RulerConfigs["-ruler.storage.s3.buckets"])
+	minio := e2edb.NewMinio(9000, RulerFlags()["-ruler.storage.s3.buckets"])
 	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
 
 	// Have at least one alertmanager configuration.
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 	// Start Alertmanagers.
-	am1 := e2ecortex.NewAlertmanager("alertmanager1", mergeFlags(AlertmanagerFlags, AlertmanagerLocalFlags), "")
-	require.NoError(t, s.StartAndWaitReady(am1))
-	am2 := e2ecortex.NewAlertmanager("alertmanager2", mergeFlags(AlertmanagerFlags, AlertmanagerLocalFlags), "")
-	require.NoError(t, s.StartAndWaitReady(am2))
+	amFlags := mergeFlags(AlertmanagerFlags(), AlertmanagerLocalFlags())
+	am1 := e2ecortex.NewAlertmanager("alertmanager1", amFlags, "")
+	am2 := e2ecortex.NewAlertmanager("alertmanager2", amFlags, "")
+	require.NoError(t, s.StartAndWaitReady(am1, am2))
 
 	am1URL := "http://" + am1.HTTPEndpoint()
 	am2URL := "http://" + am2.HTTPEndpoint()
@@ -165,7 +229,7 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	// Start Ruler.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags, RulerConfigs, configOverrides), "")
+	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(), configOverrides), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured

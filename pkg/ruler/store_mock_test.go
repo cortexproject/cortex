@@ -115,27 +115,36 @@ func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 	}
 }
 
-func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	copy := make(map[string]rules.RuleGroupList)
-	for k, v := range m.rules {
-		rgl := make(rules.RuleGroupList, 0, len(v))
-		rgl = append(rgl, v...)
-		copy[k] = rgl
+	var result []string
+	for u := range m.rules {
+		result = append(result, u)
 	}
-
-	return copy, nil
+	return result, nil
 }
 
-func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	result := make(map[string]rules.RuleGroupList)
+	for k, v := range m.rules {
+		result[k] = append(rules.RuleGroupList(nil), v...)
+	}
+
+	return result, nil
+}
+
+func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	userRules, exists := m.rules[userID]
 	if !exists {
-		return nil, rules.ErrUserNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	if namespace == "" {
@@ -151,13 +160,18 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace st
 	}
 
 	if len(namespaceRules) == 0 {
-		return nil, rules.ErrGroupNamespaceNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	return namespaceRules, nil
 }
 
-func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rules.RuleGroupList) error {
+	// Nothing to do, as mockRuleStore already returns groups with loaded rules.
+	return nil
+}
+
+func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

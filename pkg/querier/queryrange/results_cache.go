@@ -14,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/types"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
@@ -40,15 +41,27 @@ type CacheGenNumberLoader interface {
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
-	CacheConfig             cache.Config  `yaml:"cache"`
-	LegacyMaxCacheFreshness time.Duration `yaml:"max_freshness" doc:"hidden"` // TODO: (deprecated) remove in Cortex v1.4.0
+	CacheConfig cache.Config `yaml:"cache"`
+	Compression string       `yaml:"compression"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
+	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
 	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
+}
+
+func (cfg *ResultsCacheConfig) Validate() error {
+	switch cfg.Compression {
+	case "snappy", "":
+		// valid
+	default:
+		return errors.Errorf("unsupported compression type: %s", cfg.Compression)
+	}
+
+	return cfg.CacheConfig.Validate()
 }
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
@@ -141,6 +154,9 @@ func NewResultsCacheMiddleware(
 	if err != nil {
 		return nil, nil, err
 	}
+	if cfg.Compression == "snappy" {
+		c = cache.NewSnappy(c, logger)
+	}
 
 	if cacheGenNumberLoader != nil {
 		c = cache.NewCacheGenNumMiddleware(c)
@@ -182,11 +198,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		response Response
 	)
 
-	// check if cache freshness value is provided in legacy config
-	maxCacheFreshness := s.cfg.LegacyMaxCacheFreshness
-	if maxCacheFreshness == time.Duration(0) {
-		maxCacheFreshness = s.limits.MaxCacheFreshness(userID)
-	}
+	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
@@ -243,14 +255,12 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 }
 
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
-	if promResp, ok := r.(*PrometheusResponse); ok {
-		for _, hv := range promResp.Headers {
-			if hv.GetName() != headerName {
-				continue
-			}
-
-			headerValues = append(headerValues, hv.GetValues()...)
+	for _, hv := range r.GetHeaders() {
+		if hv.GetName() != headerName {
+			continue
 		}
+
+		headerValues = append(headerValues, hv.GetValues()...)
 	}
 
 	return

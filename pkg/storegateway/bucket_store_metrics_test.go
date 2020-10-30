@@ -159,6 +159,46 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
 			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
 			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
+
+			# HELP cortex_bucket_store_cached_series_fetch_duration_seconds Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
+			# TYPE cortex_bucket_store_cached_series_fetch_duration_seconds histogram
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_cached_series_fetch_duration_seconds_sum 1.306102e+06
+			cortex_bucket_store_cached_series_fetch_duration_seconds_count 3
+
+			# HELP cortex_bucket_store_cached_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
+			# TYPE cortex_bucket_store_cached_postings_fetch_duration_seconds histogram
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_sum 1.328621e+06
+			cortex_bucket_store_cached_postings_fetch_duration_seconds_count 3
 `))
 	require.NoError(t, err)
 }
@@ -255,6 +295,9 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.cachedPostingsOriginalSizeBytes.Add(56 * base)
 	m.cachedPostingsCompressedSizeBytes.Add(57 * base)
 
+	m.seriesFetchDuration.Observe(58 * base)
+	m.postingsFetchDuration.Observe(59 * base)
+
 	return reg
 }
 
@@ -282,6 +325,9 @@ type mockedBucketStoreMetrics struct {
 	cachedPostingsCompressionTimeSeconds *prometheus.CounterVec
 	cachedPostingsOriginalSizeBytes      prometheus.Counter
 	cachedPostingsCompressedSizeBytes    prometheus.Counter
+
+	seriesFetchDuration   prometheus.Histogram
+	postingsFetchDuration prometheus.Histogram
 }
 
 func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMetrics {
@@ -381,6 +427,17 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.cachedPostingsCompressedSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_compressed_size_bytes_total",
 		Help: "Compressed size of postings stored into cache.",
+	})
+
+	m.seriesFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_cached_series_fetch_duration_seconds",
+		Help:    "Time it takes to fetch series from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
+	})
+	m.postingsFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
+		Help:    "Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 
 	return &m

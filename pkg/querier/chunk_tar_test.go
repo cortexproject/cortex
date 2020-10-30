@@ -14,7 +14,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -53,7 +53,7 @@ func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, ste
 
 func runRangeQuery(t testing.TB, query string, from, through time.Time, step time.Duration, store chunkstore.ChunkStore) {
 	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 1, util.Logger)
 

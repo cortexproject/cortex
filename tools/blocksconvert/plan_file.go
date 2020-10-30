@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
-	"github.com/oklog/ulid"
 )
 
 // Plan file describes which series must be included in a block for given user and day.
@@ -19,15 +18,15 @@ import (
 
 type PlanEntry struct {
 	// Header
-	User     string `json:"user"`
-	DayIndex int    `json:"day_index"`
+	User     string `json:"user,omitempty"`
+	DayIndex int    `json:"day_index,omitempty"`
 
 	// Entries
-	SeriesID string   `json:"sid"`
-	Chunks   []string `json:"cs"`
+	SeriesID string   `json:"sid,omitempty"`
+	Chunks   []string `json:"cs,omitempty"`
 
 	// Footer
-	Complete bool `json:"complete"`
+	Complete bool `json:"complete,omitempty"`
 }
 
 func (pe *PlanEntry) Reset() {
@@ -86,24 +85,19 @@ func IsProgressFilename(name string) (bool, string, time.Time) {
 	return true, m[1], time.Unix(ts, 0)
 }
 
-func FinishedFilename(planBaseName string, id ulid.ULID) string {
-	return fmt.Sprintf("%s.finished.%s", planBaseName, id.String())
+func FinishedFilename(planBaseName string, id string) string {
+	return fmt.Sprintf("%s.finished.%s", planBaseName, id)
 }
 
 var finished = regexp.MustCompile(`^(.+)\.finished\.([a-zA-Z0-9]+)$`)
 
-func IsFinishedFilename(name string) (bool, string, ulid.ULID) {
+func IsFinishedFilename(name string) (bool, string, string) {
 	m := finished.FindStringSubmatch(name)
 	if len(m) == 0 {
-		return false, "", ulid.ULID{}
+		return false, "", ""
 	}
 
-	id, err := ulid.Parse(m[2])
-	if err != nil {
-		return false, "", ulid.ULID{}
-	}
-
-	return true, m[1], id
+	return true, m[1], m[2]
 }
 
 func ErrorFilename(planBaseName string) string {

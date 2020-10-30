@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +20,9 @@ func TestManagerMetrics(t *testing.T) {
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
 	managerMetrics.AddUserRegistry("user3", populateManager(100))
+
+	managerMetrics.AddUserRegistry("user4", populateManager(1000))
+	managerMetrics.DeleteUserRegistry("user4")
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
@@ -56,12 +61,27 @@ cortex_prometheus_rule_evaluations_total{rule_group="group_two",user="user2"} 10
 cortex_prometheus_rule_evaluations_total{rule_group="group_two",user="user3"} 100
 # HELP cortex_prometheus_rule_group_duration_seconds The duration of rule group evaluations.
 # TYPE cortex_prometheus_rule_group_duration_seconds summary
-cortex_prometheus_rule_group_duration_seconds_sum{user="user1"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user1"} 0
-cortex_prometheus_rule_group_duration_seconds_sum{user="user2"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user2"} 0
-cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 0
-cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 0
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.01"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.05"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.5"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.9"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.99"} 1
+cortex_prometheus_rule_group_duration_seconds_sum{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds_count{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.01"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.05"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.5"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.9"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.99"} 10
+cortex_prometheus_rule_group_duration_seconds_sum{user="user2"} 10
+cortex_prometheus_rule_group_duration_seconds_count{user="user2"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.01"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.05"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.5"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.9"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.99"} 100
+cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 100
+cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 1
 # HELP cortex_prometheus_rule_group_iterations_missed_total The total number of rule group evaluations missed due to slow rule group evaluation.
 # TYPE cortex_prometheus_rule_group_iterations_missed_total counter
 cortex_prometheus_rule_group_iterations_missed_total{user="user1"} 1
@@ -206,4 +226,47 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 	}
 
 	return m
+}
+
+func TestMetricsArePerUser(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	managerMetrics := NewManagerMetrics()
+	mainReg.MustRegister(managerMetrics)
+	managerMetrics.AddUserRegistry("user1", populateManager(1))
+	managerMetrics.AddUserRegistry("user2", populateManager(10))
+	managerMetrics.AddUserRegistry("user3", populateManager(100))
+
+	ch := make(chan prometheus.Metric)
+
+	defer func() {
+		// drain the channel, so that collecting gouroutine can stop.
+		// This is useful if test fails.
+		for range ch {
+		}
+	}()
+
+	go func() {
+		managerMetrics.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		desc := m.Desc()
+
+		dtoM := &dto.Metric{}
+		err := m.Write(dtoM)
+
+		require.NoError(t, err)
+
+		foundUserLabel := false
+		for _, l := range dtoM.Label {
+			if l.GetName() == "user" {
+				foundUserLabel = true
+				break
+			}
+		}
+
+		assert.True(t, foundUserLabel, "user label not found for metric %s", desc.String())
+	}
 }

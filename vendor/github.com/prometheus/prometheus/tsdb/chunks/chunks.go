@@ -27,6 +27,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
@@ -416,10 +417,6 @@ func (b realByteSlice) Len() int {
 }
 
 func (b realByteSlice) Range(start, end int) []byte {
-	return b[start:end]
-}
-
-func (b realByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 

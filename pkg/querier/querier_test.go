@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -262,7 +261,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	}
 
 	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
@@ -495,7 +494,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 
 func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	dir, err := ioutil.TempDir("", "test_query")
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
@@ -646,7 +645,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	}
 
 	dir, err := ioutil.TempDir("", t.Name())
-	testutil.Ok(t, err)
+	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 	queryTracker := promql.NewActiveQueryTracker(dir, 10, util.Logger)
 
@@ -734,6 +733,45 @@ func TestStoreQueryable(t *testing.T) {
 
 	require.True(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
 	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		setup    func(cfg *Config)
+		expected error
+	}{
+		"should pass with default config": {
+			setup: func(cfg *Config) {},
+		},
+		"should pass if 'query store after' is enabled and shuffle-sharding is disabled": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+			},
+		},
+		"should pass if 'query store after' is enabled and shuffle-sharding is enabled with greater value": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+				cfg.ShuffleShardingIngestersLookbackPeriod = 2 * time.Hour
+			},
+		},
+		"should fail if 'query store after' is enabled and shuffle-sharding is enabled with lesser value": {
+			setup: func(cfg *Config) {
+				cfg.QueryStoreAfter = time.Hour
+				cfg.ShuffleShardingIngestersLookbackPeriod = time.Minute
+			},
+			expected: errShuffleShardingLookbackLessThanQueryStoreAfter,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := &Config{}
+			flagext.DefaultValues(cfg)
+			testData.setup(cfg)
+
+			assert.Equal(t, testData.expected, cfg.Validate())
+		})
+	}
 }
 
 type mockQueryableWithFilter struct {

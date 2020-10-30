@@ -10,6 +10,9 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestRefCache_GetAndSetReferences(t *testing.T) {
@@ -46,9 +49,12 @@ func TestRefCache_GetAndSetReferences(t *testing.T) {
 
 func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
 	now := time.Now()
-	// The two following series have the same FastFingerprint=e002a3a451262627
-	ls1 := []labels.Label{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "l"}, {Name: "uniq0", Value: "0"}, {Name: "uniq1", Value: "1"}}
-	ls2 := []labels.Label{{Name: labels.MetricName, Value: "fast_fingerprint_collision"}, {Name: "app", Value: "m"}, {Name: "uniq0", Value: "1"}, {Name: "uniq1", Value: "1"}}
+
+	metric := labels.NewBuilder(labels.FromStrings("__name__", "logs"))
+	ls1 := metric.Set("_", "ypfajYg2lsv").Labels()
+	ls2 := metric.Set("_", "KiqbryhzUpn").Labels()
+
+	require.True(t, client.Fingerprint(ls1) == client.Fingerprint(ls2))
 
 	c := NewRefCache()
 	c.SetRef(now, ls1, 1)

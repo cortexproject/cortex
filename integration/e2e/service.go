@@ -111,7 +111,7 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	s.usedNetworkName = networkName
 
 	// Wait until the container has been started.
-	if err = s.WaitStarted(); err != nil {
+	if err = s.WaitForRunning(); err != nil {
 		return err
 	}
 
@@ -123,10 +123,10 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
 		if err != nil {
 			// Catch init errors.
-			if werr := s.WaitStarted(); werr != nil {
+			if werr := s.WaitForRunning(); werr != nil {
 				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(), err)
 			}
-			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
+			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s; output: %q", containerPort, s.name, out)
 		}
 
 		stdout := strings.TrimSpace(string(out))
@@ -243,7 +243,7 @@ func (s *ConcreteService) containerName() string {
 	return containerName(s.usedNetworkName, s.name)
 }
 
-func (s *ConcreteService) WaitStarted() (err error) {
+func (s *ConcreteService) WaitForRunning() (err error) {
 	if !s.isExpectedRunning() {
 		return fmt.Errorf("service %s is stopped", s.Name())
 	}
@@ -251,14 +251,28 @@ func (s *ConcreteService) WaitStarted() (err error) {
 	for s.retryBackoff.Reset(); s.retryBackoff.Ongoing(); {
 		// Enforce a timeout on the command execution because we've seen some flaky tests
 		// stuck here.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 
-		err = exec.CommandContext(ctx, "docker", "inspect", s.containerName()).Run()
-		if err == nil {
-			return nil
+		var out []byte
+		out, err = RunCommandWithTimeoutAndGetOutput(5*time.Second, "docker", "inspect", "--format={{json .State.Running}}", s.containerName())
+		if err != nil {
+			s.retryBackoff.Wait()
+			continue
 		}
-		s.retryBackoff.Wait()
+
+		if out == nil {
+			err = fmt.Errorf("nil output")
+			s.retryBackoff.Wait()
+			continue
+		}
+
+		str := strings.TrimSpace(string(out))
+		if str != "true" {
+			err = fmt.Errorf("unexpected output: %q", str)
+			s.retryBackoff.Wait()
+			continue
+		}
+
+		return nil
 	}
 
 	return fmt.Errorf("docker container %s failed to start: %v", s.name, err)
@@ -367,14 +381,16 @@ type HTTPReadinessProbe struct {
 	path                     string
 	expectedStatusRangeStart int
 	expectedStatusRangeEnd   int
+	expectedContent          []string
 }
 
-func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int) *HTTPReadinessProbe {
+func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
 		port:                     port,
 		path:                     path,
 		expectedStatusRangeStart: expectedStatusRangeStart,
 		expectedStatusRangeEnd:   expectedStatusRangeEnd,
+		expectedContent:          expectedContent,
 	}
 }
 
@@ -392,13 +408,19 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	}
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "response readiness")
+	body, _ := ioutil.ReadAll(res.Body)
 
-	if p.expectedStatusRangeStart <= res.StatusCode && res.StatusCode <= p.expectedStatusRangeEnd {
-		return nil
+	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
+		return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
 
-	body, _ := ioutil.ReadAll(res.Body)
-	return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
+	for _, expected := range p.expectedContent {
+		if !strings.Contains(string(body), expected) {
+			return fmt.Errorf("expected body containing %s, got: %v", expected, string(body))
+		}
+	}
+
+	return nil
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.
@@ -577,16 +599,24 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 		// Get the metric family.
 		mf, ok := families[m]
 		if !ok {
+			if options.SkipMissingMetrics {
+				continue
+			}
+
 			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
 		// Filter metrics.
 		metrics := filterMetrics(mf.GetMetric(), options)
 		if len(metrics) == 0 {
+			if options.SkipMissingMetrics {
+				continue
+			}
+
 			return nil, errors.Wrapf(errMissingMetric, "metric=%s service=%s", m, s.name)
 		}
 
-		sums[i] = sumValues(getValues(metrics, options))
+		sums[i] = SumValues(getValues(metrics, options))
 	}
 
 	return sums, nil

@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -57,14 +58,14 @@ func TestConfig_Validate(t *testing.T) {
 		"should fail if the sharding strategy is shuffle-sharding and shard size has not been set": {
 			setup: func(cfg *Config, limits *validation.Limits) {
 				cfg.ShardingEnabled = true
-				cfg.ShardingStrategy = ShardingStrategyShuffle
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
 			},
 			expected: errInvalidTenantShardSize,
 		},
 		"should pass if the sharding strategy is shuffle-sharding and shard size has been set": {
 			setup: func(cfg *Config, limits *validation.Limits) {
 				cfg.ShardingEnabled = true
-				cfg.ShardingStrategy = ShardingStrategyShuffle
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
 				limits.StoreGatewayTenantShardSize = 3
 			},
 			expected: nil,
@@ -128,7 +129,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			if testData.initialExists {
 				require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 					ringDesc := ring.GetOrCreateRingDesc(in)
-					ringDesc.AddIngester(gatewayCfg.ShardingRing.InstanceID, gatewayCfg.ShardingRing.InstanceAddr, "", testData.initialTokens, testData.initialState)
+					ringDesc.AddIngester(gatewayCfg.ShardingRing.InstanceID, gatewayCfg.ShardingRing.InstanceAddr, "", testData.initialTokens, testData.initialState, time.Now())
 					return ringDesc, true, nil
 				}))
 			}
@@ -243,45 +244,45 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			expectedBlocksLoaded: 2 * numBlocks, // each gateway loads all the blocks
 		},
 		"default sharding strategy, 1 gateway, RF = 1": {
-			shardingStrategy:     ShardingStrategyDefault,
+			shardingStrategy:     util.ShardingStrategyDefault,
 			replicationFactor:    1,
 			numGateways:          1,
 			expectedBlocksLoaded: numBlocks,
 		},
 		"default sharding strategy, 2 gateways, RF = 1": {
-			shardingStrategy:     ShardingStrategyDefault,
+			shardingStrategy:     util.ShardingStrategyDefault,
 			replicationFactor:    1,
 			numGateways:          2,
 			expectedBlocksLoaded: numBlocks, // blocks are sharded across gateways
 		},
 		"default sharding strategy, 3 gateways, RF = 2": {
-			shardingStrategy:     ShardingStrategyDefault,
+			shardingStrategy:     util.ShardingStrategyDefault,
 			replicationFactor:    2,
 			numGateways:          3,
 			expectedBlocksLoaded: 2 * numBlocks, // blocks are replicated 2 times
 		},
 		"default sharding strategy, 5 gateways, RF = 3": {
-			shardingStrategy:     ShardingStrategyDefault,
+			shardingStrategy:     util.ShardingStrategyDefault,
 			replicationFactor:    3,
 			numGateways:          5,
 			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
 		},
 		"shuffle sharding strategy, 1 gateway, RF = 1, SS = 1": {
-			shardingStrategy:     ShardingStrategyShuffle,
+			shardingStrategy:     util.ShardingStrategyShuffle,
 			tenantShardSize:      1,
 			replicationFactor:    1,
 			numGateways:          1,
 			expectedBlocksLoaded: numBlocks,
 		},
 		"shuffle sharding strategy, 5 gateways, RF = 2, SS = 3": {
-			shardingStrategy:     ShardingStrategyShuffle,
+			shardingStrategy:     util.ShardingStrategyShuffle,
 			tenantShardSize:      3,
 			replicationFactor:    2,
 			numGateways:          5,
 			expectedBlocksLoaded: 2 * numBlocks, // blocks are replicated 2 times
 		},
 		"shuffle sharding strategy, 20 gateways, RF = 3, SS = 3": {
-			shardingStrategy:     ShardingStrategyShuffle,
+			shardingStrategy:     util.ShardingStrategyShuffle,
 			tenantShardSize:      3,
 			replicationFactor:    3,
 			numGateways:          20,
@@ -359,7 +360,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
 			assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
 
-			if testData.shardingStrategy == ShardingStrategyShuffle {
+			if testData.shardingStrategy == util.ShardingStrategyShuffle {
 				assert.Equal(t, float64(testData.tenantShardSize*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
 				assert.Equal(t, float64(testData.tenantShardSize*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
 			} else {
@@ -424,6 +425,8 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 }
 
 func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
+	registeredAt := time.Now()
+
 	tests := map[string]struct {
 		setupRing    func(desc *ring.Desc)
 		updateRing   func(desc *ring.Desc)
@@ -431,17 +434,17 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 	}{
 		"should sync when an instance is added to the ring": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 			},
 			expectedSync: true,
 		},
 		"should sync when an instance is removed from the ring": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
 				desc.RemoveIngester("instance-1")
@@ -450,8 +453,8 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 		},
 		"should sync when an instance changes state": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
 				instance := desc.Ingesters["instance-2"]
@@ -462,8 +465,8 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 		},
 		"should sync when an healthy instance becomes unhealthy": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
 				instance := desc.Ingesters["instance-2"]
@@ -474,9 +477,9 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 		},
 		"should sync when an unhealthy instance becomes healthy": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
 
-				instance := desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				instance := desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 				instance.Timestamp = time.Now().Add(-time.Hour).Unix()
 				desc.Ingesters["instance-2"] = instance
 			},
@@ -489,8 +492,8 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 		},
 		"should NOT sync when an instance updates the heartbeat": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
 				instance := desc.Ingesters["instance-2"]
@@ -501,8 +504,8 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 		},
 		"should NOT sync when an instance is auto-forgotten in the ring but was already unhealthy in the previous state": {
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE)
-				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE)
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
 
 				// Set it already unhealthy.
 				instance := desc.Ingesters["instance-2"]
@@ -600,7 +603,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(RingNumTokens), ring.ACTIVE)
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(RingNumTokens), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 
@@ -693,7 +696,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 		actual := srv.SeriesSet[seriesID]
 
 		// Ensure Cortex external labels have been removed.
-		assert.Equal(t, []storepb.Label{{Name: "series_id", Value: strconv.Itoa(seriesID)}}, actual.Labels)
+		assert.Equal(t, []labelpb.ZLabel{{Name: "series_id", Value: strconv.Itoa(seriesID)}}, actual.Labels)
 
 		// Ensure samples have been correctly queried. The Thanos store also deduplicate samples
 		// in most cases, but it's not strictly required guaranteeing deduplication at this stage.

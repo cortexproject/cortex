@@ -1,7 +1,7 @@
 ---
 title: "Capacity Planning"
 linkTitle: "Capacity Planning"
-weight: 104
+weight: 10
 slug: capacity-planning
 ---
 

@@ -704,7 +704,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 10*time.Second, len(compactors), func() interface{} {
 			// it is safe to access c.ring here, since we know that all compactors are Running now
-			rs, err := c.ring.GetAll(ring.Read)
+			rs, err := c.ring.GetAll(ring.Compactor)
 			if err != nil {
 				return 0
 			}
@@ -936,4 +936,46 @@ func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	}
 
 	return string(content)
+}
+
+func TestAllowedUser(t *testing.T) {
+	testCases := map[string]struct {
+		enabled, disabled map[string]struct{}
+		user              string
+		expected          bool
+	}{
+		"no enabled or disabled": {
+			user:     "test",
+			expected: true,
+		},
+
+		"only enabled, enabled": {
+			enabled:  map[string]struct{}{"user": {}},
+			user:     "user",
+			expected: true,
+		},
+
+		"only enabled, disabled": {
+			enabled:  map[string]struct{}{"user": {}},
+			user:     "not user",
+			expected: false,
+		},
+
+		"only disabled, disabled": {
+			disabled: map[string]struct{}{"user": {}},
+			user:     "user",
+			expected: false,
+		},
+
+		"only disabled, enabled": {
+			disabled: map[string]struct{}{"user": {}},
+			user:     "not user",
+			expected: true,
+		},
+	}
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, isAllowedUser(tc.enabled, tc.disabled, tc.user))
+		})
+	}
 }

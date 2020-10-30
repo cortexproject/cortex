@@ -37,6 +37,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -133,8 +134,6 @@ type RuntimeInfo struct {
 	CWD                 string    `json:"CWD"`
 	ReloadConfigSuccess bool      `json:"reloadConfigSuccess"`
 	LastConfigTime      time.Time `json:"lastConfigTime"`
-	ChunkCount          int64     `json:"chunkCount"`
-	TimeSeriesCount     int64     `json:"timeSeriesCount"`
 	CorruptionCount     int64     `json:"corruptionCount"`
 	GoroutineCount      int       `json:"goroutineCount"`
 	GOMAXPROCS          int       `json:"GOMAXPROCS"`
@@ -194,6 +193,7 @@ type API struct {
 	CORSOrigin                *regexp.Regexp
 	buildInfo                 *PrometheusVersion
 	runtimeInfo               func() (RuntimeInfo, error)
+	gatherer                  prometheus.Gatherer
 }
 
 func init() {
@@ -222,6 +222,7 @@ func NewAPI(
 	CORSOrigin *regexp.Regexp,
 	runtimeInfo func() (RuntimeInfo, error),
 	buildInfo *PrometheusVersion,
+	gatherer prometheus.Gatherer,
 ) *API {
 	return &API{
 		QueryEngine:           qe,
@@ -245,6 +246,7 @@ func NewAPI(
 		CORSOrigin:                CORSOrigin,
 		runtimeInfo:               runtimeInfo,
 		buildInfo:                 buildInfo,
+		gatherer:                  gatherer,
 	}
 }
 
@@ -601,9 +603,16 @@ func (api *API) series(r *http.Request) (result apiFuncResult) {
 		q.Close()
 	}
 
+	hints := &storage.SelectHints{
+		Start: timestamp.FromTime(start),
+		End:   timestamp.FromTime(end),
+		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+	}
+
 	var sets []storage.SeriesSet
 	for _, mset := range matcherSets {
-		s := q.Select(false, nil, mset...)
+		// We need to sort this select results to merge (deduplicate) the series sets later.
+		s := q.Select(true, hints, mset...)
 		sets = append(sets, s)
 	}
 
@@ -1063,8 +1072,8 @@ func (api *API) rules(r *http.Request) apiFuncResult {
 			File:           grp.File(),
 			Interval:       grp.Interval().Seconds(),
 			Rules:          []rule{},
-			EvaluationTime: grp.GetEvaluationDuration().Seconds(),
-			LastEvaluation: grp.GetEvaluationTimestamp(),
+			EvaluationTime: grp.GetEvaluationTime().Seconds(),
+			LastEvaluation: grp.GetLastEvaluation(),
 		}
 		for _, r := range grp.Rules() {
 			var enrichedRule rule
@@ -1152,12 +1161,21 @@ type stat struct {
 	Value uint64 `json:"value"`
 }
 
+// HeadStats has information about the TSDB head.
+type HeadStats struct {
+	NumSeries  uint64 `json:"numSeries"`
+	ChunkCount int64  `json:"chunkCount"`
+	MinTime    int64  `json:"minTime"`
+	MaxTime    int64  `json:"maxTime"`
+}
+
 // tsdbStatus has information of cardinality statistics from postings.
 type tsdbStatus struct {
-	SeriesCountByMetricName     []stat `json:"seriesCountByMetricName"`
-	LabelValueCountByLabelName  []stat `json:"labelValueCountByLabelName"`
-	MemoryInBytesByLabelName    []stat `json:"memoryInBytesByLabelName"`
-	SeriesCountByLabelValuePair []stat `json:"seriesCountByLabelValuePair"`
+	HeadStats                   HeadStats `json:"headStats"`
+	SeriesCountByMetricName     []stat    `json:"seriesCountByMetricName"`
+	LabelValueCountByLabelName  []stat    `json:"labelValueCountByLabelName"`
+	MemoryInBytesByLabelName    []stat    `json:"memoryInBytesByLabelName"`
+	SeriesCountByLabelValuePair []stat    `json:"seriesCountByLabelValuePair"`
 }
 
 func convertStats(stats []index.Stat) []stat {
@@ -1174,8 +1192,27 @@ func (api *API) serveTSDBStatus(*http.Request) apiFuncResult {
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorInternal, err}, nil, nil}
 	}
-
+	metrics, err := api.gatherer.Gather()
+	if err != nil {
+		return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("error gathering runtime status: %s", err)}, nil, nil}
+	}
+	chunkCount := int64(math.NaN())
+	for _, mF := range metrics {
+		if *mF.Name == "prometheus_tsdb_head_chunks" {
+			m := *mF.Metric[0]
+			if m.Gauge != nil {
+				chunkCount = int64(m.Gauge.GetValue())
+				break
+			}
+		}
+	}
 	return apiFuncResult{tsdbStatus{
+		HeadStats: HeadStats{
+			NumSeries:  s.NumSeries,
+			ChunkCount: chunkCount,
+			MinTime:    s.MinTime,
+			MaxTime:    s.MaxTime,
+		},
 		SeriesCountByMetricName:     convertStats(s.IndexPostingStats.CardinalityMetricsStats),
 		LabelValueCountByLabelName:  convertStats(s.IndexPostingStats.CardinalityLabelStats),
 		MemoryInBytesByLabelName:    convertStats(s.IndexPostingStats.LabelValueStats),
@@ -1514,7 +1551,7 @@ func (api *API) respondError(w http.ResponseWriter, apiErr *apiError, data inter
 	case errorBadData:
 		code = http.StatusBadRequest
 	case errorExec:
-		code = 422
+		code = http.StatusUnprocessableEntity
 	case errorCanceled, errorTimeout:
 		code = http.StatusServiceUnavailable
 	case errorInternal:

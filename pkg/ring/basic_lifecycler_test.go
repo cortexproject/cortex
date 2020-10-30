@@ -36,9 +36,10 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		"initial ring non empty (containing another instance)": {
 			initialInstanceID: "instance-1",
 			initialInstanceDesc: &IngesterDesc{
-				Addr:   "1.1.1.1",
-				State:  ACTIVE,
-				Tokens: Tokens{6, 7, 8, 9, 10},
+				Addr:                "1.1.1.1",
+				State:               ACTIVE,
+				Tokens:              Tokens{6, 7, 8, 9, 10},
+				RegisteredTimestamp: time.Now().Add(-time.Hour).Unix(),
 			},
 			registerState:  ACTIVE,
 			registerTokens: Tokens{1, 2, 3, 4, 5},
@@ -46,9 +47,10 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		"initial ring contains the same instance with different state, tokens and address (new one is 127.0.0.1)": {
 			initialInstanceID: testInstanceID,
 			initialInstanceDesc: &IngesterDesc{
-				Addr:   "1.1.1.1",
-				State:  ACTIVE,
-				Tokens: Tokens{6, 7, 8, 9, 10},
+				Addr:                "1.1.1.1",
+				State:               ACTIVE,
+				Tokens:              Tokens{6, 7, 8, 9, 10},
+				RegisteredTimestamp: time.Now().Add(-time.Hour).Unix(),
 			},
 			registerState:  JOINING,
 			registerTokens: Tokens{1, 2, 3, 4, 5},
@@ -56,9 +58,21 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		"initial ring contains the same instance with different address (new one is 127.0.0.1)": {
 			initialInstanceID: testInstanceID,
 			initialInstanceDesc: &IngesterDesc{
-				Addr:   "1.1.1.1",
-				State:  ACTIVE,
-				Tokens: Tokens{1, 2, 3, 4, 5},
+				Addr:                "1.1.1.1",
+				State:               ACTIVE,
+				Tokens:              Tokens{1, 2, 3, 4, 5},
+				RegisteredTimestamp: time.Now().Add(-time.Hour).Unix(),
+			},
+			registerState:  ACTIVE,
+			registerTokens: Tokens{1, 2, 3, 4, 5},
+		},
+		"initial ring contains the same instance with registered timestamp == 0": {
+			initialInstanceID: testInstanceID,
+			initialInstanceDesc: &IngesterDesc{
+				Addr:                "1.1.1.1",
+				State:               ACTIVE,
+				Tokens:              Tokens{1, 2, 3, 4, 5},
+				RegisteredTimestamp: 0,
 			},
 			registerState:  ACTIVE,
 			registerTokens: Tokens{1, 2, 3, 4, 5},
@@ -79,7 +93,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 					desc := testData.initialInstanceDesc
 
 					ringDesc := GetOrCreateRingDesc(in)
-					ringDesc.AddIngester(testData.initialInstanceID, desc.Addr, desc.Zone, desc.Tokens, desc.State)
+					ringDesc.AddIngester(testData.initialInstanceID, desc.Addr, desc.Zone, desc.Tokens, desc.State, desc.GetRegisteredAt())
 					return ringDesc, true, nil
 				}))
 			}
@@ -97,6 +111,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 					assert.Equal(t, testData.initialInstanceDesc.Zone, instanceDesc.Zone)
 					assert.Equal(t, testData.initialInstanceDesc.State, instanceDesc.State)
 					assert.Equal(t, testData.initialInstanceDesc.Tokens, instanceDesc.Tokens)
+					assert.Equal(t, testData.initialInstanceDesc.RegisteredTimestamp, instanceDesc.RegisteredTimestamp)
 				} else {
 					assert.False(t, instanceExists)
 				}
@@ -111,6 +126,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 			assert.False(t, lifecycler.IsRegistered())
 			assert.Equal(t, float64(0), testutil.ToFloat64(lifecycler.metrics.tokensOwned))
 			assert.Equal(t, float64(cfg.NumTokens), testutil.ToFloat64(lifecycler.metrics.tokensToOwn))
+			assert.Zero(t, lifecycler.GetRegisteredAt())
 
 			require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
@@ -128,6 +144,14 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 			assert.Equal(t, testData.registerState, instanceDesc.GetState())
 			assert.Equal(t, testData.registerTokens, Tokens(instanceDesc.GetTokens()))
 			assert.Equal(t, cfg.Zone, instanceDesc.GetZone())
+
+			// The expected registered timestamp is "now" if the instance didn't exist in the ring yet
+			// or the already existing value.
+			if testData.initialInstanceID == testInstanceID {
+				assert.Equal(t, testData.initialInstanceDesc.RegisteredTimestamp, instanceDesc.RegisteredTimestamp)
+			} else {
+				assert.InDelta(t, time.Now().Unix(), instanceDesc.RegisteredTimestamp, 2)
+			}
 		})
 	}
 }
@@ -149,6 +173,7 @@ func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
 	assert.Equal(t, ACTIVE, lifecycler.GetState())
 	assert.Equal(t, Tokens{1, 2, 3, 4, 5}, lifecycler.GetTokens())
 	assert.True(t, lifecycler.IsRegistered())
+	assert.NotZero(t, lifecycler.GetRegisteredAt())
 	assert.Equal(t, float64(cfg.NumTokens), testutil.ToFloat64(lifecycler.metrics.tokensOwned))
 	assert.Equal(t, float64(cfg.NumTokens), testutil.ToFloat64(lifecycler.metrics.tokensToOwn))
 
@@ -156,6 +181,7 @@ func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
 	assert.Equal(t, PENDING, lifecycler.GetState())
 	assert.Equal(t, Tokens{}, lifecycler.GetTokens())
 	assert.False(t, lifecycler.IsRegistered())
+	assert.Zero(t, lifecycler.GetRegisteredAt())
 	assert.Equal(t, float64(0), testutil.ToFloat64(lifecycler.metrics.tokensOwned))
 	assert.Equal(t, float64(0), testutil.ToFloat64(lifecycler.metrics.tokensToOwn))
 
@@ -242,8 +268,10 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
-	// At this point the instance has been registered to the ring. Now we delete it
-	// from the ring to simulate a ring storage reset and we expect the next heartbeat
+	// At this point the instance has been registered to the ring.
+	expectedRegisteredAt := lifecycler.GetRegisteredAt()
+
+	// Now we delete it from the ring to simulate a ring storage reset and we expect the next heartbeat
 	// will restore it.
 	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		return NewDesc(), true, nil
@@ -251,7 +279,12 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 
 	test.Poll(t, time.Second, true, func() interface{} {
 		desc, ok := getInstanceFromStore(t, store, testInstanceID)
-		return ok && desc.GetTimestamp() > 0 && desc.GetState() == ACTIVE && Tokens(desc.GetTokens()).Equals(registerTokens) && desc.GetAddr() == cfg.Addr
+		return ok &&
+			desc.GetTimestamp() > 0 &&
+			desc.GetState() == ACTIVE &&
+			Tokens(desc.GetTokens()).Equals(registerTokens) &&
+			desc.GetAddr() == cfg.Addr &&
+			desc.GetRegisteredAt().Unix() == expectedRegisteredAt.Unix()
 	})
 }
 
@@ -308,7 +341,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 		// Remove some tokens.
 		return store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 			ringDesc := GetOrCreateRingDesc(in)
-			ringDesc.AddIngester(testInstanceID, desc.Addr, desc.Zone, Tokens{4, 5}, desc.State)
+			ringDesc.AddIngester(testInstanceID, desc.Addr, desc.Zone, Tokens{4, 5}, desc.State, time.Now())
 			return ringDesc, true, nil
 		}) == nil
 	})
@@ -336,8 +369,10 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
-	// At this point the instance has been registered to the ring. Now we delete it
-	// from the ring to simulate a ring storage reset.
+	// At this point the instance has been registered to the ring.
+	expectedRegisteredAt := lifecycler.GetRegisteredAt()
+
+	// Now we delete it from the ring to simulate a ring storage reset.
 	require.NoError(t, store.CAS(ctx, testRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		return NewDesc(), true, nil
 	}))
@@ -353,6 +388,8 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 	assert.Equal(t, ACTIVE, desc.GetState())
 	assert.Equal(t, registerTokens, Tokens(desc.GetTokens()))
 	assert.Equal(t, cfg.Addr, desc.GetAddr())
+	assert.Equal(t, expectedRegisteredAt.Unix(), desc.RegisteredTimestamp)
+	assert.Equal(t, expectedRegisteredAt.Unix(), desc.GetRegisteredAt().Unix())
 }
 
 func prepareBasicLifecyclerConfig() BasicLifecyclerConfig {

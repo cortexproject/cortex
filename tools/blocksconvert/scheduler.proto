@@ -15,7 +15,8 @@ service Scheduler {
 }
 
 message NextPlanRequest {
-  string builderName = 1;
+  // Name of service requesting the plan.
+  string name = 1;
 }
 
 message NextPlanResponse {

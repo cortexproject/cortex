@@ -23,18 +23,22 @@ type bigtableIndexReader struct {
 	project  string
 	instance string
 
-	rowsRead           prometheus.Counter
-	parsedIndexEntries prometheus.Counter
+	rowsRead                  prometheus.Counter
+	parsedIndexEntries        prometheus.Counter
+	currentTableRanges        prometheus.Gauge
+	currentTableScannedRanges prometheus.Gauge
 }
 
-func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead prometheus.Counter, parsedIndexEntries prometheus.Counter) *bigtableIndexReader {
+func newBigtableIndexReader(project, instance string, l log.Logger, rowsRead prometheus.Counter, parsedIndexEntries prometheus.Counter, currentTableRanges, scannedRanges prometheus.Gauge) *bigtableIndexReader {
 	return &bigtableIndexReader{
 		log:      l,
 		project:  project,
 		instance: instance,
 
-		rowsRead:           rowsRead,
-		parsedIndexEntries: parsedIndexEntries,
+		rowsRead:                  rowsRead,
+		parsedIndexEntries:        parsedIndexEntries,
+		currentTableRanges:        currentTableRanges,
+		currentTableScannedRanges: scannedRanges,
 	}
 }
 
@@ -92,6 +96,12 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 		close(rangesCh)
 	}
 
+	r.currentTableRanges.Set(float64(len(rangesCh)))
+	r.currentTableScannedRanges.Set(0)
+
+	defer r.currentTableRanges.Set(0)
+	defer r.currentTableScannedRanges.Set(0)
+
 	g, gctx := errgroup.WithContext(ctx)
 
 	for ix := range processors {
@@ -132,6 +142,8 @@ func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 				if err != nil {
 					return err
 				}
+
+				r.currentTableScannedRanges.Inc()
 			}
 
 			return p.Flush()

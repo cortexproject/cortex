@@ -65,14 +65,24 @@ func TestFlagParsing(t *testing.T) {
 
 		"user visible module listing": {
 			arguments:      []string{"-modules"},
-			stdoutMessage:  "ingester\n",
+			stdoutMessage:  "ingester *\n",
 			stderrExcluded: "ingester\n",
 		},
 
 		"user visible module listing flag take precedence over target flag": {
 			arguments:      []string{"-modules", "-target=blah"},
-			stdoutMessage:  "ingester\n",
+			stdoutMessage:  "ingester *\n",
 			stderrExcluded: "ingester\n",
+		},
+
+		"root level configuration option specified as an empty node in YAML": {
+			yaml:          "querier:",
+			stderrMessage: "the Querier configuration in YAML has been specified as an empty YAML node",
+		},
+
+		"version": {
+			arguments:     []string{"-version"},
+			stdoutMessage: "Cortex, version",
 		},
 
 		// we cannot test the happy path, as cortex would then fully start

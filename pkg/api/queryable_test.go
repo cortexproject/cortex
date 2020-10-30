@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -23,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestApiStatusCodes(t *testing.T) {
@@ -40,6 +42,12 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            chunk.QueryError("special handling"), // handled specially by chunk_store_queryable
 			expectedString: "special handling",
+			expectedCode:   422,
+		},
+
+		{
+			err:            validation.LimitError("limit exceeded"),
+			expectedString: "limit exceeded",
 			expectedCode:   422,
 		},
 
@@ -142,6 +150,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		prometheus.DefaultGatherer,
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

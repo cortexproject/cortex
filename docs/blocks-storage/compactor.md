@@ -73,7 +73,7 @@ This section described the compactor configuration. For the general Cortex confi
 
 ### `compactor_config`
 
-The `compactor_config` configures the compactor for the experimental blocks storage.
+The `compactor_config` configures the compactor for the blocks storage.
 
 ```yaml
 compactor:
@@ -123,6 +123,18 @@ compactor:
   # same time.
   # CLI flag: -compactor.deletion-delay
   [deletion_delay: <duration> | default = 12h]
+
+  # Comma separated list of tenants that can be compacted. If specified, only
+  # these tenants will be compacted by compactor, otherwise all tenants can be
+  # compacted. Subject to sharding.
+  # CLI flag: -compactor.enabled-tenants
+  [enabled_tenants: <string> | default = ""]
+
+  # Comma separated list of tenants that cannot be compacted by this compactor.
+  # If specified, and compactor would normally pick given tenant for compaction
+  # (via -compactor.enabled-tenants or sharding), it will be ignored instead.
+  # CLI flag: -compactor.disabled-tenants
+  [disabled_tenants: <string> | default = ""]
 
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and
@@ -175,4 +187,8 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+    # Name of network interface to read address from.
+    # CLI flag: -compactor.ring.instance-interface-names
+    [instance_interface_names: <list of string> | default = [eth0 en0]]
 ```

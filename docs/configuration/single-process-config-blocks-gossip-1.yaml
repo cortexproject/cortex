@@ -74,7 +74,7 @@ blocks_storage:
   # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
   # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes
   # we only use shared directory.
-  backend: filesystem # s3, gcs, azure or filesystem are valid options
+  backend: filesystem # s3, gcs, azure, swift or filesystem are valid options
   filesystem:
     dir: /tmp/cortex/storage
 

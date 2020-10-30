@@ -67,7 +67,7 @@ func TestS3Client(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := s3.NewS3ObjectClient(tt.cfg, "/")
+			client, err := s3.NewS3ObjectClient(tt.cfg)
 
 			require.NoError(t, err)
 

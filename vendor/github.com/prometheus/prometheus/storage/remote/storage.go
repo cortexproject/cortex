@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"gopkg.in/yaml.v2"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"gopkg.in/yaml.v2"
+
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/logging"
@@ -102,7 +102,7 @@ func (s *Storage) ApplyConfig(conf *config.Config) error {
 			name = rrConf.Name
 		}
 
-		c, err := newReadClient(name, &ClientConfig{
+		c, err := NewReadClient(name, &ClientConfig{
 			URL:              rrConf.URL,
 			Timeout:          rrConf.RemoteTimeout,
 			HTTPClientConfig: rrConf.HTTPClientConfig,

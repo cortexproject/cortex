@@ -20,45 +20,28 @@ var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by CircleCI too (see .circleci/config.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		// 0.6.0 used 204 status code for querier and ingester
-		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0": preCortex1Flags,
-
-		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0": preCortex1Flags,
-
-		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
-			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-				"-experimental.store-gateway.sharding-enabled":              "",
-				"-experimental.store-gateway.sharding-ring.store":           "",
-				"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-				"-experimental.store-gateway.replication-factor":            "",
-			})
-		},
-
-		"quay.io/cortexproject/cortex:v1.1.0": nil,
-		"quay.io/cortexproject/cortex:v1.2.0": nil,
-		"quay.io/cortexproject/cortex:v1.3.0": nil,
+		"quay.io/cortexproject/cortex:v1.0.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.4.0": nil,
 	}
 )
 
-func preCortex1Flags(flags map[string]string) map[string]string {
+func preCortex14Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              flags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   flags["-table-manager.poll-interval"],
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
+		// Blocks storage CLI flags removed the "experimental" prefix in 1.4.
+		"-store-gateway.sharding-enabled":                 "",
+		"-store-gateway.sharding-ring.store":              "",
+		"-store-gateway.sharding-ring.consul.hostname":    "",
+		"-store-gateway.sharding-ring.replication-factor": "",
 	})
 }
 
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}
@@ -71,7 +54,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}
@@ -95,7 +78,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start Cortex table-manager (running on current version since the backward compatibility
 	// test is about testing a rolling update of other services).
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -104,7 +87,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
 	// Wait until the distributor has updated the ring.
@@ -121,7 +104,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	// Start ingester-2 on new version, to ensure the transfer is backward compatible.
@@ -134,7 +117,8 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	checkQueries(t, consul, distributor,
 		expectedVector,
 		previousImage,
-		flagsForOldImage, ChunksStorageFlags,
+		flagsForOldImage,
+		ChunksStorageFlags(),
 		now,
 		s,
 		1,
@@ -152,7 +136,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
-	flagsForNewImage := mergeFlags(ChunksStorageFlags, map[string]string{
+	flagsForNewImage := mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-distributor.replication-factor": "3",
 	})
 
@@ -160,7 +144,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 
 	// Start Cortex table-manager (running on current version since the backward compatibility
 	// test is about testing a rolling update of other services).
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -191,7 +175,8 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	checkQueries(t, consul, distributor,
 		expectedVector,
 		previousImage,
-		flagsForPreviousImage, flagsForNewImage,
+		flagsForPreviousImage,
+		flagsForNewImage,
 		now,
 		s,
 		3,

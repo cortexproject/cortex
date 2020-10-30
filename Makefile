@@ -1,3 +1,7 @@
+# Local settings (optional). See Makefile.local.example for an example.
+# WARNING: do not commit to a repository!
+-include Makefile.local
+
 .PHONY: all test clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 
@@ -143,6 +147,7 @@ lint:
 	# Ensure no blacklisted package is imported.
 	faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
+		github.com/prometheus/prometheus/tsdb/errors=util,\
 		sync/atomic=go.uber.org/atomic" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Validate Kubernetes spec files. Requires:

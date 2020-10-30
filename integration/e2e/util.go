@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -17,6 +19,14 @@ import (
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
 	cmd := exec.Command(name, args...)
+	return cmd.CombinedOutput()
+}
+
+func RunCommandWithTimeoutAndGetOutput(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, name, args...)
 	return cmd.CombinedOutput()
 }
 
@@ -67,6 +77,13 @@ func GetRequest(url string) (*http.Response, error) {
 
 	client := &http.Client{Timeout: timeout}
 	return client.Get(url)
+}
+
+func PostRequest(url string) (*http.Response, error) {
+	const timeout = 1 * time.Second
+
+	client := &http.Client{Timeout: timeout}
+	return client.Post(url, "", strings.NewReader(""))
 }
 
 // timeToMilliseconds returns the input time as milliseconds, using the same

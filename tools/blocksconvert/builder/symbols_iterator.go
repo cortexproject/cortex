@@ -6,12 +6,13 @@ import (
 	"os"
 
 	"github.com/golang/snappy"
-	"github.com/prometheus/prometheus/tsdb/errors"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type symbolsIterator struct {
 	files []*symbolsFile
-	errs  errors.MultiError
+	errs  util.MultiError
 
 	// To avoid returning duplicates, we remember last returned symbol.
 	lastReturned *string
@@ -20,6 +21,7 @@ type symbolsIterator struct {
 func newSymbolsIterator(files []*symbolsFile) *symbolsIterator {
 	si := &symbolsIterator{
 		files: files,
+		errs:  util.NewMultiError(),
 	}
 	si.buildHeap()
 	return si
@@ -92,7 +94,7 @@ func (sit *symbolsIterator) Error() error {
 }
 
 func (sit *symbolsIterator) Close() error {
-	var errs errors.MultiError
+	errs := util.NewMultiError()
 	for _, f := range sit.files {
 		errs.Add(f.close())
 	}

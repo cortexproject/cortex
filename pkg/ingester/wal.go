@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/encoding"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wal"
@@ -445,7 +444,7 @@ func (w *walWrapper) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}()
 
-	var errs tsdb_errors.MultiError
+	errs := util.NewMultiError()
 
 	files, err := ioutil.ReadDir(w.wal.Dir())
 	if err != nil {
@@ -795,8 +794,7 @@ func processWALWithRepair(startSegment int, userStates *userStates, params walRe
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error in repairing WAL", "err", err)
 	}
-	var multiErr tsdb_errors.MultiError
-	multiErr.Add(err)
+	multiErr := util.NewMultiError(err)
 	multiErr.Add(w.Close())
 
 	return multiErr.Err()

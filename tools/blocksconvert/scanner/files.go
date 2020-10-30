@@ -9,7 +9,8 @@ import (
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb/errors"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type file struct {
@@ -93,7 +94,7 @@ func (of *openFiles) closeAllFiles(footerFn func() interface{}) error {
 	of.mu.Lock()
 	defer of.mu.Unlock()
 
-	errs := errors.MultiError{}
+	errs := util.NewMultiError()
 
 	for fn, f := range of.files {
 		delete(of.files, fn)

@@ -15,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -176,7 +175,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	resMetas := map[string][]*BlockMeta{}
 	resMetasLookup := map[string]map[ulid.ULID]*BlockMeta{}
 	resDeletionMarks := map[string]map[ulid.ULID]*metadata.DeletionMark{}
-	resErrs := tsdb_errors.MultiError{}
+	resErrs := util.NewMultiError()
 
 	// Create a pool of workers which will synchronize metas. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in

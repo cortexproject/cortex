@@ -54,8 +54,9 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
-	flushInProgress atomic.Bool
-	pushesInFlight  sync.WaitGroup
+	forcedCompactionInProgress    bool
+	forcedCompactionInProgressMtx sync.RWMutex
+	pushesInFlight                sync.WaitGroup
 
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
@@ -96,6 +97,16 @@ func (u *userTSDB) Compact() error {
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
+	u.forcedCompactionInProgressMtx.Lock()
+	u.forcedCompactionInProgress = true
+	u.forcedCompactionInProgressMtx.Unlock()
+	defer func() {
+		u.forcedCompactionInProgress = false
+	}()
+	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
+	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
+	u.pushesInFlight.Wait()
+
 	h := u.Head()
 
 	minTime, maxTime := h.MinTime(), h.MaxTime()
@@ -504,11 +515,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 	i.userStatesMtx.RUnlock()
 
-	if db.flushInProgress.Load() {
-		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("flush in progress"), userID).Error())
+	if err := db.acquireAppendLock(); err != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
 	}
-	db.pushesInFlight.Add(1)
-	defer db.pushesInFlight.Done()
+	defer db.releaseAppendLock()
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
@@ -658,6 +668,22 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 
 	return &client.WriteResponse{}, nil
+}
+
+func (u *userTSDB) acquireAppendLock() error {
+	u.forcedCompactionInProgressMtx.RLock()
+	defer u.forcedCompactionInProgressMtx.RUnlock()
+
+	if u.forcedCompactionInProgress {
+		return errors.New("forced compaction in progress")
+	}
+
+	u.pushesInFlight.Add(1)
+	return nil
+}
+
+func (u *userTSDB) releaseAppendLock() {
+	u.pushesInFlight.Done()
 }
 
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
@@ -1370,12 +1396,6 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-
-			userDB.flushInProgress.Store(true)
-			defer userDB.flushInProgress.Store(false)
-			// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
-			// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
-			userDB.pushesInFlight.Wait()
 			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):

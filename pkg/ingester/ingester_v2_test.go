@@ -2423,7 +2423,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	}
 }
 
-func TestIngesterPushErrorDuringFlush(t *testing.T) {
+func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
@@ -2444,17 +2444,17 @@ func TestIngesterPushErrorDuringFlush(t *testing.T) {
 	// We mock a flushing by setting the boolean.
 	db := i.getTSDB(userID)
 	require.NotNil(t, db)
-	require.False(t, db.flushInProgress.Load())
-	db.flushInProgress.Store(true)
+	require.False(t, db.forcedCompactionInProgress)
+	db.forcedCompactionInProgress = true
 
 	// Ingestion should fail with a 503.
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = i.v2Push(ctx, req)
-	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("flush in progress"), userID).Error()), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
 
 	// Ingestion is successful after a flush.
-	require.True(t, db.flushInProgress.Load())
-	db.flushInProgress.Store(false)
+	require.True(t, db.forcedCompactionInProgress)
+	db.forcedCompactionInProgress = false
 	pushSingleSample(t, i)
 }

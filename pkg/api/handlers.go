@@ -218,11 +218,11 @@ func NewQuerierHandler(
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Methods("POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/query").Methods("GET", "POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
@@ -230,11 +230,11 @@ func NewQuerierHandler(
 	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
 	router.Path(cfg.LegacyHTTPPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
-	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
+	router.Path(cfg.PrometheusHTTPPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
 	router.Path(cfg.PrometheusHTTPPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
 
 	// Add a middleware to extract the trace context and add a header.

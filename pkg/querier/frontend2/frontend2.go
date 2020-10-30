@@ -46,7 +46,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.InfNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InfNames), "frontend.instance-interface-names", "Name of network interface to read address from. This address is sent to query-scheduler and querier, which uses it to send the query response back to query-frontend.")
-	f.StringVar(&cfg.Addr, "frontend.instance-address", "", "IP address to advertise to querier (via scheduler) (resolved via interfaces by default).")
+	f.StringVar(&cfg.Addr, "frontend.instance-addr", "", "IP address to advertise to querier (via scheduler) (resolved via interfaces by default).")
 	f.IntVar(&cfg.Port, "frontend.instance-port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)

@@ -83,7 +83,7 @@ func NewQuerierSchedulerWorkers(cfg QuerierWorkersConfig, handler RequestHandler
 	}
 
 	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_querier_scheduler_worker_frontend_clients",
+		Name: "cortex_query_scheduler_worker_frontend_clients",
 		Help: "The current number of frontend clients.",
 	})
 
@@ -94,7 +94,7 @@ func NewQuerierSchedulerWorkers(cfg QuerierWorkersConfig, handler RequestHandler
 		workers:        map[string]*querierSchedulerWorker{},
 
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_querier_scheduler_worker_frontend_request_duration_seconds",
+			Name:    "cortex_query_scheduler_worker_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",
 			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 		}, []string{"operation", "status_code"}),

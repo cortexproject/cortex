@@ -35,6 +35,22 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
+// Configuration for both querier workers, V1 (using frontend) and V2 (using scheduler). Since many flags are reused
+// between the two, they are exposed to YAML/CLI in V1 version (WorkerConfig), and copied to V2 in the init method.
+type CombinedWorkerConfig struct {
+	WorkerV1 WorkerConfig                   `yaml:",inline"`
+	WorkerV2 frontend2.QuerierWorkersConfig `yaml:",inline"`
+}
+
+func (cfg *CombinedWorkerConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.WorkerV1.RegisterFlags(f)
+	cfg.WorkerV2.RegisterFlags(f)
+}
+
+func (cfg *CombinedWorkerConfig) Validate(logger log.Logger) error {
+	return cfg.WorkerV1.Validate(logger)
+}
+
 // Initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
 // all if downstream Prometheus URL is used instead.
 //
@@ -77,18 +93,6 @@ func InitFrontend(cfg CombinedFrontendConfig, limits Limits, grpcListenPort int,
 	}
 }
 
-// Configuration for both querier workers, V1 (using frontend) and V2 (using scheduler). Since many flags are reused
-// between the two, they are exposed to YAML/CLI in V1 version (WorkerConfig), and copied to V2 in the init method.
-type CombinedWorkerConfig struct {
-	WorkerV1 WorkerConfig                   `yaml:",inline"`
-	WorkerV2 frontend2.QuerierWorkersConfig `yaml:",inline"`
-}
-
-func (cfg *CombinedWorkerConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.WorkerV1.RegisterFlags(f)
-	cfg.WorkerV2.RegisterFlags(f)
-}
-
 // Initializes querier-worker, which uses either configured query-scheduler or query-frontend,
 // or if none is specified and no worker is necessary returns nil (in that case queries are
 // received directly from HTTP server).
@@ -112,8 +116,4 @@ func InitQuerierWorker(cfg CombinedWorkerConfig, querierCfg querier.Config, hand
 	default:
 		return nil, nil
 	}
-}
-
-func (cfg *CombinedWorkerConfig) Validate(logger log.Logger) error {
-	return cfg.WorkerV1.Validate(logger)
 }

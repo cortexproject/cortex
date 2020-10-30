@@ -795,11 +795,8 @@ func processWALWithRepair(startSegment int, userStates *userStates, params walRe
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "error in repairing WAL", "err", err)
 	}
-	multiErr := tsdb_errors.NewMulti()
-	multiErr.Add(err)
-	multiErr.Add(w.Close())
 
-	return multiErr.Err()
+	return tsdb_errors.NewMulti(err, w.Close()).Err()
 }
 
 // processWAL processes the records in the WAL concurrently.

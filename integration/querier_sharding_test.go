@@ -19,16 +19,41 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestQuerierSharding(t *testing.T) {
-	runQuerierShardingTest(t, true)
+type querierShardingTestConfig struct {
+	shuffleShardingEnabled bool
+	querySchedulerEnabled  bool
 }
 
-func TestQuerierNoSharding(t *testing.T) {
-	runQuerierShardingTest(t, false)
+func TestQuerierShuffleShardingWithoutQueryScheduler(t *testing.T) {
+	runQuerierShardingTest(t, querierShardingTestConfig{
+		shuffleShardingEnabled: true,
+		querySchedulerEnabled:  false,
+	})
 }
 
-func runQuerierShardingTest(t *testing.T, sharding bool) {
-	// Going to high starts hitting filedescriptor limit, since we run all queriers concurrently.
+func TestQuerierShuffleShardingWithQueryScheduler(t *testing.T) {
+	runQuerierShardingTest(t, querierShardingTestConfig{
+		shuffleShardingEnabled: true,
+		querySchedulerEnabled:  true,
+	})
+}
+
+func TestQuerierNoShardingWithoutQueryScheduler(t *testing.T) {
+	runQuerierShardingTest(t, querierShardingTestConfig{
+		shuffleShardingEnabled: false,
+		querySchedulerEnabled:  false,
+	})
+}
+
+func TestQuerierNoShardingWithQueryScheduler(t *testing.T) {
+	runQuerierShardingTest(t, querierShardingTestConfig{
+		shuffleShardingEnabled: false,
+		querySchedulerEnabled:  true,
+	})
+}
+
+func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
+	// Going to high starts hitting file descriptor limit, since we run all queriers concurrently.
 	const numQueries = 100
 
 	s, err := e2e.NewScenario(networkName)
@@ -50,24 +75,33 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, s.StartAndWaitReady(minio))
 
-	if sharding {
+	if cfg.shuffleShardingEnabled {
 		// Use only single querier for each user.
 		flags["-frontend.max-queriers-per-tenant"] = "1"
 	}
 
-	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), "", flags, "")
-	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), "", flags, "")
+	// Start the query-scheduler if enabled.
+	var queryScheduler *e2ecortex.CortexService
+	if cfg.querySchedulerEnabled {
+		queryScheduler = e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+		require.NoError(t, s.StartAndWaitReady(queryScheduler))
+		flags["-frontend.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+		flags["-querier.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+	}
 
+	// Start the query-frontend.
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
 	require.NoError(t, s.Start(queryFrontend))
 
-	querier1 := e2ecortex.NewQuerierWithConfigFile("querier-1", consul.NetworkHTTPEndpoint(), "", mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
-	querier2 := e2ecortex.NewQuerierWithConfigFile("querier-2", consul.NetworkHTTPEndpoint(), "", mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
+	if !cfg.querySchedulerEnabled {
+		flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	}
+
+	// Start all other services.
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	querier1 := e2ecortex.NewQuerier("querier-1", consul.NetworkHTTPEndpoint(), flags, "")
+	querier2 := e2ecortex.NewQuerier("querier-2", consul.NetworkHTTPEndpoint(), flags, "")
 
 	require.NoError(t, s.StartAndWaitReady(querier1, querier2, ingester, distributor))
 	require.NoError(t, s.WaitReady(queryFrontend))
@@ -99,8 +133,12 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 		require.NoError(t, err)
 	}
 
-	// Wait until both workers connect to the query frontend
-	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(2), "cortex_query_frontend_connected_clients"))
+	// Wait until both workers connect to the query-frontend or query-scheduler
+	if cfg.querySchedulerEnabled {
+		require.NoError(t, queryScheduler.WaitSumMetrics(e2e.Equals(2), "cortex_query_scheduler_connected_querier_clients"))
+	} else {
+		require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(2), "cortex_query_frontend_connected_clients"))
+	}
 
 	wg := sync.WaitGroup{}
 
@@ -141,7 +179,7 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 
 	require.Equal(t, float64(numQueries), total-2) // Remove 2 requests used for metrics initialization.
 
-	if sharding {
+	if cfg.shuffleShardingEnabled {
 		require.Equal(t, float64(numQueries), diff)
 	} else {
 		require.InDelta(t, 0, diff, numQueries*0.20) // Both queriers should have roughly equal number of requests, with possible delta.
@@ -153,4 +191,5 @@ func runQuerierShardingTest(t *testing.T, sharding bool) {
 	assertServiceMetricsPrefixes(t, Querier, querier1)
 	assertServiceMetricsPrefixes(t, Querier, querier2)
 	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
+	assertServiceMetricsPrefixes(t, QueryScheduler, queryScheduler)
 }

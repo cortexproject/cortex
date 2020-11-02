@@ -24,7 +24,7 @@ var (
 		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
-		"quay.io/cortexproject/cortex:v1.4.0": nil,
+		"quay.io/cortexproject/cortex:v1.4.0": preCortex16Flags,
 	}
 )
 
@@ -35,6 +35,17 @@ func preCortex14Flags(flags map[string]string) map[string]string {
 		"-store-gateway.sharding-ring.store":              "",
 		"-store-gateway.sharding-ring.consul.hostname":    "",
 		"-store-gateway.sharding-ring.replication-factor": "",
+		// Query-scheduler has been introduced in 1.6.0
+		"-frontend.scheduler-dns-lookup-period": "",
+		"-querier.scheduler-dns-lookup-period":  "",
+	})
+}
+
+func preCortex16Flags(flags map[string]string) map[string]string {
+	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
+		// Query-scheduler has been introduced in 1.6.0
+		"-frontend.scheduler-dns-lookup-period": "",
+		"-querier.scheduler-dns-lookup-period":  "",
 	})
 }
 

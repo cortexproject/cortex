@@ -21,6 +21,7 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
@@ -124,8 +125,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Push some series to Cortex.
 			series1Timestamp := time.Now()
 			series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-			series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
-			series2, expectedVector2 := generateSeries("series_2", series2Timestamp)
+			series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+			series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
 
 			res, err := c.Push(series1)
 			require.NoError(t, err)
@@ -145,7 +146,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Push another series to further compact another block and delete the first block
 			// due to expired retention.
 			series3Timestamp := series2Timestamp.Add(blockRangePeriod * 2)
-			series3, expectedVector3 := generateSeries("series_3", series3Timestamp)
+			series3, expectedVector3 := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
 
 			res, err = c.Push(series3)
 			require.NoError(t, err)
@@ -218,6 +219,9 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(11+2), "thanos_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Query metadata.
+			testMetadataQueriesWithBlocksStorage(t, c, series1, series2, series3, blockRangePeriod)
 
 			// Ensure no service-specific metrics prefix is used by the wrong service.
 			assertServiceMetricsPrefixes(t, Distributor, distributor)
@@ -323,8 +327,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			// Push some series to Cortex.
 			series1Timestamp := time.Now()
 			series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-			series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
-			series2, expectedVector2 := generateSeries("series_2", series2Timestamp)
+			series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+			series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
 
 			res, err := c.Push(series1)
 			require.NoError(t, err)
@@ -344,7 +348,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			// Push another series to further compact another block and delete the first block
 			// due to expired retention.
 			series3Timestamp := series2Timestamp.Add(blockRangePeriod * 2)
-			series3, expectedVector3 := generateSeries("series_3", series3Timestamp)
+			series3, expectedVector3 := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
 
 			res, err = c.Push(series3)
 			require.NoError(t, err)
@@ -410,115 +414,21 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((11+2)*seriesReplicationFactor)), "thanos_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Query metadata.
+			testMetadataQueriesWithBlocksStorage(t, c, series1, series2, series3, blockRangePeriod)
 		})
 	}
 }
 
-func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
-	const blockRangePeriod = 5 * time.Second
-
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
-
-	// Start dependencies.
-	consul := e2edb.NewConsul()
-	minio := e2edb.NewMinio(9000, bucketName)
-	memcached := e2ecache.NewMemcached()
-	require.NoError(t, s.StartAndWaitReady(consul, minio, memcached))
-
-	// Setting the replication factor equal to the number of Cortex replicas
-	// make sure each replica creates the same blocks, so the total number of
-	// blocks is stable and easy to assert on.
-	const seriesReplicationFactor = 2
-
-	// Configure the blocks storage to frequently compact TSDB head
-	// and ship blocks to the storage.
-	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-		"-blocks-storage.tsdb.block-ranges-period":                     blockRangePeriod.String(),
-		"-blocks-storage.tsdb.ship-interval":                           "1s",
-		"-blocks-storage.bucket-store.sync-interval":                   "1s",
-		"-blocks-storage.tsdb.retention-period":                        ((blockRangePeriod * 2) - 1).String(),
-		"-blocks-storage.bucket-store.index-cache.backend":             tsdb.IndexCacheBackendMemcached,
-		"-blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
-		"-querier.ingester-streaming":                                  "true",
-		// Ingester.
-		"-ring.store":      "consul",
-		"-consul.hostname": consul.NetworkHTTPEndpoint(),
-		// Distributor.
-		"-distributor.replication-factor": strconv.FormatInt(seriesReplicationFactor, 10),
-		// Store-gateway.
-		"-store-gateway.sharding-enabled":                 "true",
-		"-store-gateway.sharding-ring.store":              "consul",
-		"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
-		"-store-gateway.sharding-ring.replication-factor": "1",
-	})
-
-	// Start Cortex replicas.
-	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags, "")
-	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags, "")
-	cluster := e2ecortex.NewCompositeCortexService(cortex1, cortex2)
-	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
-
-	// Wait until Cortex replicas have updated the ring state.
-	for _, replica := range cluster.Instances() {
-		numTokensPerInstance := 512     // Ingesters ring.
-		numTokensPerInstance += 512 * 2 // Store-gateway ring (read both by the querier and store-gateway).
-
-		require.NoError(t, replica.WaitSumMetrics(e2e.Equals(float64(numTokensPerInstance*cluster.NumInstances())), "cortex_ring_tokens_total"))
-	}
-
-	c, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
-	require.NoError(t, err)
-
-	// Push some series to Cortex.
-	// Not using time.Now() as we will be using block boundaries and being aligned helps.
-	series1Timestamp := time.Unix(int64(blockRangePeriod.Seconds()), 0)
-	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-	series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
-	series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
-
-	res, err := c.Push(series1)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-
-	res, err = c.Push(series2)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-
-	// Wait until the TSDB head is compacted and shipped to the storage.
-	// The shipped block contains the 1st series, while the 2ns series in in the head.
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_shipper_uploads_total"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_memory_series"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
-
-	// Push another series to further compact another block and delete the first block
-	// due to expired retention.
-	series3Timestamp := series2Timestamp.Add(blockRangePeriod * 2)
-	series3, expectedVector3 := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
-
-	res, err = c.Push(series3)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_shipper_uploads_total"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_memory_series"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(3*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
-
-	// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-	require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
-		labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
-
-	// Wait until the store-gateway has synched the new uploaded blocks.
-	const shippedBlocks = 2
-
-	require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
-
+func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, series1, series2, series3 []prompb.TimeSeries, blockRangePeriod time.Duration) {
 	// series1 is only in storage
 	// series2 is in ingester but not head
 	// series3 is in head only.
+	series1Timestamp := util.TimeFromMillis(series1[0].Samples[0].Timestamp)
+	series2Timestamp := util.TimeFromMillis(series2[0].Samples[0].Timestamp)
+	series3Timestamp := util.TimeFromMillis(series3[0].Samples[0].Timestamp)
+
 	type seriesTest struct {
 		lookup string
 		ok     bool
@@ -529,8 +439,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 		resp  []string
 	}
 
-	testCases := []struct {
-		name string
+	testCases := map[string]struct {
 		from time.Time
 		to   time.Time
 
@@ -540,9 +449,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 
 		labelNames []string
 	}{
-		// Query entirely inside the head range.
-		{
-			name: "insideHead",
+		"query metadata entirely inside the head range": {
 			from: series3Timestamp.Add(-blockRangePeriod),
 			to:   series3Timestamp,
 
@@ -567,9 +474,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 
 			labelNames: []string{labels.MetricName, "series_3"},
 		},
-		// Query entirely inside the ingester range but outside the head range.
-		{
-			name: "insideIngesterOutsideHead",
+		"query metadata entirely inside the ingester range but outside the head range": {
 			from: series2Timestamp,
 			to:   series2Timestamp.Add(blockRangePeriod / 2),
 
@@ -594,9 +499,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 
 			labelNames: []string{labels.MetricName, "series_2"},
 		},
-		// Query partially inside the ingester range. Should return the head + local disk data.
-		{
-			name: "partiallyInsideIngester",
+		"query metadata partially inside the ingester range. Should return the head + local disk data": {
 			from: series1Timestamp.Add(-blockRangePeriod),
 			to:   series2Timestamp.Add(blockRangePeriod / 2),
 
@@ -622,10 +525,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 
 			labelNames: []string{labels.MetricName, "series_2", "series_3"},
 		},
-
-		// Query entirely outside the ingester range. Should return the head data.
-		{
-			name: "outsideIngester",
+		"query metadata entirely outside the ingester range should return the head data only": {
 			from: series1Timestamp.Add(-blockRangePeriod),
 			to:   series1Timestamp,
 
@@ -652,8 +552,8 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
 			for _, st := range tc.seriesTests {
 				seriesRes, err := c.Series([]string{st.lookup}, tc.from, tc.to)
 				require.NoError(t, err)
@@ -672,7 +572,7 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 				for _, val := range lvt.resp {
 					exp = append(exp, model.LabelValue(val))
 				}
-				require.Equal(t, exp, labelsRes)
+				require.ElementsMatch(t, exp, labelsRes)
 			}
 
 			labelNames, err := c.LabelNames(tc.from, tc.to)
@@ -680,23 +580,6 @@ func TestMetadataQueriesWithBlocksStorage(t *testing.T) {
 			require.Equal(t, tc.labelNames, labelNames)
 		})
 	}
-
-	// Also just check normal queries, cuz why not :)
-
-	result, err := c.Query("series_1", series1Timestamp)
-	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
-	assert.Equal(t, expectedVector1, result.(model.Vector))
-
-	result, err = c.Query("series_2", series2Timestamp)
-	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
-	assert.Equal(t, expectedVector2, result.(model.Vector))
-
-	result, err = c.Query("series_3", series3Timestamp)
-	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
-	assert.Equal(t, expectedVector3, result.(model.Vector))
 }
 
 func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {

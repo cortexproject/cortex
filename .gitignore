@@ -25,5 +25,6 @@ test-exporter
 Makefile.local
 
 .idea
+.vscode
 compose
 compose-simple

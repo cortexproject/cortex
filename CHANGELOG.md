@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [FEATURE] Add buckets per tenant that archive truly resource isolation (`--s3.buckets-prefix` globally) each tenants will create one bucket with prefix. [#2292](https://github.com/grafana/loki/issues/2292)
 * [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
   - `cortex_ingester_tsdb_wal_corruptions_total`
   - `cortex_ingester_tsdb_head_truncations_failed_total`

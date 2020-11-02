@@ -303,7 +303,7 @@ func New(cfg Config) (*Cortex, error) {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/cortex.Ingester/TransferChunks",
-			"/frontend.Frontend/Process",
+			"/frontendv1pb.Frontend/Process",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 		})

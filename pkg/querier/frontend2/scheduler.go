@@ -42,9 +42,10 @@ type Scheduler struct {
 	pendingRequests map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
 
 	// Metrics.
-	connectedWorkers prometheus.GaugeFunc
-	queueDuration    prometheus.Histogram
-	queueLength      *prometheus.GaugeVec
+	connectedQuerierClients  prometheus.GaugeFunc
+	connectedFrontendClients prometheus.GaugeFunc
+	queueDuration            prometheus.Histogram
+	queueLength              *prometheus.GaugeVec
 }
 
 type requestKey struct {
@@ -71,32 +72,34 @@ func (cfg *SchedulerConfig) RegisterFlags(f *flag.FlagSet) {
 
 // NewScheduler creates a new Scheduler.
 func NewScheduler(cfg SchedulerConfig, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
-	connectedQuerierWorkers := atomic.NewInt32(0)
 	s := &Scheduler{
 		log:    log,
 		limits: limits,
 
-		queues:          newUserQueues(cfg.MaxOutstandingPerTenant),
-		pendingRequests: map[requestKey]*schedulerRequest{},
-
-		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_query_scheduler_queue_duration_seconds",
-			Help:    "Time spend by requests in queue before getting picked up by a querier.",
-			Buckets: prometheus.DefBuckets,
-		}),
-		connectedWorkers: promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "cortex_query_scheduler_connected_workers",
-			Help: "Number of querier worker clients currently connected to the query-scheduler.",
-		}, func() float64 { return float64(connectedQuerierWorkers.Load()) }),
-		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_query_scheduler_queue_length",
-			Help: "Number of queries in the queue.",
-		}, []string{"user"}),
-
+		queues:                  newUserQueues(cfg.MaxOutstandingPerTenant),
+		pendingRequests:         map[requestKey]*schedulerRequest{},
 		connectedFrontends:      map[string]*connectedFrontend{},
-		connectedQuerierWorkers: connectedQuerierWorkers,
+		connectedQuerierWorkers: atomic.NewInt32(0),
 	}
 	s.cond = sync.NewCond(&s.mtx)
+
+	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		Name:    "cortex_query_scheduler_queue_duration_seconds",
+		Help:    "Time spend by requests in queue before getting picked up by a querier.",
+		Buckets: prometheus.DefBuckets,
+	})
+	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_connected_querier_clients",
+		Help: "Number of querier worker clients currently connected to the query-scheduler.",
+	}, s.getConnectedQuerierClientsMetric)
+	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_connected_frontend_clients",
+		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
+	}, s.getConnectedFrontendClientsMetric)
+	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_queue_length",
+		Help: "Number of queries in the queue.",
+	}, []string{"user"})
 
 	s.Service = services.NewIdleService(nil, s.stopping)
 	return s, nil
@@ -514,4 +517,20 @@ func (s *Scheduler) unregisterQuerierConnection(querier string) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	s.queues.removeQuerierConnection(querier)
+}
+
+func (s *Scheduler) getConnectedQuerierClientsMetric() float64 {
+	return float64(s.connectedQuerierWorkers.Load())
+}
+
+func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
+	s.connectedFrontendsMu.Lock()
+	defer s.connectedFrontendsMu.Unlock()
+
+	count := 0
+	for _, workers := range s.connectedFrontends {
+		count += workers.connections
+	}
+
+	return float64(count)
 }

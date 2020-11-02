@@ -302,8 +302,8 @@ func New(cfg Config) (*Cortex, error) {
 			"/grpc.health.v1.Health/Check",
 			"/cortex.Ingester/TransferChunks",
 			"/frontend.Frontend/Process",
-			"/frontend2.SchedulerForFrontend/FrontendLoop",
-			"/frontend2.SchedulerForQuerier/QuerierLoop",
+			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
+			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 		})
 
 	cortex := &Cortex{

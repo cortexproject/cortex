@@ -1,4 +1,4 @@
-package frontend
+package v1
 
 import (
 	"context"
@@ -24,6 +24,14 @@ func setupFrontend(config Config) (*Frontend, error) {
 
 	defer frontend.Close()
 	return frontend, nil
+}
+
+type limits struct {
+	queriers int
+}
+
+func (l limits) MaxQueriersPerUser(_ string) int {
+	return l.queriers
 }
 
 func testReq(ctx context.Context) *request {

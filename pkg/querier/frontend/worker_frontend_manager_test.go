@@ -15,6 +15,7 @@ import (
 	"go.uber.org/atomic"
 	grpc "google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
@@ -29,7 +30,7 @@ type mockFrontendClient struct {
 	failRecv bool
 }
 
-func (m *mockFrontendClient) Process(ctx context.Context, opts ...grpc.CallOption) (Frontend_ProcessClient, error) {
+func (m *mockFrontendClient) Process(ctx context.Context, opts ...grpc.CallOption) (frontendv1pb.Frontend_ProcessClient, error) {
 	return &mockFrontendProcessClient{
 		ctx:      ctx,
 		failRecv: m.failRecv,
@@ -44,11 +45,11 @@ type mockFrontendProcessClient struct {
 	wg       sync.WaitGroup
 }
 
-func (m *mockFrontendProcessClient) Send(*ClientToFrontend) error {
+func (m *mockFrontendProcessClient) Send(*frontendv1pb.ClientToFrontend) error {
 	m.wg.Done()
 	return nil
 }
-func (m *mockFrontendProcessClient) Recv() (*FrontendToClient, error) {
+func (m *mockFrontendProcessClient) Recv() (*frontendv1pb.FrontendToClient, error) {
 	m.wg.Wait()
 	m.wg.Add(1)
 
@@ -60,7 +61,7 @@ func (m *mockFrontendProcessClient) Recv() (*FrontendToClient, error) {
 		return nil, errors.New("wups")
 	}
 
-	return &FrontendToClient{
+	return &frontendv1pb.FrontendToClient{
 		HttpRequest: &httpgrpc.HTTPRequest{},
 	}, nil
 }

@@ -1,4 +1,4 @@
-package frontend2
+package v2
 
 import (
 	"context"

@@ -64,13 +64,15 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
-pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
+pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
+pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
+pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
 

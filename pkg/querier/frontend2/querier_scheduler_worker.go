@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -226,7 +227,7 @@ func (f *querierSchedulerWorkers) createFrontendClient(addr string) (client.Pool
 	}
 
 	return &frontendClient{
-		FrontendForQuerierClient: NewFrontendForQuerierClient(conn),
+		FrontendForQuerierClient: frontendv2pb.NewFrontendForQuerierClient(conn),
 		HealthClient:             grpc_health_v1.NewHealthClient(conn),
 		conn:                     conn,
 	}, nil
@@ -415,7 +416,7 @@ func (w *querierSchedulerWorker) runRequest(ctx context.Context, logger log.Logg
 	c, err := w.frontendPool.GetClientFor(frontendAddress)
 	if err == nil {
 		// Response is empty and uninteresting.
-		_, err = c.(FrontendForQuerierClient).QueryResult(ctx, &QueryResultRequest{
+		_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 			QueryID:      queryID,
 			HttpResponse: response,
 		})
@@ -426,7 +427,7 @@ func (w *querierSchedulerWorker) runRequest(ctx context.Context, logger log.Logg
 }
 
 type frontendClient struct {
-	FrontendForQuerierClient
+	frontendv2pb.FrontendForQuerierClient
 	grpc_health_v1.HealthClient
 	conn *grpc.ClientConn
 }

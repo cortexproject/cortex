@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package frontend2;
+package frontendv2pb;
 
-option go_package = "frontend2";
+option go_package = "frontendv2pb";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";

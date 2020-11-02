@@ -74,7 +74,7 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Deprecated: use -querier.max-query-lookback instead. Limit how long back data can be queried. This setting applies to chunks storage only.") // To be removed in Cortex 1.8.
 }
 
 // Validate validates the store config.

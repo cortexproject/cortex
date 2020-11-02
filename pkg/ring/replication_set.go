@@ -17,16 +17,16 @@ type ReplicationSet struct {
 	MaxUnavailableZones int
 }
 
-type ingesterError struct {
-	err error
-	ing *IngesterDesc
-}
-
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+	type instanceError struct {
+		err      error
+		instance *IngesterDesc
+	}
+
 	var (
-		errs        = make(chan ingesterError, len(r.Ingesters))
+		errs        = make(chan instanceError, len(r.Ingesters))
 		resultsChan = make(chan interface{}, len(r.Ingesters))
 		minSuccess  = len(r.Ingesters) - r.MaxErrors
 		forceStart  = make(chan struct{}, r.MaxErrors)
@@ -49,9 +49,9 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 			}
 			result, err := f(ctx, ing)
 			if err != nil {
-				errs <- ingesterError{
-					err: err,
-					ing: ing,
+				errs <- instanceError{
+					err:      err,
+					instance: ing,
 				}
 			} else {
 				resultsChan <- result
@@ -68,20 +68,14 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	for numSuccess < minSuccess {
 		select {
 		case err := <-errs:
-			numErrs++
-
 			if r.MaxUnavailableZones > 0 {
-				// Zone aware path
-				zoneFailureCount[err.ing.Zone]++
+				zoneFailureCount[err.instance.Zone]++
 
 				if len(zoneFailureCount) > r.MaxUnavailableZones {
 					return nil, errorTooManyZoneFailures
 				}
 			} else {
-				// Non zone aware path
-				// Errors per zone : only RF-1 zone can be failing
-				// if failingZones > r.MaxUnavailableZones
-
+				numErrs++
 				if numErrs > r.MaxErrors {
 					return nil, err.err
 				}

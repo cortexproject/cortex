@@ -482,7 +482,7 @@ func testMetadataQueriesWithBlocksStorage(
 		},
 		"query metadata entirely inside the ingester range but outside the head range": {
 			from: lastSeriesInIngesterBlocksTs,
-			to:   firstSeriesInIngesterHeadTs.Add(-blockRangePeriod),
+			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod / 2),
 			seriesTests: []seriesTest{
 				{
 					lookup: firstSeriesInIngesterHeadName,

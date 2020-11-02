@@ -26,14 +26,6 @@ func setupFrontend(config Config) (*Frontend, error) {
 	return frontend, nil
 }
 
-type limits struct {
-	queriers int
-}
-
-func (l limits) MaxQueriersPerUser(_ string) int {
-	return l.queriers
-}
-
 func testReq(ctx context.Context) *request {
 	return &request{
 		originalCtx: ctx,

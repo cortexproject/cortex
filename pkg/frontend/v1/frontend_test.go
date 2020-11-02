@@ -241,3 +241,11 @@ func defaultFrontendConfig() Config {
 	flagext.DefaultValues(&config)
 	return config
 }
+
+type limits struct {
+	queriers int
+}
+
+func (l limits) MaxQueriersPerUser(_ string) int {
+	return l.queriers
+}

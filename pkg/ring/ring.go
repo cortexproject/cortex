@@ -363,41 +363,51 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	var maxUnavailableZones int
-	var numRequired int
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	if r.cfg.ZoneAwarenessEnabled {
-		zones := make(map[string]bool)
-
-		for _, ingester := range r.ringDesc.Ingesters {
-			zones[ingester.Zone] = true
-			ingesters = append(ingesters, ingester)
-		}
-		maxUnavailableZones = len(zones) / 2
-		// Assume ingesters are evenly spread over zones
-		// The maximum number of failures is all the ingesters in the maximum number of failing zones
-		maxErrors := (len(ingesters) / len(zones)) * maxUnavailableZones
-
-		return ReplicationSet{
-			Ingesters:           ingesters,
-			MaxErrors:           maxErrors,
-			MaxUnavailableZones: maxUnavailableZones,
-		}, nil
-	}
+	maxUnavailableZones := len(r.ringZones) / 2
 
 	// Calculate the number of required ingesters;
 	// ensure we always require at least RF-1 when RF=3.
-	numRequired = len(r.ringDesc.Ingesters)
+	numRequired := len(r.ringDesc.Ingesters)
 	if numRequired < r.cfg.ReplicationFactor {
 		numRequired = r.cfg.ReplicationFactor
 	}
 	maxUnavailable := r.cfg.ReplicationFactor / 2
 	numRequired -= maxUnavailable
 
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	zoneFailures := make(map[string]int)
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
 			ingesters = append(ingesters, ingester)
+
+		} else {
+			zoneFailures[ingester.Zone]++
 		}
+	}
+
+	if r.cfg.ZoneAwarenessEnabled {
+		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+		if len(zoneFailures) > 0 {
+			for _, ingester := range ingesters {
+				_, present := zoneFailures[ingester.Zone]
+				if !present {
+					filteredInstances = append(filteredInstances, ingester)
+				}
+			}
+		}
+
+		if len(filteredInstances) == 0 {
+			return ReplicationSet{
+				Ingesters:           ingesters,
+				MaxErrors:           len(ingesters) - numRequired,
+				MaxUnavailableZones: maxUnavailableZones,
+			}, nil
+		}
+		return ReplicationSet{
+			Ingesters:           filteredInstances,
+			MaxErrors:           0,
+			MaxUnavailableZones: 0,
+		}, nil
 	}
 
 	if len(ingesters) < numRequired {

@@ -421,13 +421,22 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 	}
 }
 
-func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, series1, series2, series3 prompb.TimeSeries, blockRangePeriod time.Duration) {
-	// series1 is only in storage
-	// series2 is in ingester but not head
-	// series3 is in head only.
-	series1Timestamp := util.TimeFromMillis(series1.Samples[0].Timestamp)
-	series2Timestamp := util.TimeFromMillis(series2.Samples[0].Timestamp)
-	series3Timestamp := util.TimeFromMillis(series3.Samples[0].Timestamp)
+func testMetadataQueriesWithBlocksStorage(
+	t *testing.T,
+	c *e2ecortex.Client,
+	lastSeriesInStorage prompb.TimeSeries,
+	lastSeriesInIngesterBlocks prompb.TimeSeries,
+	firstSeriesInIngesterHead prompb.TimeSeries,
+	blockRangePeriod time.Duration,
+) {
+	var (
+		lastSeriesInIngesterBlocksName = getMetricName(lastSeriesInIngesterBlocks.Labels)
+		firstSeriesInIngesterHeadName  = getMetricName(firstSeriesInIngesterHead.Labels)
+
+		lastSeriesInStorageTs        = util.TimeFromMillis(lastSeriesInStorage.Samples[0].Timestamp)
+		lastSeriesInIngesterBlocksTs = util.TimeFromMillis(lastSeriesInIngesterBlocks.Samples[0].Timestamp)
+		firstSeriesInIngesterHeadTs  = util.TimeFromMillis(firstSeriesInIngesterHead.Samples[0].Timestamp)
+	)
 
 	type seriesTest struct {
 		lookup string
@@ -450,105 +459,93 @@ func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, ser
 		labelNames []string
 	}{
 		"query metadata entirely inside the head range": {
-			from: series3Timestamp.Add(-blockRangePeriod),
-			to:   series3Timestamp,
-
+			from: firstSeriesInIngesterHeadTs,
+			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod),
 			seriesTests: []seriesTest{
 				{
-					lookup: "series_3",
+					lookup: firstSeriesInIngesterHeadName,
 					ok:     true,
-					resp:   series3.Labels,
+					resp:   firstSeriesInIngesterHead.Labels,
 				},
 				{
-					lookup: "series_2",
+					lookup: lastSeriesInIngesterBlocksName,
 					ok:     false,
 				},
 			},
-
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{"series_3"},
+					resp:  []string{firstSeriesInIngesterHeadName},
 				},
 			},
-
-			labelNames: []string{labels.MetricName, "series_3"},
+			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
 		},
 		"query metadata entirely inside the ingester range but outside the head range": {
-			from: series2Timestamp,
-			to:   series2Timestamp.Add(blockRangePeriod / 2),
-
+			from: lastSeriesInIngesterBlocksTs,
+			to:   firstSeriesInIngesterHeadTs.Add(-blockRangePeriod),
 			seriesTests: []seriesTest{
 				{
-					lookup: "series_3",
+					lookup: firstSeriesInIngesterHeadName,
 					ok:     false,
 				},
 				{
-					lookup: "series_2",
+					lookup: lastSeriesInIngesterBlocksName,
 					ok:     true,
-					resp:   series2.Labels,
+					resp:   lastSeriesInIngesterBlocks.Labels,
 				},
 			},
-
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{"series_2"},
+					resp:  []string{lastSeriesInIngesterBlocksName},
 				},
 			},
-
-			labelNames: []string{labels.MetricName, "series_2"},
+			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
 		},
-		"query metadata partially inside the ingester range. Should return the head + local disk data": {
-			from: series1Timestamp.Add(-blockRangePeriod),
-			to:   series2Timestamp.Add(blockRangePeriod / 2),
-
+		"query metadata partially inside the ingester range should return the head + local disk data": {
+			from: lastSeriesInStorageTs.Add(-blockRangePeriod),
+			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod),
 			seriesTests: []seriesTest{
 				{
-					lookup: "series_3",
+					lookup: firstSeriesInIngesterHeadName,
 					ok:     true,
-					resp:   series3.Labels,
+					resp:   firstSeriesInIngesterHead.Labels,
 				},
 				{
-					lookup: "series_2",
+					lookup: lastSeriesInIngesterBlocksName,
 					ok:     true,
-					resp:   series2.Labels,
+					resp:   lastSeriesInIngesterBlocks.Labels,
 				},
 			},
-
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{"series_2", "series_3"},
+					resp:  []string{lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 				},
 			},
-
-			labelNames: []string{labels.MetricName, "series_2", "series_3"},
+			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 		},
 		"query metadata entirely outside the ingester range should return the head data only": {
-			from: series1Timestamp.Add(-blockRangePeriod),
-			to:   series1Timestamp,
-
+			from: lastSeriesInStorageTs.Add(-2 * blockRangePeriod),
+			to:   lastSeriesInStorageTs.Add(-blockRangePeriod),
 			seriesTests: []seriesTest{
 				{
-					lookup: "series_3",
+					lookup: firstSeriesInIngesterHeadName,
 					ok:     true,
-					resp:   series3.Labels,
+					resp:   firstSeriesInIngesterHead.Labels,
 				},
 				{
-					lookup: "series_2",
+					lookup: lastSeriesInIngesterBlocksName,
 					ok:     false,
 				},
 			},
-
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{"series_3"},
+					resp:  []string{firstSeriesInIngesterHeadName},
 				},
 			},
-
-			labelNames: []string{labels.MetricName, "series_3"},
+			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
 		},
 	}
 
@@ -877,6 +874,16 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	require.Equal(t, expectedVector, result.(model.Vector))
+}
+
+func getMetricName(lbls []prompb.Label) string {
+	for _, lbl := range lbls {
+		if lbl.Name == labels.MetricName {
+			return lbl.Value
+		}
+	}
+
+	panic(fmt.Sprintf("series %v has no metric name", lbls))
 }
 
 func prompbLabelsToModelMetric(pbLabels []prompb.Label) model.Metric {

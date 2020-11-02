@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
@@ -119,7 +120,7 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	errs := util.NewMultiError()
+	errs := tsdb_errors.NewMulti()
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. shutdown has been triggered).
 		if ctx.Err() != nil {

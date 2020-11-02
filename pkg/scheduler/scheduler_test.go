@@ -1,4 +1,4 @@
-package frontend2
+package scheduler
 
 import (
 	"context"
@@ -15,19 +15,21 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const testMaxOutstandingPerTenant = 5
 
-func setupScheduler(t *testing.T) (*Scheduler, SchedulerForFrontendClient, SchedulerForQuerierClient) {
-	s, err := NewScheduler(SchedulerConfig{MaxOutstandingPerTenant: testMaxOutstandingPerTenant}, &limits{queriers: 2}, log.NewNopLogger(), nil)
+func setupScheduler(t *testing.T) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
+	s, err := NewScheduler(Config{MaxOutstandingPerTenant: testMaxOutstandingPerTenant}, &limits{queriers: 2}, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
-	RegisterSchedulerForFrontendServer(server, s)
-	RegisterSchedulerForQuerierServer(server, s)
+	schedulerpb.RegisterSchedulerForFrontendServer(server, s)
+	schedulerpb.RegisterSchedulerForQuerierServer(server, s)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 	t.Cleanup(func() {
@@ -52,15 +54,15 @@ func setupScheduler(t *testing.T) (*Scheduler, SchedulerForFrontendClient, Sched
 		_ = c.Close()
 	})
 
-	return s, NewSchedulerForFrontendClient(c), NewSchedulerForQuerierClient(c)
+	return s, schedulerpb.NewSchedulerForFrontendClient(c), schedulerpb.NewSchedulerForQuerierClient(c)
 }
 
 func TestSchedulerBasicEnqueue(t *testing.T) {
 	scheduler, frontendClient, querierClient := setupScheduler(t)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -69,7 +71,7 @@ func TestSchedulerBasicEnqueue(t *testing.T) {
 	{
 		querierLoop, err := querierClient.QuerierLoop(context.Background())
 		require.NoError(t, err)
-		require.NoError(t, querierLoop.Send(&QuerierToScheduler{QuerierID: "querier-1"}))
+		require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1"}))
 
 		msg2, err := querierLoop.Recv()
 		require.NoError(t, err)
@@ -77,7 +79,7 @@ func TestSchedulerBasicEnqueue(t *testing.T) {
 		require.Equal(t, "frontend-12345", msg2.FrontendAddress)
 		require.Equal(t, "GET", msg2.HttpRequest.Method)
 		require.Equal(t, "/hello", msg2.HttpRequest.Url)
-		require.NoError(t, querierLoop.Send(&QuerierToScheduler{}))
+		require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
 	}
 
 	verifyNoPendingRequestsLeft(t, scheduler)
@@ -87,15 +89,15 @@ func TestSchedulerEnqueueWithCancel(t *testing.T) {
 	scheduler, frontendClient, querierClient := setupScheduler(t)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
 	})
 
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:    CANCEL,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:    schedulerpb.CANCEL,
 		QueryID: 1,
 	})
 
@@ -105,10 +107,10 @@ func TestSchedulerEnqueueWithCancel(t *testing.T) {
 	verifyNoPendingRequestsLeft(t, scheduler)
 }
 
-func initQuerierLoop(t *testing.T, querierClient SchedulerForQuerierClient, querier string) SchedulerForQuerier_QuerierLoopClient {
+func initQuerierLoop(t *testing.T, querierClient schedulerpb.SchedulerForQuerierClient, querier string) schedulerpb.SchedulerForQuerier_QuerierLoopClient {
 	querierLoop, err := querierClient.QuerierLoop(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, querierLoop.Send(&QuerierToScheduler{QuerierID: querier}))
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: querier}))
 
 	return querierLoop
 }
@@ -119,23 +121,23 @@ func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
 	frontendLoop1 := initFrontendLoop(t, frontendClient, "frontend-1")
 	frontendLoop2 := initFrontendLoop(t, frontendClient, "frontend-2")
 
-	frontendToScheduler(t, frontendLoop1, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop1, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello1"},
 	})
 
-	frontendToScheduler(t, frontendLoop2, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop2, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello2"},
 	})
 
 	// Cancel first query by first frontend.
-	frontendToScheduler(t, frontendLoop1, &FrontendToScheduler{
-		Type:    CANCEL,
+	frontendToScheduler(t, frontendLoop1, &schedulerpb.FrontendToScheduler{
+		Type:    schedulerpb.CANCEL,
 		QueryID: 1,
 	})
 
@@ -147,7 +149,7 @@ func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
 	require.Equal(t, uint64(1), msg.QueryID)
 	require.Equal(t, "frontend-2", msg.FrontendAddress)
 	// Must notify scheduler back about finished processing, or it will not send more requests (nor remove "current" request from pending ones).
-	require.NoError(t, querierLoop.Send(&QuerierToScheduler{}))
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
 
 	// But nothing else.
 	verifyQuerierDoesntReceiveRequest(t, querierLoop, 500*time.Millisecond)
@@ -158,8 +160,8 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 	scheduler, frontendClient, querierClient := setupScheduler(t)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -188,8 +190,8 @@ func TestCancelRequestInProgress(t *testing.T) {
 	scheduler, frontendClient, querierClient := setupScheduler(t)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -197,7 +199,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	querierLoop, err := querierClient.QuerierLoop(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, querierLoop.Send(&QuerierToScheduler{QuerierID: "querier-1"}))
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1"}))
 
 	_, err = querierLoop.Recv()
 	require.NoError(t, err)
@@ -211,7 +213,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 
 	// Report back end of request processing. This should return error, since the QuerierLoop call has finished on scheduler.
 	// Note: testing on querierLoop.Context() cancellation didn't work :(
-	err = querierLoop.Send(&QuerierToScheduler{})
+	err = querierLoop.Send(&schedulerpb.QuerierToScheduler{})
 	require.Error(t, err)
 
 	verifyNoPendingRequestsLeft(t, scheduler)
@@ -226,8 +228,8 @@ func TestTracingContext(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	req := &FrontendToScheduler{
-		Type:            ENQUEUE,
+	req := &schedulerpb.FrontendToScheduler{
+		Type:            schedulerpb.ENQUEUE,
 		QueryID:         1,
 		UserID:          "test",
 		HttpRequest:     &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -235,7 +237,7 @@ func TestTracingContext(t *testing.T) {
 	}
 
 	sp, _ := opentracing.StartSpanFromContext(context.Background(), "client")
-	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*httpgrpcHeadersCarrier)(req.HttpRequest))
+	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*chunk.HttpgrpcHeadersCarrier)(req.HttpRequest))
 
 	frontendToScheduler(t, frontendLoop, req)
 
@@ -257,8 +259,8 @@ func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
 	scheduler.StopAsync()
 
 	// We can still send request to scheduler, but we get shutdown error back.
-	require.NoError(t, frontendLoop.Send(&FrontendToScheduler{
-		Type:        ENQUEUE,
+	require.NoError(t, frontendLoop.Send(&schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -266,15 +268,15 @@ func TestSchedulerShutdown_FrontendLoop(t *testing.T) {
 
 	msg, err := frontendLoop.Recv()
 	require.NoError(t, err)
-	require.True(t, msg.Status == SHUTTING_DOWN)
+	require.True(t, msg.Status == schedulerpb.SHUTTING_DOWN)
 }
 
 func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 	scheduler, frontendClient, querierClient := setupScheduler(t)
 
 	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
-	frontendToScheduler(t, frontendLoop, &FrontendToScheduler{
-		Type:        ENQUEUE,
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     1,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -284,7 +286,7 @@ func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 
 	querierLoop, err := querierClient.QuerierLoop(context.Background())
 	require.NoError(t, err)
-	require.NoError(t, querierLoop.Send(&QuerierToScheduler{QuerierID: "querier-1"}))
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1"}))
 
 	// Dequeue first query.
 	_, err = querierLoop.Recv()
@@ -293,7 +295,7 @@ func TestSchedulerShutdown_QuerierLoop(t *testing.T) {
 	scheduler.StopAsync()
 
 	// Unblock scheduler loop, to find next request.
-	err = querierLoop.Send(&QuerierToScheduler{})
+	err = querierLoop.Send(&schedulerpb.QuerierToScheduler{})
 	require.NoError(t, err)
 
 	// This should now return with error, since scheduler is going down.
@@ -307,8 +309,8 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 	for i := 0; i < testMaxOutstandingPerTenant; i++ {
 		// coming from different frontends
 		fl := initFrontendLoop(t, frontendClient, fmt.Sprintf("frontend-%d", i))
-		require.NoError(t, fl.Send(&FrontendToScheduler{
-			Type:        ENQUEUE,
+		require.NoError(t, fl.Send(&schedulerpb.FrontendToScheduler{
+			Type:        schedulerpb.ENQUEUE,
 			QueryID:     uint64(i),
 			UserID:      "test", // for same user.
 			HttpRequest: &httpgrpc.HTTPRequest{},
@@ -316,13 +318,13 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 
 		msg, err := fl.Recv()
 		require.NoError(t, err)
-		require.True(t, msg.Status == OK)
+		require.True(t, msg.Status == schedulerpb.OK)
 	}
 
 	// One more query from the same user will trigger an error.
 	fl := initFrontendLoop(t, frontendClient, "extra-frontend")
-	require.NoError(t, fl.Send(&FrontendToScheduler{
-		Type:        ENQUEUE,
+	require.NoError(t, fl.Send(&schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
 		QueryID:     0,
 		UserID:      "test",
 		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
@@ -330,35 +332,35 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 
 	msg, err := fl.Recv()
 	require.NoError(t, err)
-	require.True(t, msg.Status == TOO_MANY_REQUESTS_PER_TENANT)
+	require.True(t, msg.Status == schedulerpb.TOO_MANY_REQUESTS_PER_TENANT)
 }
 
-func initFrontendLoop(t *testing.T, client SchedulerForFrontendClient, frontendAddr string) SchedulerForFrontend_FrontendLoopClient {
+func initFrontendLoop(t *testing.T, client schedulerpb.SchedulerForFrontendClient, frontendAddr string) schedulerpb.SchedulerForFrontend_FrontendLoopClient {
 	loop, err := client.FrontendLoop(context.Background())
 	require.NoError(t, err)
 
-	require.NoError(t, loop.Send(&FrontendToScheduler{
-		Type:            INIT,
+	require.NoError(t, loop.Send(&schedulerpb.FrontendToScheduler{
+		Type:            schedulerpb.INIT,
 		FrontendAddress: frontendAddr,
 	}))
 
 	// Scheduler acks INIT by sending OK back.
 	resp, err := loop.Recv()
 	require.NoError(t, err)
-	require.True(t, resp.Status == OK)
+	require.True(t, resp.Status == schedulerpb.OK)
 
 	return loop
 }
 
-func frontendToScheduler(t *testing.T, frontendLoop SchedulerForFrontend_FrontendLoopClient, req *FrontendToScheduler) {
+func frontendToScheduler(t *testing.T, frontendLoop schedulerpb.SchedulerForFrontend_FrontendLoopClient, req *schedulerpb.FrontendToScheduler) {
 	require.NoError(t, frontendLoop.Send(req))
 	msg, err := frontendLoop.Recv()
 	require.NoError(t, err)
-	require.True(t, msg.Status == OK)
+	require.True(t, msg.Status == schedulerpb.OK)
 }
 
 // If this verification succeeds, there will be leaked goroutine left behind. It will be cleaned once grpc server is shut down.
-func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop SchedulerForQuerier_QuerierLoopClient, timeout time.Duration) {
+func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop schedulerpb.SchedulerForQuerier_QuerierLoopClient, timeout time.Duration) {
 	ch := make(chan interface{}, 1)
 
 	go func() {

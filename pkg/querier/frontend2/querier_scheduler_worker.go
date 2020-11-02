@@ -23,8 +23,10 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	cortex_middleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -314,7 +316,7 @@ func (w *querierSchedulerWorker) concurrency(n int) {
 func (w *querierSchedulerWorker) runOne(ctx context.Context) {
 	defer w.wg.Done()
 
-	schedulerClient := NewSchedulerForQuerierClient(w.conn)
+	schedulerClient := schedulerpb.NewSchedulerForQuerierClient(w.conn)
 
 	backoffConfig := util.BackoffConfig{
 		MinBackoff: 50 * time.Millisecond,
@@ -325,7 +327,7 @@ func (w *querierSchedulerWorker) runOne(ctx context.Context) {
 	for backoff.Ongoing() {
 		c, err := schedulerClient.QuerierLoop(ctx)
 		if err == nil {
-			err = c.Send(&QuerierToScheduler{QuerierID: w.querierID})
+			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: w.querierID})
 		}
 
 		if err != nil {
@@ -345,7 +347,7 @@ func (w *querierSchedulerWorker) runOne(ctx context.Context) {
 }
 
 // process loops processing requests on an established stream.
-func (w *querierSchedulerWorker) querierLoop(c SchedulerForQuerier_QuerierLoopClient) error {
+func (w *querierSchedulerWorker) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
@@ -367,7 +369,7 @@ func (w *querierSchedulerWorker) querierLoop(c SchedulerForQuerier_QuerierLoopCl
 
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
-			parentSpanContext, _ := getParentSpanForRequest(tracer, request.HttpRequest)
+			parentSpanContext, _ := grpcutil.GetParentSpanForRequest(tracer, request.HttpRequest)
 			if parentSpanContext != nil {
 				queueSpan, spanCtx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, "querier_worker_runRequest", opentracing.ChildOf(parentSpanContext))
 				defer queueSpan.Finish()
@@ -379,7 +381,7 @@ func (w *querierSchedulerWorker) querierLoop(c SchedulerForQuerier_QuerierLoopCl
 			w.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.HttpRequest)
 
 			// Report back to scheduler that processing of the query has finished.
-			if err := c.Send(&QuerierToScheduler{}); err != nil {
+			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
 				level.Error(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", w.schedulerAddress)
 			}
 		}()

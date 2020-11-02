@@ -28,12 +28,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -739,7 +739,7 @@ func (t *Cortex) initPurger() (services.Service, error) {
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
-	s, err := frontend2.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.Overrides, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, errors.Wrap(err, "query-scheduler init")
 	}

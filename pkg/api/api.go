@@ -25,6 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
@@ -321,9 +323,9 @@ func (a *API) RegisterQueryFrontend2(f *frontend2.Frontend2) {
 	frontend2.RegisterFrontendForQuerierServer(a.server.GRPC, f)
 }
 
-func (a *API) RegisterQueryScheduler(f *frontend2.Scheduler) {
-	frontend2.RegisterSchedulerForFrontendServer(a.server.GRPC, f)
-	frontend2.RegisterSchedulerForQuerierServer(a.server.GRPC, f)
+func (a *API) RegisterQueryScheduler(f *scheduler.Scheduler) {
+	schedulerpb.RegisterSchedulerForFrontendServer(a.server.GRPC, f)
+	schedulerpb.RegisterSchedulerForQuerierServer(a.server.GRPC, f)
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

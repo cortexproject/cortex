@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -176,8 +177,7 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 }
 
 func (w *frontendSchedulerWorker) start() {
-	client := NewSchedulerForFrontendClient(w.conn)
-
+	client := schedulerpb.NewSchedulerForFrontendClient(w.conn)
 	for i := 0; i < w.concurrency; i++ {
 		w.wg.Add(1)
 		go func() {
@@ -195,7 +195,7 @@ func (w *frontendSchedulerWorker) stop() {
 	}
 }
 
-func (w *frontendSchedulerWorker) runOne(ctx context.Context, client SchedulerForFrontendClient) {
+func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb.SchedulerForFrontendClient) {
 	backoffConfig := util.BackoffConfig{
 		MinBackoff: 50 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
@@ -225,15 +225,15 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client SchedulerFo
 	}
 }
 
-func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop SchedulerForFrontend_FrontendLoopClient) error {
-	if err := loop.Send(&FrontendToScheduler{
-		Type:            INIT,
+func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
+	if err := loop.Send(&schedulerpb.FrontendToScheduler{
+		Type:            schedulerpb.INIT,
 		FrontendAddress: w.frontendAddr,
 	}); err != nil {
 		return err
 	}
 
-	if resp, err := loop.Recv(); err != nil || resp.Status != OK {
+	if resp, err := loop.Recv(); err != nil || resp.Status != schedulerpb.OK {
 		if err != nil {
 			return err
 		}
@@ -246,8 +246,8 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 			return nil
 
 		case req := <-w.requestCh:
-			err := loop.Send(&FrontendToScheduler{
-				Type:            ENQUEUE,
+			err := loop.Send(&schedulerpb.FrontendToScheduler{
+				Type:            schedulerpb.ENQUEUE,
 				QueryID:         req.queryID,
 				UserID:          req.userID,
 				HttpRequest:     req.request,
@@ -266,23 +266,23 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 			}
 
 			switch resp.Status {
-			case OK:
+			case schedulerpb.OK:
 				req.enqueue <- enqueueResult{status: waitForResponse, cancelCh: w.cancelCh}
 				// Response will come from querier.
 
-			case SHUTTING_DOWN:
+			case schedulerpb.SHUTTING_DOWN:
 				// Scheduler is shutting down, report failure to enqueue and stop this loop.
 				req.enqueue <- enqueueResult{status: failed}
 				return errors.New("scheduler is shutting down")
 
-			case ERROR:
+			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusInternalServerError,
 					Body: []byte(err.Error()),
 				}
 
-			case TOO_MANY_REQUESTS_PER_TENANT:
+			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- &httpgrpc.HTTPResponse{
 					Code: http.StatusTooManyRequests,
@@ -291,8 +291,8 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop Schedu
 			}
 
 		case reqID := <-w.cancelCh:
-			err := loop.Send(&FrontendToScheduler{
-				Type:    CANCEL,
+			err := loop.Send(&schedulerpb.FrontendToScheduler{
+				Type:    schedulerpb.CANCEL,
 				QueryID: reqID,
 			})
 

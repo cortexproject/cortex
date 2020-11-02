@@ -221,7 +221,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			}
 
 			// Query metadata.
-			testMetadataQueriesWithBlocksStorage(t, c, series1, series2, series3, blockRangePeriod)
+			testMetadataQueriesWithBlocksStorage(t, c, series1[0], series2[0], series3[0], blockRangePeriod)
 
 			// Ensure no service-specific metrics prefix is used by the wrong service.
 			assertServiceMetricsPrefixes(t, Distributor, distributor)
@@ -416,18 +416,18 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			}
 
 			// Query metadata.
-			testMetadataQueriesWithBlocksStorage(t, c, series1, series2, series3, blockRangePeriod)
+			testMetadataQueriesWithBlocksStorage(t, c, series1[0], series2[0], series3[0], blockRangePeriod)
 		})
 	}
 }
 
-func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, series1, series2, series3 []prompb.TimeSeries, blockRangePeriod time.Duration) {
+func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, series1, series2, series3 prompb.TimeSeries, blockRangePeriod time.Duration) {
 	// series1 is only in storage
 	// series2 is in ingester but not head
 	// series3 is in head only.
-	series1Timestamp := util.TimeFromMillis(series1[0].Samples[0].Timestamp)
-	series2Timestamp := util.TimeFromMillis(series2[0].Samples[0].Timestamp)
-	series3Timestamp := util.TimeFromMillis(series3[0].Samples[0].Timestamp)
+	series1Timestamp := util.TimeFromMillis(series1.Samples[0].Timestamp)
+	series2Timestamp := util.TimeFromMillis(series2.Samples[0].Timestamp)
+	series3Timestamp := util.TimeFromMillis(series3.Samples[0].Timestamp)
 
 	type seriesTest struct {
 		lookup string
@@ -457,7 +457,7 @@ func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, ser
 				{
 					lookup: "series_3",
 					ok:     true,
-					resp:   series3[0].Labels,
+					resp:   series3.Labels,
 				},
 				{
 					lookup: "series_2",
@@ -486,7 +486,7 @@ func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, ser
 				{
 					lookup: "series_2",
 					ok:     true,
-					resp:   series2[0].Labels,
+					resp:   series2.Labels,
 				},
 			},
 
@@ -507,12 +507,12 @@ func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, ser
 				{
 					lookup: "series_3",
 					ok:     true,
-					resp:   series3[0].Labels,
+					resp:   series3.Labels,
 				},
 				{
 					lookup: "series_2",
 					ok:     true,
-					resp:   series2[0].Labels,
+					resp:   series2.Labels,
 				},
 			},
 
@@ -533,7 +533,7 @@ func testMetadataQueriesWithBlocksStorage(t *testing.T, c *e2ecortex.Client, ser
 				{
 					lookup: "series_3",
 					ok:     true,
-					resp:   series3[0].Labels,
+					resp:   series3.Labels,
 				},
 				{
 					lookup: "series_2",

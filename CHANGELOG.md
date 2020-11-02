@@ -2,7 +2,14 @@
 
 ## master / unreleased
 
+## 1.5.0-rc.1 / 2020-11-03
+
+* [BUGFIX] Fixed the route label on `cortex_querier_.*` metrics. #3436
+* [BUGFIX] Fixed query-frontend and querier API authentication bypass when Cortex is running with authentication disabled. #3439
+
 ## 1.5.0-rc.0 / 2020-10-28
+
+### Cortex
 
 * [CHANGE] Blocks storage: update the default HTTP configuration values for the S3 client to the upstream Thanos default values. #3244
   - `-blocks-storage.s3.http.idle-conn-timeout` is set 90 seconds.
@@ -66,18 +73,12 @@
 * [ENHANCEMENT] Added `cortex_query_frontend_connected_clients` metric to show the number of workers currently connected to the frontend. #3207
 * [ENHANCEMENT] Shuffle sharding: improved shuffle sharding in the write path. Shuffle sharding now should be explicitly enabled via `-distributor.sharding-strategy` CLI flag (or its respective YAML config option) and guarantees stability, consistency, shuffling and balanced zone-awareness properties. #3090 #3214
 * [ENHANCEMENT] Ingester: added new metric `cortex_ingester_active_series` to track active series more accurately. Also added options to control whether active series tracking is enabled (`-ingester.active-series-enabled`, defaults to false), and how often this metric is updated (`-ingester.active-series-update-period`) and max idle time for series to be considered inactive (`-ingester.active-series-idle-timeout`). #3153
-* [ENHANCEMENT] Blocksconvert – Builder: download plan file locally before processing it. #3209
-* [ENHANCEMENT] Blocksconvert – Cleaner: added new tool for deleting chunks data. #3283
 * [ENHANCEMENT] Store-gateway: added zone-aware replication support to blocks replication in the store-gateway. #3200
 * [ENHANCEMENT] Store-gateway: exported new metrics. #3231
   - `cortex_bucket_store_cached_series_fetch_duration_seconds`
   - `cortex_bucket_store_cached_postings_fetch_duration_seconds`
   - `cortex_bucket_stores_gate_queries_max`
 * [ENHANCEMENT] Added `-version` flag to Cortex. #3233
-* [ENHANCEMENT] Blocksconvert – Scanner: support for scanning specific date-range only. #3222
-* [ENHANCEMENT] Blocksconvert – Scanner: metrics for tracking progress. #3222
-* [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
-* [ENHANCEMENT] Blocksconvert – Scanner: upload plans concurrently. #3340
 * [ENHANCEMENT] Hash ring: added instance registered timestamp to the ring. #3248
 * [ENHANCEMENT] Reduce tail latency by smoothing out spikes in rate of chunk flush operations. #3191
 * [ENHANCEMENT] User Cortex as User Agent in http requests issued by Configs DB client. #3264
@@ -116,6 +117,15 @@
 * [BUGFIX] Shuffle sharding: fixed max global series per user/metric limit when shuffle sharding and `-distributor.shard-by-all-labels=true` are both enabled in distributor. When using these global limits you should now set `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` to ingesters too. #3369
 * [BUGFIX] Slow query logging: when using downstream server request parameters were not logged. #3276
 * [BUGFIX] Fixed tenant detection in the ruler and alertmanager API when running without auth. #3343
+
+### Blocksconvert
+
+* [ENHANCEMENT] Blocksconvert – Builder: download plan file locally before processing it. #3209
+* [ENHANCEMENT] Blocksconvert – Cleaner: added new tool for deleting chunks data. #3283
+* [ENHANCEMENT] Blocksconvert – Scanner: support for scanning specific date-range only. #3222
+* [ENHANCEMENT] Blocksconvert – Scanner: metrics for tracking progress. #3222
+* [ENHANCEMENT] Blocksconvert – Builder: retry block upload before giving up. #3245
+* [ENHANCEMENT] Blocksconvert – Scanner: upload plans concurrently. #3340
 * [BUGFIX] Blocksconvert: fix chunks ordering in the block. Chunks in different order than series work just fine in TSDB blocks at the moment, but it's not consistent with what Prometheus does and future Prometheus and Cortex optimizations may rely on this ordering. #3371
 
 ## 1.4.0 / 2020-10-02

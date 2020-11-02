@@ -152,7 +152,13 @@ lint:
 		sync/atomic=go.uber.org/atomic" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Ensure clean pkg structure.
-	faillint -paths "github.com/cortexproject/cortex/pkg/scheduler"   ./pkg/querier/...
+	faillint -paths "\
+		github.com/cortexproject/cortex/pkg/scheduler,\
+		github.com/cortexproject/cortex/pkg/frontend,\
+		github.com/cortexproject/cortex/pkg/frontend/transport,\
+		github.com/cortexproject/cortex/pkg/frontend/v1,\
+		github.com/cortexproject/cortex/pkg/frontend/v2" \
+		./pkg/querier/...
 	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
 
 	# Validate Kubernetes spec files. Requires:

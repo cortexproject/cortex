@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,6 +75,63 @@ func TestRequestMiddleware(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.expected, strings.Trim(string(buffer), "\n\x00"))
+		})
+	}
+}
+
+func TestS3ObjectClient_CreateBucket(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, r.Header.Get("echo-me"))
+	}))
+	defer ts.Close()
+
+	type args struct {
+		ctx   context.Context
+		input *s3.CreateBucketInput
+	}
+
+	cfg := S3Config{
+		Endpoint:         ts.URL,
+		BucketNames:      "buck-o",
+		S3ForcePathStyle: true,
+		Insecure:         true,
+		AccessKeyID:      "key",
+		SecretAccessKey:  "secret",
+	}
+	arg := args{
+		ctx: context.Background(),
+		input: &s3.CreateBucketInput{
+			Bucket: aws.String(cfg.BucketNames),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		fn       S3Config
+		args     args
+		expected bool
+	}{
+		{
+			name:     "Test Nil",
+			fn:       nil,
+			args:     nil,
+			expected: false,
+		},
+		{
+			name:     "Test Create Bucket",
+			fn:       cfg,
+			args:     arg,
+			expected: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewS3ObjectClient(cfg)
+			require.NoError(t, err)
+
+			if err := client.CreateBucket(tt.args.ctx, tt.args.input); (err != nil) != tt.expected {
+				t.Errorf("CreateBucket() error = %v, expected %v", err, tt.expected)
+			}
 		})
 	}
 }

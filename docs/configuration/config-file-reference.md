@@ -2923,6 +2923,11 @@ aws:
   # CLI flag: -s3.buckets
   [bucketnames: <string> | default = ""]
 
+  # Auto create buckets name with prefix and tenant id.
+  # Overrides any buckets specified in s3.url flag and s3.bucketnames
+  # CLI flag: -s3.buckets-prefix
+  [bucket_prefix: <string> | default = ""]
+
   # S3 Endpoint to connect to.
   # CLI flag: -s3.endpoint
   [endpoint: <string> | default = ""]

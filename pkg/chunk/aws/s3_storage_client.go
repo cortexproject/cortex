@@ -47,7 +47,7 @@ var (
 		Namespace: "cortex",
 		Name:      "s3_request_duration_seconds",
 		Help:      "Time spent doing S3 requests.",
-		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
+		Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2, 5},
 	}, []string{"operation", "status_code"}))
 )
 
@@ -65,6 +65,7 @@ type S3Config struct {
 	S3ForcePathStyle bool
 
 	BucketNames      string
+	BucketPrefix     string              `yaml:"bucket_prefix"`
 	Endpoint         string              `yaml:"endpoint"`
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
@@ -96,6 +97,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"If only region is specified as a host, proper endpoint will be deduced. Use inmemory:///<bucket-name> to use a mock in-memory implementation.")
 	f.BoolVar(&cfg.S3ForcePathStyle, prefix+"s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
 	f.StringVar(&cfg.BucketNames, prefix+"s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
+	f.StringVar(&cfg.BucketPrefix, prefix+"s3.buckets-prefix", "", "Use bucket prefix will auto create bucket names with buckets-prefix+tenant. s3.buckets-prefix will overrides s3.buckets when you both fill")
 
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "S3 Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
@@ -123,9 +125,10 @@ func (cfg *S3Config) Validate() error {
 }
 
 type S3ObjectClient struct {
-	bucketNames []string
-	S3          s3iface.S3API
-	sseConfig   *SSEParsedConfig
+	bucketNames  []string
+	bucketPrefix string
+	S3           s3iface.S3API
+	sseConfig    *SSEParsedConfig
 }
 
 // NewS3ObjectClient makes a new S3-backed ObjectClient.
@@ -152,9 +155,10 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	}
 
 	client := S3ObjectClient{
-		S3:          s3Client,
-		bucketNames: bucketNames,
-		sseConfig:   sseCfg,
+		S3:           s3Client,
+		bucketNames:  bucketNames,
+		bucketPrefix: cfg.BucketPrefix,
+		sseConfig:    sseCfg,
 	}
 	return &client, nil
 }
@@ -264,18 +268,18 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		Transport: transport,
 	})
 
-	// bucketnames
+	// bucket names
 	var bucketNames []string
-	if cfg.S3.URL != nil {
+	if cfg.S3.URL != nil && len(cfg.S3.URL.Path) > 0 {
 		bucketNames = []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
 	}
 
-	if cfg.BucketNames != "" {
+	if cfg.BucketNames != "" && len(cfg.BucketPrefix) == 0 {
 		bucketNames = strings.Split(cfg.BucketNames, ",") // comma separated list of bucket names
 	}
 
-	if len(bucketNames) == 0 {
-		return nil, nil, errors.New("at least one bucket name must be specified")
+	if len(bucketNames) == 0 && len(cfg.BucketPrefix) == 0 {
+		return nil, nil, errors.New("at least one bucket name and bucket prefix must be specified")
 	}
 
 	return s3Config, bucketNames, nil
@@ -286,9 +290,19 @@ func (a *S3ObjectClient) Stop() {}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	_, err := a.S3.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(a.bucketFromKey(objectKey)),
-		Key:    aws.String(objectKey),
+
+	// Map the key into a bucket
+	bucket, objectNewKey, err := a.bucketFromKeyForTenant(ctx, objectKey, false)
+	if err != nil {
+		return err
+	}
+
+	err = instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, err = a.S3.DeleteObject(&s3.DeleteObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectNewKey),
+		})
+		return err
 	})
 
 	if err != nil {
@@ -304,16 +318,19 @@ func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 }
 
 // bucketFromKey maps a key to a bucket name
-func (a *S3ObjectClient) bucketFromKey(key string) string {
+func (a *S3ObjectClient) bucketFromKey(key string) (string, error) {
 	if len(a.bucketNames) == 0 {
-		return ""
+		return "", nil
 	}
 
 	hasher := fnv.New32a()
-	hasher.Write([]byte(key)) //nolint: errcheck
+	_, err := hasher.Write([]byte(key))
+	if err != nil {
+		return "", err
+	}
 	hash := hasher.Sum32()
 
-	return a.bucketNames[hash%uint32(len(a.bucketNames))]
+	return a.bucketNames[hash%uint32(len(a.bucketNames))], nil
 }
 
 // GetObject returns a reader for the specified object key from the configured S3 bucket. If the
@@ -322,13 +339,16 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
-	bucket := a.bucketFromKey(objectKey)
+	bucket, objectNewKey, err := a.bucketFromKeyForTenant(ctx, objectKey, false)
+	if err != nil {
+		return nil, err
+	}
 
-	err := instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		resp, err = a.S3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(bucket),
-			Key:    aws.String(objectKey),
+			Key:    aws.String(objectNewKey),
 		})
 		return err
 	})
@@ -347,11 +367,17 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	// Map the key into a bucket
+	bucket, objectNewKey, err := a.bucketFromKeyForTenant(ctx, objectKey, true)
+	if err != nil {
+		return err
+	}
+
 	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
 			Body:   object,
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectNewKey),
 		}
 
 		if a.sseConfig != nil {
@@ -370,11 +396,21 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	var storageObjects []chunk.StorageObject
 	var commonPrefixes []chunk.StorageCommonPrefix
 
-	for i := range a.bucketNames {
+	bucketNameArray, newPrefix := append([]string{}, a.bucketNames...), prefix
+	//Bucket prefix override bucket names of config
+	if len(a.bucketPrefix) > 0 {
+		var bucket string
+
+		bucketNameArray = bucketNameArray[:0]
+		bucket, newPrefix = a.separateObjectKey(prefix)
+		bucketNameArray = append(bucketNameArray, bucket)
+	}
+
+	for i := range bucketNameArray {
 		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
-				Bucket:    aws.String(a.bucketNames[i]),
-				Prefix:    aws.String(prefix),
+				Bucket:    aws.String(bucketNameArray[i]),
+				Prefix:    aws.String(newPrefix),
 				Delimiter: aws.String(delimiter),
 			}
 
@@ -415,4 +451,74 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	}
 
 	return storageObjects, commonPrefixes, nil
+}
+
+// CreateBucket create the S3 bucket if set bucket prefix of config
+func (a *S3ObjectClient) CreateBucket(ctx context.Context, input *s3.CreateBucketInput) error {
+
+	return instrument.CollectedRequest(ctx, "S3.CreateBucket", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		_, err := a.S3.CreateBucketWithContext(ctx, input)
+		if err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				switch awsErr.Code() {
+				case s3.ErrCodeBucketAlreadyExists, s3.ErrCodeBucketAlreadyOwnedByYou:
+					return nil
+				default:
+					return err
+				}
+			} else {
+				return errors.New("convert to aws err of create bucket")
+			}
+		}
+
+		// Wait until the create finish!
+		err = a.S3.WaitUntilBucketExistsWithContext(ctx, &s3.HeadBucketInput{
+			Bucket: aws.String(*input.Bucket),
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (a *S3ObjectClient) separateObjectKey(key string) (string, string) {
+	if len(key) == 0 {
+		return "", ""
+	}
+	keyArray := strings.Split(key, chunk.DirDelim)
+	if len(keyArray) < 2 {
+		return keyArray[0], ""
+	}
+
+	return strings.ToLower(keyArray[0]), strings.Join(keyArray[1:], chunk.DirDelim)
+}
+
+// bucketFromKey maps a key to a bucket name use bucket prefix and tenant
+func (a *S3ObjectClient) bucketFromKeyForTenant(ctx context.Context, key string, putObject bool) (string, string, error) {
+	if len(a.bucketNames) > 0 {
+		bucket, err := a.bucketFromKey(key)
+		if err != nil {
+			return "", "", err
+		}
+		return bucket, key, nil
+	}
+
+	bucket, objectKey := a.separateObjectKey(key)
+	if len(bucket) == 0 || len(objectKey) == 0 {
+		return "", "", errors.New("bucket name or object key is nil")
+	}
+
+	bucket = a.bucketPrefix + bucket
+	if !putObject {
+		return bucket, objectKey, nil
+	}
+
+	// Create the bucket if it does not exist!
+	req := s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	}
+
+	return bucket, objectKey, a.CreateBucket(ctx, &req)
 }

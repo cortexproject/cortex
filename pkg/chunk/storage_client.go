@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// DirDelim is the delimiter used to model a directory structure in an object store.
+const DirDelim = "/"
+
 var (
 	// ErrStorageObjectNotFound when object storage does not have requested object
 	ErrStorageObjectNotFound = errors.New("object not found in storage")

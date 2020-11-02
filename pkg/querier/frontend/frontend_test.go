@@ -12,6 +12,7 @@ import (
 	"net/url"
 	strconv "strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,6 +251,25 @@ func TestFrontendCheckReady(t *testing.T) {
 	}
 }
 
+type syncBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sb *syncBuf) Write(p []byte) (n int, err error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.buf.Write(p)
+}
+
+func (sb *syncBuf) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.buf.String()
+}
+
 func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	// Create an HTTP server listening locally. This server mocks the downstream
 	// Prometheus API-compatible server.
@@ -271,8 +291,8 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	config.Handler.LogQueriesLongerThan = 1 * time.Microsecond
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
 
-	var buf bytes.Buffer
-	l := log.NewLogfmtLogger(log.NewSyncWriter(&buf))
+	var buf syncBuf
+	l := log.NewLogfmtLogger(&buf)
 
 	test := func(addr string) {
 		data := url.Values{}

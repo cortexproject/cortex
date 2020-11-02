@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
+	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -112,7 +113,7 @@ var (
 		},
 		{
 			name:       "frontend_worker_config",
-			structType: reflect.TypeOf(frontend.CombinedWorkerConfig{}),
+			structType: reflect.TypeOf(querier_frontend.CombinedWorkerConfig{}),
 			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.",
 		},
 		{

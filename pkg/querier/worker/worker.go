@@ -23,6 +23,7 @@ import (
 )
 
 // WorkerConfig is config for a worker.
+// nolint:golint
 type WorkerConfig struct {
 	FrontendAddress     string        `yaml:"frontend_address"`
 	Parallelism         int           `yaml:"parallelism"`

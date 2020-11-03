@@ -20,7 +20,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
+	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
@@ -395,13 +395,13 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		middleware.ClientUserHeaderInterceptor},
 		nil)
 	if err != nil {
-		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestKey{})
+		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
 		return
 	}
 
 	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
 	if err != nil {
-		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestKey{})
+		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
 		return
 	}
 
@@ -409,10 +409,10 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		_ = conn.Close()
 	}()
 
-	client := frontend2.NewFrontendForQuerierClient(conn)
+	client := querier_frontend.NewFrontendForQuerierClient(conn)
 
 	userCtx := user.InjectOrgID(ctx, req.userID)
-	_, err = client.QueryResult(userCtx, &frontend2.QueryResultRequest{
+	_, err = client.QueryResult(userCtx, &querier_frontend.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{
 			Code: http.StatusInternalServerError,

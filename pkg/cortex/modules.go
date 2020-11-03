@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -295,7 +294,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
 		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 		// request context.
-		internalQuerierRouter = middleware.AuthenticateUser.Wrap(internalQuerierRouter)
+		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker will be created.

@@ -1765,7 +1765,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 	defer cleanup()
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -1953,7 +1953,7 @@ func TestIngester_flushing(t *testing.T) {
 			})
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 				return i.lifecycler.GetState()
 			})
 
@@ -1983,7 +1983,7 @@ func TestIngester_ForFlush(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2162,7 +2162,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2321,7 +2321,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2358,7 +2358,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2434,7 +2434,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2471,7 +2471,7 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2500,7 +2500,7 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	// No requests in flight after this.
 	db.releaseAppendLock()
 
-	// Let's wait for a moment for flush to finish, and then verify.
+	// Let's wait until all head series have been flushed.
 	test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
 		db := i.getTSDB(userID)
 		if db == nil {

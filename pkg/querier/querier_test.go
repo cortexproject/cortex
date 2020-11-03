@@ -477,7 +477,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 	const (
 		engineLookbackDelta = 5 * time.Minute
-		month               = 30 * 24 * time.Hour
+		thirtyDays          = 30 * 24 * time.Hour
 	)
 
 	now := time.Now()
@@ -494,7 +494,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 		expectedMetadataEndTime   time.Time
 	}{
 		"should not manipulate time range for a query on short time range and rate time window close to the limit": {
-			maxQueryLookback:          month,
+			maxQueryLookback:          thirtyDays,
 			query:                     "rate(foo[29d])",
 			queryStartTime:            now.Add(-time.Hour),
 			queryEndTime:              now,
@@ -504,40 +504,40 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 			expectedMetadataEndTime:   now,
 		},
 		"should not manipulate a query on large time range close to the limit and short rate time window": {
-			maxQueryLookback:          month,
+			maxQueryLookback:          thirtyDays,
 			query:                     "rate(foo[1m])",
-			queryStartTime:            now.Add(-month).Add(time.Hour),
+			queryStartTime:            now.Add(-thirtyDays).Add(time.Hour),
 			queryEndTime:              now,
-			expectedQueryStartTime:    now.Add(-month).Add(time.Hour).Add(-time.Minute),
+			expectedQueryStartTime:    now.Add(-thirtyDays).Add(time.Hour).Add(-time.Minute),
 			expectedQueryEndTime:      now,
-			expectedMetadataStartTime: now.Add(-month).Add(time.Hour),
+			expectedMetadataStartTime: now.Add(-thirtyDays).Add(time.Hour),
 			expectedMetadataEndTime:   now,
 		},
 		"should manipulate a query on short time range and rate time window over the limit": {
-			maxQueryLookback:          month,
+			maxQueryLookback:          thirtyDays,
 			query:                     "rate(foo[31d])",
 			queryStartTime:            now.Add(-time.Hour),
 			queryEndTime:              now,
-			expectedQueryStartTime:    now.Add(-month),
+			expectedQueryStartTime:    now.Add(-thirtyDays),
 			expectedQueryEndTime:      now,
 			expectedMetadataStartTime: now.Add(-time.Hour),
 			expectedMetadataEndTime:   now,
 		},
 		"should manipulate a query on large time range over the limit and short rate time window": {
-			maxQueryLookback:          month,
+			maxQueryLookback:          thirtyDays,
 			query:                     "rate(foo[1m])",
-			queryStartTime:            now.Add(-month).Add(-100 * time.Hour),
+			queryStartTime:            now.Add(-thirtyDays).Add(-100 * time.Hour),
 			queryEndTime:              now,
-			expectedQueryStartTime:    now.Add(-month),
+			expectedQueryStartTime:    now.Add(-thirtyDays),
 			expectedQueryEndTime:      now,
-			expectedMetadataStartTime: now.Add(-month),
+			expectedMetadataStartTime: now.Add(-thirtyDays),
 			expectedMetadataEndTime:   now,
 		},
 		"should skip executing a query outside the allowed time range": {
-			maxQueryLookback: month,
+			maxQueryLookback: thirtyDays,
 			query:            "rate(foo[1m])",
-			queryStartTime:   now.Add(-month).Add(-100 * time.Hour),
-			queryEndTime:     now.Add(-month).Add(-90 * time.Hour),
+			queryStartTime:   now.Add(-thirtyDays).Add(-100 * time.Hour),
+			queryEndTime:     now.Add(-thirtyDays).Add(-90 * time.Hour),
 			expectedSkipped:  true,
 		},
 	}

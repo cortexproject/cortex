@@ -218,13 +218,13 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 		}
 
 		q := querier{
-			cfg:              cfg,
-			ctx:              ctx,
-			mint:             mint,
-			maxt:             maxt,
-			chunkIterFn:      chunkIterFn,
-			tombstonesLoader: tombstonesLoader,
-			limits:           limits,
+			ctx:                ctx,
+			mint:               mint,
+			maxt:               maxt,
+			chunkIterFn:        chunkIterFn,
+			tombstonesLoader:   tombstonesLoader,
+			limits:             limits,
+			maxQueryIntoFuture: cfg.MaxQueryIntoFuture,
 		}
 
 		dqr, err := distributor.Querier(ctx, mint, maxt)
@@ -256,8 +256,6 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	cfg Config
-
 	// used for labels and metadata queries
 	metadataQuerier storage.Querier
 
@@ -268,8 +266,9 @@ type querier struct {
 	ctx         context.Context
 	mint, maxt  int64
 
-	tombstonesLoader *purger.TombstonesLoader
-	limits           *validation.Overrides
+	tombstonesLoader   *purger.TombstonesLoader
+	limits             *validation.Overrides
+	maxQueryIntoFuture time.Duration
 }
 
 // Select implements storage.Querier interface.
@@ -302,7 +301,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// Validate query time range. Even if the time range has already been validated when we created
 	// the querier, we need to check it again here because the time range specified in hints may be
 	// different.
-	startMs, endMs, err := validateQueryTimeRange(ctx, userID, sp.Start, sp.End, q.limits, q.cfg.MaxQueryIntoFuture)
+	startMs, endMs, err := validateQueryTimeRange(ctx, userID, sp.Start, sp.End, q.limits, q.maxQueryIntoFuture)
 	if err == errEmptyTimeRange {
 		return storage.NoopSeriesSet()
 	} else if err != nil {
@@ -512,7 +511,7 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 
 		// Make sure to log it in traces to ease debugging.
 		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "the start time of the query has been manipulated because of the 'max query into future' setting",
+			"msg", "the end time of the query has been manipulated because of the 'max query into future' setting",
 			"original", origEndTime, "updated", endTime)
 
 		if endTime.Before(startTime) {

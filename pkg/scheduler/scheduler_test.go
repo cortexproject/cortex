@@ -17,7 +17,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
@@ -352,7 +352,7 @@ func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
 	// Setup frontend grpc server
 	{
 		frontendGrpcServer := grpc.NewServer()
-		frontend2.RegisterFrontendForQuerierServer(frontendGrpcServer, fm)
+		frontendv2pb.RegisterFrontendForQuerierServer(frontendGrpcServer, fm)
 
 		l, err := net.Listen("tcp", "")
 		require.NoError(t, err)
@@ -469,12 +469,12 @@ type frontendMock struct {
 	resp map[uint64]*httpgrpc.HTTPResponse
 }
 
-func (f *frontendMock) QueryResult(_ context.Context, request *frontend2.QueryResultRequest) (*frontend2.QueryResultResponse, error) {
+func (f *frontendMock) QueryResult(_ context.Context, request *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.resp[request.QueryID] = request.HttpResponse
-	return &frontend2.QueryResultResponse{}, nil
+	return &frontendv2pb.QueryResultResponse{}, nil
 }
 
 func (f *frontendMock) getRequest(queryID uint64) *httpgrpc.HTTPResponse {

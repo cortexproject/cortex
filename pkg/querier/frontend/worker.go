@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/naming"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -134,7 +135,7 @@ func (w *worker) watchDNSLoop(servCtx context.Context) error {
 					continue
 				}
 
-				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, conn, NewFrontendClient(conn), w.cfg.GRPCClientConfig, w.cfg.QuerierID)
+				w.managers[update.Addr] = newFrontendManager(servCtx, w.log, w.server, conn, frontendv1pb.NewFrontendClient(conn), w.cfg.GRPCClientConfig, w.cfg.QuerierID)
 
 			case naming.Delete:
 				level.Debug(w.log).Log("msg", "removing connection", "addr", update.Addr)

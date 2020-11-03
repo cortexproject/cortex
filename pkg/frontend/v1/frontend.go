@@ -1,4 +1,4 @@
-package frontend
+package v1
 
 import (
 	"context"
@@ -17,6 +17,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 )
 
 var (
@@ -153,7 +155,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 }
 
 // Process allows backends to pull requests from the frontend.
-func (f *Frontend) Process(server Frontend_ProcessServer) error {
+func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	querierID, err := getQuerierID(server)
 	if err != nil {
 		return err
@@ -184,8 +186,8 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 		resps := make(chan *httpgrpc.HTTPResponse, 1)
 		errs := make(chan error, 1)
 		go func() {
-			err = server.Send(&FrontendToClient{
-				Type:        HTTP_REQUEST,
+			err = server.Send(&frontendv1pb.FrontendToClient{
+				Type:        frontendv1pb.HTTP_REQUEST,
 				HttpRequest: req.request,
 			})
 			if err != nil {
@@ -222,9 +224,9 @@ func (f *Frontend) Process(server Frontend_ProcessServer) error {
 	}
 }
 
-func getQuerierID(server Frontend_ProcessServer) (string, error) {
-	err := server.Send(&FrontendToClient{
-		Type: GET_ID,
+func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
+	err := server.Send(&frontendv1pb.FrontendToClient{
+		Type: frontendv1pb.GET_ID,
 		// Old queriers don't support GET_ID, and will try to use the request.
 		// To avoid confusing them, include dummy request.
 		HttpRequest: &httpgrpc.HTTPRequest{

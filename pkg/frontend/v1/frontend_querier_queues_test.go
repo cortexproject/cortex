@@ -1,4 +1,4 @@
-package frontend
+package v1
 
 import (
 	"fmt"

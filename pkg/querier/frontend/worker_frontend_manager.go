@@ -14,6 +14,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
@@ -28,7 +29,7 @@ var (
 type frontendManager struct {
 	server     *server.Server
 	connection io.Closer
-	client     FrontendClient
+	client     frontendv1pb.FrontendClient
 	clientCfg  grpcclient.ConfigWithTLS
 	querierID  string
 
@@ -40,7 +41,7 @@ type frontendManager struct {
 	currentProcessors *atomic.Int32
 }
 
-func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, connection io.Closer, client FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
+func newFrontendManager(serverCtx context.Context, log log.Logger, server *server.Server, connection io.Closer, client frontendv1pb.FrontendClient, clientCfg grpcclient.ConfigWithTLS, querierID string) *frontendManager {
 	f := &frontendManager{
 		log:               log,
 		connection:        connection,
@@ -109,7 +110,7 @@ func (f *frontendManager) runOne(ctx context.Context) {
 }
 
 // process loops processing requests on an established stream.
-func (f *frontendManager) process(c Frontend_ProcessClient) error {
+func (f *frontendManager) process(c frontendv1pb.Frontend_ProcessClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
 	ctx, cancel := context.WithCancel(c.Context())
 	defer cancel()
@@ -121,18 +122,18 @@ func (f *frontendManager) process(c Frontend_ProcessClient) error {
 		}
 
 		switch request.Type {
-		case HTTP_REQUEST:
+		case frontendv1pb.HTTP_REQUEST:
 			// Handle the request on a "background" goroutine, so we go back to
 			// blocking on c.Recv().  This allows us to detect the stream closing
 			// and cancel the query.  We don't actually handle queries in parallel
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
 			go f.runRequest(ctx, request.HttpRequest, func(response *httpgrpc.HTTPResponse) error {
-				return c.Send(&ClientToFrontend{HttpResponse: response})
+				return c.Send(&frontendv1pb.ClientToFrontend{HttpResponse: response})
 			})
 
-		case GET_ID:
-			err := c.Send(&ClientToFrontend{ClientID: f.querierID})
+		case frontendv1pb.GET_ID:
+			err := c.Send(&frontendv1pb.ClientToFrontend{ClientID: f.querierID})
 			if err != nil {
 				return err
 			}

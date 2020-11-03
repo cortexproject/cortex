@@ -25,9 +25,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
+	frontend "github.com/cortexproject/cortex/pkg/frontend"
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -297,7 +299,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker will be created.
-	return frontend.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
+	return querier_frontend.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
 }
 
 func (t *Cortex) initStoreQueryables() (services.Service, error) {
@@ -511,7 +513,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	// Wrap roundtripper into Tripperware.
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
-	handler := frontend.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util.Logger)
+	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util.Logger)
 	if t.Cfg.Frontend.CompressResponses {
 		handler = gziphandler.GzipHandler(handler)
 	}

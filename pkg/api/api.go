@@ -19,10 +19,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	frontendv2 "github.com/cortexproject/cortex/pkg/frontend/v2"
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
@@ -315,12 +317,12 @@ func (a *API) RegisterQueryFrontendHandler(h http.Handler) {
 	a.RegisterQueryAPI(h)
 }
 
-func (a *API) RegisterQueryFrontend1(f *frontend.Frontend) {
-	frontend.RegisterFrontendServer(a.server.GRPC, f)
+func (a *API) RegisterQueryFrontend1(f *frontendv1.Frontend) {
+	frontendv1pb.RegisterFrontendServer(a.server.GRPC, f)
 }
 
-func (a *API) RegisterQueryFrontend2(f *frontend2.Frontend2) {
-	frontend2.RegisterFrontendForQuerierServer(a.server.GRPC, f)
+func (a *API) RegisterQueryFrontend2(f *frontendv2.Frontend) {
+	frontendv2pb.RegisterFrontendForQuerierServer(a.server.GRPC, f)
 }
 
 func (a *API) RegisterQueryScheduler(f *scheduler.Scheduler) {

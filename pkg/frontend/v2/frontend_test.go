@@ -1,4 +1,4 @@
-package frontend2
+package v2
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -24,7 +25,7 @@ import (
 
 const testFrontendWorkerConcurrency = 5
 
-func setupFrontend2(t *testing.T, schedulerReplyFunc func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend2, *mockScheduler) {
+func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
 	l, err := net.Listen("tcp", "")
 	require.NoError(t, err)
 
@@ -45,10 +46,10 @@ func setupFrontend2(t *testing.T, schedulerReplyFunc func(f *Frontend2, msg *sch
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend2(cfg, logger, nil)
+	f, err := NewFrontend(cfg, logger, nil)
 	require.NoError(t, err)
 
-	RegisterFrontendForQuerierServer(server, f)
+	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
 
 	ms := newMockScheduler(t, f, schedulerReplyFunc)
 	schedulerpb.RegisterSchedulerForFrontendServer(server, ms)
@@ -77,13 +78,13 @@ func setupFrontend2(t *testing.T, schedulerReplyFunc func(f *Frontend2, msg *sch
 	return f, ms
 }
 
-func sendResponseWithDelay(f *Frontend2, delay time.Duration, userID string, queryID uint64, resp *httpgrpc.HTTPResponse) {
+func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, queryID uint64, resp *httpgrpc.HTTPResponse) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, _ = f.QueryResult(ctx, &QueryResultRequest{
+	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 		QueryID:      queryID,
 		HttpResponse: resp,
 	})
@@ -95,7 +96,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		userID = "test"
 	)
 
-	f, _ := setupFrontend2(t, func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
 		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
@@ -120,7 +121,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		userID = "test"
 	)
 
-	f, _ := setupFrontend2(t, func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		fail := failures.Dec()
 		if fail >= 0 {
 			return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
@@ -139,7 +140,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 }
 
 func TestFrontendEnqueueFailure(t *testing.T) {
-	f, _ := setupFrontend2(t, func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	})
 
@@ -149,7 +150,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 }
 
 func TestFrontendCancellation(t *testing.T) {
-	f, ms := setupFrontend2(t, nil)
+	f, ms := setupFrontend(t, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -175,7 +176,7 @@ func TestFrontendCancellation(t *testing.T) {
 }
 
 func TestFrontendFailedCancellation(t *testing.T) {
-	f, ms := setupFrontend2(t, nil)
+	f, ms := setupFrontend(t, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -214,16 +215,16 @@ func TestFrontendFailedCancellation(t *testing.T) {
 
 type mockScheduler struct {
 	t *testing.T
-	f *Frontend2
+	f *Frontend
 
-	replyFunc func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend
+	replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend
 
 	mu           sync.Mutex
 	frontendAddr map[string]int
 	msgs         []*schedulerpb.FrontendToScheduler
 }
 
-func newMockScheduler(t *testing.T, f *Frontend2, replyFunc func(f *Frontend2, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) *mockScheduler {
+func newMockScheduler(t *testing.T, f *Frontend, replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) *mockScheduler {
 	return &mockScheduler{t: t, f: f, frontendAddr: map[string]int{}, replyFunc: replyFunc}
 }
 

@@ -1,4 +1,4 @@
-package frontend2
+package v2
 
 import (
 	"context"
@@ -19,13 +19,14 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-// Config for a Frontend2.
+// Config for a Frontend.
 type Config struct {
 	SchedulerAddress  string                   `yaml:"scheduler_address"`
 	DNSLookupPeriod   time.Duration            `yaml:"scheduler_dns_lookup_period"`
@@ -53,9 +54,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("frontend.grpc-client-config", f)
 }
 
-// Frontend2 implements GrpcRoundTripper. It queues HTTP requests,
+// Frontend implements GrpcRoundTripper. It queues HTTP requests,
 // dispatches them to backends via gRPC, and handles retries for requests which failed.
-type Frontend2 struct {
+type Frontend struct {
 	services.Service
 
 	cfg Config
@@ -98,7 +99,7 @@ type enqueueResult struct {
 }
 
 // New creates a new frontend.
-func NewFrontend2(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend2, error) {
+func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -106,7 +107,7 @@ func NewFrontend2(cfg Config, log log.Logger, reg prometheus.Registerer) (*Front
 		return nil, err
 	}
 
-	f := &Frontend2{
+	f := &Frontend{
 		cfg:              cfg,
 		log:              log,
 		requestsCh:       requestsCh,
@@ -136,16 +137,16 @@ func NewFrontend2(cfg Config, log log.Logger, reg prometheus.Registerer) (*Front
 	return f, nil
 }
 
-func (f *Frontend2) starting(ctx context.Context) error {
+func (f *Frontend) starting(ctx context.Context) error {
 	return errors.Wrap(services.StartAndAwaitRunning(ctx, f.schedulerWorkers), "failed to start frontend scheduler workers")
 }
 
-func (f *Frontend2) stopping(_ error) error {
+func (f *Frontend) stopping(_ error) error {
 	return errors.Wrap(services.StopAndAwaitTerminated(context.Background(), f.schedulerWorkers), "failed to stop frontend scheduler workers")
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend2) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	if s := f.State(); s != services.Running {
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
@@ -231,7 +232,7 @@ enqueueAgain:
 	}
 }
 
-func (f *Frontend2) QueryResult(ctx context.Context, qrReq *QueryResultRequest) (*QueryResultResponse, error) {
+func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -250,12 +251,12 @@ func (f *Frontend2) QueryResult(ctx context.Context, qrReq *QueryResultRequest) 
 		}
 	}
 
-	return &QueryResultResponse{}, nil
+	return &frontendv2pb.QueryResultResponse{}, nil
 }
 
 // CheckReady determines if the query frontend is ready.  Function parameters/return
 // chosen to match the same method in the ingester
-func (f *Frontend2) CheckReady(_ context.Context) error {
+func (f *Frontend) CheckReady(_ context.Context) error {
 	workers := f.schedulerWorkers.getWorkersCount()
 
 	// If frontend is connected to at least one scheduler, we are ready.

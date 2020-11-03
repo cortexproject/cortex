@@ -32,10 +32,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
+	frontend "github.com/cortexproject/cortex/pkg/frontend"
+	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -78,27 +80,27 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	API            api.Config                      `yaml:"api"`
-	Server         server.Config                   `yaml:"server"`
-	Distributor    distributor.Config              `yaml:"distributor"`
-	Querier        querier.Config                  `yaml:"querier"`
-	IngesterClient client.Config                   `yaml:"ingester_client"`
-	Ingester       ingester.Config                 `yaml:"ingester"`
-	Flusher        flusher.Config                  `yaml:"flusher"`
-	Storage        storage.Config                  `yaml:"storage"`
-	ChunkStore     chunk.StoreConfig               `yaml:"chunk_store"`
-	Schema         chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
-	LimitsConfig   validation.Limits               `yaml:"limits"`
-	Prealloc       client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
-	Worker         frontend.CombinedWorkerConfig   `yaml:"frontend_worker"`
-	Frontend       frontend.CombinedFrontendConfig `yaml:"frontend"`
-	QueryRange     queryrange.Config               `yaml:"query_range"`
-	TableManager   chunk.TableManagerConfig        `yaml:"table_manager"`
-	Encoding       encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
-	BlocksStorage  tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
-	Compactor      compactor.Config                `yaml:"compactor"`
-	StoreGateway   storegateway.Config             `yaml:"store_gateway"`
-	PurgerConfig   purger.Config                   `yaml:"purger"`
+	API            api.Config                            `yaml:"api"`
+	Server         server.Config                         `yaml:"server"`
+	Distributor    distributor.Config                    `yaml:"distributor"`
+	Querier        querier.Config                        `yaml:"querier"`
+	IngesterClient client.Config                         `yaml:"ingester_client"`
+	Ingester       ingester.Config                       `yaml:"ingester"`
+	Flusher        flusher.Config                        `yaml:"flusher"`
+	Storage        storage.Config                        `yaml:"storage"`
+	ChunkStore     chunk.StoreConfig                     `yaml:"chunk_store"`
+	Schema         chunk.SchemaConfig                    `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
+	LimitsConfig   validation.Limits                     `yaml:"limits"`
+	Prealloc       client.PreallocConfig                 `yaml:"prealloc" doc:"hidden"`
+	Worker         querier_frontend.CombinedWorkerConfig `yaml:"frontend_worker"`
+	Frontend       frontend.CombinedFrontendConfig       `yaml:"frontend"`
+	QueryRange     queryrange.Config                     `yaml:"query_range"`
+	TableManager   chunk.TableManagerConfig              `yaml:"table_manager"`
+	Encoding       encoding.Config                       `yaml:"-"` // No yaml for this, it only works with flags.
+	BlocksStorage  tsdb.BlocksStorageConfig              `yaml:"blocks_storage"`
+	Compactor      compactor.Config                      `yaml:"compactor"`
+	StoreGateway   storegateway.Config                   `yaml:"store_gateway"`
+	PurgerConfig   purger.Config                         `yaml:"purger"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
 	Configs        configs.Config                             `yaml:"configs"`
@@ -262,7 +264,7 @@ type Cortex struct {
 	Flusher                  *flusher.Flusher
 	Store                    chunk.Store
 	DeletesStore             *purger.DeleteStore
-	Frontend                 *frontend.Frontend
+	Frontend                 *frontendv1.Frontend
 	TableManager             *chunk.TableManager
 	RuntimeConfig            *runtimeconfig.Manager
 	Purger                   *purger.Purger
@@ -301,7 +303,7 @@ func New(cfg Config) (*Cortex, error) {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/cortex.Ingester/TransferChunks",
-			"/frontend.Frontend/Process",
+			"/frontendv1pb.Frontend/Process",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 		})

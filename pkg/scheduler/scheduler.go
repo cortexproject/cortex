@@ -4,18 +4,25 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -29,6 +36,7 @@ var (
 type Scheduler struct {
 	services.Service
 
+	cfg Config
 	log log.Logger
 
 	limits Limits
@@ -66,15 +74,19 @@ type connectedFrontend struct {
 
 type Config struct {
 	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
+
+	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 }
 
 // NewScheduler creates a new Scheduler.
 func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Scheduler, error) {
 	s := &Scheduler{
+		cfg:    cfg,
 		log:    log,
 		limits: limits,
 
@@ -367,8 +379,48 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	case err := <-errCh:
 		// Is there was an error handling this request due to network IO,
 		// then error out this upstream request _and_ stream.
-		// TODO: if err is not nil, scheduler should notify frontend using the frontend address.
+
+		if err != nil {
+			s.forwardErrorToFrontend(req.ctx, req, err)
+		}
 		return err
+	}
+}
+
+func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {
+	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
+		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+		middleware.ClientUserHeaderInterceptor},
+		nil)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
+		return
+	}
+
+	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
+		return
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	client := frontendv2pb.NewFrontendForQuerierClient(conn)
+
+	userCtx := user.InjectOrgID(ctx, req.userID)
+	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
+		QueryID: req.queryID,
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code: http.StatusInternalServerError,
+			Body: []byte(requestErr.Error()),
+		},
+	})
+
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to forward error to frontend", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
+		return
 	}
 }
 

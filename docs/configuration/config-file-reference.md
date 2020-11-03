@@ -164,6 +164,71 @@ query_scheduler:
   # 429.
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
   [max_outstanding_requests_per_tenant: <int> | default = 100]
+
+  # This configures the gRPC client used to report errors back to the
+  # query-frontend.
+  grpc_client_config:
+    # gRPC client max receive message size (bytes).
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-max-recv-msg-size
+    [max_recv_msg_size: <int> | default = 104857600]
+
+    # gRPC client max send message size (bytes).
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-max-send-msg-size
+    [max_send_msg_size: <int> | default = 16777216]
+
+    # Deprecated: Use gzip compression when sending messages.  If true,
+    # overrides grpc-compression flag.
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-use-gzip-compression
+    [use_gzip_compression: <boolean> | default = false]
+
+    # Use compression when sending messages. Supported values are: 'gzip',
+    # 'snappy' and '' (disable compression)
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-compression
+    [grpc_compression: <string> | default = ""]
+
+    # Rate limit for gRPC client; 0 means disabled.
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-client-rate-limit
+    [rate_limit: <float> | default = 0]
+
+    # Rate limit burst for gRPC client.
+    # CLI flag: -query-scheduler.grpc-client-config.grpc-client-rate-limit-burst
+    [rate_limit_burst: <int> | default = 0]
+
+    # Enable backoff and retry when we hit ratelimits.
+    # CLI flag: -query-scheduler.grpc-client-config.backoff-on-ratelimits
+    [backoff_on_ratelimits: <boolean> | default = false]
+
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -query-scheduler.grpc-client-config.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -query-scheduler.grpc-client-config.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -query-scheduler.grpc-client-config.backoff-retries
+      [max_retries: <int> | default = 10]
+
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `server_config`

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +17,9 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -24,7 +28,11 @@ import (
 const testMaxOutstandingPerTenant = 5
 
 func setupScheduler(t *testing.T) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
-	s, err := NewScheduler(Config{MaxOutstandingPerTenant: testMaxOutstandingPerTenant}, &limits{queriers: 2}, log.NewNopLogger(), nil)
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.MaxOutstandingPerTenant = testMaxOutstandingPerTenant
+
+	s, err := NewScheduler(cfg, &limits{queriers: 2}, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
@@ -335,6 +343,66 @@ func TestSchedulerMaxOutstandingRequests(t *testing.T) {
 	require.True(t, msg.Status == schedulerpb.TOO_MANY_REQUESTS_PER_TENANT)
 }
 
+func TestSchedulerForwardsErrorToFrontend(t *testing.T) {
+	_, frontendClient, querierClient := setupScheduler(t)
+
+	fm := &frontendMock{resp: map[uint64]*httpgrpc.HTTPResponse{}}
+	frontendAddress := ""
+
+	// Setup frontend grpc server
+	{
+		frontendGrpcServer := grpc.NewServer()
+		frontendv2pb.RegisterFrontendForQuerierServer(frontendGrpcServer, fm)
+
+		l, err := net.Listen("tcp", "")
+		require.NoError(t, err)
+
+		frontendAddress = l.Addr().String()
+
+		go func() {
+			_ = frontendGrpcServer.Serve(l)
+		}()
+
+		t.Cleanup(func() {
+			_ = l.Close()
+		})
+	}
+
+	// After preparations, start frontend and querier.
+	frontendLoop := initFrontendLoop(t, frontendClient, frontendAddress)
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     100,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
+	})
+
+	// Scheduler now has 1 query. We now connect querier, fetch the request, and then close the connection.
+	// This will make scheduler to report error back to frontend.
+
+	querierLoop, err := querierClient.QuerierLoop(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1"}))
+
+	// Dequeue first query.
+	_, err = querierLoop.Recv()
+	require.NoError(t, err)
+
+	// Querier now disconnects, without sending empty message back.
+	require.NoError(t, querierLoop.CloseSend())
+
+	// Verify that frontend was notified about request.
+	test.Poll(t, 2*time.Second, true, func() interface{} {
+		resp := fm.getRequest(100)
+		if resp == nil {
+			return false
+		}
+
+		require.Equal(t, int32(http.StatusInternalServerError), resp.Code)
+		return true
+	})
+}
+
 func initFrontendLoop(t *testing.T, client schedulerpb.SchedulerForFrontendClient, frontendAddr string) schedulerpb.SchedulerForFrontend_FrontendLoopClient {
 	loop, err := client.FrontendLoop(context.Background())
 	require.NoError(t, err)
@@ -394,4 +462,24 @@ type limits struct {
 
 func (l limits) MaxQueriersPerUser(_ string) int {
 	return l.queriers
+}
+
+type frontendMock struct {
+	mu   sync.Mutex
+	resp map[uint64]*httpgrpc.HTTPResponse
+}
+
+func (f *frontendMock) QueryResult(_ context.Context, request *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.resp[request.QueryID] = request.HttpResponse
+	return &frontendv2pb.QueryResultResponse{}, nil
+}
+
+func (f *frontendMock) getRequest(queryID uint64) *httpgrpc.HTTPResponse {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.resp[queryID]
 }

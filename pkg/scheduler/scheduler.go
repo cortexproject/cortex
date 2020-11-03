@@ -20,7 +20,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend2"
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
@@ -407,10 +407,10 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		_ = conn.Close()
 	}()
 
-	client := querier_frontend.NewFrontendForQuerierClient(conn)
+	client := frontendv2pb.NewFrontendForQuerierClient(conn)
 
 	userCtx := user.InjectOrgID(ctx, req.userID)
-	_, err = client.QueryResult(userCtx, &querier_frontend.QueryResultRequest{
+	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
 		HttpResponse: &httpgrpc.HTTPResponse{
 			Code: http.StatusInternalServerError,

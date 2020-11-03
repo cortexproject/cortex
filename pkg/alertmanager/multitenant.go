@@ -477,7 +477,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	if ok {
 		if !userAM.IsActive() {
 			level.Debug(am.logger).Log("msg", "the Alertmanager is not active", "user", userID)
-			http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+			http.Error(w, "the Alertmanager is not configured", http.StatusBadGateway)
 			return
 		}
 
@@ -498,7 +498,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 	level.Debug(am.logger).Log("msg", "the Alertmanager has no configuration and no fallback specified", "user", userID)
-	http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
+	http.Error(w, "the Alertmanager is not configured", http.StatusBadGateway)
 }
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {

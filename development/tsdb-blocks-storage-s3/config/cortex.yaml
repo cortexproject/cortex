@@ -86,6 +86,7 @@ ruler:
 
 alertmanager:
   enable_api: true
+  external_url: http://alertmanager:8010/alertmanager
   storage:
     type: s3
     s3:

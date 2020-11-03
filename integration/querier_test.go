@@ -21,6 +21,7 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
@@ -124,8 +125,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Push some series to Cortex.
 			series1Timestamp := time.Now()
 			series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-			series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
-			series2, expectedVector2 := generateSeries("series_2", series2Timestamp)
+			series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+			series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
 
 			res, err := c.Push(series1)
 			require.NoError(t, err)
@@ -145,7 +146,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Push another series to further compact another block and delete the first block
 			// due to expired retention.
 			series3Timestamp := series2Timestamp.Add(blockRangePeriod * 2)
-			series3, expectedVector3 := generateSeries("series_3", series3Timestamp)
+			series3, expectedVector3 := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
 
 			res, err = c.Push(series3)
 			require.NoError(t, err)
@@ -218,6 +219,9 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(11+2), "thanos_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Query metadata.
+			testMetadataQueriesWithBlocksStorage(t, c, series1[0], series2[0], series3[0], blockRangePeriod)
 
 			// Ensure no service-specific metrics prefix is used by the wrong service.
 			assertServiceMetricsPrefixes(t, Distributor, distributor)
@@ -323,8 +327,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			// Push some series to Cortex.
 			series1Timestamp := time.Now()
 			series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-			series1, expectedVector1 := generateSeries("series_1", series1Timestamp)
-			series2, expectedVector2 := generateSeries("series_2", series2Timestamp)
+			series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+			series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
 
 			res, err := c.Push(series1)
 			require.NoError(t, err)
@@ -344,7 +348,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			// Push another series to further compact another block and delete the first block
 			// due to expired retention.
 			series3Timestamp := series2Timestamp.Add(blockRangePeriod * 2)
-			series3, expectedVector3 := generateSeries("series_3", series3Timestamp)
+			series3, expectedVector3 := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
 
 			res, err = c.Push(series3)
 			require.NoError(t, err)
@@ -410,6 +414,167 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((11+2)*seriesReplicationFactor)), "thanos_memcached_operations_total")) // as before + 2 gets
 			}
+
+			// Query metadata.
+			testMetadataQueriesWithBlocksStorage(t, c, series1[0], series2[0], series3[0], blockRangePeriod)
+		})
+	}
+}
+
+func testMetadataQueriesWithBlocksStorage(
+	t *testing.T,
+	c *e2ecortex.Client,
+	lastSeriesInStorage prompb.TimeSeries,
+	lastSeriesInIngesterBlocks prompb.TimeSeries,
+	firstSeriesInIngesterHead prompb.TimeSeries,
+	blockRangePeriod time.Duration,
+) {
+	var (
+		lastSeriesInIngesterBlocksName = getMetricName(lastSeriesInIngesterBlocks.Labels)
+		firstSeriesInIngesterHeadName  = getMetricName(firstSeriesInIngesterHead.Labels)
+
+		lastSeriesInStorageTs        = util.TimeFromMillis(lastSeriesInStorage.Samples[0].Timestamp)
+		lastSeriesInIngesterBlocksTs = util.TimeFromMillis(lastSeriesInIngesterBlocks.Samples[0].Timestamp)
+		firstSeriesInIngesterHeadTs  = util.TimeFromMillis(firstSeriesInIngesterHead.Samples[0].Timestamp)
+	)
+
+	type seriesTest struct {
+		lookup string
+		ok     bool
+		resp   []prompb.Label
+	}
+	type labelValuesTest struct {
+		label string
+		resp  []string
+	}
+
+	testCases := map[string]struct {
+		from time.Time
+		to   time.Time
+
+		seriesTests []seriesTest
+
+		labelValuesTests []labelValuesTest
+
+		labelNames []string
+	}{
+		"query metadata entirely inside the head range": {
+			from: firstSeriesInIngesterHeadTs,
+			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod),
+			seriesTests: []seriesTest{
+				{
+					lookup: firstSeriesInIngesterHeadName,
+					ok:     true,
+					resp:   firstSeriesInIngesterHead.Labels,
+				},
+				{
+					lookup: lastSeriesInIngesterBlocksName,
+					ok:     false,
+				},
+			},
+			labelValuesTests: []labelValuesTest{
+				{
+					label: labels.MetricName,
+					resp:  []string{firstSeriesInIngesterHeadName},
+				},
+			},
+			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
+		},
+		"query metadata entirely inside the ingester range but outside the head range": {
+			from: lastSeriesInIngesterBlocksTs,
+			to:   lastSeriesInIngesterBlocksTs.Add(blockRangePeriod / 2),
+			seriesTests: []seriesTest{
+				{
+					lookup: firstSeriesInIngesterHeadName,
+					ok:     false,
+				},
+				{
+					lookup: lastSeriesInIngesterBlocksName,
+					ok:     true,
+					resp:   lastSeriesInIngesterBlocks.Labels,
+				},
+			},
+			labelValuesTests: []labelValuesTest{
+				{
+					label: labels.MetricName,
+					resp:  []string{lastSeriesInIngesterBlocksName},
+				},
+			},
+			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
+		},
+		"query metadata partially inside the ingester range should return the head + local disk data": {
+			from: lastSeriesInStorageTs.Add(-blockRangePeriod),
+			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod),
+			seriesTests: []seriesTest{
+				{
+					lookup: firstSeriesInIngesterHeadName,
+					ok:     true,
+					resp:   firstSeriesInIngesterHead.Labels,
+				},
+				{
+					lookup: lastSeriesInIngesterBlocksName,
+					ok:     true,
+					resp:   lastSeriesInIngesterBlocks.Labels,
+				},
+			},
+			labelValuesTests: []labelValuesTest{
+				{
+					label: labels.MetricName,
+					resp:  []string{lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
+				},
+			},
+			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
+		},
+		"query metadata entirely outside the ingester range should return the head data only": {
+			from: lastSeriesInStorageTs.Add(-2 * blockRangePeriod),
+			to:   lastSeriesInStorageTs.Add(-blockRangePeriod),
+			seriesTests: []seriesTest{
+				{
+					lookup: firstSeriesInIngesterHeadName,
+					ok:     true,
+					resp:   firstSeriesInIngesterHead.Labels,
+				},
+				{
+					lookup: lastSeriesInIngesterBlocksName,
+					ok:     false,
+				},
+			},
+			labelValuesTests: []labelValuesTest{
+				{
+					label: labels.MetricName,
+					resp:  []string{firstSeriesInIngesterHeadName},
+				},
+			},
+			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			for _, st := range tc.seriesTests {
+				seriesRes, err := c.Series([]string{st.lookup}, tc.from, tc.to)
+				require.NoError(t, err)
+				if st.ok {
+					require.Equal(t, 1, len(seriesRes))
+					require.Equal(t, model.LabelSet(prompbLabelsToModelMetric(st.resp)), seriesRes[0])
+				} else {
+					require.Equal(t, 0, len(seriesRes))
+				}
+			}
+
+			for _, lvt := range tc.labelValuesTests {
+				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to)
+				require.NoError(t, err)
+				exp := model.LabelValues{}
+				for _, val := range lvt.resp {
+					exp = append(exp, model.LabelValue(val))
+				}
+				require.ElementsMatch(t, exp, labelsRes)
+			}
+
+			labelNames, err := c.LabelNames(tc.from, tc.to)
+			require.NoError(t, err)
+			require.Equal(t, tc.labelNames, labelNames)
 		})
 	}
 }
@@ -709,6 +874,16 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	require.Equal(t, expectedVector, result.(model.Vector))
+}
+
+func getMetricName(lbls []prompb.Label) string {
+	for _, lbl := range lbls {
+		if lbl.Name == labels.MetricName {
+			return lbl.Value
+		}
+	}
+
+	panic(fmt.Sprintf("series %v has no metric name", lbls))
 }
 
 func prompbLabelsToModelMetric(pbLabels []prompb.Label) model.Metric {

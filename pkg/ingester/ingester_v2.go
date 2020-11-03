@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -89,6 +90,10 @@ func (u *userTSDB) Close() error {
 
 func (u *userTSDB) Compact() error {
 	return u.db.Compact()
+}
+
+func (u *userTSDB) StartTime() (int64, error) {
+	return u.db.StartTime()
 }
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
@@ -718,10 +723,12 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -748,10 +755,12 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -784,10 +793,12 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -1487,4 +1498,31 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	}()
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
+func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB) (mint, maxt int64, err error) {
+	// Ingesters are run with limited retention and we don't support querying the store-gateway for labels yet.
+	// This means if someone loads a dashboard that is outside the range of the ingester, and we only return the
+	// data for the timerange requested (which will be empty), the dashboards will break. To fix this we should
+	// return the "head block" range until we can query the store-gateway.
+
+	// Now the question would be what to do when the query is partially in the ingester range. I would err on the side
+	// of caution and query the entire db, as I can't think of a good way to query the head + the overlapping range.
+	mint, maxt = queryStart, queryEnd
+
+	lowestTs, err := db.StartTime()
+	if err != nil {
+		return mint, maxt, err
+	}
+
+	// Completely outside.
+	if queryEnd < lowestTs {
+		mint, maxt = db.Head().MinTime(), db.Head().MaxTime()
+	} else if queryStart < lowestTs {
+		// Partially inside.
+		mint, maxt = 0, math.MaxInt64
+	}
+
+	return
 }

@@ -548,10 +548,10 @@ func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matcher
 func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName) ([]string, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelNames(context.Context) ([]string, error) {
+func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
@@ -590,11 +590,11 @@ func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time,
 	return &client.QueryStreamResponse{}, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.LabelName) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName) ([]string, error) {
 	return nil, nil
 }
 
-func (d *emptyDistributor) LabelNames(context.Context) ([]string, error) {
+func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, nil
 }
 

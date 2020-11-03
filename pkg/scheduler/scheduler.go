@@ -381,7 +381,10 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	case err := <-errCh:
 		// Is there was an error handling this request due to network IO,
 		// then error out this upstream request _and_ stream.
-		s.forwardErrorToFrontend(req.ctx, req, err)
+
+		if err != nil {
+			s.forwardErrorToFrontend(req.ctx, req, err)
+		}
 		return err
 	}
 }

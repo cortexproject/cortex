@@ -125,7 +125,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	// stopped, which means the transfer to ingester-2 is completed.
 	require.NoError(t, s.Stop(ingester1))
 
-	checkQueries(t, consul, distributor,
+	checkQueries(t, consul,
 		expectedVector,
 		previousImage,
 		flagsForOldImage,
@@ -183,7 +183,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	checkQueries(t, consul, distributor,
+	checkQueries(t, consul,
 		expectedVector,
 		previousImage,
 		flagsForPreviousImage,
@@ -194,7 +194,9 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	)
 }
 
-func checkQueries(t *testing.T, consul *e2e.HTTPService, distributor *e2ecortex.CortexService,
+func checkQueries(
+	t *testing.T,
+	consul *e2e.HTTPService,
 	expectedVector model.Vector,
 	previousImage string,
 	flagsForOldImage, flagsForNewImage map[string]string,
@@ -202,31 +204,59 @@ func checkQueries(t *testing.T, consul *e2e.HTTPService, distributor *e2ecortex.
 	s *e2e.Scenario,
 	numIngesters int,
 ) {
-	// Query the new ingester both with the old and the new querier.
-	for _, image := range []string{previousImage, ""} {
-		var querier *e2ecortex.CortexService
+	cases := map[string]struct {
+		queryFrontendImage string
+		queryFrontendFlags map[string]string
+		querierImage       string
+		querierFlags       map[string]string
+	}{
+		"old query-frontend, new querier": {
+			queryFrontendImage: previousImage,
+			queryFrontendFlags: flagsForOldImage,
+			querierImage:       "",
+			querierFlags:       flagsForNewImage,
+		},
+		"new query-frontend, old querier": {
+			queryFrontendImage: "",
+			queryFrontendFlags: flagsForNewImage,
+			querierImage:       previousImage,
+			querierFlags:       flagsForOldImage,
+		},
+	}
 
-		if image == previousImage {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForOldImage, image)
-		} else {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForNewImage, image)
-		}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Start query-frontend.
+			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", c.queryFrontendFlags, c.queryFrontendImage)
+			require.NoError(t, s.Start(queryFrontend))
+			defer func() {
+				require.NoError(t, s.Stop(queryFrontend))
+			}()
 
-		require.NoError(t, s.StartAndWaitReady(querier))
+			// Start querier.
+			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), e2e.MergeFlagsWithoutRemovingEmpty(c.querierFlags, map[string]string{
+				"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+			}), c.querierImage)
 
-		// Wait until the querier has updated the ring.
-		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numIngesters*512)), "cortex_ring_tokens_total"))
+			require.NoError(t, s.Start(querier))
+			defer func() {
+				require.NoError(t, s.Stop(querier))
+			}()
 
-		// Query the series
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
-		require.NoError(t, err)
+			// Wait until querier and query-frontend are ready, and the querier has updated the ring.
+			require.NoError(t, s.WaitReady(querier, queryFrontend))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numIngesters*512)), "cortex_ring_tokens_total"))
 
-		result, err := c.Query("series_1", now)
-		require.NoError(t, err)
-		require.Equal(t, model.ValVector, result.Type())
-		assert.Equal(t, expectedVector, result.(model.Vector))
+			// Query the series.
+			for _, endpoint := range []string{queryFrontend.HTTPEndpoint(), querier.HTTPEndpoint()} {
+				c, err := e2ecortex.NewClient("", endpoint, "", "", "user-1")
+				require.NoError(t, err)
 
-		// Stop the querier, so that the test on the next image will work.
-		require.NoError(t, s.Stop(querier))
+				result, err := c.Query("series_1", now)
+				require.NoError(t, err)
+				require.Equal(t, model.ValVector, result.Type())
+				assert.Equal(t, expectedVector, result.(model.Vector))
+			}
+		})
 	}
 }

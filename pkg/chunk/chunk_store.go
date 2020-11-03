@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -78,7 +80,12 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate validates the store config.
-func (cfg *StoreConfig) Validate() error {
+func (cfg *StoreConfig) Validate(logger log.Logger) error {
+	if cfg.MaxLookBackPeriod > 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
+	}
+
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}

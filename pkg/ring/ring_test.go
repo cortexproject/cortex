@@ -290,6 +290,26 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
+		"three zones, one instance per zone, two instances unhealthy in separate zones": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+			},
+			unhealthyInstances: []string{"instance-1", "instance-2"},
+			replicationFactor:  3,
+			expectedError:      ErrTooManyFailedIngesters,
+		},
+		"three zones, one instance per zone, all instances unhealthy": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+			},
+			unhealthyInstances: []string{"instance-1", "instance-2", "instance-3"},
+			replicationFactor:  3,
+			expectedError:      ErrTooManyFailedIngesters,
+		},
 		"three zones, two instances per zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -315,6 +335,24 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			},
 			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.5", "127.0.0.6"},
 			unhealthyInstances:          []string{"instance-3", "instance-4"},
+			replicationFactor:           3,
+			expectedMaxErrors:           0,
+			expectedMaxUnavailableZones: 0,
+		},
+		"three zones, three instances per zone, two instances unhealthy in same zone": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-7": {Addr: "127.0.0.7", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-8": {Addr: "127.0.0.8", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-9": {Addr: "127.0.0.9", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.7", "127.0.0.8", "127.0.0.9"},
+			unhealthyInstances:          []string{"instance-4", "instance-6"},
 			replicationFactor:           3,
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
@@ -394,7 +432,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			if testData.expectedError == nil {
 				require.NoError(t, err)
 			} else {
-				require.EqualError(t, err, ErrEmptyRing.Error())
+				require.Equal(t, testData.expectedError, err)
 			}
 
 			assert.Equal(t, testData.expectedMaxErrors, replicationSet.MaxErrors)

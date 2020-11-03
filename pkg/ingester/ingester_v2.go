@@ -54,9 +54,10 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
-	forcedCompactionInProgress    bool
 	forcedCompactionInProgressMtx sync.RWMutex
-	pushesInFlight                sync.WaitGroup
+	forcedCompactionInProgress    bool
+
+	pushesInFlight sync.WaitGroup
 
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64

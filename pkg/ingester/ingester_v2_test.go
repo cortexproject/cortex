@@ -2458,3 +2458,60 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	db.forcedCompactionInProgress = false
 	pushSingleSample(t, i)
 }
+
+func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), registry)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push few samples.
+	for j := 0; j < 5; j++ {
+		pushSingleSample(t, i)
+	}
+
+	// Verifying that compaction won't happen when a request is in flight.
+
+	// This mocks a request in flight.
+	db := i.getTSDB(userID)
+	require.NoError(t, db.acquireAppendLock())
+
+	// Flush handler only triggers compactions, but doesn't wait for them to finish.
+	i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+
+	// Flushing should not have succeeded even after 5 seconds.
+	time.Sleep(5 * time.Second)
+	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
+		# TYPE cortex_ingester_tsdb_compactions_total counter
+		cortex_ingester_tsdb_compactions_total 0
+	`), "cortex_ingester_tsdb_compactions_total"))
+
+	// No requests in flight after this.
+	db.releaseAppendLock()
+
+	// Let's wait for a moment for flush to finish, and then verify.
+	test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+		db := i.getTSDB(userID)
+		if db == nil {
+			return false
+		}
+		return db.Head().NumSeries()
+	})
+
+	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
+		# TYPE cortex_ingester_tsdb_compactions_total counter
+		cortex_ingester_tsdb_compactions_total 1
+	`), "cortex_ingester_tsdb_compactions_total"))
+}

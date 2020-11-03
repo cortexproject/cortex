@@ -584,7 +584,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					require.Nil(t, r.Err)
 
 					_, err = r.Matrix()
-					require.Nil(t, r.Err)
+					require.Nil(t, err)
 
 					if !testData.expectedSkipped {
 						// Assert on the time range of the actual executed query (5s delta).

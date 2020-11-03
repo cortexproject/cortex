@@ -6,12 +6,12 @@ import (
 	"os"
 
 	"github.com/golang/snappy"
-	"github.com/prometheus/prometheus/tsdb/errors"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 )
 
 type symbolsIterator struct {
 	files []*symbolsFile
-	errs  errors.MultiError
+	errs  []error
 
 	// To avoid returning duplicates, we remember last returned symbol.
 	lastReturned *string
@@ -33,12 +33,14 @@ func (sit *symbolsIterator) buildHeap() {
 		next, err := f.hasNext()
 
 		if err != nil {
-			sit.errs.Add(err)
+			sit.errs = append(sit.errs, err)
 			return
 		}
 
 		if !next {
-			sit.errs.Add(f.close())
+			if err := f.close(); err != nil {
+				sit.errs = append(sit.errs, err)
+			}
 			sit.files = append(sit.files[:ix], sit.files[ix+1:]...)
 			continue
 		}
@@ -55,7 +57,7 @@ func (sit *symbolsIterator) buildHeap() {
 // Next advances iterator forward, and returns next element. If there is no next element, returns false.
 func (sit *symbolsIterator) Next() (string, bool) {
 again:
-	if sit.errs.Err() != nil {
+	if len(sit.errs) > 0 {
 		return "", false
 	}
 
@@ -66,10 +68,14 @@ again:
 	result := sit.files[0].pop()
 
 	hasNext, err := sit.files[0].hasNext()
-	sit.errs.Add(err)
+	if err != nil {
+		sit.errs = append(sit.errs, err)
+	}
 
 	if !hasNext {
-		sit.errs.Add(sit.files[0].close())
+		if err := sit.files[0].close(); err != nil {
+			sit.errs = append(sit.errs, err)
+		}
 
 		// Move last file to the front, and heapify from there.
 		sit.files[0] = sit.files[len(sit.files)-1]
@@ -88,11 +94,11 @@ again:
 }
 
 func (sit *symbolsIterator) Error() error {
-	return sit.errs.Err()
+	return tsdb_errors.NewMulti(sit.errs...).Err()
 }
 
 func (sit *symbolsIterator) Close() error {
-	var errs errors.MultiError
+	errs := tsdb_errors.NewMulti()
 	for _, f := range sit.files {
 		errs.Add(f.close())
 	}

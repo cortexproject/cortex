@@ -15,7 +15,7 @@ mkdir -p ${OUTPUT_CONTENT_DIR}
 # Copy original content.
 cp -r ${ORIGINAL_CONTENT_DIR}/* ${OUTPUT_CONTENT_DIR}
 cp -r code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
-cp GOVERNANCE.md ${OUTPUT_CONTENT_DIR}/governance/_index.md
+cp GOVERNANCE.md ${OUTPUT_CONTENT_DIR}/contributing/governance.md
 cp images/* ${WEBSITE_DIR}/static/images
 
 # Add headers to special CODE_OF_CONDUCT.md and CHANGELOG.md files.
@@ -46,11 +46,11 @@ echo "$(cat <<EOT
 title: Governance
 type: docs
 originalpath: GOVERNANCE.md
-weight: 11
+weight: 1
 ---
 EOT
-)" > ${OUTPUT_CONTENT_DIR}/governance/_index.md
-tail -n +2 GOVERNANCE.md >> ${OUTPUT_CONTENT_DIR}/governance/_index.md
+)" > ${OUTPUT_CONTENT_DIR}/contributing/governance.md
+tail -n +2 GOVERNANCE.md >> ${OUTPUT_CONTENT_DIR}/contributing/governance.md
 
 ALL_DOC_CONTENT_FILES=`echo "${OUTPUT_CONTENT_DIR}/**/*.md ${OUTPUT_CONTENT_DIR}/*.md"`
 for file in $(find ${OUTPUT_CONTENT_DIR} -name '*.md')

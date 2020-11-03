@@ -12,6 +12,7 @@ import (
 	"net/url"
 	strconv "strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -226,22 +227,17 @@ func TestFrontendCancelStatusCode(t *testing.T) {
 func TestFrontendCheckReady(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
-		downstreamURL    string
 		connectedClients int32
 		msg              string
 		readyForRequests bool
 	}{
-		{"downstream url is always ready", "super url", 0, "", true},
-		{"connected clients are ready", "", 3, "", true},
-		{"no url, no clients is not ready", "", 0, "not ready: number of queriers connected to query-frontend is 0", false},
+		{"connected clients are ready", 3, "", true},
+		{"no url, no clients is not ready", 0, "not ready: number of queriers connected to query-frontend is 0", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
 				connectedClients: atomic.NewInt32(tt.connectedClients),
 				log:              log.NewNopLogger(),
-				cfg: Config{
-					DownstreamURL: tt.downstreamURL,
-				},
 			}
 			err := f.CheckReady(context.Background())
 			errMsg := ""
@@ -253,6 +249,25 @@ func TestFrontendCheckReady(t *testing.T) {
 			require.Equal(t, tt.msg, errMsg)
 		})
 	}
+}
+
+type syncBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (sb *syncBuf) Write(p []byte) (n int, err error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.buf.Write(p)
+}
+
+func (sb *syncBuf) String() string {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+
+	return sb.buf.String()
 }
 
 func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
@@ -273,11 +288,11 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 
 	// Configure the query-frontend with the mocked downstream server.
 	config := defaultFrontendConfig()
-	config.LogQueriesLongerThan = 1 * time.Microsecond
+	config.Handler.LogQueriesLongerThan = 1 * time.Microsecond
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
 
-	var buf bytes.Buffer
-	l := log.NewLogfmtLogger(log.NewSyncWriter(&buf))
+	var buf syncBuf
+	l := log.NewLogfmtLogger(&buf)
 
 	test := func(addr string) {
 		data := url.Values{}
@@ -336,7 +351,7 @@ func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
 	// Configure the query-frontend with the mocked downstream server.
 	config := defaultFrontendConfig()
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
-	config.MaxBodySize = 1
+	config.Handler.MaxBodySize = 1
 
 	test := func(addr string) {
 		data := url.Values{}
@@ -368,7 +383,7 @@ func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
 	testFrontend(t, config, nil, test, false, nil)
 }
 
-func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {
+func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {
 	logger := log.NewNopLogger()
 	if l != nil {
 		logger = l
@@ -386,27 +401,34 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
-	workerConfig.Address = grpcListen.Addr().String()
+	workerConfig.FrontendAddress = grpcListen.Addr().String()
 
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	frontend, err := New(config, limits{}, logger, nil)
+	rt, v1, v2, err := InitFrontend(config, limits{}, 0, logger, nil)
 	require.NoError(t, err)
-	defer frontend.Close()
+	require.NotNil(t, rt)
+	// v1 will be nil if DownstreamURL is defined.
+	require.Nil(t, v2)
+	if v1 != nil {
+		defer v1.Close()
+	}
 
 	grpcServer := grpc.NewServer(
 		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),
 	)
 	defer grpcServer.GracefulStop()
 
-	RegisterFrontendServer(grpcServer, frontend)
+	if v1 != nil {
+		RegisterFrontendServer(grpcServer, v1)
+	}
 
 	r := mux.NewRouter()
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(frontend.Handler()))
+	).Wrap(NewHandler(config.Handler, rt, logger)))
 
 	httpServer := http.Server{
 		Handler: r,
@@ -426,9 +448,12 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
 }
 
-func defaultFrontendConfig() Config {
-	config := Config{}
+func defaultFrontendConfig() CombinedFrontendConfig {
+	config := CombinedFrontendConfig{}
 	flagext.DefaultValues(&config)
+	flagext.DefaultValues(&config.Handler)
+	flagext.DefaultValues(&config.FrontendV1)
+	flagext.DefaultValues(&config.FrontendV2)
 	return config
 }
 

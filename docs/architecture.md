@@ -44,11 +44,7 @@ For this reason, the chunks storage consists of:
   * [Google Cloud Storage](https://cloud.google.com/storage/)
   * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
-Internally, the access to the chunks storage relies on a unified interface called "chunks store". Unlike other Cortex components, the chunk store is not a separate service, but rather a library embedded in the services that need to access the long-term storage: [ingester](#ingester), [querier](#querier) and [ruler](#ruler).
-
-The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
-
-The current schema recommendation is the **v9 schema** for most use cases and **v10 schema** if you expect to have very high cardinality metrics (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
+For more information, please check out the [Chunks storage](./chunks-storage/_index.md) documentation.
 
 ### Blocks storage
 
@@ -61,8 +57,8 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
-* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 * [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
+* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
 For more information, please check out the [Blocks storage](./blocks-storage/_index.md) documentation.
 
@@ -110,7 +106,7 @@ The supported KV stores for the HA tracker are:
 
 Note: Memberlist is not supported. Memberlist-based KV store propagates updates using gossip, which is very slow for HA purposes: result is that different distributors may see different Prometheus server as elected HA replica, which is definitely not desirable.
 
-For more information, please refer to [config for sending HA pairs data to Cortex](production/ha-pair-handling.md) in the documentation.
+For more information, please refer to [config for sending HA pairs data to Cortex](guides/ha-pair-handling.md) in the documentation.
 
 #### Hashing
 

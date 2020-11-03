@@ -1,11 +1,11 @@
 ---
-title: "Running Cortex in Production"
-linkTitle: "Running Cortex in Production"
+title: "Running Cortex chunks storage in Production"
+linkTitle: "Running Cortex chunks storage in Production"
 weight: 1
-slug: running-in-production
+slug: running-chunks-storage-in-production
 ---
 
-This document builds on the [getting started guide](../getting-started/_index.md) and specifies the steps needed to get Cortex into production.
+This document builds on the [getting started guide](../getting-started/_index.md) and specifies the steps needed to get Cortex [**chunks storage**](../chunks-storage/_index.md) into production.
 Ensure you have completed all the steps in the [getting started guide](../getting-started/_index.md) and read about [the Cortex architecture](../architecture.md) before you start this one.
 
 ## 1. Pick a storage backend
@@ -16,9 +16,9 @@ Local chunk storage is experimental and shouldn’t be used in production.
 Cortex requires a scalable storage back-end for production systems.
 It is recommended you use chunk storage with one of the following back-ends:
 
-* DynamoDB/S3 (see [Cortex on AWS](./storage-aws.md))
+* DynamoDB/S3 (see [AWS tips](../chunks-storage/aws-tips.md))
 * BigTable/GCS
-* Cassandra (see [Cortex on Cassandra](./storage-cassandra.md))
+* Cassandra (see [Running chunks storage on Cassandra](./running-chunks-storage-with-cassandra.md))
 
 Commercial cloud options are DynamoDB/S3 and Bigtable/GCS: the advantage is you don't have to know how to manage them, but the downside is they have specific costs.
 
@@ -58,7 +58,7 @@ The next section has more details.
 Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost.
 
-For more information, see the [Caching in Cortex documentation.](./caching.md)
+For more information, see the [Caching in Cortex documentation.](../chunks-storage/caching.md)
 
 ## 4. Monitoring and Alerting
 
@@ -73,7 +73,7 @@ We recommend you use these for any production Cortex cluster.
 If you want to run Cortex as a multi-tenant system, you need to give each
 tenant a unique ID - this can be any string.
 Managing tenants and allocating IDs must be done outside of Cortex.
-See [Authentication and Authorisation](auth.md) for more information.
+See [Authentication and Authorisation](authentication-and-authorisation.md) for more information.
 
 ## 6. Handling HA Prometheus Pairs
 

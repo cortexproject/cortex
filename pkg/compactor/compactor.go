@@ -344,7 +344,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
 
-	errs := tsdb_errors.MultiError{}
+	errs := tsdb_errors.NewMulti()
 
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).

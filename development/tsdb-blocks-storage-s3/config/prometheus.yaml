@@ -18,7 +18,7 @@ scrape_configs:
           namespace: 'tsdb-blocks-storage-s3'
   - job_name: tsdb-blocks-storage-s3/querier
     static_configs:
-      - targets: ['querier:8004']
+      - targets: ['querier:8004', 'query-frontend-with-scheduler:8013']
         labels:
           cluster: 'docker-compose'
           namespace: 'tsdb-blocks-storage-s3'
@@ -36,13 +36,19 @@ scrape_configs:
           namespace: 'tsdb-blocks-storage-s3'
   - job_name: tsdb-blocks-storage-s3/query-frontend
     static_configs:
-      - targets: ['query-frontend:8007']
+      - targets: ['query-frontend:8007', 'query-frontend-with-scheduler:8012']
         labels:
           cluster: 'docker-compose'
           namespace: 'tsdb-blocks-storage-s3'
   - job_name: tsdb-blocks-storage-s3/store-gateway
     static_configs:
       - targets: ['store-gateway-1:8008', 'store-gateway-2:8009']
+        labels:
+          cluster: 'docker-compose'
+          namespace: 'tsdb-blocks-storage-s3'
+  - job_name: tsdb-blocks-storage-s3/query-scheduler
+    static_configs:
+      - targets: ['query-scheduler:8011']
         labels:
           cluster: 'docker-compose'
           namespace: 'tsdb-blocks-storage-s3'

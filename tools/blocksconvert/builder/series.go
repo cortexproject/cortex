@@ -11,7 +11,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	"github.com/prometheus/prometheus/tsdb/errors"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 )
 
 type series struct {
@@ -118,7 +118,7 @@ func writeSymbols(filename string, symbols []string) error {
 	sn := snappy.NewBufferedWriter(f)
 	enc := gob.NewEncoder(sn)
 
-	errs := errors.MultiError{}
+	errs := tsdb_errors.NewMulti()
 
 	for _, s := range symbols {
 		err := enc.Encode(s)
@@ -141,7 +141,7 @@ func writeSeries(filename string, sers []series) (map[string]struct{}, error) {
 
 	symbols := map[string]struct{}{}
 
-	errs := errors.MultiError{}
+	errs := tsdb_errors.NewMulti()
 
 	sn := snappy.NewBufferedWriter(f)
 	enc := gob.NewEncoder(sn)

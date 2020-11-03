@@ -1,7 +1,7 @@
 ---
 title: "How to add a maintainer"
 linkTitle: "How to add a maintainer"
-weight: 2
+weight: 10
 slug: how-to-add-a-maintainer
 ---
 

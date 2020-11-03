@@ -165,6 +165,8 @@ query_scheduler:
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
   [max_outstanding_requests_per_tenant: <int> | default = 100]
 
+  # This configures the gRPC client used to report errors back to the
+  # query-frontend.
   grpc_client_config:
     # gRPC client max receive message size (bytes).
     # CLI flag: -query-scheduler.grpc-client-config.grpc-max-recv-msg-size

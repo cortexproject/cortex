@@ -75,13 +75,11 @@ type connectedFrontend struct {
 type Config struct {
 	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant"`
 
-	// Used to report errors back to frontend, if needed.
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config" doc:"description=This configures the gRPC client used to report errors back to the query-frontend."`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "query-scheduler.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per query-scheduler. In-flight requests above this limit will fail with HTTP response status code 429.")
-
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 }
 

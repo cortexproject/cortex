@@ -113,8 +113,8 @@ var (
 		},
 		{
 			name:       "frontend_worker_config",
-			structType: reflect.TypeOf(querier_worker.CombinedWorkerConfig{}),
-			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.",
+			structType: reflect.TypeOf(querier_worker.Config{}),
+			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.",
 		},
 		{
 			name:       "etcd_config",

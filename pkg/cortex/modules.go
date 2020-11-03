@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -285,10 +286,10 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	} else {
 		// Single binary mode requires a query frontend endpoint for the worker. If no frontend or scheduler endpoint
 		// is configured, Cortex will default to using frontend on localhost on it's own GRPC listening port.
-		if t.Cfg.Worker.WorkerV1.FrontendAddress == "" || t.Cfg.Worker.WorkerV2.SchedulerAddress == "" {
+		if t.Cfg.Worker.FrontendAddress == "" || t.Cfg.Worker.SchedulerAddress == "" {
 			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
-			t.Cfg.Worker.WorkerV1.FrontendAddress = address
+			t.Cfg.Worker.FrontendAddress = address
 		}
 
 		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
@@ -297,8 +298,13 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
 	}
 
-	// If neither frontend address or scheduler address is configured, no worker will be created.
-	return querier_worker.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
+	// If neither frontend address or scheduler address is configured, no worker is needed.
+	if t.Cfg.Worker.FrontendAddress == "" && t.Cfg.Worker.SchedulerAddress == "" {
+		return nil, nil
+	}
+
+	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
+	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger, prometheus.DefaultRegisterer)
 }
 
 func (t *Cortex) initStoreQueryables() (services.Service, error) {

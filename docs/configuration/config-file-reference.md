@@ -111,7 +111,8 @@ api:
 [limits: <limits_config>]
 
 # The frontend_worker_config configures the worker - running within the Cortex
-# querier - picking up and executing queries enqueued by the query-frontend.
+# querier - picking up and executing queries enqueued by the query-frontend or
+# query-scheduler.
 [frontend_worker: <frontend_worker_config>]
 
 # The query_frontend_config configures the Cortex query-frontend.
@@ -2607,7 +2608,7 @@ grpc_client_config:
 
 ### `frontend_worker_config`
 
-The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.
+The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.
 
 ```yaml
 # Address of query frontend service, in host:port format. If
@@ -2617,7 +2618,18 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # CLI flag: -querier.frontend-address
 [frontend_address: <string> | default = ""]
 
-# Number of simultaneous queries to process per query frontend.
+# Hostname (and port) of scheduler that querier will periodically resolve,
+# connect to and receive queries from. If set, takes precedence over
+# -querier.frontend-address.
+# CLI flag: -querier.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to query DNS for query-frontend or query-scheduler address.
+# CLI flag: -querier.dns-lookup-period
+[dns_lookup_duration: <duration> | default = 10s]
+
+# Number of simultaneous queries to process per query-frontend or
+# query-scheduler.
 # CLI flag: -querier.worker-parallelism
 [parallelism: <int> | default = 10]
 
@@ -2625,10 +2637,6 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 # Overrides querier.worker-parallelism.
 # CLI flag: -querier.worker-match-max-concurrent
 [match_max_concurrent: <boolean> | default = false]
-
-# How often to query DNS.
-# CLI flag: -querier.dns-lookup-period
-[dns_lookup_duration: <duration> | default = 10s]
 
 # Querier ID, sent to frontend service to identify requests from the same
 # querier. Defaults to hostname.
@@ -2697,17 +2705,6 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
-
-# Hostname (and port) of scheduler that querier will periodically resolve,
-# connect to and receive queries from. If set, takes precedence over
-# -querier.frontend-address.
-# CLI flag: -querier.scheduler-address
-[scheduler_address: <string> | default = ""]
-
-# How often to resolve the scheduler-address, in order to look for new
-# query-scheduler instances.
-# CLI flag: -querier.scheduler-dns-lookup-period
-[scheduler_dns_lookup_period: <duration> | default = 10s]
 ```
 
 ### `etcd_config`

@@ -30,19 +30,23 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 
    Maximum number of samples a single query can load into memory, to avoid blowing up on enormous queries.
 
-The next three options only apply when the querier is used together with the Query Frontend:
+The next three options only apply when the querier is used together with the Query Frontend or Query Scheduler:
 
 - `-querier.frontend-address`
 
    Address of query frontend service, used by workers to find the frontend which will give them queries to execute.
 
+- `-querier.scheduler-address`
+
+   Address of query scheduler service, used by workers to find the scheduler which will give them queries to execute. If set, `-querier.frontend-address` is ignored, and querier will use query scheduler.
+
 - `-querier.dns-lookup-period`
 
-   How often the workers will query DNS to re-check where the frontend is.
+   How often the workers will query DNS to re-check where the query frontend or query scheduler is.
 
 - `-querier.worker-parallelism`
 
-   Number of simultaneous queries to process, per query frontend.
+   Number of simultaneous queries to process, per query frontend or scheduler.
    See note on `-querier.max-concurrent`
 
 - `-querier.worker-match-max-concurrent`

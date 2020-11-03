@@ -736,17 +736,6 @@ func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q quer
 	return r
 }
 
-type errChunkStore struct {
-}
-
-func (m *errChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	return nil, errDistributorError
-}
-
-func (m *errChunkStore) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return storage.NoopQuerier(), errDistributorError
-}
-
 type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")

@@ -345,22 +345,22 @@ func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	// ensure we always require at least RF-1 when RF=3.
 	numRequired := calculateRequiredInstances(len(r.ringDesc.Ingesters), r.cfg.ReplicationFactor)
 
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]int)
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
-			ingesters = append(ingesters, ingester)
+			instances = append(instances, ingester)
 
 		} else {
 			zoneFailures[ingester.Zone]++
 		}
 	}
-	maxErrors := len(ingesters) - numRequired
+	maxErrors := len(instances) - numRequired
 
 	if r.cfg.ZoneAwarenessEnabled {
 		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 		if len(zoneFailures) > 0 {
-			for _, ingester := range ingesters {
+			for _, ingester := range instances {
 				_, present := zoneFailures[ingester.Zone]
 				if !present {
 					filteredInstances = append(filteredInstances, ingester)
@@ -369,19 +369,19 @@ func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 		}
 
 		if len(filteredInstances) != 0 {
-			ingesters = filteredInstances
+			instances = filteredInstances
 			maxUnavailableZones = 0
-			numRequired = calculateRequiredInstances(len(ingesters), r.cfg.ReplicationFactor)
+			numRequired = calculateRequiredInstances(len(instances), r.cfg.ReplicationFactor)
 			maxErrors = 0
 		}
 	}
 
-	if len(ingesters) < numRequired {
+	if len(instances) < numRequired {
 		return ReplicationSet{}, ErrTooManyFailedIngesters
 	}
 
 	return ReplicationSet{
-		Ingesters:           ingesters,
+		Ingesters:           instances,
 		MaxErrors:           maxErrors,
 		MaxUnavailableZones: maxUnavailableZones,
 	}, nil

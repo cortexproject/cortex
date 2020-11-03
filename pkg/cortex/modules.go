@@ -28,8 +28,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
-	querier_frontend "github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -298,7 +298,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker will be created.
-	return querier_frontend.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
+	return querier_worker.InitQuerierWorker(t.Cfg.Worker, t.Cfg.Querier, internalQuerierRouter, util.Logger)
 }
 
 func (t *Cortex) initStoreQueryables() (services.Service, error) {

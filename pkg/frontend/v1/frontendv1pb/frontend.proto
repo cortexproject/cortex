@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package frontendv1pb;
+// Protobuf package should not be changed when moving around go packages
+// in order to not break backward compatibility.
+package frontend;
 
 option go_package = "frontendv1pb";
 

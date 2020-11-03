@@ -101,8 +101,12 @@ var (
 	// not registered within the ring.
 	ErrInstanceNotFound = errors.New("instance not found in the ring")
 
+<<<<<<< HEAD
 	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
 	// specific operation.
+=======
+	// ErrTooManyFailedIngesters is the error returned when not enough ingesters are available
+>>>>>>> Do not return early and add more test cases
 	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
 )
 
@@ -332,6 +336,16 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 	}, nil
 }
 
+func calculateRequiredInstances(nrInstances, replicationFactor int) int {
+	numRequired := nrInstances
+	if numRequired < replicationFactor {
+		numRequired = replicationFactor
+	}
+	maxUnavailable := replicationFactor / 2
+	numRequired -= maxUnavailable
+	return numRequired
+}
+
 // GetAllHealthy implements ReadRing.
 func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
@@ -367,12 +381,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 
 	// Calculate the number of required ingesters;
 	// ensure we always require at least RF-1 when RF=3.
-	numRequired := len(r.ringDesc.Ingesters)
-	if numRequired < r.cfg.ReplicationFactor {
-		numRequired = r.cfg.ReplicationFactor
-	}
-	maxUnavailable := r.cfg.ReplicationFactor / 2
-	numRequired -= maxUnavailable
+	numRequired := calculateRequiredInstances(len(r.ringDesc.Ingesters), r.cfg.ReplicationFactor)
 
 	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]int)
@@ -384,6 +393,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			zoneFailures[ingester.Zone]++
 		}
 	}
+	maxErrors := len(ingesters) - numRequired
 
 	if r.cfg.ZoneAwarenessEnabled {
 		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
@@ -396,18 +406,12 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			}
 		}
 
-		if len(filteredInstances) == 0 {
-			return ReplicationSet{
-				Ingesters:           ingesters,
-				MaxErrors:           len(ingesters) - numRequired,
-				MaxUnavailableZones: maxUnavailableZones,
-			}, nil
+		if len(filteredInstances) != 0 {
+			ingesters = filteredInstances
+			maxUnavailableZones = 0
+			numRequired = calculateRequiredInstances(len(ingesters), r.cfg.ReplicationFactor)
+			maxErrors = 0
 		}
-		return ReplicationSet{
-			Ingesters:           filteredInstances,
-			MaxErrors:           0,
-			MaxUnavailableZones: 0,
-		}, nil
 	}
 
 	if len(ingesters) < numRequired {
@@ -416,7 +420,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 
 	return ReplicationSet{
 		Ingesters:           ingesters,
-		MaxErrors:           len(ingesters) - numRequired,
+		MaxErrors:           maxErrors,
 		MaxUnavailableZones: maxUnavailableZones,
 	}, nil
 }

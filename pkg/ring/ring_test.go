@@ -572,6 +572,18 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
+		"five zones, one instances per zone, three unhealthy instances": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-d", Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-e", Tokens: GenerateTokens(128, nil)},
+			},
+			unhealthyInstances: []string{"instance-2", "instance-4", "instance-5"},
+			replicationFactor:  5,
+			expectedError:      ErrTooManyFailedIngesters,
+		},
 	}
 
 	for testName, testData := range tests {

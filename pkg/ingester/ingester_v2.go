@@ -55,6 +55,11 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	forcedCompactionInProgressMtx sync.RWMutex
+	forcedCompactionInProgress    bool
+
+	pushesInFlight sync.WaitGroup
+
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
 
@@ -98,6 +103,18 @@ func (u *userTSDB) StartTime() (int64, error) {
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
+	u.forcedCompactionInProgressMtx.Lock()
+	u.forcedCompactionInProgress = true
+	u.forcedCompactionInProgressMtx.Unlock()
+	defer func() {
+		u.forcedCompactionInProgressMtx.Lock()
+		u.forcedCompactionInProgress = false
+		u.forcedCompactionInProgressMtx.Unlock()
+	}()
+	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
+	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
+	u.pushesInFlight.Wait()
+
 	h := u.Head()
 
 	minTime, maxTime := h.MinTime(), h.MaxTime()
@@ -506,6 +523,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 	i.userStatesMtx.RUnlock()
 
+	if err := db.acquireAppendLock(); err != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+	}
+	defer db.releaseAppendLock()
+
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
 	i.pushMetadata(ctx, userID, req.GetMetadata())
@@ -654,6 +676,22 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 
 	return &client.WriteResponse{}, nil
+}
+
+func (u *userTSDB) acquireAppendLock() error {
+	u.forcedCompactionInProgressMtx.RLock()
+	defer u.forcedCompactionInProgressMtx.RUnlock()
+
+	if u.forcedCompactionInProgress {
+		return errors.New("forced compaction in progress")
+	}
+
+	u.pushesInFlight.Add(1)
+	return nil
+}
+
+func (u *userTSDB) releaseAppendLock() {
+	u.pushesInFlight.Done()
 }
 
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {

@@ -51,12 +51,13 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type API struct {
-	cfg            Config
-	authMiddleware middleware.Interface
-	server         *server.Server
-	logger         log.Logger
-	sourceIPs      *middleware.SourceIPExtractor
-	indexPage      *IndexPageContent
+	AuthMiddleware middleware.Interface
+
+	cfg       Config
+	server    *server.Server
+	logger    log.Logger
+	sourceIPs *middleware.SourceIPExtractor
+	indexPage *IndexPageContent
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -75,7 +76,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 
 	api := &API{
 		cfg:            cfg,
-		authMiddleware: cfg.HTTPAuthMiddleware,
+		AuthMiddleware: cfg.HTTPAuthMiddleware,
 		server:         s,
 		logger:         logger,
 		sourceIPs:      sourceIPs,
@@ -84,7 +85,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
 	if cfg.HTTPAuthMiddleware == nil {
-		api.authMiddleware = middleware.AuthenticateUser
+		api.AuthMiddleware = middleware.AuthenticateUser
 	}
 
 	return api, nil
@@ -97,7 +98,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
 	if auth {
-		handler = a.authMiddleware.Wrap(handler)
+		handler = a.AuthMiddleware.Wrap(handler)
 	}
 	if len(methods) == 0 {
 		a.server.HTTP.Path(path).Handler(handler)
@@ -109,7 +110,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth bool, methods ...string) {
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "prefix", prefix, "auth", auth)
 	if auth {
-		handler = a.authMiddleware.Wrap(handler)
+		handler = a.AuthMiddleware.Wrap(handler)
 	}
 	if len(methods) == 0 {
 		a.server.HTTP.PathPrefix(prefix).Handler(handler)

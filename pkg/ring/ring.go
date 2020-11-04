@@ -377,40 +377,46 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	maxUnavailableZones := len(r.ringZones) / 2
-
 	// Calculate the number of required ingesters;
 	// ensure we always require at least RF-1 when RF=3.
-	numRequired := calculateRequiredInstances(len(r.ringDesc.Ingesters), r.cfg.ReplicationFactor)
+	numRequired := len(r.ringDesc.Ingesters)
+	if numRequired < r.cfg.ReplicationFactor {
+		numRequired = r.cfg.ReplicationFactor
+	}
+	maxUnavailable := r.cfg.ReplicationFactor / 2
+	numRequired -= maxUnavailable
+
+	maxUnavailableZones := len(r.ringZones) - maxUnavailable - 1
+	if maxUnavailableZones < 0 {
+		maxUnavailableZones = 0
+	}
 
 	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]int)
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
 			instances = append(instances, ingester)
-
 		} else {
 			zoneFailures[ingester.Zone]++
 		}
 	}
-	maxErrors := len(instances) - numRequired
 
-	if r.cfg.ZoneAwarenessEnabled {
+	if r.cfg.ZoneAwarenessEnabled && len(zoneFailures) > 0 {
+		if len(zoneFailures) > maxUnavailableZones {
+			return ReplicationSet{}, ErrTooManyFailedIngesters
+		}
+
 		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-		if len(zoneFailures) > 0 {
-			for _, ingester := range instances {
-				_, present := zoneFailures[ingester.Zone]
-				if !present {
-					filteredInstances = append(filteredInstances, ingester)
-				}
+		for _, ingester := range instances {
+			if _, ok := zoneFailures[ingester.Zone]; !ok {
+				filteredInstances = append(filteredInstances, ingester)
 			}
 		}
 
 		if len(filteredInstances) != 0 {
 			instances = filteredInstances
 			maxUnavailableZones = 0
-			numRequired = calculateRequiredInstances(len(instances), r.cfg.ReplicationFactor)
-			maxErrors = 0
+			numRequired = len(instances)
 		}
 	}
 
@@ -418,6 +424,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		return ReplicationSet{}, ErrTooManyFailedIngesters
 	}
 
+	maxErrors := len(instances) - numRequired
 	return ReplicationSet{
 		Ingesters:           instances,
 		MaxErrors:           maxErrors,

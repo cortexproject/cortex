@@ -168,7 +168,7 @@ func (s *ConcreteService) Kill() error {
 
 	logger.Log("Killing", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "kill", s.containerName()); err != nil {
 		logger.Log(string(out))
 		return err
 	}

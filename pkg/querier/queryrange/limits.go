@@ -24,7 +24,7 @@ type Limits interface {
 	// MaxQueryLength returns the limit of the length (in time) of a query.
 	MaxQueryLength(string) time.Duration
 
-	// MaxQueryParallelism returns the limit to the number of splitted queries the
+	// MaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel.
 	MaxQueryParallelism(string) int
 

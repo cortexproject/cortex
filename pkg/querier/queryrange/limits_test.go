@@ -28,7 +28,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 		expectedStartTime time.Time
 		expectedEndTime   time.Time
 	}{
-		"should not manipulate time range it max lookback is disabled": {
+		"should not manipulate time range if max lookback is disabled": {
 			maxQueryLookback:  0,
 			reqStartTime:      time.Unix(0, 0),
 			reqEndTime:        now,
@@ -143,7 +143,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		},
 		"should fail on a query on large time range over the limit, ending in the past": {
 			maxQueryLength: thirtyDays,
-			reqStartTime:   now.Add(-2 * thirtyDays).Add(-thirtyDays).Add(-100 * time.Hour),
+			reqStartTime:   now.Add(-4 * thirtyDays),
 			reqEndTime:     now.Add(-2 * thirtyDays),
 			expectedErr:    "the query time range exceeds the limit",
 		},

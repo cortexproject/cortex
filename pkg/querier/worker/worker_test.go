@@ -2,107 +2,106 @@ package worker
 
 import (
 	"context"
-	"net/http"
-	"strconv"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestResetConcurrency(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := w.Write([]byte("Hello World"))
-		assert.NoError(t, err)
-	})
-
 	tests := []struct {
 		name                string
 		parallelism         int
 		maxConcurrent       int
-		numManagers         int
-		expectedConcurrency int32
+		numTargets          int
+		expectedConcurrency int
 	}{
 		{
-			name:                "Test create least one worker per manager",
+			name:                "Test create at least one processor per target",
 			parallelism:         0,
 			maxConcurrent:       0,
-			numManagers:         2,
+			numTargets:          2,
 			expectedConcurrency: 2,
 		},
 		{
-			name:                "Test concurrency per query frontend configuration",
+			name:                "Test parallelism per target",
 			parallelism:         4,
 			maxConcurrent:       0,
-			numManagers:         2,
+			numTargets:          2,
 			expectedConcurrency: 8,
 		},
 		{
 			name:                "Test Total Parallelism with a remainder",
 			parallelism:         1,
 			maxConcurrent:       7,
-			numManagers:         4,
+			numTargets:          4,
 			expectedConcurrency: 7,
 		},
 		{
 			name:                "Test Total Parallelism dividing evenly",
 			parallelism:         1,
 			maxConcurrent:       6,
-			numManagers:         2,
+			numTargets:          2,
 			expectedConcurrency: 6,
 		},
 		{
-			name:                "Test Total Parallelism at least one worker per manager",
+			name:                "Test Total Parallelism at least one worker per target",
 			parallelism:         1,
 			maxConcurrent:       3,
-			numManagers:         6,
+			numTargets:          6,
 			expectedConcurrency: 6,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := WorkerConfig{
-				Parallelism:         tt.parallelism,
-				MatchMaxConcurrency: tt.maxConcurrent > 0,
-			}
-			querierCfg := querier.Config{
-				MaxConcurrent: tt.maxConcurrent,
+			cfg := Config{
+				Parallelism:           tt.parallelism,
+				MatchMaxConcurrency:   tt.maxConcurrent > 0,
+				MaxConcurrentRequests: tt.maxConcurrent,
 			}
 
-			w := &worker{
-				cfg:        cfg,
-				querierCfg: querierCfg,
-				log:        util.Logger,
-				managers:   map[string]*frontendManager{},
+			w, err := newQuerierWorkerWithProcessor(cfg, util.Logger, &mockProcessor{}, "localhost", nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
+
+			for i := 0; i < tt.numTargets; i++ {
+				// gRPC connections are virtual... they don't actually try to connect until they are needed.
+				// This allows us to use dummy ports, and not get any errors.
+				w.AddressAdded(fmt.Sprintf("127.0.0.1:%d", i))
 			}
 
-			for i := 0; i < tt.numManagers; i++ {
-				w.managers[strconv.Itoa(i)] = newFrontendManager(context.Background(), util.Logger, httpgrpc_server.NewServer(handler), mockCloser{}, &mockFrontendClient{}, grpcclient.ConfigWithTLS{}, "querier")
-			}
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() interface{} {
+				return getConcurrentProcessors(w)
+			})
 
-			w.resetConcurrency()
-			time.Sleep(100 * time.Millisecond)
-
-			concurrency := int32(0)
-			for _, mgr := range w.managers {
-				concurrency += mgr.currentProcessors.Load()
-			}
-			assert.Equal(t, tt.expectedConcurrency, concurrency)
-
-			err := w.stopping(nil)
-			assert.NoError(t, err)
-
-			concurrency = int32(0)
-			for _, mgr := range w.managers {
-				concurrency += mgr.currentProcessors.Load()
-			}
-			assert.Equal(t, int32(0), concurrency)
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), w))
+			assert.Equal(t, 0, getConcurrentProcessors(w))
 		})
 	}
+}
+
+func getConcurrentProcessors(w *querierWorker) int {
+	result := 0
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, mgr := range w.managers {
+		result += int(mgr.currentProcessors.Load())
+	}
+
+	return result
+}
+
+type mockProcessor struct{}
+
+func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _ string) {
+	<-ctx.Done()
 }

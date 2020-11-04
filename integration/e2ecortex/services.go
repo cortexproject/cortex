@@ -82,8 +82,8 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 			"-querier.frontend-client.backoff-max-period": "100ms",
 			"-querier.frontend-client.backoff-retries":    "1",
 			"-querier.worker-parallelism":                 "1",
-			// Quickly detect query-scheduler when running it.
-			"-querier.scheduler-dns-lookup-period": "1s",
+			// Quickly detect query-frontend and query-scheduler when running it.
+			"-querier.dns-lookup-period": "1s",
 			// Store-gateway ring backend.
 			"-store-gateway.sharding-enabled":                 "true",
 			"-store-gateway.sharding-ring.store":              "consul",

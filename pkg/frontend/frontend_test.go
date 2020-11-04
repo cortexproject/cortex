@@ -28,7 +28,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
-	"github.com/cortexproject/cortex/pkg/querier"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -233,14 +232,11 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 		logger = l
 	}
 
-	var (
-		workerConfig  querier_worker.WorkerConfig
-		querierConfig querier.Config
-	)
+	var workerConfig querier_worker.Config
 	flagext.DefaultValues(&workerConfig)
 	workerConfig.Parallelism = 1
 	workerConfig.MatchMaxConcurrency = matchMaxConcurrency
-	querierConfig.MaxConcurrent = 1
+	workerConfig.MaxConcurrentRequests = 1
 
 	// localhost:0 prevents firewall warnings on Mac OS X.
 	grpcListen, err := net.Listen("tcp", "localhost:0")
@@ -283,7 +279,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	var worker services.Service
-	worker, err = querier_worker.NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	worker, err = querier_worker.NewQuerierWorker(workerConfig, httpgrpc_server.NewServer(handler), logger, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

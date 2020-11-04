@@ -37,7 +37,6 @@ func preCortex14Flags(flags map[string]string) map[string]string {
 		"-store-gateway.sharding-ring.replication-factor": "",
 		// Query-scheduler has been introduced in 1.6.0
 		"-frontend.scheduler-dns-lookup-period": "",
-		"-querier.scheduler-dns-lookup-period":  "",
 	})
 }
 
@@ -45,7 +44,6 @@ func preCortex16Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
 		// Query-scheduler has been introduced in 1.6.0
 		"-frontend.scheduler-dns-lookup-period": "",
-		"-querier.scheduler-dns-lookup-period":  "",
 	})
 }
 

@@ -385,11 +385,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 	maxUnavailable := r.cfg.ReplicationFactor / 2
 	numRequired -= maxUnavailable
-
-	maxUnavailableZones := len(r.ringZones) - maxUnavailable - 1
-	if maxUnavailableZones < 0 {
-		maxUnavailableZones = 0
-	}
+	maxUnavailableZones := maxUnavailable
 
 	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]int)
@@ -401,11 +397,13 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		}
 	}
 
-	if r.cfg.ZoneAwarenessEnabled && len(zoneFailures) > 0 {
+	if r.cfg.ZoneAwarenessEnabled && len(zoneFailures) > 0 && maxUnavailableZones > 0 {
 		if len(zoneFailures) > maxUnavailableZones {
 			return ReplicationSet{}, ErrTooManyFailedIngesters
 		}
 
+		// Given that we can tolerate a zone failure, we can skip querying
+		// all instances in that zone.
 		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 		for _, ingester := range instances {
 			if _, ok := zoneFailures[ingester.Zone]; !ok {
@@ -413,11 +411,9 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			}
 		}
 
-		if len(filteredInstances) != 0 {
-			instances = filteredInstances
-			maxUnavailableZones = 0
-			numRequired = len(instances)
-		}
+		instances = filteredInstances
+		maxUnavailableZones = 0
+		numRequired = len(instances)
 	}
 
 	if len(instances) < numRequired {

@@ -243,6 +243,181 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 	}
 }
 
+func TestRing_GetAllHealthy(t *testing.T) {
+	const heartbeatTimeout = time.Minute
+	now := time.Now()
+
+	tests := map[string]struct {
+		ringInstances           map[string]IngesterDesc
+		expectedErrForRead      error
+		expectedSetForRead      []string
+		expectedErrForWrite     error
+		expectedSetForWrite     []string
+		expectedErrForReporting error
+		expectedSetForReporting []string
+	}{
+		"should return error on empty ring": {
+			ringInstances:           nil,
+			expectedErrForRead:      ErrEmptyRing,
+			expectedErrForWrite:     ErrEmptyRing,
+			expectedErrForReporting: ErrEmptyRing,
+		},
+		"should return all healthy instances for the given operation": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix()},
+				"instance-2": {Addr: "127.0.0.2", State: PENDING, Timestamp: now.Add(-10 * time.Second).Unix()},
+				"instance-3": {Addr: "127.0.0.3", State: JOINING, Timestamp: now.Add(-20 * time.Second).Unix()},
+				"instance-4": {Addr: "127.0.0.4", State: LEAVING, Timestamp: now.Add(-30 * time.Second).Unix()},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix()},
+			},
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.4"},
+			expectedSetForWrite:     []string{"127.0.0.1"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Init the ring.
+			ringDesc := &Desc{Ingesters: testData.ringInstances}
+			for id, instance := range ringDesc.Ingesters {
+				ringDesc.Ingesters[id] = instance
+			}
+
+			ring := Ring{
+				cfg:              Config{HeartbeatTimeout: heartbeatTimeout},
+				ringDesc:         ringDesc,
+				ringTokens:       ringDesc.getTokens(),
+				ringTokensByZone: ringDesc.getTokensByZone(),
+				ringZones:        getZones(ringDesc.getTokensByZone()),
+				strategy:         &DefaultReplicationStrategy{},
+			}
+
+			set, err := ring.GetAllHealthy(Read)
+			require.Equal(t, testData.expectedErrForRead, err)
+			assert.ElementsMatch(t, testData.expectedSetForRead, set.GetAddresses())
+
+			set, err = ring.GetAllHealthy(Write)
+			require.Equal(t, testData.expectedErrForWrite, err)
+			assert.ElementsMatch(t, testData.expectedSetForWrite, set.GetAddresses())
+
+			set, err = ring.GetAllHealthy(Reporting)
+			require.Equal(t, testData.expectedErrForReporting, err)
+			assert.ElementsMatch(t, testData.expectedSetForReporting, set.GetAddresses())
+		})
+	}
+}
+
+func TestRing_GetReplicationSetForOperation(t *testing.T) {
+	const heartbeatTimeout = time.Minute
+	now := time.Now()
+
+	tests := map[string]struct {
+		ringInstances           map[string]IngesterDesc
+		ringReplicationFactor   int
+		expectedErrForRead      error
+		expectedSetForRead      []string
+		expectedErrForWrite     error
+		expectedSetForWrite     []string
+		expectedErrForReporting error
+		expectedSetForReporting []string
+	}{
+		"should return error on empty ring": {
+			ringInstances:           nil,
+			ringReplicationFactor:   1,
+			expectedErrForRead:      ErrEmptyRing,
+			expectedErrForWrite:     ErrEmptyRing,
+			expectedErrForReporting: ErrEmptyRing,
+		},
+		"should succeed on all healthy instances and RF=1": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringReplicationFactor:   1,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+		},
+		"should fail on 1 unhealthy instance and RF=1": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringReplicationFactor:   1,
+			expectedErrForRead:      ErrTooManyFailedIngesters,
+			expectedErrForWrite:     ErrTooManyFailedIngesters,
+			expectedErrForReporting: ErrTooManyFailedIngesters,
+		},
+		"should succeed on 1 unhealthy instances and RF=3": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringReplicationFactor:   3,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+		},
+		"should fail on 2 unhealthy instances and RF=3": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringReplicationFactor:   3,
+			expectedErrForRead:      ErrTooManyFailedIngesters,
+			expectedErrForWrite:     ErrTooManyFailedIngesters,
+			expectedErrForReporting: ErrTooManyFailedIngesters,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Init the ring.
+			ringDesc := &Desc{Ingesters: testData.ringInstances}
+			for id, instance := range ringDesc.Ingesters {
+				ringDesc.Ingesters[id] = instance
+			}
+
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:  heartbeatTimeout,
+					ReplicationFactor: testData.ringReplicationFactor,
+				},
+				ringDesc:         ringDesc,
+				ringTokens:       ringDesc.getTokens(),
+				ringTokensByZone: ringDesc.getTokensByZone(),
+				ringZones:        getZones(ringDesc.getTokensByZone()),
+				strategy:         &DefaultReplicationStrategy{},
+			}
+
+			set, err := ring.GetReplicationSetForOperation(Read)
+			require.Equal(t, testData.expectedErrForRead, err)
+			assert.ElementsMatch(t, testData.expectedSetForRead, set.GetAddresses())
+
+			set, err = ring.GetReplicationSetForOperation(Write)
+			require.Equal(t, testData.expectedErrForWrite, err)
+			assert.ElementsMatch(t, testData.expectedSetForWrite, set.GetAddresses())
+
+			set, err = ring.GetReplicationSetForOperation(Reporting)
+			require.Equal(t, testData.expectedErrForReporting, err)
+			assert.ElementsMatch(t, testData.expectedSetForReporting, set.GetAddresses())
+		})
+	}
+}
+
 func TestRing_ShuffleShard(t *testing.T) {
 	tests := map[string]struct {
 		ringInstances        map[string]IngesterDesc

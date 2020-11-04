@@ -100,6 +100,10 @@ var (
 	// ErrInstanceNotFound is the error returned when trying to get information for an instance
 	// not registered within the ring.
 	ErrInstanceNotFound = errors.New("instance not found in the ring")
+
+	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
+	// specific operation.
+	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
 )
 
 // Config for a Ring
@@ -329,12 +333,11 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 }
 
 // GetAllHealthy implements ReadRing.
-// TODO test me
 func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	if r.ringDesc == nil || len(r.ringTokens) == 0 {
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
@@ -352,7 +355,6 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 }
 
 // GetReplicationSetForOperation implements ReadRing.
-// TODO test me
 func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -378,7 +380,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	if len(ingesters) < numRequired {
-		return ReplicationSet{}, fmt.Errorf("too many failed ingesters")
+		return ReplicationSet{}, ErrTooManyFailedIngesters
 	}
 
 	return ReplicationSet{

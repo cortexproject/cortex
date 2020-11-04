@@ -684,7 +684,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetAllFor(ring.Ruler)
+	rulers, err := r.ring.GetReplicationSetForOperation(ring.Ruler)
 	if err != nil {
 		return nil, err
 	}

@@ -1035,7 +1035,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				currTime := time.Now().Add(lookbackPeriod).Add(time.Minute)
 
 				// Add the initial shard to the history.
-				rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAllFor(Read)
+				rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now()).GetReplicationSetForOperation(Read)
 				require.NoError(t, err)
 
 				history := map[time.Time]ReplicationSet{
@@ -1099,12 +1099,12 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					}
 
 					// Add the current shard to the history.
-					rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAllFor(Read)
+					rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now()).GetReplicationSetForOperation(Read)
 					require.NoError(t, err)
 					history[currTime] = rs
 
 					// Ensure the shard with lookback includes all instances from previous states of the ring.
-					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetAllFor(Read)
+					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetReplicationSetForOperation(Read)
 					require.NoError(t, err)
 
 					for ringTime, ringState := range history {
@@ -1362,7 +1362,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	// Wait until all instances in the ring are ACTIVE.
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
 		active := 0
-		rs, _ := ring.GetAllFor(Read)
+		rs, _ := ring.GetReplicationSetForOperation(Read)
 		for _, ing := range rs.Ingesters {
 			if ing.State == ACTIVE {
 				active++
@@ -1390,7 +1390,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 	// Make sure subring has up-to-date timestamps.
 	{
-		rs, err := subring.GetAllFor(Read)
+		rs, err := subring.GetReplicationSetForOperation(Read)
 		require.NoError(t, err)
 
 		now := time.Now()

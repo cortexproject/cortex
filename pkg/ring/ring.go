@@ -50,11 +50,11 @@ type ReadRing interface {
 	// of unhealthy ingesters is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
 
-	// GetAllFor returns all instances where the input operation should be executed.
+	// GetReplicationSetForOperation returns all instances where the input operation should be executed.
 	// The resulting ReplicationSet doesn't necessarily contains all healthy instances
 	// in the ring, but could contain the minimum set of instances required to execute
 	// the input operation.
-	GetAllFor(op Operation) (ReplicationSet, error)
+	GetReplicationSetForOperation(op Operation) (ReplicationSet, error)
 
 	ReplicationFactor() int
 	IngesterCount() int
@@ -91,9 +91,6 @@ const (
 
 	// Compactor is the operation used for distributing tenants/blocks across compactors.
 	Compactor
-
-	// HealthCheck is a "virtual" operation just used for health checking.
-	HealthCheck
 )
 
 var (
@@ -354,9 +351,9 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
-// GetAllFor implements ReadRing.
+// GetReplicationSetForOperation implements ReadRing.
 // TODO test me
-func (r *Ring) GetAllFor(op Operation) (ReplicationSet, error) {
+func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 

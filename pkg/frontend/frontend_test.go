@@ -29,7 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -234,7 +234,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	}
 
 	var (
-		workerConfig  frontend.WorkerConfig
+		workerConfig  querier_worker.WorkerConfig
 		querierConfig querier.Config
 	)
 	flagext.DefaultValues(&workerConfig)
@@ -283,7 +283,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
 	var worker services.Service
-	worker, err = frontend.NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	worker, err = querier_worker.NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 

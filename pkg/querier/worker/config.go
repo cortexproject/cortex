@@ -1,4 +1,4 @@
-package frontend
+package worker
 
 import (
 	"flag"
@@ -10,15 +10,14 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend2"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Configuration for both querier workers, V1 (using frontend) and V2 (using scheduler). Since many flags are reused
 // between the two, they are exposed to YAML/CLI in V1 version (WorkerConfig), and copied to V2 in the init method.
 type CombinedWorkerConfig struct {
-	WorkerV1 WorkerConfig                   `yaml:",inline"`
-	WorkerV2 frontend2.QuerierWorkersConfig `yaml:",inline"`
+	WorkerV1 WorkerConfig         `yaml:",inline"`
+	WorkerV2 QuerierWorkersConfig `yaml:",inline"`
 }
 
 func (cfg *CombinedWorkerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -44,7 +43,7 @@ func InitQuerierWorker(cfg CombinedWorkerConfig, querierCfg querier.Config, hand
 		cfg.WorkerV2.QuerierID = cfg.WorkerV1.QuerierID
 
 		level.Info(log).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.WorkerV2.SchedulerAddress)
-		return frontend2.NewQuerierSchedulerWorkers(cfg.WorkerV2, server.NewServer(handler), prometheus.DefaultRegisterer, log)
+		return NewQuerierSchedulerWorkers(cfg.WorkerV2, server.NewServer(handler), prometheus.DefaultRegisterer, log)
 
 	case cfg.WorkerV1.FrontendAddress != "":
 		level.Info(log).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.WorkerV1.FrontendAddress)

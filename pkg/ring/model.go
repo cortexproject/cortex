@@ -168,6 +168,10 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 
 	case Compactor:
 		healthy = i.State == ACTIVE
+
+	case HealthCheck:
+		// No assertion on the instance state.
+		healthy = true
 	}
 
 	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout

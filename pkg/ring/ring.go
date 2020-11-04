@@ -44,7 +44,18 @@ type ReadRing interface {
 	// buf is a slice to be overwritten for the return value
 	// to avoid memory allocation; can be nil.
 	Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet, error)
-	GetAll(op Operation) (ReplicationSet, error)
+
+	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
+	// This function doesn't check if the quorum is honored, so doesn't fail if the number
+	// of unhealthy ingesters is greater than the tolerated max unavailable.
+	GetAllHealthy(op Operation) (ReplicationSet, error)
+
+	// GetAllFor returns all instances where the input operation should be executed.
+	// The resulting ReplicationSet doesn't necessarily contains all healthy instances
+	// in the ring, but could contain the minimum set of instances required to execute
+	// the input operation.
+	GetAllFor(op Operation) (ReplicationSet, error)
+
 	ReplicationFactor() int
 	IngesterCount() int
 
@@ -80,6 +91,9 @@ const (
 
 	// Compactor is the operation used for distributing tenants/blocks across compactors.
 	Compactor
+
+	// HealthCheck is a "virtual" operation just used for health checking.
+	HealthCheck
 )
 
 var (
@@ -317,8 +331,32 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 	}, nil
 }
 
-// GetAll returns all available ingesters in the ring.
-func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
+// GetAllHealthy implements ReadRing.
+// TODO test me
+func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
+	}
+
+	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	for _, ingester := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&ingester, op) {
+			ingesters = append(ingesters, ingester)
+		}
+	}
+
+	return ReplicationSet{
+		Ingesters: ingesters,
+		MaxErrors: 0,
+	}, nil
+}
+
+// GetAllFor implements ReadRing.
+// TODO test me
+func (r *Ring) GetAllFor(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 

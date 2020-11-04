@@ -363,7 +363,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				var actualDistribution []int
 
 				if shardRing.IngesterCount() > 0 {
-					all, err := shardRing.GetAll(Read)
+					all, err := shardRing.GetAllHealthy(Read)
 					require.NoError(t, err)
 
 					countByZone := map[string]int{}
@@ -411,13 +411,13 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 
 		for _, size := range shardSizes {
 			r := ring.ShuffleShard(tenantID, size)
-			expected, err := r.GetAll(Read)
+			expected, err := r.GetAllHealthy(Read)
 			require.NoError(t, err)
 
 			// Assert that multiple invocations generate the same exact shard.
 			for n := 0; n < numInvocations; n++ {
 				r := ring.ShuffleShard(tenantID, size)
-				actual, err := r.GetAll(Read)
+				actual, err := r.GetAllHealthy(Read)
 				require.NoError(t, err)
 				assert.ElementsMatch(t, expected.Ingesters, actual.Ingesters)
 			}
@@ -479,7 +479,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	for i := 1; i <= numTenants; i++ {
 		tenantID := fmt.Sprintf("%d", i)
 		r := ring.ShuffleShard(tenantID, shardSize)
-		set, err := r.GetAll(Read)
+		set, err := r.GetAllHealthy(Read)
 		require.NoError(t, err)
 
 		instances := make([]string, 0, len(set.Ingesters))
@@ -574,7 +574,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// Compute the initial shard for each tenant.
 			initial := map[int]ReplicationSet{}
 			for id := 0; id < numTenants; id++ {
-				set, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAll(Read)
+				set, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 				initial[id] = set
 			}
@@ -600,7 +600,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// If the "consistency" property is guaranteed, we expect no more then 1 different instance
 			// in the updated shard.
 			for id := 0; id < numTenants; id++ {
-				updated, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAll(Read)
+				updated, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 
 				added, removed := compareReplicationSets(initial[id], updated)
@@ -637,14 +637,14 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	firstShard := ring.ShuffleShard("tenant-id", 3)
 	assert.Equal(t, 3, firstShard.IngesterCount())
 
-	firstSet, err := firstShard.GetAll(Read)
+	firstSet, err := firstShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// Increase shard size to 6.
 	secondShard := ring.ShuffleShard("tenant-id", 6)
 	assert.Equal(t, 6, secondShard.IngesterCount())
 
-	secondSet, err := secondShard.GetAll(Read)
+	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	for _, firstInstance := range firstSet.Ingesters {
@@ -655,7 +655,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	thirdShard := ring.ShuffleShard("tenant-id", 9)
 	assert.Equal(t, 9, thirdShard.IngesterCount())
 
-	thirdSet, err := thirdShard.GetAll(Read)
+	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	for _, secondInstance := range secondSet.Ingesters {
@@ -666,7 +666,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	fourthShard := ring.ShuffleShard("tenant-id", 6)
 	assert.Equal(t, 6, fourthShard.IngesterCount())
 
-	fourthSet, err := fourthShard.GetAll(Read)
+	fourthSet, err := fourthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 6.
@@ -678,7 +678,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	fifthShard := ring.ShuffleShard("tenant-id", 3)
 	assert.Equal(t, 3, fifthShard.IngesterCount())
 
-	fifthSet, err := fifthShard.GetAll(Read)
+	fifthSet, err := fifthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 3.
@@ -713,14 +713,14 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	firstShard := ring.ShuffleShard("tenant-id", 2)
 	assert.Equal(t, 2, firstShard.IngesterCount())
 
-	firstSet, err := firstShard.GetAll(Read)
+	firstSet, err := firstShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// Increase shard size to 4.
 	secondShard := ring.ShuffleShard("tenant-id", 4)
 	assert.Equal(t, 4, secondShard.IngesterCount())
 
-	secondSet, err := secondShard.GetAll(Read)
+	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	for _, firstInstance := range firstSet.Ingesters {
@@ -742,7 +742,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	thirdShard := ring.ShuffleShard("tenant-id", 6)
 	assert.Equal(t, 6, thirdShard.IngesterCount())
 
-	thirdSet, err := thirdShard.GetAll(Read)
+	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	for _, secondInstance := range secondSet.Ingesters {
@@ -753,7 +753,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	fourthShard := ring.ShuffleShard("tenant-id", 9)
 	assert.Equal(t, 9, fourthShard.IngesterCount())
 
-	fourthSet, err := fourthShard.GetAll(Read)
+	fourthSet, err := fourthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	for _, thirdInstance := range thirdSet.Ingesters {
@@ -982,7 +982,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
 				case test:
-					rs, err := ring.ShuffleShardWithLookback(userID, event.shardSize, lookbackPeriod, time.Now()).GetAll(Read)
+					rs, err := ring.ShuffleShardWithLookback(userID, event.shardSize, lookbackPeriod, time.Now()).GetAllHealthy(Read)
 					require.NoError(t, err)
 					assert.ElementsMatch(t, event.expected, rs.GetAddresses())
 				}
@@ -1035,7 +1035,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				currTime := time.Now().Add(lookbackPeriod).Add(time.Minute)
 
 				// Add the initial shard to the history.
-				rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAll(Read)
+				rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAllFor(Read)
 				require.NoError(t, err)
 
 				history := map[time.Time]ReplicationSet{
@@ -1099,12 +1099,12 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					}
 
 					// Add the current shard to the history.
-					rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAll(Read)
+					rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now()).GetAllFor(Read)
 					require.NoError(t, err)
 					history[currTime] = rs
 
 					// Ensure the shard with lookback includes all instances from previous states of the ring.
-					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetAll(Read)
+					rsWithLookback, err := ring.ShuffleShardWithLookback(userID, shardSize, lookbackPeriod, currTime).GetAllFor(Read)
 					require.NoError(t, err)
 
 					for ringTime, ringState := range history {
@@ -1273,7 +1273,7 @@ func TestRingUpdates(t *testing.T) {
 	// sleep for 2 seconds)
 	time.Sleep(2 * time.Second)
 
-	rs, err := ring.GetAll(Read)
+	rs, err := ring.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	now := time.Now()
@@ -1362,7 +1362,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	// Wait until all instances in the ring are ACTIVE.
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
 		active := 0
-		rs, _ := ring.GetAll(Read)
+		rs, _ := ring.GetAllFor(Read)
 		for _, ing := range rs.Ingesters {
 			if ing.State == ACTIVE {
 				active++
@@ -1390,7 +1390,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 	// Make sure subring has up-to-date timestamps.
 	{
-		rs, err := subring.GetAll(Read)
+		rs, err := subring.GetAllFor(Read)
 		require.NoError(t, err)
 
 		now := time.Now()

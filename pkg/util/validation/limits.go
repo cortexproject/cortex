@@ -67,6 +67,7 @@ type Limits struct {
 
 	// Querier enforced limits.
 	MaxChunksPerQuery    int           `yaml:"max_chunks_per_query"`
+	MaxQueryLookback     time.Duration `yaml:"max_query_lookback"`
 	MaxQueryLength       time.Duration `yaml:"max_query_length"`
 	MaxQueryParallelism  int           `yaml:"max_query_parallelism"`
 	CardinalityLimit     int           `yaml:"cardinality_limit"`
@@ -122,6 +123,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage. When running the Cortex chunks storage, this limit is enforced in the querier, while when running the Cortex blocks storage this limit is both enforced in the querier and store-gateway. 0 to disable.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
+	f.DurationVar(&l.MaxQueryLookback, "querier.max-query-lookback", 0, "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -306,6 +308,11 @@ func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
 func (o *Overrides) MaxChunksPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQuery
+}
+
+// MaxQueryLookback returns the max lookback period of queries.
+func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+	return o.getOverridesForUser(userID).MaxQueryLookback
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.

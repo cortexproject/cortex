@@ -2530,7 +2530,8 @@ write_dedupe_cache_config:
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
 
-# Limit how long back data can be queried
+# Deprecated: use -querier.max-query-lookback instead. Limit how long back data
+# can be queried. This setting applies to chunks storage only.
 # CLI flag: -store.max-look-back-period
 [max_look_back_period: <duration> | default = 0s]
 ```
@@ -3049,6 +3050,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # and store-gateway. 0 to disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
+
+# Limit how long back data (series and metadata) can be queried, up until
+# <lookback> duration ago. 0 to disable.
+# CLI flag: -querier.max-query-lookback
+[max_query_lookback: <duration> | default = 0s]
 
 # Limit the query time range (end - start time). This limit is enforced in the
 # query-frontend (on the received query), in the querier (on the query possibly

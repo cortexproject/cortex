@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var errorTooManyZoneFailures = errors.New("Too many zones failed")
+var errorTooManyZoneFailures = errors.New("too many zones failed")
 
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.

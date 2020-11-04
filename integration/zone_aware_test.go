@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/integration/e2e"
-	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
-	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/integration/e2e"
+	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
+	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
 func TestZoneAwareReadPath(t *testing.T) {

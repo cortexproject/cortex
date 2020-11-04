@@ -32,16 +32,22 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 		mgr.processQueriesOnSingleStream(ctx, cc, "test:12345")
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	test.Poll(t, time.Second, true, func() interface{} {
+		return running.Load()
+	})
+
+	// Wait a bit, and verify that processQueriesOnSingleStream is still running, and hasn't stopped
+	// just because it cannot contact frontend.
+	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, true, running.Load())
 
 	cancel()
-	test.Poll(t, 100*time.Millisecond, false, func() interface{} {
+	test.Poll(t, time.Second, false, func() interface{} {
 		return running.Load()
 	})
 }
 
-func TestServeCancelStopsProcess(t *testing.T) {
+func TestContextCancelStopsProcess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -52,18 +58,18 @@ func TestServeCancelStopsProcess(t *testing.T) {
 	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")
 	pm.concurrency(1)
 
-	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
+	test.Poll(t, time.Second, 1, func() interface{} {
 		return int(pm.currentProcessors.Load())
 	})
 
 	cancel()
 
-	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
+	test.Poll(t, time.Second, 0, func() interface{} {
 		return int(pm.currentProcessors.Load())
 	})
 
 	pm.stop()
-	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
+	test.Poll(t, time.Second, 0, func() interface{} {
 		return int(pm.currentProcessors.Load())
 	})
 }

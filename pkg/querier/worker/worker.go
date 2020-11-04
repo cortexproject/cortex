@@ -139,55 +139,55 @@ func newQuerierWorkerWithProcessor(cfg Config, log log.Logger, processor process
 	return f, nil
 }
 
-func (f *querierWorker) starting(ctx context.Context) error {
-	return services.StartManagerAndAwaitHealthy(ctx, f.subservices)
+func (w *querierWorker) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, w.subservices)
 }
 
-func (f *querierWorker) stopping(_ error) error {
-	err := services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, m := range f.managers {
+func (w *querierWorker) stopping(_ error) error {
+	// Stop all goroutines fetching queries. Note that in Stopping state,
+	// worker no longer creates new managers in AddressAdded method.
+	w.mu.Lock()
+	for _, m := range w.managers {
 		m.stop()
 	}
+	w.mu.Unlock()
 
-	return err
+	// Stop DNS watcher and services used by processor.
+	return services.StopManagerAndAwaitStopped(context.Background(), w.subservices)
 }
 
-func (f *querierWorker) AddressAdded(address string) {
-	ctx := f.ServiceContext()
+func (w *querierWorker) AddressAdded(address string) {
+	ctx := w.ServiceContext()
 	if ctx == nil || ctx.Err() != nil {
 		return
 	}
 
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	// We already have worker for this scheduler.
-	if w := f.managers[address]; w != nil {
+	if m := w.managers[address]; m != nil {
 		return
 	}
 
-	level.Debug(f.log).Log("msg", "adding connection", "addr", address)
-	conn, err := f.connect(context.Background(), address)
+	level.Debug(w.log).Log("msg", "adding connection", "addr", address)
+	conn, err := w.connect(context.Background(), address)
 	if err != nil {
-		level.Error(f.log).Log("msg", "error connecting", "addr", address, "err", err)
+		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
 		return
 	}
 
-	// If not, start a new one.
-	f.managers[address] = newProcessorManager(ctx, f.processor, conn, address)
-	f.resetConcurrency() // Called with lock.
+	w.managers[address] = newProcessorManager(ctx, w.processor, conn, address)
+	// Called with lock.
+	w.resetConcurrency()
 }
 
-func (f *querierWorker) AddressRemoved(address string) {
-	level.Debug(f.log).Log("msg", "removing connection", "addr", address)
+func (w *querierWorker) AddressRemoved(address string) {
+	level.Debug(w.log).Log("msg", "removing connection", "addr", address)
 
-	f.mu.Lock()
-	p := f.managers[address]
-	delete(f.managers, address)
-	f.mu.Unlock()
+	w.mu.Lock()
+	p := w.managers[address]
+	delete(w.managers, address)
+	w.mu.Unlock()
 
 	if p != nil {
 		p.stop()
@@ -195,24 +195,25 @@ func (f *querierWorker) AddressRemoved(address string) {
 }
 
 // Must be called with lock.
-func (f *querierWorker) resetConcurrency() {
+func (w *querierWorker) resetConcurrency() {
 	totalConcurrency := 0
 	index := 0
 
-	for _, w := range f.managers {
+	for _, m := range w.managers {
 		concurrency := 0
 
-		if f.cfg.MatchMaxConcurrency {
-			concurrency = f.cfg.MaxConcurrentRequests / len(f.managers)
+		if w.cfg.MatchMaxConcurrency {
+			concurrency = w.cfg.MaxConcurrentRequests / len(w.managers)
 
 			// If max concurrency does not evenly divide into our frontends a subset will be chosen
 			// to receive an extra connection.  Frontend addresses were shuffled above so this will be a
 			// random selection of frontends.
-			if index < f.cfg.MaxConcurrentRequests%len(f.managers) {
+			if index < w.cfg.MaxConcurrentRequests%len(w.managers) {
+				level.Warn(w.log).Log("msg", "max concurrency is not evenly divisible across targets, adding an extra connection", "addr", m.address)
 				concurrency++
 			}
 		} else {
-			concurrency = f.cfg.Parallelism
+			concurrency = w.cfg.Parallelism
 		}
 
 		// If concurrency is 0 then MaxConcurrentRequests is less than the total number of
@@ -224,18 +225,18 @@ func (f *querierWorker) resetConcurrency() {
 		}
 
 		totalConcurrency += concurrency
-		w.concurrency(concurrency)
+		m.concurrency(concurrency)
 		index++
 	}
 
-	if totalConcurrency > f.cfg.MaxConcurrentRequests {
-		level.Warn(f.log).Log("msg", "total worker concurrency is greater than promql max concurrency. queries may be queued in the querier which reduces QOS")
+	if totalConcurrency > w.cfg.MaxConcurrentRequests {
+		level.Warn(w.log).Log("msg", "total worker concurrency is greater than promql max concurrency. Queries may be queued in the querier which reduces QOS")
 	}
 }
 
-func (f *querierWorker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
+func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
-	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil)
+	opts, err := w.cfg.GRPCClientConfig.DialOption(nil, nil)
 	if err != nil {
 		return nil, err
 	}

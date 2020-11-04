@@ -29,7 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/worker"
+	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -234,7 +234,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	}
 
 	var (
-		workerConfig  worker.WorkerConfig
+		workerConfig  querier_worker.WorkerConfig
 		querierConfig querier.Config
 	)
 	flagext.DefaultValues(&workerConfig)
@@ -282,14 +282,14 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	go httpServer.Serve(httpListen) //nolint:errcheck
 	go grpcServer.Serve(grpcListen) //nolint:errcheck
 
-	var wrkr services.Service
-	wrkr, err = worker.NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
+	var worker services.Service
+	worker, err = querier_worker.NewWorker(workerConfig, querierConfig, httpgrpc_server.NewServer(handler), logger)
 	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), wrkr))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 
 	test(httpListen.Addr().String())
 
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), wrkr))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
 }
 
 func defaultFrontendConfig() CombinedFrontendConfig {

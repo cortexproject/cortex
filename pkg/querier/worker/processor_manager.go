@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Manages processors for single grpc connection.
+// Manages processor goroutines for single grpc connection.
 type processorManager struct {
 	p       processor
 	conn    *grpc.ClientConn

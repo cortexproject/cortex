@@ -635,7 +635,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			}
 
 			// Check the replication set has the correct settings
-			replicationSet, err := ring.GetAll(Read)
+			replicationSet, err := ring.GetReplicationSetForOperation(Read)
 			if testData.expectedError == nil {
 				require.NoError(t, err)
 			} else {

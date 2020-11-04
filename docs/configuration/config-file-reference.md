@@ -3052,7 +3052,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_chunks_per_query: <int> | default = 2000000]
 
 # Limit how long back data (series and metadata) can be queried, up until
-# <lookback> duration ago. 0 to disable.
+# <lookback> duration ago. This limit is enforced in the query-frontend, querier
+# and ruler. If the requested time range is outside the allowed range, the
+# request will not fail but will be manipulated to only query data within the
+# allowed time range. 0 to disable.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0s]
 
@@ -3062,7 +3065,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 
-# Maximum number of queries will be scheduled in parallel by the frontend.
+# Maximum number of splitted queries will be scheduled in parallel by the
+# frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 

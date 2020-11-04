@@ -350,30 +350,6 @@ func TestPartition(t *testing.T) {
 	}
 }
 
-type fakeLimits struct {
-	maxCacheFreshness time.Duration
-}
-
-func (fakeLimits) MaxQueryLength(string) time.Duration {
-	return 0 // Disable.
-}
-
-func (fakeLimits) MaxQueryParallelism(string) int {
-	return 14 // Flag default.
-}
-
-func (f fakeLimits) MaxCacheFreshness(string) time.Duration {
-	return f.maxCacheFreshness
-}
-
-type fakeLimitsHighMaxCacheFreshness struct {
-	fakeLimits
-}
-
-func (fakeLimitsHighMaxCacheFreshness) MaxCacheFreshness(string) time.Duration {
-	return 10 * time.Minute
-}
-
 func TestResultsCache(t *testing.T) {
 	calls := 0
 	cfg := ResultsCacheConfig{
@@ -385,7 +361,7 @@ func TestResultsCache(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		fakeLimits{},
+		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -425,7 +401,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		fakeLimitsHighMaxCacheFreshness{},
+		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -465,13 +441,13 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		expectedResponse *PrometheusResponse
 	}{
 		{
-			fakeLimits:       fakeLimits{maxCacheFreshness: 5 * time.Second},
+			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second},
 			Handler:          nil,
 			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
 			// should not lookup cache because per-tenant override will be applied
-			fakeLimits: fakeLimitsHighMaxCacheFreshness{},
+			fakeLimits: mockLimits{maxCacheFreshness: 10 * time.Minute},
 			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				return parsedResponse, nil
 			}),
@@ -525,7 +501,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		fakeLimits{},
+		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -630,7 +606,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				log.NewNopLogger(),
 				cfg,
 				constSplitter(day),
-				fakeLimitsHighMaxCacheFreshness{},
+				mockLimits{maxCacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,

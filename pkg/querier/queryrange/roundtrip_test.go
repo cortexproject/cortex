@@ -48,7 +48,7 @@ func TestRoundTrip(t *testing.T) {
 
 	tw, _, err := NewTripperware(Config{},
 		util.Logger,
-		fakeLimits{},
+		mockLimits{},
 		PrometheusCodec,
 		nil,
 		chunk.SchemaConfig{},

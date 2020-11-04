@@ -159,7 +159,7 @@ func NewTripperware(
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
 
-	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
+	queryRangeMiddleware := []Middleware{NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}

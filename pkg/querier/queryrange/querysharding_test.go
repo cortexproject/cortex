@@ -34,7 +34,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 		{
 			name: "invalid query error",
 			// if the query parses correctly force it to succeed
-			next: mockHandler(&PrometheusResponse{
+			next: mockHandlerWith(&PrometheusResponse{
 				Status: "",
 				Data: PrometheusData{
 					ResultType: string(parser.ValueTypeVector),
@@ -50,7 +50,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 		},
 		{
 			name:     "downstream err",
-			next:     mockHandler(nil, errors.Errorf("some err")),
+			next:     mockHandlerWith(nil, errors.Errorf("some err")),
 			input:    defaultReq(),
 			ctx:      context.Background(),
 			expected: nil,
@@ -58,7 +58,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 		},
 		{
 			name: "successful trip",
-			next: mockHandler(sampleMatrixResponse(), nil),
+			next: mockHandlerWith(sampleMatrixResponse(), nil),
 			override: func(t *testing.T, handler Handler) {
 
 				// pre-encode the query so it doesn't try to re-split. We're just testing if it passes through correctly
@@ -158,7 +158,7 @@ func sampleMatrixResponse() *PrometheusResponse {
 	}
 }
 
-func mockHandler(resp *PrometheusResponse, err error) Handler {
+func mockHandlerWith(resp *PrometheusResponse, err error) Handler {
 	return HandlerFunc(func(ctx context.Context, req Request) (Response, error) {
 		if expired := ctx.Err(); expired != nil {
 			return nil, expired

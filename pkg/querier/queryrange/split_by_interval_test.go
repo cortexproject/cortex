@@ -279,7 +279,7 @@ func TestSplitByDay(t *testing.T) {
 			roundtripper := NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
-			}, PrometheusCodec, LimitsMiddleware(fakeLimits{}), SplitByIntervalMiddleware(interval, fakeLimits{}, PrometheusCodec, nil))
+			}, PrometheusCodec, NewLimitsMiddleware(mockLimits{}), SplitByIntervalMiddleware(interval, mockLimits{}, PrometheusCodec, nil))
 
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)

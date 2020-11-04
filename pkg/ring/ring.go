@@ -101,12 +101,8 @@ var (
 	// not registered within the ring.
 	ErrInstanceNotFound = errors.New("instance not found in the ring")
 
-<<<<<<< HEAD
 	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
 	// specific operation.
-=======
-	// ErrTooManyFailedIngesters is the error returned when not enough ingesters are available
->>>>>>> Do not return early and add more test cases
 	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
 )
 
@@ -334,16 +330,6 @@ func (r *Ring) Get(key uint32, op Operation, buf []IngesterDesc) (ReplicationSet
 		Ingesters: liveIngesters,
 		MaxErrors: maxFailure,
 	}, nil
-}
-
-func calculateRequiredInstances(nrInstances, replicationFactor int) int {
-	numRequired := nrInstances
-	if numRequired < replicationFactor {
-		numRequired = replicationFactor
-	}
-	maxUnavailable := replicationFactor / 2
-	numRequired -= maxUnavailable
-	return numRequired
 }
 
 // GetAllHealthy implements ReadRing.

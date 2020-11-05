@@ -375,12 +375,12 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	maxUnavailableZones := util.Max(0, numRequiredZones-maxUnavailable-1)
 
 	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	zoneFailures := make(map[string]int)
+	zoneFailures := make(map[string]struct{})
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
 			instances = append(instances, ingester)
 		} else {
-			zoneFailures[ingester.Zone]++
+			zoneFailures[ingester.Zone] = struct{}{}
 		}
 	}
 

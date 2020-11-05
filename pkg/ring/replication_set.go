@@ -63,13 +63,13 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 		numErrs          int
 		numSuccess       int
 		results          = make([]interface{}, 0, len(r.Ingesters))
-		zoneFailureCount = make(map[string]int)
+		zoneFailureCount = make(map[string]struct{})
 	)
 	for numSuccess < minSuccess {
 		select {
 		case err := <-errs:
 			if r.MaxUnavailableZones > 0 {
-				zoneFailureCount[err.instance.Zone]++
+				zoneFailureCount[err.instance.Zone] = struct{}{}
 
 				if len(zoneFailureCount) > r.MaxUnavailableZones {
 					return nil, errorTooManyZoneFailures

@@ -3,11 +3,11 @@ package ring
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/atomic"
 )
 
 func TestReplicationSet_GetAddresses(t *testing.T) {
@@ -44,26 +44,11 @@ var (
 )
 
 // Return a function that fails starting from failAfter times
-func failingFunctionAfter(failAfter int, delay time.Duration) func(context.Context, *IngesterDesc) (interface{}, error) {
-	var mutex = &sync.RWMutex{}
 func failingFunctionAfter(failAfter int32, delay time.Duration) func(context.Context, *IngesterDesc) (interface{}, error) {
 	count := atomic.NewInt32(0)
 	return func(context.Context, *IngesterDesc) (interface{}, error) {
 		time.Sleep(delay)
 		if count.Inc() > failAfter {
-			return nil, errFailure
-		}
-		return 1, nil
-	}
-}
-	return func(context.Context, *IngesterDesc) (interface{}, error) {
-		mutex.Lock()
-		count++
-		mutex.Unlock()
-		time.Sleep(delay)
-		mutex.RLock()
-		defer mutex.RUnlock()
-		if count > failAfter {
 			return nil, errFailure
 		}
 		return 1, nil

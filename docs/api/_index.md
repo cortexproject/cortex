@@ -22,11 +22,11 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Services status](#services-status) | _All services_ | `GET /services` |
 | [Readiness probe](#readiness-probe) | _All services_ | `GET /ready` |
 | [Metrics](#metrics) | _All services_ | `GET /metrics` |
+| [Pprof](#pprof) | _All services_ | `GET /debug/pprof` |
+| [Fgprof](#fgprof) | _All services_ | `GET /debug/fgprof` |
 | [Remote write](#remote-write) | Distributor | `POST /api/v1/push` |
 | [Tenants stats](#tenants-stats) | Distributor | `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor | `GET /distributor/ha_tracker` |
-| [Pprof](#pprof) | Debugger | `GET /debug/pprof` |
-| [Fgprof](#fgprof) | Debugger | `GET /debug/fgprof` |
 | [Flush chunks / blocks](#flush-chunks--blocks) | Ingester | `GET,POST /ingester/flush` |
 | [Shutdown](#shutdown) | Ingester | `GET,POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester | `GET /ingester/ring` |
@@ -131,6 +131,31 @@ GET /metrics
 
 Returns the metrics for the running Cortex service in the Prometheus exposition format.
 
+### Pprof
+
+```
+GET /debug/pprof/heap
+GET /debug/pprof/block
+GET /debug/pprof/profile
+GET /debug/pprof/trace
+GET /debug/pprof/goroutine
+GET /debug/pprof/mutex
+```
+
+Returns the runtime profiling data in the format expected by the pprof visualization tool. There are many things which can be profiled using this including heap, trace, goroutine, etc.
+
+_For more information, please check out the official documentation of [pprof](https://golang.org/pkg/net/http/pprof/)._
+
+### Fgprof
+
+```
+GET /debug/fgprof
+```
+
+Returns the sampling Go profiling data which allows you to analyze On-CPU as well as Off-CPU (e.g. I/O) time together.
+
+_For more information, please check out the official documentation of [fgprof](https://github.com/felixge/fgprof)._
+
 ## Distributor
 
 ### Remote write
@@ -172,27 +197,6 @@ GET /ha-tracker
 
 Displays a web page with the current status of the HA tracker, including the elected replica for each Prometheus HA cluster.
 
-## Debugger
-
-### Pprof
-
-```
-GET /debug/pprof/*
-```
-
-Returns the runtime profiling data in the format expected by the pprof visualization tool. There are many things which can be profiled using this including heap, trace, goroutine, etc.
-
-_For more information, please check out the official documentation of [pprof](https://golang.org/pkg/net/http/pprof/)._
-
-### Fgprof
-
-```
-GET /debug/fgprof
-```
-
-Returns the sampling Go profiling data which allows you to analyze On-CPU as well as Off-CPU (e.g. I/O) time together.
-
-_For more information, please check out the official documentation of [fgprof](https://github.com/felixge/fgprof)._
 
 ## Ingester
 

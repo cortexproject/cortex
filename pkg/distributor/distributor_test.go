@@ -1487,6 +1487,9 @@ func (i *mockIngester) MetricsMetadata(ctx context.Context, req *client.MetricsM
 }
 
 func (i *mockIngester) trackCall(name string) {
+	i.Lock()
+	defer i.Unlock()
+
 	if i.calls == nil {
 		i.calls = map[string]int{}
 	}

@@ -371,10 +371,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 	maxUnavailable := r.cfg.ReplicationFactor / 2
 	numRequired -= maxUnavailable
-	numRequiredZones := len(r.ringZones)
-	if len(r.ringZones) > r.cfg.ReplicationFactor {
-		numRequiredZones = r.cfg.ReplicationFactor
-	}
+	numRequiredZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
 	maxUnavailableZones := util.Max(0, numRequiredZones-maxUnavailable-1)
 
 	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))

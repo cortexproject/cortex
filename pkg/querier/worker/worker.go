@@ -123,16 +123,23 @@ func newQuerierWorkerWithProcessor(cfg Config, log log.Logger, processor process
 		processor: processor,
 	}
 
-	w, err := util.NewDNSWatcher(address, cfg.DNSLookupPeriod, f)
-	if err != nil {
-		return nil, err
+	// Empty address is only used in tests, where individual targets are added manually.
+	if address != "" {
+		w, err := util.NewDNSWatcher(address, cfg.DNSLookupPeriod, f)
+		if err != nil {
+			return nil, err
+		}
+
+		servs = append(servs, w)
 	}
 
-	servs = append(servs, w)
+	if len(servs) > 0 {
+		subservices, err := services.NewManager(servs...)
+		if err != nil {
+			return nil, errors.Wrap(err, "querier worker subservices")
+		}
 
-	f.subservices, err = services.NewManager(servs...)
-	if err != nil {
-		return nil, errors.Wrap(err, "querier worker subservices")
+		f.subservices = subservices
 	}
 
 	f.BasicService = services.NewIdleService(f.starting, f.stopping)
@@ -140,6 +147,9 @@ func newQuerierWorkerWithProcessor(cfg Config, log log.Logger, processor process
 }
 
 func (w *querierWorker) starting(ctx context.Context) error {
+	if w.subservices == nil {
+		return nil
+	}
 	return services.StartManagerAndAwaitHealthy(ctx, w.subservices)
 }
 
@@ -151,6 +161,10 @@ func (w *querierWorker) stopping(_ error) error {
 		m.stop()
 	}
 	w.mu.Unlock()
+
+	if w.subservices == nil {
+		return nil
+	}
 
 	// Stop DNS watcher and services used by processor.
 	return services.StopManagerAndAwaitStopped(context.Background(), w.subservices)

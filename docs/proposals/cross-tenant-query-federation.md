@@ -19,9 +19,25 @@ Adopting a tenancy model within an organization with each tenant representing a 
 
 ## Alternatives considered
 
+### Aggregation in PromQL API clients
+
 In theory PromQL API clients could be aggregating/correlating query results from multiple tenants. For example Grafana could be used with multiple data sources and a cross tenant query could be achieved through using [Transformations][grafana_transformation].
 
+As this approach comes with the following disadvantages, it was not considered further:
+
+- Every PromQL API client needs to support the aggregation from various sources.
+
+- Queries that are written in PromQL can't be used without extra work across tenants.
+
 [grafana_transformation]: https://grafana.com/docs/grafana/latest/panels/transformations/
+
+### Multi tenant aggregation in the query frontends
+
+Another approach to multi tenant query federation could be achieved by aggregation of partial query results within the query frontend. For this a query needs to be split into sub queries per tenant and afterwards the partial results need reduced into the final result.
+
+The [astmapper] package goes down a similar approach, but it cannot parallelize all query types. Ideally multi-tenant query federation should support the full PromQL language and the algorithms necessary would differ per query functions and operators used. This approach was deemed as a fairly complex way to achieve that tenant query federation.
+
+[astmapper]: https://github.com/cortexproject/cortex/blob/f0c81bb59bf202db820403812e8dabcb64347bfd/pkg/querier/astmapper/parallel.go#L27
 
 ## Challenges
 
@@ -62,7 +78,7 @@ In Cortex the tenant id is used as the primary identifier for those components:
 
 - The query-frontend maintains a per tenant query queue to implement fairness.
 
-- Relevant metrics about the query are exposed under a `user=` label.
+- Relevant metrics about the query are exposed under a `user` label.
 
 Having a query spanning multiple tenants, the existing methods are no longer correct.
 

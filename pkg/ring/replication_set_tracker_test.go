@@ -251,7 +251,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.failed())
 
 				// Zone-a
-				tracker.done(&instance1, nil)
+				tracker.done(&instance2, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},

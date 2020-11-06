@@ -183,7 +183,7 @@ func (w *querierWorker) AddressAdded(address string) {
 		return
 	}
 
-	level.Debug(w.log).Log("msg", "adding connection", "addr", address)
+	level.Info(w.log).Log("msg", "adding connection", "addr", address)
 	conn, err := w.connect(context.Background(), address)
 	if err != nil {
 		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
@@ -196,7 +196,7 @@ func (w *querierWorker) AddressAdded(address string) {
 }
 
 func (w *querierWorker) AddressRemoved(address string) {
-	level.Debug(w.log).Log("msg", "removing connection", "addr", address)
+	level.Info(w.log).Log("msg", "removing connection", "addr", address)
 
 	w.mu.Lock()
 	p := w.managers[address]

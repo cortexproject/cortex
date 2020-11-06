@@ -82,7 +82,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 		return
 	}
 
-	level.Debug(f.log).Log("msg", "adding connection to scheduler", "addr", address)
+	level.Info(f.log).Log("msg", "adding connection to scheduler", "addr", address)
 	conn, err := f.connectToScheduler(context.Background(), address)
 	if err != nil {
 		level.Error(f.log).Log("msg", "error connecting to scheduler", "addr", address, "err", err)
@@ -103,7 +103,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 }
 
 func (f *frontendSchedulerWorkers) AddressRemoved(address string) {
-	level.Debug(f.log).Log("msg", "removing connection to scheduler", "addr", address)
+	level.Info(f.log).Log("msg", "removing connection to scheduler", "addr", address)
 
 	f.mu.Lock()
 	// This works fine if f.workers is nil already.

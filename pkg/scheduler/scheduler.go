@@ -104,7 +104,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_querier_clients",
 		Help: "Number of querier worker clients currently connected to the query-scheduler.",
-	}, s.requestQueue.GetConnectedQuerierClientsMetric)
+	}, s.requestQueue.GetConnectedQuerierWorkersMetric)
 	s.connectedFrontendClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",

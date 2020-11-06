@@ -83,7 +83,9 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		q.queueLength.WithLabelValues(userID).Inc()
 		q.cond.Broadcast()
 		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
-		successFn()
+		if successFn != nil {
+			successFn()
+		}
 		return nil
 	default:
 		return ErrTooManyRequests
@@ -178,6 +180,6 @@ func (q *RequestQueue) QuerierDisconnecting() {
 	q.cond.Broadcast()
 }
 
-func (q *RequestQueue) GetConnectedQuerierClientsMetric() float64 {
+func (q *RequestQueue) GetConnectedQuerierWorkersMetric() float64 {
 	return float64(q.connectedQuerierWorkers.Load())
 }

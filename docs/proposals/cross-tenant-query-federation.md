@@ -84,7 +84,7 @@ Having a query spanning multiple tenants, the existing methods are no longer cor
 
 #### Proposal
 
-The identifier for aforementioned features for queries involving more than a single tenant should be derived from: An ordered, distinct list of tenant IDs, which is joined by a `|`.
+The identifier for aforementioned features for queries involving more than a single tenant should be derived from: An ordered, distinct list of tenant IDs, which is joined by a `|`. This will produce a reproducible identifier for the same set of tenants no matter which order they have been specified.
 
 While this feature is considered experimental, this provides some insights and ability to limit multi-tenant queries with these short comings:
 

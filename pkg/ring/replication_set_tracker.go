@@ -1,15 +1,14 @@
 package ring
 
-import "github.com/cortexproject/cortex/pkg/util"
-
 type replicationSetResultTracker interface {
-	// TODO doc
+	// Signals an instance has done the execution, either successful (no error)
+	// or failed (with error).
 	done(instance *IngesterDesc, err error)
 
-	// TODO doc
+	// Returns true if the minimum number of successful results have been received.
 	succeeded() bool
 
-	// TODO doc
+	// Returns true if the maximum number of failed executions have been reached.
 	failed() bool
 }
 
@@ -29,7 +28,7 @@ func newDefaultResultTracker(instances []IngesterDesc, maxErrors int) *defaultRe
 	}
 }
 
-func (t *defaultResultTracker) done(instance *IngesterDesc, err error) {
+func (t *defaultResultTracker) done(_ *IngesterDesc, err error) {
 	if err == nil {
 		t.numSucceeded++
 	} else {
@@ -48,6 +47,7 @@ func (t *defaultResultTracker) failed() bool {
 type zoneAwareResultTracker struct {
 	waitingByZone       map[string]int
 	failuresByZone      map[string]int
+	minSuccessfulZones  int
 	maxUnavailableZones int
 }
 
@@ -62,6 +62,7 @@ func newZoneAwareResultTracker(instances []IngesterDesc, maxUnavailableZones int
 		t.waitingByZone[instance.Zone]++
 		t.failuresByZone[instance.Zone] = 0
 	}
+	t.minSuccessfulZones = len(t.waitingByZone) - maxUnavailableZones
 
 	return t
 }
@@ -75,7 +76,6 @@ func (t *zoneAwareResultTracker) done(instance *IngesterDesc, err error) {
 }
 
 func (t *zoneAwareResultTracker) succeeded() bool {
-	minSucceededZones := util.Max(0, len(t.waitingByZone)-t.maxUnavailableZones)
 	actualSucceededZones := 0
 
 	// The execution succeeded once we successfully received a successful result
@@ -86,13 +86,13 @@ func (t *zoneAwareResultTracker) succeeded() bool {
 		}
 	}
 
-	return actualSucceededZones >= minSucceededZones
+	return actualSucceededZones >= t.minSuccessfulZones
 }
 
 func (t *zoneAwareResultTracker) failed() bool {
 	failedZones := 0
 
-	// The execution failed if the number of zones, for which we have tracker at least 1
+	// The execution failed if the number of zones, for which we have tracked at least 1
 	// failure, exceeds the max unavailable zones.
 	for _, numFailures := range t.failuresByZone {
 		if numFailures > 0 {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )
 
@@ -55,7 +56,7 @@ func failingFunctionAfter(failAfter int32, delay time.Duration) func(context.Con
 	}
 }
 
-func failingFunctionForZones(zones ...string) func(context.Context, *IngesterDesc) (interface{}, error) {
+func failingFunctionOnZones(zones ...string) func(context.Context, *IngesterDesc) (interface{}, error) {
 	return func(ctx context.Context, ing *IngesterDesc) (interface{}, error) {
 		for _, zone := range zones {
 			if ing.Zone == zone {
@@ -79,7 +80,7 @@ func TestReplicationSet_Do(t *testing.T) {
 		expectedError       error
 	}{
 		{
-			name: "no errors no delay",
+			name: "max errors = 0, no errors no delay",
 			instances: []IngesterDesc{
 				{},
 			},
@@ -89,7 +90,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			want: []interface{}{1},
 		},
 		{
-			name:      "1 error, no errors expected",
+			name:      "max errors = 0, should fail on 1 error out of 1 instance",
 			instances: []IngesterDesc{{}},
 			f: func(c context.Context, id *IngesterDesc) (interface{}, error) {
 				return nil, errFailure
@@ -98,14 +99,14 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError: errFailure,
 		},
 		{
-			name:          "3 instances, last call fails",
+			name:          "max errors = 0, should fail on 1 error out of 3 instances (last call fails)",
 			instances:     []IngesterDesc{{}, {}, {}},
 			f:             failingFunctionAfter(2, 10*time.Millisecond),
 			want:          nil,
 			expectedError: errFailure,
 		},
 		{
-			name:          "5 instances, with delay, last 3 calls fail",
+			name:          "max errors = 1, should fail on 3 errors out of 5 instances (last calls fail)",
 			instances:     []IngesterDesc{{}, {}, {}, {}, {}},
 			maxErrors:     1,
 			f:             failingFunctionAfter(2, 10*time.Millisecond),
@@ -114,7 +115,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError: errFailure,
 		},
 		{
-			name:      "3 instances, context cancelled",
+			name:      "max errors = 1, should handle context canceled",
 			instances: []IngesterDesc{{}, {}, {}},
 			maxErrors: 1,
 			f: func(c context.Context, id *IngesterDesc) (interface{}, error) {
@@ -126,7 +127,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:      context.Canceled,
 		},
 		{
-			name: "3 instances, 3 zones, no failures",
+			name: "max errors = 0, should succeed on all successful instances",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -140,7 +141,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			want: []interface{}{1, 1, 1},
 		},
 		{
-			name: "3 instances, 3 zones, 1 zone fails",
+			name: "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (3 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -148,13 +149,12 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone3",
 			}},
-			f:                   failingFunctionForZones("zone1"),
-			maxUnavailableZones: 1, // (nr of zones) / 2
-			maxErrors:           1, // (nr of instances / nr of zones) * maxUnavailableZones
+			f:                   failingFunctionOnZones("zone1"),
+			maxUnavailableZones: 1,
 			want:                []interface{}{1, 1},
 		},
 		{
-			name: "3 instances, 3 zones, 2 zones fail",
+			name: "max unavailable zones = 1, should fail on instances failing in 2 out of 3 zones (3 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -162,13 +162,12 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone3",
 			}},
-			f:                   failingFunctionForZones("zone1", "zone2"),
+			f:                   failingFunctionOnZones("zone1", "zone2"),
 			maxUnavailableZones: 1,
-			maxErrors:           1,
 			expectedError:       errZoneFailure,
 		},
 		{
-			name: "6 instances, 3 zones, 1 zone fails",
+			name: "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (6 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -182,13 +181,12 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone3",
 			}},
-			f:                   failingFunctionForZones("zone1"),
+			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 1,
-			maxErrors:           2,
 			want:                []interface{}{1, 1, 1, 1},
 		},
 		{
-			name: "5 instances, 5 zones, 3 zones fails",
+			name: "max unavailable zones = 2, should fail on instances failing in 3 out of 5 zones (5 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -200,13 +198,12 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone5",
 			}},
-			f:                   failingFunctionForZones("zone1", "zone2", "zone3"),
+			f:                   failingFunctionOnZones("zone1", "zone2", "zone3"),
 			maxUnavailableZones: 2,
-			maxErrors:           2,
 			expectedError:       errZoneFailure,
 		},
 		{
-			name: "10 instances, 5 zones, 2 failures in zone 1",
+			name: "max unavailable zones = 2, should succeed on instances failing in 1 out of 5 zones (10 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -228,14 +225,17 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone5",
 			}},
-			f:                   failingFunctionForZones("zone1"),
+			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 2,
-			maxErrors:           4,
 			want:                []interface{}{1, 1, 1, 1, 1, 1},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Ensure the test case has been correctly setup (max errors and max unavailable zones are
+			// mutually exclusive).
+			require.False(t, tt.maxErrors > 0 && tt.maxUnavailableZones > 0)
+
 			r := ReplicationSet{
 				Ingesters:           tt.instances,
 				MaxErrors:           tt.maxErrors,

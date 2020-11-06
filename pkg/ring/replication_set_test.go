@@ -203,7 +203,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:       errZoneFailure,
 		},
 		{
-			name: "max unavailable zones = 2, should succeed on instances failing in 1 out of 5 zones (10 instances)",
+			name: "max unavailable zones = 2, should succeed on instances failing in 2 out of 5 zones (10 instances)",
 			instances: []IngesterDesc{{
 				Zone: "zone1",
 			}, {
@@ -225,7 +225,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			}, {
 				Zone: "zone5",
 			}},
-			f:                   failingFunctionOnZones("zone1"),
+			f:                   failingFunctionOnZones("zone1", "zone5"),
 			maxUnavailableZones: 2,
 			want:                []interface{}{1, 1, 1, 1, 1, 1},
 		},

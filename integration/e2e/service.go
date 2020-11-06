@@ -172,6 +172,11 @@ func (s *ConcreteService) Kill() error {
 		logger.Log(string(out))
 		return err
 	}
+
+	// Wait until the container actually stopped. However, this could fail if
+	// the container already exited, so we just ignore the error.
+	_, _ = RunCommandAndGetOutput("docker", "wait", s.containerName())
+
 	s.usedNetworkName = ""
 
 	return nil

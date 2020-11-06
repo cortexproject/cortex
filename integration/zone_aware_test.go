@@ -1,10 +1,12 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -84,8 +86,8 @@ func TestZoneAwareReplication(t *testing.T) {
 		assert.Equal(t, expectedVector, result.(model.Vector))
 	}
 
-	// SIGKILL 1 ingester in 1 zone
-	require.NoError(t, ingester5.Kill())
+	// SIGKILL 1 ingester in 1st zone
+	require.NoError(t, ingester1.Kill())
 
 	// Push 1 more series => all good
 	numSeries++
@@ -105,8 +107,8 @@ func TestZoneAwareReplication(t *testing.T) {
 		assert.Equal(t, expectedVector, result.(model.Vector))
 	}
 
-	// SIGKILL 1 more ingester in the same zone
-	require.NoError(t, ingester6.Kill())
+	// SIGKILL 1 more ingester in the 1st zone (all ingesters in 1st zone have been killed)
+	require.NoError(t, ingester2.Kill())
 
 	// Push 1 more series => all good
 	numSeries++
@@ -126,8 +128,18 @@ func TestZoneAwareReplication(t *testing.T) {
 		assert.Equal(t, expectedVector, result.(model.Vector))
 	}
 
-	// SIGKILL 1 more ingester in a different zone
-	require.NoError(t, ingester1.Kill())
+	// SIGKILL 1 ingester in the 2nd zone
+	require.NoError(t, ingester3.Kill())
+
+	// Query back any series => fail (either because of a timeout or 500)
+	result, _, err := client.QueryRaw("series_1")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		require.NoError(t, err)
+		require.Equal(t, 500, result.StatusCode)
+	}
+
+	// SIGKILL 1 more ingester in the 2nd zone (all ingesters in 2nd zone have been killed)
+	require.NoError(t, ingester4.Kill())
 
 	// Push 1 more series => fail
 	series, _ = generateSeries("series_last", now)
@@ -135,8 +147,4 @@ func TestZoneAwareReplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 500, res.StatusCode)
 
-	// Query back any series => fail
-	result, _, err := client.QueryRaw("series_1")
-	require.NoError(t, err)
-	require.Equal(t, 500, result.StatusCode)
 }

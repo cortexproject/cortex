@@ -398,6 +398,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			}
 		}
 
+		// TODO when this logic is triggered, we must guarantee that maxErrors is 0
 		instances = filteredInstances
 		maxUnavailableZones = 0
 		numRequired = len(instances)

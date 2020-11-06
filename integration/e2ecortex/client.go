@@ -153,7 +153,6 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 }
 
 func (c *Client) query(addr string) (*http.Response, []byte, error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 

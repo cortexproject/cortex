@@ -23,6 +23,9 @@ func TestZoneAwareReadPath(t *testing.T) {
 	defer s.Close()
 
 	flags := BlocksStorageFlags()
+	flags["-distributor.shard-by-all-labels"] = "true"
+	flags["-distributor.replication-factor"] = "3"
+	flags["-distributor.zone-awareness-enabled"] = "true"
 
 	// Start dependencies.
 	consul := e2edb.NewConsul()
@@ -30,33 +33,25 @@ func TestZoneAwareReadPath(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components.
-	zoneFlags := func(zone string) map[string]string {
-		zoneflags := mergeFlags(flags, map[string]string{
-			"-ingester.availability-zone":         zone,
-			"-distributor.replication-factor":     "3",
-			"-distributor.zone-awareness-enabled": "true",
+	ingesterFlags := func(zone string) map[string]string {
+		return mergeFlags(flags, map[string]string{
+			"-ingester.availability-zone": zone,
 		})
-		return zoneflags
 	}
 
-	zoneAwarenessEnabledFlags := mergeFlags(flags, map[string]string{
-		"-distributor.zone-awareness-enabled": "true",
-		"-distributor.replication-factor":     "3",
-	})
-
-	ingester1 := e2ecortex.NewIngesterWithConfigFile("ingester-1", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-a"), "")
-	ingester2 := e2ecortex.NewIngesterWithConfigFile("ingester-2", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-a"), "")
-	ingester3 := e2ecortex.NewIngesterWithConfigFile("ingester-3", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-b"), "")
-	ingester4 := e2ecortex.NewIngesterWithConfigFile("ingester-4", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-b"), "")
-	ingester5 := e2ecortex.NewIngesterWithConfigFile("ingester-5", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-c"), "")
-	ingester6 := e2ecortex.NewIngesterWithConfigFile("ingester-6", consul.NetworkHTTPEndpoint(), "", zoneFlags("zone-c"), "")
+	ingester1 := e2ecortex.NewIngesterWithConfigFile("ingester-1", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-a"), "")
+	ingester2 := e2ecortex.NewIngesterWithConfigFile("ingester-2", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-a"), "")
+	ingester3 := e2ecortex.NewIngesterWithConfigFile("ingester-3", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-b"), "")
+	ingester4 := e2ecortex.NewIngesterWithConfigFile("ingester-4", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-b"), "")
+	ingester5 := e2ecortex.NewIngesterWithConfigFile("ingester-5", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-c"), "")
+	ingester6 := e2ecortex.NewIngesterWithConfigFile("ingester-6", consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-c"), "")
 	require.NoError(t, s.StartAndWaitReady(ingester1, ingester2, ingester3, ingester4, ingester5, ingester6))
 
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), zoneAwarenessEnabledFlags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), zoneAwarenessEnabledFlags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier))
 
-	// Wait until distributor and queriers have updated the ring.
+	// Wait until distributor and querier have updated the ring.
 	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(6), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
 		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
@@ -115,11 +110,9 @@ func TestZoneAwareReadPath(t *testing.T) {
 	// SIGKILL 1 more ingester in a different zone
 	require.NoError(t, ingester1.Kill())
 
-	// Query back 100 series => fail
-	for i := 1; i <= numSeriesToPush; i++ {
-		metricName := fmt.Sprintf("series_%d", i)
-		result, _, err := client.QueryRaw(metricName)
-		require.NoError(t, err)
-		require.Equal(t, 500, result.StatusCode)
-	}
+	// Query back any series => fail
+	metricName := "series_1"
+	result, _, err := client.QueryRaw(metricName)
+	require.NoError(t, err)
+	require.Equal(t, 500, result.StatusCode)
 }

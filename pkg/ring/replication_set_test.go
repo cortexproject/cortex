@@ -165,7 +165,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			f:                   failingFunctionForZones("zone1", "zone2"),
 			maxUnavailableZones: 1,
 			maxErrors:           1,
-			expectedError:       errorTooManyZoneFailures,
+			expectedError:       errZoneFailure,
 		},
 		{
 			name: "6 instances, 3 zones, 1 zone fails",
@@ -203,7 +203,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			f:                   failingFunctionForZones("zone1", "zone2", "zone3"),
 			maxUnavailableZones: 2,
 			maxErrors:           2,
-			expectedError:       errorTooManyZoneFailures,
+			expectedError:       errZoneFailure,
 		},
 		{
 			name: "10 instances, 5 zones, 2 failures in zone 1",

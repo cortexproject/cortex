@@ -2,12 +2,9 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"time"
 )
-
-var errorTooManyZoneFailures = errors.New("too many zones failed")
 
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.
@@ -20,24 +17,37 @@ type ReplicationSet struct {
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
+	type instanceResult struct {
+		res      interface{}
+		instance *IngesterDesc
+	}
+
 	type instanceError struct {
 		err      error
 		instance *IngesterDesc
 	}
 
+	// Initialise the result tracker, which is use to keep track of successes and failures.
+	var tracker replicationSetResultTracker
+	if r.MaxUnavailableZones > 0 {
+		tracker = newZoneAwareResultTracker(r.Ingesters, r.MaxUnavailableZones)
+	} else {
+		tracker = newDefaultResultTracker(r.Ingesters, r.MaxErrors)
+	}
+
 	var (
 		errs        = make(chan instanceError, len(r.Ingesters))
-		resultsChan = make(chan interface{}, len(r.Ingesters))
-		minSuccess  = len(r.Ingesters) - r.MaxErrors
+		resultsChan = make(chan instanceResult, len(r.Ingesters))
 		forceStart  = make(chan struct{}, r.MaxErrors)
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Spawn a goroutine for each instance.
 	for i := range r.Ingesters {
 		go func(i int, ing *IngesterDesc) {
-			// wait to send extra requests
-			if i >= minSuccess && delay > 0 {
+			// Wait to send extra requests. Works only when zone-awareness is disabled.
+			if delay > 0 && r.MaxUnavailableZones == 0 && i >= len(r.Ingesters)-r.MaxErrors {
 				after := time.NewTimer(delay)
 				defer after.Stop()
 				select {
@@ -54,39 +64,33 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 					instance: ing,
 				}
 			} else {
-				resultsChan <- result
+				resultsChan <- instanceResult{
+					res:      result,
+					instance: ing,
+				}
 			}
 		}(i, &r.Ingesters[i])
 	}
 
-	var (
-		numErrs          int
-		numSuccess       int
-		results          = make([]interface{}, 0, len(r.Ingesters))
-		zoneFailureCount = make(map[string]struct{})
-	)
-	for numSuccess < minSuccess {
+	results := make([]interface{}, 0, len(r.Ingesters))
+
+	for !tracker.succeeded() {
 		select {
 		case err := <-errs:
-			if r.MaxUnavailableZones > 0 {
-				zoneFailureCount[err.instance.Zone] = struct{}{}
+			tracker.done(err.instance, err.err)
 
-				if len(zoneFailureCount) > r.MaxUnavailableZones {
-					return nil, errorTooManyZoneFailures
-				}
-			} else {
-				numErrs++
-				if numErrs > r.MaxErrors {
-					return nil, err.err
-				}
+			if tracker.failed() {
+				return nil, err.err
 			}
 
 			// force one of the delayed requests to start
-			forceStart <- struct{}{}
+			if delay > 0 && r.MaxUnavailableZones == 0 {
+				forceStart <- struct{}{}
+			}
 
 		case result := <-resultsChan:
-			numSuccess++
-			results = append(results, result)
+			tracker.done(result.instance, nil)
+			results = append(results, result.res)
 
 		case <-ctx.Done():
 			return nil, ctx.Err()

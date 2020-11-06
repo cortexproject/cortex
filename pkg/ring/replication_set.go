@@ -9,8 +9,14 @@ import (
 // ReplicationSet describes the ingesters to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
-	Ingesters           []IngesterDesc
-	MaxErrors           int
+	Ingesters []IngesterDesc
+
+	// Maximum number of tolerated failing instances. Max errors and max unavailable zones are
+	// mutually exclusive.
+	MaxErrors int
+
+	// Maximum number of different zones in which instances can fail. Max unavailable zones and
+	// max errors are mutually exclusive.
 	MaxUnavailableZones int
 }
 

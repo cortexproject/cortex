@@ -249,8 +249,8 @@ func TestTracingContext(t *testing.T) {
 
 	frontendToScheduler(t, frontendLoop, req)
 
-	scheduler.mtx.Lock()
-	defer scheduler.mtx.Unlock()
+	scheduler.pendingRequestsMu.Lock()
+	defer scheduler.pendingRequestsMu.Unlock()
 	require.Equal(t, 1, len(scheduler.pendingRequests))
 
 	for _, r := range scheduler.pendingRequests {
@@ -450,8 +450,8 @@ func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop schedulerpb.Sch
 
 func verifyNoPendingRequestsLeft(t *testing.T, scheduler *Scheduler) {
 	test.Poll(t, 1*time.Second, 0, func() interface{} {
-		scheduler.mtx.Lock()
-		defer scheduler.mtx.Unlock()
+		scheduler.pendingRequestsMu.Lock()
+		defer scheduler.pendingRequestsMu.Unlock()
 		return len(scheduler.pendingRequests)
 	})
 }

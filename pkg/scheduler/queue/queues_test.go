@@ -1,4 +1,4 @@
-package scheduler
+package queue
 
 import (
 	"fmt"
@@ -180,7 +180,7 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan *schedulerRequest {
+func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Request {
 	q := uq.getOrAddQueue(tenant, maxQueriers)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
@@ -188,8 +188,8 @@ func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan *sc
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...chan *schedulerRequest) int {
-	var n chan *schedulerRequest
+func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...chan Request) int {
+	var n chan Request
 	for _, q := range qs {
 		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)

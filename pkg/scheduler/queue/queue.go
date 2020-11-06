@@ -36,6 +36,9 @@ func FirstUser() UserIndex {
 // Request stored into the queue.
 type Request interface{}
 
+// RequestQueue holds incoming requests in per-user queues. It also assigns each user specified number of queriers,
+// and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
+// in a fair fashion.
 type RequestQueue struct {
 	connectedQuerierWorkers *atomic.Int32
 

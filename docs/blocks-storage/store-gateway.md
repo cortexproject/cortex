@@ -469,7 +469,7 @@ blocks_storage:
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
-        # run. If more keys are specified, internally keys are splitted into
+        # run. If more keys are specified, internally keys are split into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-batch-size
@@ -520,7 +520,7 @@ blocks_storage:
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
-        # run. If more keys are specified, internally keys are splitted into
+        # run. If more keys are specified, internally keys are split into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
@@ -586,7 +586,7 @@ blocks_storage:
         [max_get_multi_concurrency: <int> | default = 100]
 
         # The maximum number of keys a single underlying get operation should
-        # run. If more keys are specified, internally keys are splitted into
+        # run. If more keys are specified, internally keys are split into
         # multiple batches and fetched concurrently, honoring the max
         # concurrency. If set to 0, the max batch size is unlimited.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-batch-size

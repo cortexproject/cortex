@@ -31,7 +31,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "replaces query",
-			querier: mkQuerier(mockHandler(
+			querier: mkQuerier(mockHandlerWith(
 				&PrometheusResponse{},
 				nil,
 			)),
@@ -65,7 +65,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "propagates response error",
-			querier: mkQuerier(mockHandler(
+			querier: mkQuerier(mockHandlerWith(
 				&PrometheusResponse{
 					Error: "SomeErr",
 				},
@@ -85,7 +85,7 @@ func TestSelect(t *testing.T) {
 		},
 		{
 			name: "returns SeriesSet",
-			querier: mkQuerier(mockHandler(
+			querier: mkQuerier(mockHandlerWith(
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: string(parser.ValueTypeVector),
@@ -214,7 +214,7 @@ func TestSelectConcurrent(t *testing.T) {
 
 		t.Run(c.name, func(t *testing.T) {
 			// each request will return a single samplestream
-			querier := mkQuerier(mockHandler(&PrometheusResponse{
+			querier := mkQuerier(mockHandlerWith(&PrometheusResponse{
 				Data: PrometheusData{
 					ResultType: string(parser.ValueTypeVector),
 					Result: []SampleStream{

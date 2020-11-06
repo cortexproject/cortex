@@ -512,7 +512,8 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 		// Make sure to log it in traces to ease debugging.
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"msg", "the end time of the query has been manipulated because of the 'max query into future' setting",
-			"original", origEndTime, "updated", endTime)
+			"original", util.FormatTimeModel(origEndTime),
+			"updated", util.FormatTimeModel(endTime))
 
 		if endTime.Before(startTime) {
 			return 0, 0, errEmptyTimeRange
@@ -527,7 +528,8 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 		// Make sure to log it in traces to ease debugging.
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-			"original", origStartTime, "updated", startTime)
+			"original", util.FormatTimeModel(origStartTime),
+			"updated", util.FormatTimeModel(startTime))
 
 		if endTime.Before(startTime) {
 			return 0, 0, errEmptyTimeRange

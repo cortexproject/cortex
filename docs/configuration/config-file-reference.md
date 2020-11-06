@@ -3049,7 +3049,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_chunks_per_query: <int> | default = 2000000]
 
 # Limit how long back data (series and metadata) can be queried, up until
-# <lookback> duration ago. 0 to disable.
+# <lookback> duration ago. This limit is enforced in the query-frontend, querier
+# and ruler. If the requested time range is outside the allowed range, the
+# request will not fail but will be manipulated to only query data within the
+# allowed time range. 0 to disable.
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0s]
 
@@ -3059,7 +3062,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 
-# Maximum number of queries will be scheduled in parallel by the frontend.
+# Maximum number of split queries will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
@@ -3589,7 +3592,7 @@ bucket_store:
       [max_get_multi_concurrency: <int> | default = 100]
 
       # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are splitted into multiple
+      # If more keys are specified, internally keys are split into multiple
       # batches and fetched concurrently, honoring the max concurrency. If set
       # to 0, the max batch size is unlimited.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-batch-size
@@ -3640,7 +3643,7 @@ bucket_store:
       [max_get_multi_concurrency: <int> | default = 100]
 
       # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are splitted into multiple
+      # If more keys are specified, internally keys are split into multiple
       # batches and fetched concurrently, honoring the max concurrency. If set
       # to 0, the max batch size is unlimited.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
@@ -3705,7 +3708,7 @@ bucket_store:
       [max_get_multi_concurrency: <int> | default = 100]
 
       # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are splitted into multiple
+      # If more keys are specified, internally keys are split into multiple
       # batches and fetched concurrently, honoring the max concurrency. If set
       # to 0, the max batch size is unlimited.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-batch-size

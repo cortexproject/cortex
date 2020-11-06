@@ -363,17 +363,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	// Calculate the number of required ingesters;
-	// ensure we always require at least RF-1 when RF=3.
-	numRequired := len(r.ringDesc.Ingesters)
-	if numRequired < r.cfg.ReplicationFactor {
-		numRequired = r.cfg.ReplicationFactor
-	}
-	maxUnavailable := r.cfg.ReplicationFactor / 2
-	numRequired -= maxUnavailable
-	numRequiredZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
-	maxUnavailableZones := util.Max(0, numRequiredZones-maxUnavailable-1)
-
+	// Build the initial replication set, excluding unhealthy instances.
 	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
 	for _, ingester := range r.ringDesc.Ingesters {
@@ -384,31 +374,58 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		}
 	}
 
-	if r.cfg.ZoneAwarenessEnabled && len(zoneFailures) > 0 && maxUnavailableZones > 0 {
+	// Max errors and max unavailable zones are mutually exclusive. We initialise both
+	// to 0 and then we update them whether zone-awareness is enabled or not.
+	maxErrors := 0
+	maxUnavailableZones := 0
+
+	if r.cfg.ZoneAwarenessEnabled {
+		// Given data is replicated to RF different zones, we can tolerate a number of
+		// RF/2 failing zones. However, we need to protect from the case the ring currently
+		// contains instances in a number of zones < RF.
+		numReplicatedZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		minSuccessZones := (numReplicatedZones / 2) + 1
+		maxUnavailableZones = numReplicatedZones - minSuccessZones
+
 		if len(zoneFailures) > maxUnavailableZones {
 			return ReplicationSet{}, ErrTooManyFailedIngesters
 		}
 
-		// Given that we can tolerate a zone failure, we can skip querying
-		// all instances in that zone.
-		filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-		for _, ingester := range instances {
-			if _, ok := zoneFailures[ingester.Zone]; !ok {
-				filteredInstances = append(filteredInstances, ingester)
+		if len(zoneFailures) > 0 {
+			// We remove all instances (even healthy ones) from zones with at least
+			// 1 failing ingester. Due to how replication works when zone-awareness is
+			// enabled (data is replicated to RF different zones), there's no benefit in
+			// querying healthy instances from "failing zones".
+			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+			for _, ingester := range instances {
+				if _, ok := zoneFailures[ingester.Zone]; !ok {
+					filteredInstances = append(filteredInstances, ingester)
+				}
 			}
+
+			instances = filteredInstances
 		}
 
-		// TODO when this logic is triggered, we must guarantee that maxErrors is 0
-		instances = filteredInstances
-		maxUnavailableZones = 0
-		numRequired = len(instances)
+		// Since we removed all instances from zones containing at least 1 failing
+		// instance, we have to decrease the max unavailable zones accordingly.
+		maxUnavailableZones -= len(zoneFailures)
+	} else {
+		// Calculate the number of required ingesters;
+		// ensure we always require at least RF-1 when RF=3.
+		numRequired := len(r.ringDesc.Ingesters)
+		if numRequired < r.cfg.ReplicationFactor {
+			numRequired = r.cfg.ReplicationFactor
+		}
+		maxUnavailable := r.cfg.ReplicationFactor / 2
+		numRequired -= maxUnavailable
+
+		if len(instances) < numRequired {
+			return ReplicationSet{}, ErrTooManyFailedIngesters
+		}
+
+		maxErrors = len(instances) - numRequired
 	}
 
-	if len(instances) < numRequired {
-		return ReplicationSet{}, ErrTooManyFailedIngesters
-	}
-
-	maxErrors := len(instances) - numRequired
 	return ReplicationSet{
 		Ingesters:           instances,
 		MaxErrors:           maxErrors,

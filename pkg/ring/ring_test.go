@@ -418,7 +418,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	}
 }
 
-func TestRing_GetAll_ZoneAware(t *testing.T) {
+func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.T) {
 	tests := map[string]struct {
 		ringInstances               map[string]IngesterDesc
 		unhealthyInstances          []string
@@ -432,7 +432,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			ringInstances: nil,
 			expectedError: ErrEmptyRing,
 		},
-		"single zone": {
+		"RF=1, 1 zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -442,7 +442,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
-		"single zone, one unhealthy instance": {
+		"RF=1, 1 zone, one unhealthy instance": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -452,7 +452,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			replicationFactor:  1,
 			expectedError:      ErrTooManyFailedIngesters,
 		},
-		"three zones, replication factor one, one unhealthy instance": {
+		"RF=1, 3 zones, one unhealthy instance": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -462,7 +462,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			replicationFactor:  1,
 			expectedError:      ErrTooManyFailedIngesters,
 		},
-		"three zones, one instance per zone": {
+		"RF=3, 3 zones, one instance per zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -470,10 +470,10 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			},
 			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
 			replicationFactor:           3,
-			expectedMaxErrors:           1,
+			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 1,
 		},
-		"three zones, one instance per zone, one instance unhealthy": {
+		"RF=3, 3 zones, one instance per zone, one instance unhealthy": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -485,7 +485,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
-		"three zones, one instance per zone, two instances unhealthy in separate zones": {
+		"RF=3, 3 zones, one instance per zone, two instances unhealthy in separate zones": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -495,7 +495,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			replicationFactor:  3,
 			expectedError:      ErrTooManyFailedIngesters,
 		},
-		"three zones, one instance per zone, all instances unhealthy": {
+		"RF=3, 3 zones, one instance per zone, all instances unhealthy": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -505,7 +505,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			replicationFactor:  3,
 			expectedError:      ErrTooManyFailedIngesters,
 		},
-		"three zones, two instances per zone": {
+		"RF=3, 3 zones, two instances per zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -516,10 +516,10 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			},
 			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6"},
 			replicationFactor:           3,
-			expectedMaxErrors:           1,
+			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 1,
 		},
-		"three zones, two instances per zone, two instances unhealthy in same zone": {
+		"RF=3, 3 zones, two instances per zone, two instances unhealthy in same zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -534,7 +534,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
-		"three zones, three instances per zone, two instances unhealthy in same zone": {
+		"RF=3, 3 zones, three instances per zone, two instances unhealthy in same zone": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -552,7 +552,53 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
-		"five zones, two instances per zone except for one zone which has three": {
+		"RF=3, only 2 zones, two instances per zone": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			unhealthyInstances:          []string{},
+			replicationFactor:           3,
+			expectedMaxErrors:           0,
+			expectedMaxUnavailableZones: 0,
+		},
+		"RF=3, only 2 zones, two instances per zone, one instance unhealthy": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:  []string{},
+			unhealthyInstances: []string{"instance-4"},
+			replicationFactor:  3,
+			expectedError:      ErrTooManyFailedIngesters,
+		},
+		"RF=3, only 1 zone, two instances per zone": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2"},
+			unhealthyInstances:          []string{},
+			replicationFactor:           3,
+			expectedMaxErrors:           0,
+			expectedMaxUnavailableZones: 0,
+		},
+		"RF=3, only 1 zone, two instances per zone, one instance unhealthy": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:  []string{},
+			unhealthyInstances: []string{"instance-2"},
+			replicationFactor:  3,
+			expectedError:      ErrTooManyFailedIngesters,
+		},
+		"RF=5, 5 zones, two instances per zone except for one zone which has three": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -569,10 +615,30 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedAddresses: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5",
 				"127.0.0.6", "127.0.0.7", "127.0.0.8", "127.0.0.9", "127.0.0.10", "127.0.0.11"},
 			replicationFactor:           5,
-			expectedMaxErrors:           2,
+			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 2,
 		},
-		"five zones, two instances per zone except for one zone which has three, 2 unhealthy nodes in separate zones": {
+		"RF=5, 5 zones, two instances per zone except for one zone which has three, 2 unhealthy nodes in same zones": {
+			ringInstances: map[string]IngesterDesc{
+				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
+				"instance-3":  {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-4":  {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
+				"instance-5":  {Addr: "127.0.0.5", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-6":  {Addr: "127.0.0.6", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
+				"instance-7":  {Addr: "127.0.0.7", Zone: "zone-d", Tokens: GenerateTokens(128, nil)},
+				"instance-8":  {Addr: "127.0.0.8", Zone: "zone-d", Tokens: GenerateTokens(128, nil)},
+				"instance-9":  {Addr: "127.0.0.9", Zone: "zone-e", Tokens: GenerateTokens(128, nil)},
+				"instance-10": {Addr: "127.0.0.10", Zone: "zone-e", Tokens: GenerateTokens(128, nil)},
+				"instance-11": {Addr: "127.0.0.11", Zone: "zone-e", Tokens: GenerateTokens(128, nil)},
+			},
+			expectedAddresses:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8", "127.0.0.9", "127.0.0.10", "127.0.0.11"},
+			unhealthyInstances:          []string{"instance-3", "instance-4"},
+			replicationFactor:           5,
+			expectedMaxErrors:           0,
+			expectedMaxUnavailableZones: 1,
+		},
+		"RF=5, 5 zones, two instances per zone except for one zone which has three, 2 unhealthy nodes in separate zones": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -592,7 +658,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 			expectedMaxErrors:           0,
 			expectedMaxUnavailableZones: 0,
 		},
-		"five zones, one instances per zone, three unhealthy instances": {
+		"RF=5, 5 zones, one instances per zone, three unhealthy instances": {
 			ringInstances: map[string]IngesterDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -608,6 +674,10 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			// Ensure the test case has been correctly setup (max errors and max unavailable zones are
+			// mutually exclusive).
+			require.False(t, testData.expectedMaxErrors > 0 && testData.expectedMaxUnavailableZones > 0)
+
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
 			for id, instance := range ringDesc.Ingesters {
@@ -615,7 +685,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 				instance.State = ACTIVE
 				for _, instanceName := range testData.unhealthyInstances {
 					if instanceName == id {
-						instance.State = JOINING
+						instance.Timestamp = time.Now().Add(-time.Hour).Unix()
 					}
 				}
 				ringDesc.Ingesters[id] = instance
@@ -623,7 +693,7 @@ func TestRing_GetAll_ZoneAware(t *testing.T) {
 
 			ring := Ring{
 				cfg: Config{
-					HeartbeatTimeout:     time.Hour,
+					HeartbeatTimeout:     time.Minute,
 					ZoneAwarenessEnabled: true,
 					ReplicationFactor:    testData.replicationFactor,
 				},

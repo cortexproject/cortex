@@ -114,7 +114,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 func TestFrontendCheckReady(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
-		connectedClients int32
+		connectedClients int
 		msg              string
 		readyForRequests bool
 	}{
@@ -123,8 +123,10 @@ func TestFrontendCheckReady(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
-				connectedClients: atomic.NewInt32(tt.connectedClients),
-				log:              log.NewNopLogger(),
+				log: log.NewNopLogger(),
+			}
+			for i := 0; i < tt.connectedClients; i++ {
+				f.requestQueue.RegisterQuerierConnection("test")
 			}
 			err := f.CheckReady(context.Background())
 			errMsg := ""

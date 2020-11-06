@@ -276,7 +276,7 @@ func (f *Frontend) CheckReady(_ context.Context) error {
 		return nil
 	}
 
-	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", connectedClients)
+	msg := fmt.Sprintf("not ready: number of queriers connected to query-frontend is %d", int64(connectedClients))
 	level.Info(f.log).Log("msg", msg)
 	return errors.New(msg)
 }

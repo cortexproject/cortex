@@ -15,9 +15,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func TestZoneAwareReadPath(t *testing.T) {
-	const numSeriesToPush = 100
-
+func TestZoneAwareReplication(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -63,11 +61,12 @@ func TestZoneAwareReadPath(t *testing.T) {
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 	require.NoError(t, err)
 
-	// Push 100 series
+	// Push some series
 	now := time.Now()
+	numSeries := 100
 	expectedVectors := map[string]model.Vector{}
 
-	for i := 1; i <= numSeriesToPush; i++ {
+	for i := 1; i <= numSeries; i++ {
 		metricName := fmt.Sprintf("series_%d", i)
 		series, expectedVector := generateSeries(metricName, now)
 		res, err := client.Push(series)
@@ -77,7 +76,7 @@ func TestZoneAwareReadPath(t *testing.T) {
 		expectedVectors[metricName] = expectedVector
 	}
 
-	// Query back 100 series => all good
+	// Query back series => all good
 	for metricName, expectedVector := range expectedVectors {
 		result, err := client.Query(metricName, now)
 		require.NoError(t, err)
@@ -88,7 +87,17 @@ func TestZoneAwareReadPath(t *testing.T) {
 	// SIGKILL 1 ingester in 1 zone
 	require.NoError(t, ingester5.Kill())
 
-	// Query back 100 series => all good
+	// Push 1 more series => all good
+	numSeries++
+	metricName := fmt.Sprintf("series_%d", numSeries)
+	series, expectedVector := generateSeries(metricName, now)
+	res, err := client.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	expectedVectors[metricName] = expectedVector
+
+	// Query back series => all good
 	for metricName, expectedVector := range expectedVectors {
 		result, err := client.Query(metricName, now)
 		require.NoError(t, err)
@@ -99,7 +108,17 @@ func TestZoneAwareReadPath(t *testing.T) {
 	// SIGKILL 1 more ingester in the same zone
 	require.NoError(t, ingester6.Kill())
 
-	// Query back 100 series => all good
+	// Push 1 more series => all good
+	numSeries++
+	metricName = fmt.Sprintf("series_%d", numSeries)
+	series, expectedVector = generateSeries(metricName, now)
+	res, err = client.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	expectedVectors[metricName] = expectedVector
+
+	// Query back series => all good
 	for metricName, expectedVector := range expectedVectors {
 		result, err := client.Query(metricName, now)
 		require.NoError(t, err)
@@ -110,9 +129,14 @@ func TestZoneAwareReadPath(t *testing.T) {
 	// SIGKILL 1 more ingester in a different zone
 	require.NoError(t, ingester1.Kill())
 
+	// Push 1 more series => fail
+	series, _ = generateSeries("series_last", now)
+	res, err = client.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 500, res.StatusCode)
+
 	// Query back any series => fail
-	metricName := "series_1"
-	result, _, err := client.QueryRaw(metricName)
+	result, _, err := client.QueryRaw("series_1")
 	require.NoError(t, err)
 	require.Equal(t, 500, result.StatusCode)
 }

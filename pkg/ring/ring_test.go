@@ -1503,6 +1503,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					cfg: Config{
 						HeartbeatTimeout:     time.Hour,
 						ZoneAwarenessEnabled: true,
+						ReplicationFactor:    3,
 					},
 					ringDesc:         ringDesc,
 					ringTokens:       ringDesc.getTokens(),

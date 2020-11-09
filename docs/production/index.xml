@@ -1,0 +1,649 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Production</title><link>/docs/production/</link><description>Recent content in Production on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/production/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex in Production</title><link>/docs/production/running-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/running-in-production/</guid><description>
+&lt;p>This document builds on the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and specifies the steps needed to get Cortex into production.
+Ensure you have completed all the steps in the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and read about &lt;a href="/docs/architecture/">the Cortex architecture&lt;/a> before you start this one.&lt;/p>
+&lt;h2 id="1-pick-a-storage-backend">1. Pick a storage backend&lt;/h2>
+&lt;p>The getting started guide uses local chunk storage.
+Local chunk storage is experimental and shouldn’t be used in production.&lt;/p>
+&lt;p>Cortex requires a scalable storage back-end for production systems.
+It is recommended you use chunk storage with one of the following back-ends:&lt;/p>
+&lt;ul>
+&lt;li>DynamoDB/S3 (see &lt;a href="/docs/production/aws/">Cortex on AWS&lt;/a>)&lt;/li>
+&lt;li>BigTable/GCS&lt;/li>
+&lt;li>Cassandra (see &lt;a href="/docs/production/cassandra/">Cortex on Cassandra&lt;/a>)&lt;/li>
+&lt;/ul>
+&lt;p>Commercial cloud options are DynamoDB/S3 and Bigtable/GCS: the advantage is you don&amp;rsquo;t have to know how to manage them, but the downside is they have specific costs.&lt;/p>
+&lt;p>Alternatively you can choose Apache Cassandra, which you will have to install and manage.
+Cassandra support can also be used with commecial Cassandra-compatible services such as Azure Cosmos DB.&lt;/p>
+&lt;p>Cortex has an alternative to chunk storage: &lt;a href="/docs/blocks-storage/">block storage&lt;/a>. Block storage is not ready for production usage at this time.&lt;/p>
+&lt;h2 id="2-deploy-query-frontend">2. Deploy Query Frontend&lt;/h2>
+&lt;p>The &lt;strong>Query Frontend&lt;/strong> is the Cortex component which parallelizes the execution of and caches the results of queries.
+The &lt;strong>Query Frontend&lt;/strong> is also responsible for retries and multi-tenant QoS.&lt;/p>
+&lt;p>For the multi-tenant QoS algorithms to work, you should not run more than two &lt;strong>Query Frontends&lt;/strong>.
+The &lt;strong>Query Frontend&lt;/strong> should be deployed behind a load balancer, and should only be sent queries &amp;ndash; writes should go straight to the Distributor component, or to the single-process Cortex.&lt;/p>
+&lt;p>The &lt;strong>Querier&lt;/strong> component (or single-process Cortex) “pulls” queries from the queues in the &lt;strong>Query Frontend&lt;/strong>.
+&lt;strong>Queriers&lt;/strong> discover the &lt;strong>Query Frontend&lt;/strong> via DNS.
+The &lt;strong>Queriers&lt;/strong> should not use the load balancer to access the &lt;strong>Query Frontend&lt;/strong>.
+In Kubernetes, you should use a separate headless service.&lt;/p>
+&lt;p>To configure the &lt;strong>Queries&lt;/strong> to use the &lt;strong>Query Frontend&lt;/strong>, set the following flag:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh"> -querier.frontend-address string
+Address of query frontend service.
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>There are other flag you can use to control the behaviour of the frontend - concurrency, retries, etc.
+See &lt;a href="/docs/configuration/arguments/#query-frontend">Query Frontend configuration&lt;/a> for more information.&lt;/p>
+&lt;p>The &lt;strong>Query Frontend&lt;/strong> can run using an in-process cache, but should be configured with an external Memcached for production workloads.
+The next section has more details.&lt;/p>
+&lt;h2 id="3-setup-caching">3. Setup Caching&lt;/h2>
+&lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
+Cortex has many opportunities for using caching to accelerate queries and reduce cost.&lt;/p>
+&lt;p>For more information, see the &lt;a href="/docs/production/caching/">Caching in Cortex documentation.&lt;/a>&lt;/p>
+&lt;h2 id="4-monitoring-and-alerting">4. Monitoring and Alerting&lt;/h2>
+&lt;p>Cortex exports metrics in the Prometheus format.
+We recommend you install and configure Prometheus server to monitor your Cortex cluster.&lt;/p>
+&lt;p>We publish a set of Prometheus alerts and Grafana dashboards as the &lt;a href="https://github.com/grafana/cortex-jsonnet">cortex-mixin&lt;/a>.
+We recommend you use these for any production Cortex cluster.&lt;/p>
+&lt;h2 id="5-authentication--multitenancy">5. Authentication &amp;amp; Multitenancy&lt;/h2>
+&lt;p>If you want to run Cortex as a multi-tenant system, you need to give each
+tenant a unique ID - this can be any string.
+Managing tenants and allocating IDs must be done outside of Cortex.
+See &lt;a href="/docs/production/auth/">Authentication and Authorisation&lt;/a> for more information.&lt;/p>
+&lt;h2 id="6-handling-ha-prometheus-pairs">6. Handling HA Prometheus Pairs&lt;/h2>
+&lt;p>You should use a pair of Prometheus servers to monitor your targets and send metrics to Cortex.
+This allows your monitoring system to survive the failure of one of these Prometheus instances.
+Cortex support deduping the samples on ingestion.
+For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href="/docs/production/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>.&lt;/p></description></item><item><title>Docs: Running Cortex with AWS Services</title><link>/docs/production/aws/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/aws/</guid><description>
+&lt;p>[this is a work in progress]&lt;/p>
+&lt;p>See also the &lt;a href="/docs/production/running-in-production/">Running in Production&lt;/a> document.&lt;/p>
+&lt;h2 id="credentials">Credentials&lt;/h2>
+&lt;p>You can supply credentials to Cortex by setting environment variables
+&lt;code>AWS_ACCESS_KEY_ID&lt;/code>, &lt;code>AWS_SECRET_ACCESS_KEY&lt;/code> (and &lt;code>AWS_SESSION_TOKEN&lt;/code>
+if you use MFA), or use a short-term token solution such as
+&lt;a href="https://github.com/uswitch/kiam">kiam&lt;/a>.&lt;/p>
+&lt;h2 id="should-i-use-s3-or-dynamodb-">Should I use S3 or DynamoDB ?&lt;/h2>
+&lt;p>Note that the choices for the chunks storage backend are: &amp;ldquo;chunks&amp;rdquo; of
+timeseries data in S3 and index in DynamoDB, or everything in DynamoDB.
+Using just S3 is not an option, unless you use the &lt;a href="../../blocks-storage/">blocks storage&lt;/a> engine.&lt;/p>
+&lt;p>Broadly S3 is much more expensive to read and write, while DynamoDB is
+much more expensive to store over months. S3 charges differently, so
+the cross-over will depend on the size of your chunks, and how long
+you keep them. Very roughly: for 3KB chunks if you keep them longer
+than 8 months then S3 is cheaper.&lt;/p>
+&lt;h2 id="dynamodb-capacity-provisioning">DynamoDB capacity provisioning&lt;/h2>
+&lt;p>By default, the Cortex Tablemanager will provision tables with 1,000
+units of write capacity and 300 read - these numbers are chosen to be
+high enough that most trial installations won&amp;rsquo;t see a bottleneck on
+storage, but do note that that AWS will charge you approximately $60
+per day for this capacity.&lt;/p>
+&lt;p>To match your costs to requirements, observe the actual capacity
+utilisation via CloudWatch or Prometheus metrics, then adjust the
+Tablemanager provision via command-line options
+&lt;code>-dynamodb.chunk-table.write-throughput&lt;/code>, &lt;code>read-throughput&lt;/code> and
+similar with &lt;code>.periodic-table&lt;/code> which controls the index table.&lt;/p>
+&lt;p>Tablemanager can even adjust the capacity dynamically, by watching
+metrics for DynamoDB throttling and ingester queue length. Here is an
+example set of command-line parameters from a fairly modest install:&lt;/p>
+&lt;pre>&lt;code> -target=table-manager
+-metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
+-metrics.target-queue-length=100000
+-dynamodb.url=dynamodb://us-east-1/
+-schema-config-file=/etc/schema.yaml
+-dynamodb.periodic-table.write-throughput=1000
+-dynamodb.periodic-table.write-throughput.scale.enabled=true
+-dynamodb.periodic-table.write-throughput.scale.min-capacity=200
+-dynamodb.periodic-table.write-throughput.scale.max-capacity=2000
+-dynamodb.periodic-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.periodic-table.read-throughput=300
+-dynamodb.chunk-table.write-throughput=800
+-dynamodb.chunk-table.write-throughput.scale.enabled=true
+-dynamodb.chunk-table.write-throughput.scale.min-capacity=200
+-dynamodb.chunk-table.write-throughput.scale.max-capacity=1000
+-dynamodb.chunk-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.chunk-table.read-throughput=300
+&lt;/code>&lt;/pre>&lt;p>Several things to note here:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-metrics.url&lt;/code> points at a Prometheus server running within the
+cluster, scraping Cortex. Currently it is not possible to use
+Cortex itself as the target here.&lt;/li>
+&lt;li>&lt;code>-metrics.target-queue-length&lt;/code>: when the ingester queue is below
+this level, Tablemanager will not scale up. When the queue is
+growing above this level, Tablemanager will scale up whatever
+table is being throttled.&lt;/li>
+&lt;li>The plain &lt;code>throughput&lt;/code> values are used when the tables are first
+created. Scale-up to any level up to this value will be very quick,
+but if you go higher than this initial value, AWS may take tens of
+minutes to finish scaling. In the config above they are set.&lt;/li>
+&lt;li>&lt;code>ondemand-throughput-mode&lt;/code> tells AWS to charge for what you use, as
+opposed to continuous provisioning. This mode is cost-effective for
+older data, which is never written and only read sporadically.&lt;/li>
+&lt;li>If you want to add AWS tags to the created DynamoDB tables you
+can do it by adding a &lt;code>tags&lt;/code> map to your schema definition. See
+&lt;a href="/docs/configuration/schema-configuration/">&lt;code>schema configuration&lt;/code>&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Running Cortex with Cassandra</title><link>/docs/production/cassandra/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/cassandra/</guid><description>
+&lt;p>This guide covers how to run a single local Cortex instance - with the chunks storage engine - storing time series chunks and index in Cassandra.&lt;/p>
+&lt;p>In this guide we&amp;rsquo;re going to:&lt;/p>
+&lt;ol>
+&lt;li>Setup a locally running Cassandra&lt;/li>
+&lt;li>Configure Cortex to store chunks and index on Cassandra&lt;/li>
+&lt;li>Configure Prometheus to send series to Cortex&lt;/li>
+&lt;li>Configure Grafana to visualise metrics&lt;/li>
+&lt;/ol>
+&lt;h2 id="setup-a-locally-running-cassandra">Setup a locally running Cassandra&lt;/h2>
+&lt;p>Run Cassandra with the following command:&lt;/p>
+&lt;pre>&lt;code>docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
+&lt;/code>&lt;/pre>&lt;p>Use Docker to execute the Cassandra Query Language (CQL) shell in the container:&lt;/p>
+&lt;pre>&lt;code>docker exec -it &amp;lt;container_id&amp;gt; cqlsh
+&lt;/code>&lt;/pre>&lt;p>Create a new Cassandra keyspace for Cortex metrics:&lt;/p>
+&lt;p>A keyspace is an object that is used to hold column families, user defined types. A keyspace is like RDBMS database which contains column families, indexes, user defined types.&lt;/p>
+&lt;pre>&lt;code>CREATE KEYSPACE cortex WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
+&lt;/code>&lt;/pre>&lt;h2 id="configure-cortex-to-store-chunks-and-index-on-cassandra">Configure Cortex to store chunks and index on Cassandra&lt;/h2>
+&lt;p>Now, we have to configure Cortex to store the chunks and index in Cassandra. Create a config file called &lt;code>single-process-config.yaml&lt;/code>, then add the content below. Make sure to replace the following placeholders:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>LOCALHOST&lt;/code>: Addresses of your Cassandra instance. This can accept multiple addresses by passing them as comma separated values.&lt;/li>
+&lt;li>&lt;code>KEYSPACE&lt;/code>: The name of the Cassandra keyspace used to store the metrics.&lt;/li>
+&lt;/ul>
+&lt;p>&lt;code>single-process-config.yaml&lt;/code>&lt;/p>
+&lt;pre>&lt;code># Configuration for running Cortex in single-process mode.
+# This should not be used in production. It is only for getting started
+# and development.
+# Disable the requirement that every request to Cortex has a
+# X-Scope-OrgID header. `fake` will be substituted in instead.
+auth_enabled: false
+server:
+http_listen_port: 9009
+# Configure the server to allow messages up to 100MB.
+grpc_server_max_recv_msg_size: 104857600
+grpc_server_max_send_msg_size: 104857600
+grpc_server_max_concurrent_streams: 1000
+distributor:
+shard_by_all_labels: true
+pool:
+health_check_ingesters: true
+ingester_client:
+grpc_client_config:
+# Configure the client to allow messages up to 100MB.
+max_recv_msg_size: 104857600
+max_send_msg_size: 104857600
+grpc_compression: gzip
+ingester:
+lifecycler:
+# The address to advertise for this ingester. Will be autodiscovered by
+# looking up address on eth0 or en0; can be specified if this fails.
+address: 127.0.0.1
+# We want to start immediately and flush on shutdown.
+join_after: 0
+final_sleep: 0s
+num_tokens: 512
+# Use an in memory ring store, so we don't need to launch a Consul.
+ring:
+kvstore:
+store: inmemory
+replication_factor: 1
+# Use cassandra as storage -for both index store and chunks store.
+schema:
+configs:
+- from: 2019-07-29
+store: cassandra
+object_store: cassandra
+schema: v10
+index:
+prefix: index_
+period: 168h
+chunks:
+prefix: chunk_
+period: 168h
+storage:
+cassandra:
+addresses: LOCALHOST # configure cassandra addresses here.
+keyspace: KEYSPACE # configure desired keyspace here.
+&lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
+to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.5.0&lt;/code>).&lt;/p>
+&lt;p>Run Cortex using the latest stable version:&lt;/p>
+&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.5.0 -config.file=/etc/single-process-config.yaml
+&lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/getting-started/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
+&lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
+&lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
+If you want to configure the table options, use the &lt;code>storage.cassandra.table_options&lt;/code> property or &lt;code>cassandra.table-options&lt;/code> flag.
+This configuration property is just &lt;code>string&lt;/code> type and this value used as plain text on &lt;code>WITH&lt;/code> option of table creation query.
+It is recommended to enclose the value of &lt;code>table_options&lt;/code> in double-quotes because you should enclose strings of table options in quotes on Cassandra.&lt;/p>
+&lt;p>For example, suppose the name of index(or chunk) table is &amp;lsquo;test_table&amp;rsquo;.
+Details about column definitions of the table are omitted.
+If no table options configured, then Cortex will generate the query to create a table without a &lt;code>WITH&lt;/code> clause to use default table options:&lt;/p>
+&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...)
+&lt;/code>&lt;/pre>&lt;p>If table options configured with &lt;code>table_options&lt;/code> as below:&lt;/p>
+&lt;pre>&lt;code>storage:
+cassandra:
+addresses: 127.0.0.1
+keyspace: cortex
+table_options: &amp;quot;gc_grace_seocnds = 86400
+AND comments = 'this is a test table'
+AND COMPACT STORAGE
+AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }&amp;quot;
+&lt;/code>&lt;/pre>&lt;p>Then Cortex will generate the query to create a table with a &lt;code>WITH&lt;/code> clause as below:&lt;/p>
+&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = 'this is a test table' AND COMPACT STORAGE AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }
+&lt;/code>&lt;/pre>&lt;p>Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
+For details about table options, see the official document of storage you are using.&lt;/p>
+&lt;p>&lt;strong>WARNING&lt;/strong>: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by Table Manager at runtime and seriously affect your Cortex.&lt;/p>
+&lt;h2 id="configure-prometheus-to-send-series-to-cortex">Configure Prometheus to send series to Cortex&lt;/h2>
+&lt;p>Now that Cortex is up, it should be running on &lt;code>http://localhost:9009&lt;/code>.&lt;/p>
+&lt;p>Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.&lt;/p>
+&lt;pre>&lt;code>remote_write:
+- url: http://localhost:9009/api/prom/push
+&lt;/code>&lt;/pre>&lt;h2 id="configure-grafana-to-visualise-metrics">Configure Grafana to visualise metrics&lt;/h2>
+&lt;p>Run grafana to visualise metrics from Cortex:&lt;/p>
+&lt;pre>&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
+&lt;/code>&lt;/pre>&lt;p>Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code>http://localhost:9009/api/prom&lt;/code>.&lt;/p>
+&lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. If you&amp;rsquo;re looking for ready to use dashboards, you can take a look at Grafana&amp;rsquo;s &lt;a href="https://github.com/grafana/cortex-jsonnet/">Cortex dashboards and alerts&lt;/a> (Jsonnet) or Weaveworks&amp;rsquo;s &lt;a href="https://github.com/weaveworks/cortex-dashboards">Cortex dashboards&lt;/a> (Python).&lt;/p></description></item><item><title>Docs: Caching in Cortex</title><link>/docs/production/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/caching/</guid><description>
+&lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
+Cortex has many opportunities for using caching to accelerate queries and reduce cost. Cortex can use a cache for:&lt;/p>
+&lt;ul>
+&lt;li>The results of a whole query&lt;/li>
+&lt;/ul>
+&lt;p>And for the chunk storage:&lt;/p>
+&lt;ul>
+&lt;li>Individual chunks&lt;/li>
+&lt;li>Index lookups for one label on one day&lt;/li>
+&lt;li>Reducing duplication of writes.&lt;/li>
+&lt;/ul>
+&lt;p>This doc aims to describe what each cache does, how to configure them and how to tune them.&lt;/p>
+&lt;h2 id="cortex-caching-options">Cortex Caching Options&lt;/h2>
+&lt;p>Cortex can use various different technologies for caching - Memcached, Redis or an in-process FIFO cache.
+The recommended caching technology for production workloads is &lt;a href="https://memcached.org/">Memcached&lt;/a>.
+Using Memcached in your Cortex install means results from one process can be re-used by another.
+In-process caching can cut fetch times slightly and reduce the load on Memcached, but can only be used by a single process.&lt;/p>
+&lt;p>If multiple caches are enabled for each caching opportunities, they will be tiered – writes will go to all caches, but reads will first go to the in-memory FIFO cache, then memcached, then redis.&lt;/p>
+&lt;h3 id="memcached">Memcached&lt;/h3>
+&lt;p>For small deployments you can use a single memcached cluster for all the caching opportunities – the keys do not collide.&lt;/p>
+&lt;p>For large deployments we recommend separate memcached deployments for each of the caching opportunities, as this allows more sophisticated sizing, monitoring and configuration of each cache.
+For help provisioning and monitoring memcached clusters using &lt;a href="https://github.com/grafana/tanka">tanka&lt;/a>, see the &lt;a href="https://github.com/grafana/jsonnet-libs/tree/master/memcached">memcached jsonnet module&lt;/a> and the &lt;a href="https://github.com/grafana/jsonnet-libs/tree/master/memcached-mixin">memcached-mixin&lt;/a>.&lt;/p>
+&lt;p>Cortex uses DNS SRV records to find the various memcached servers in a cluster.
+You should ensure your memcached servers are not behind any kind of load balancer.
+If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached &lt;a href="https://kubernetes.io/docs/concepts/services-networking/service/#headless-services">headless service&lt;/a>.&lt;/p>
+&lt;p>The flags used to configure memcached are common for each caching caching opportunity, differentiated by a prefix:&lt;/p>
+&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.cache.write-back-buffer int
+How many chunks to buffer for background write back. (default 10000)
+-&amp;lt;prefix&amp;gt;.cache.write-back-goroutines int
+How many goroutines to use to write back to memcache. (default 10)
+-&amp;lt;prefix&amp;gt;.memcached.batchsize int
+How many keys to fetch in each batch.
+-&amp;lt;prefix&amp;gt;.memcached.consistent-hash
+Use consistent hashing to distribute to memcache servers.
+-&amp;lt;prefix&amp;gt;.memcached.expiration duration
+How long keys stay in the memcache.
+-&amp;lt;prefix&amp;gt;.memcached.hostname string
+Hostname for memcached service to use when caching chunks. If empty, no memcached will be used.
+-&amp;lt;prefix&amp;gt;.memcached.max-idle-conns int
+Maximum number of idle connections in pool. (default 16)
+-&amp;lt;prefix&amp;gt;.memcached.parallelism int
+Maximum active requests to memcache. (default 100)
+-&amp;lt;prefix&amp;gt;.memcached.service string
+SRV service used to discover memcache servers. (default &amp;quot;memcached&amp;quot;)
+-&amp;lt;prefix&amp;gt;.memcached.timeout duration
+Maximum time to wait before giving up on memcached requests. (default 100ms)
+-&amp;lt;prefix&amp;gt;.memcached.update-interval duration
+Period with which to poll DNS for memcache servers. (default 1m0s)
+&lt;/code>&lt;/pre>&lt;p>See the &lt;a href="/docs/configuration/configuration-file/#memcached_config">&lt;code>memcached_config&lt;/code>&lt;/a> and &lt;a href="/docs/configuration/configuration-file/#memcached_client_config">&lt;code>memcached_client_config&lt;/code>&lt;/a> documentation if you use a config file with Cortex.&lt;/p>
+&lt;h3 id="fifo-cache-experimental">FIFO Cache (Experimental)&lt;/h3>
+&lt;p>The FIFO cache is an in-memory, in-process (non-shared) cache that uses a First-In-First-Out (FIFO) eviction strategy.
+The FIFO cache is useful for simple scenarios where deploying an additional memcached server is too much work, such as when experimenting with the Query Frontend.
+The FIFO cache can also be used in front of Memcached to reduce latency for commonly accessed keys.
+The FIFO cache stores a fixed number of entries, and therefore it’s memory usage depends on the caches value’s size.&lt;/p>
+&lt;p>To enable the FIFO cache, use the following flags:&lt;/p>
+&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.cache.enable-fifocache
+Enable in-memory cache.
+-&amp;lt;prefix&amp;gt;.fifocache.duration duration
+The expiry duration for the cache.
+-&amp;lt;prefix&amp;gt;.fifocache.max-size-bytes int
+Maximum memory size of the cache.
+-&amp;lt;prefix&amp;gt;.fifocache.max-size-items int
+Maximum number of entries in the cache.
+&lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#fifo-cache-config">&lt;code>fifo_cache_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
+&lt;h3 id="redis-experimental">Redis (Experimental)&lt;/h3>
+&lt;p>You can also use &lt;a href="https://redis.io/">Redis&lt;/a> for out-of-process caching; this is a relatively new addition to Cortex and is under active development.&lt;/p>
+&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.endpoint string
+Redis endpoint to use when caching chunks. If empty, no redis will be used.
+For Redis Server - Redis service endpoint
+For Redis Cluster - comma-separated list of Redis node's endpoints
+For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
+-&amp;lt;prefix&amp;gt;.redis.master-name
+Redis Sentinel master group name.
+An empty string for Redis Server or Redis Cluster
+-&amp;lt;prefix&amp;gt;.redis.tls-enabled
+Enable connecting to redis with TLS.
+-&amp;lt;prefix&amp;gt;.redis.tls-insecure-skip-verify
+Skip validating server certificate.
+-&amp;lt;prefix&amp;gt;.redis.expiration duration
+How long keys stay in the redis.
+-&amp;lt;prefix&amp;gt;.redis.db int
+Database index. (default 0)
+-&amp;lt;prefix&amp;gt;.redis.pool-size int
+Maximum number of socket connections in pool.
+-&amp;lt;prefix&amp;gt;.redis.password value
+Password to use when connecting to redis.
+-&amp;lt;prefix&amp;gt;.redis.timeout duration
+Maximum time to wait before giving up on redis requests. (default 100ms)
+-&amp;lt;prefix&amp;gt;.redis.idle-timeout duration
+Amount of time after which client closes idle connections.
+-&amp;lt;prefix&amp;gt;.redis.max-connection-age duration
+Amount of time after which client closes connections.
+&lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#redis-config">&lt;code>redis_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
+&lt;h2 id="cortex-caching-opportunities">Cortex Caching Opportunities&lt;/h2>
+&lt;h3 id="chunks-cache">Chunks Cache&lt;/h3>
+&lt;p>The chunk cache stores immutable compressed chunks.
+The cache is used by queries to reduce load on the chunk store.
+These are typically a few KB in size, and depend mostly on the duration and encoding of your chunks.
+The chunk cache is a write-through cache - chunks are written to the cache as they are flushed to the chunk store. This ensures the cache always contains the most recent chunks.
+Items stay in the cache indefinitely.&lt;/p>
+&lt;p>The chunk cache should be configured on the &lt;strong>ingester&lt;/strong>, &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong> using the flags with the prefix &lt;code>-store.chunks-cache&lt;/code>.&lt;/p>
+&lt;p>It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
+You can use the following query (from the &lt;a href="https://github.com/grafana/cortex-jsonnet">cortex-mixin&lt;/a>) to estimate the required number of memcached replicas:&lt;/p>
+&lt;pre>&lt;code class="language-promql" data-lang="promql">// 4 x in-memory series size = 24hrs of data.
+(
+4 *
+sum by(cluster, namespace) (
+cortex_ingester_memory_series{job=~&amp;quot;.+/ingester&amp;quot;}
+*
+cortex_ingester_chunk_size_bytes_sum{job=~&amp;quot;.+/ingester&amp;quot;}
+/
+cortex_ingester_chunk_size_bytes_count{job=~&amp;quot;.+/ingester&amp;quot;}
+)
+/ 1e9
+)
+&amp;gt;
+(
+sum by (cluster, namespace) (memcached_limit_bytes{job=~&amp;quot;.+/memcached&amp;quot;}) / 1e9
+)
+&lt;/code>&lt;/pre>&lt;h3 id="index-read-cache">Index Read Cache&lt;/h3>
+&lt;p>The index read cache stores entire rows from the inverted label index.
+The cache is used by queries to reduce load on the index.
+These are typically only a few KB in size, but can grow up to many MB for very high cardinality metrics.
+The index read cache is populated when there is a cache miss.&lt;/p>
+&lt;p>The index read cache should be configured on the &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>, using the flags with the &lt;code>-store.index-cache-read&lt;/code> prefix.&lt;/p>
+&lt;h3 id="query-results-cache">Query Results Cache&lt;/h3>
+&lt;p>The query results cache contains protobuf &amp;amp; snappy encoded query results.
+These query results can potentially be very large, and as such the maximum value size in memcached should be increased beyond the default &lt;code>1M&lt;/code>.
+The cache is populated when there is a cache miss.
+Items stay in the cache indefinitely.&lt;/p>
+&lt;p>The query results cache should be configured on the &lt;strong>query-frontend&lt;/strong> using flags with &lt;code>-frontend&lt;/code> prefix:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-frontend.memcached.*&lt;/code> flags to use Memcached backend&lt;/li>
+&lt;li>&lt;code>-frontend.redis.*&lt;/code> flags to use Redis backend&lt;/li>
+&lt;li>&lt;code>-frontend.fifocache.*&lt;/code> and &lt;code>-frontend.cache.enable-fifocache&lt;/code> flags to use the per-process in-memory cache (not shared across multiple query-frontend instances)&lt;/li>
+&lt;/ul>
+&lt;p>Please keep in mind to also enable &lt;code>-querier.cache-results=true&lt;/code> and configure &lt;code>-querier.split-queries-by-interval=24h&lt;/code> (&lt;code>24h&lt;/code> is a good starting point).&lt;/p>
+&lt;h3 id="index-write-cache">Index Write Cache&lt;/h3>
+&lt;p>The index write cache is used to avoid re-writing index and chunk data which has already been stored in the back-end database, aka “deduplication”.
+This can reduce write load on your backend-database by around 12x.&lt;/p>
+&lt;p>You should not use in-process caching for the index write cache - most of the deduplication comes from replication between ingesters.&lt;/p>
+&lt;p>The index write cache contains row and column keys written to the index.
+If an entry is in the index write cache it will not be written to the index.
+As such, entries are only written to the index write cache &lt;em>after&lt;/em> being successfully written to the index.
+Data stays in the index indefinitely or until it is evicted by newer entries.&lt;/p>
+&lt;p>The index write cache should be configures on the &lt;strong>ingesters&lt;/strong> using flags with the &lt;code>-store.index-cache-write&lt;/code> prefix.&lt;/p></description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/production/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/ingesters-with-wal/</guid><description>
+&lt;p>Currently the ingesters running in the chunks storage mode, store all their data in memory. If there is a crash, there could be loss of data. WAL helps fill this gap in reliability.&lt;/p>
+&lt;p>To use WAL, there are some changes that needs to be made in the deployment.&lt;/p>
+&lt;h2 id="changes-to-deployment">Changes to deployment&lt;/h2>
+&lt;ol>
+&lt;li>
+&lt;p>Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on &lt;a href="https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/">statefulset&lt;/a> with fixed volumes.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Following flags needs to be set&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>--ingester.wal-enabled&lt;/code> to &lt;code>true&lt;/code> which enables writing to WAL during ingestion.&lt;/li>
+&lt;li>&lt;code>--ingester.wal-dir&lt;/code> to the directory where the WAL data should be stores and/or recovered from. Note that this should be on the mounted volume.&lt;/li>
+&lt;li>&lt;code>--ingester.checkpoint-duration&lt;/code> to the interval at which checkpoints should be created. Default is &lt;code>30m&lt;/code>, and depending on the number of series, it can be brought down to &lt;code>15m&lt;/code> if there are less series per ingester (say 1M).&lt;/li>
+&lt;li>&lt;code>--ingester.recover-from-wal&lt;/code> to &lt;code>true&lt;/code> to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to &lt;code>true&lt;/code>. The WAL dir needs to be set for this.
+&lt;ul>
+&lt;li>If you are going to enable WAL, it is advisable to always set this to &lt;code>true&lt;/code>.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;code>--ingester.tokens-file-path&lt;/code> should be set to the filepath where the tokens should be stored. Note that this should be on the mounted volume. Why this is required is described below.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h2 id="changes-in-lifecycle-when-wal-is-enabled">Changes in lifecycle when WAL is enabled&lt;/h2>
+&lt;ol>
+&lt;li>
+&lt;p>Flushing of data to chunk store during rollouts or scale down is disabled. This is because during a rollout of statefulset there are no ingesters that are simultaneously leaving and joining, rather the same ingester is shut down and brought back again with updated config. Hence flushing is skipped and the data is recovered from the WAL.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>As there are no transfers between ingesters, the tokens are stored and recovered from disk between rollout/restarts. This is &lt;a href="https://github.com/cortexproject/cortex/pull/1750">not a new thing&lt;/a> but it is effective when using statefulsets.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;h2 id="disk-space-requirements">Disk space requirements&lt;/h2>
+&lt;p>Based on tests in real world:&lt;/p>
+&lt;ul>
+&lt;li>Numbers from an ingester with 1.2M series, ~80k samples/s ingested and ~15s scrape interval.&lt;/li>
+&lt;li>Checkpoint period was 20mins, so we need to scale up the number of WAL files to account for the default of 30mins. There were 87 WAL files (an upper estimate) in 20 mins.&lt;/li>
+&lt;li>At any given point, we have 2 complete checkpoints present on the disk and a 2 sets of WAL files between checkpoints (and now).&lt;/li>
+&lt;li>This peaks at 3 checkpoints and 3 lots of WAL momentarily, as we remove the old checkpoints.&lt;/li>
+&lt;/ul>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Observation&lt;/th>
+&lt;th>Disk utilisation&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Size of 1 checkpoint for 1.2M series&lt;/td>
+&lt;td>1410 MiB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Avg checkpoint size per series&lt;/td>
+&lt;td>1.2 KiB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>No. of WAL files between checkpoints (30m checkpoint)&lt;/td>
+&lt;td>30 mins x 87 / 20mins = 130&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Size per WAL file&lt;/td>
+&lt;td>32 MiB (reduced from Prometheus)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total size of WAL&lt;/td>
+&lt;td>4160 MiB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Steady state usage&lt;/td>
+&lt;td>2 x 1410 MiB + 2 x 4160 MiB = ~11 GiB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Peak usage&lt;/td>
+&lt;td>3 x 1410 MiB + 3 x 4160 MiB = ~16.3 GiB&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>For 1M series at 15s scrape interval with checkpoint duration of 30m&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Usage&lt;/th>
+&lt;th>Disk utilisation&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Steady state usage&lt;/td>
+&lt;td>11 GiB / 1.2 = ~9.2 GiB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Peak usage&lt;/td>
+&lt;td>17 GiB / 1.2 = ~13.6 GiB&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>You should not target 100% disk utilisation; 70% is a safer margin, hence for a 1M active series ingester, a 20GiB disk should suffice.&lt;/p>
+&lt;h2 id="migrating-from-stateless-deployments">Migrating from stateless deployments&lt;/h2>
+&lt;p>The ingester &lt;em>deployment without WAL&lt;/em> and &lt;em>statefulset with WAL&lt;/em> should be scaled down and up respectively in sync without transfer of data between them to ensure that any ingestion after migration is reliable immediately.&lt;/p>
+&lt;p>Let&amp;rsquo;s take an example of 4 ingesters. The migration would look something like this:&lt;/p>
+&lt;ol>
+&lt;li>Bring up one stateful ingester &lt;code>ingester-0&lt;/code> and wait till it&amp;rsquo;s ready (accepting read and write requests).&lt;/li>
+&lt;li>Scale down old ingester deployment to 3 and wait till the leaving ingester flushes all the data to chunk store.&lt;/li>
+&lt;li>Once that ingester has disappeared from &lt;code>kc get pods ...&lt;/code>, add another stateful ingester and wait till it&amp;rsquo;s ready. This assures not transfer. Now you have &lt;code>ingester-0 ingester-1&lt;/code>.&lt;/li>
+&lt;li>Repeat step 2 to reduce remove another ingester from old deployment.&lt;/li>
+&lt;li>Repeat step 3 to add another stateful ingester. Now you have &lt;code>ingester-0 ingester-1 ingester-2&lt;/code>.&lt;/li>
+&lt;li>Repeat step 4 and 5, and now you will finally have &lt;code>ingester-0 ingester-1 ingester-2 ingester-3&lt;/code>.&lt;/li>
+&lt;/ol>
+&lt;h2 id="how-to-scale-updown">How to scale up/down&lt;/h2>
+&lt;h3 id="scale-up">Scale up&lt;/h3>
+&lt;p>Scaling up is same as what you would do without WAL or statefulsets. Nothing to change here.&lt;/p>
+&lt;h3 id="scale-down">Scale down&lt;/h3>
+&lt;p>Since Kubernetes doesn&amp;rsquo;t differentiate between rollout and scale down when sending a signal, the flushing of chunks is disabled by default. Hence the only thing to take care during scale down is flushing of chunks.&lt;/p>
+&lt;p>There are 2 ways to do it, with the latter being a fallback option.&lt;/p>
+&lt;p>&lt;strong>First option&lt;/strong>
+Consider you have 4 ingesters &lt;code>ingester-0 ingester-1 ingester-2 ingester-3&lt;/code> and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are &lt;code>ingester-3&lt;/code> and then &lt;code>ingester-2&lt;/code>.&lt;/p>
+&lt;p>Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the &lt;a href="https://github.com/cortexproject/cortex/pull/1746">&lt;code>/shutdown&lt;/code>&lt;/a> endpoint. This will flush the chunks and shut down the ingesters (while also removing itself from the ring).&lt;/p>
+&lt;p>After hitting the endpoint for &lt;code>ingester-2 ingester-3&lt;/code>, scale down the ingesters to 2.&lt;/p>
+&lt;p>PS: Given you have to scale down 1 ingester at a time, you can pipeline the shutdown and scaledown process instead of hitting shutdown endpoint for all to-be-scaled-down ingesters at the same time.&lt;/p>
+&lt;p>&lt;strong>Fallback option&lt;/strong>&lt;/p>
+&lt;p>There is a &lt;code>flusher&lt;/code> target that can be used to flush the data in the WAL. It&amp;rsquo;s config can be found &lt;a href="/docs/configuration/configuration-file/#flusher-config">here&lt;/a>. As flusher depends on the chunk store and the http API components, you need to also set all the config related to them similar to ingesters (see &lt;a href="/docs/configuration/configuration-file/#supported-contents-and-default-values-of-the-config-file">api,storage,chunk_store,limits,runtime_config&lt;/a> and &lt;a href="/docs/configuration/schema-configuration/">schema&lt;/a>). Pro tip: Re-use the ingester config and set the &lt;code>target&lt;/code> as &lt;code>flusher&lt;/code> with additional flusher config, the irrelevant config will be ignored.&lt;/p>
+&lt;p>You can run it as a Kubernetes job which will:&lt;/p>
+&lt;ol>
+&lt;li>Attach to the volume of the scaled down ingester.&lt;/li>
+&lt;li>Recover from the WAL.&lt;/li>
+&lt;li>And flush all the chunks.&lt;/li>
+&lt;/ol>
+&lt;p>This job is to be run for all the PVCs linked to the ingesters that you missed hitting the shutdown endpoint as a first option.&lt;/p>
+&lt;h2 id="additional-notes">Additional notes&lt;/h2>
+&lt;ul>
+&lt;li>If you have lots of ingestion with the WAL replay taking a longer time, you can try reducing the checkpoint duration (&lt;code>--ingester.checkpoint-duration&lt;/code>) to &lt;code>15m&lt;/code>. This would require slightly higher disk bandwidth for writes (still less in absolute terms), but it will reduce the WAL replay time overall.&lt;/li>
+&lt;/ul>
+&lt;h3 id="non-kubernetes-or-baremetal-deployments">Non-Kubernetes or baremetal deployments&lt;/h3>
+&lt;ul>
+&lt;li>When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
+&lt;ul>
+&lt;li>If it fails to attach to the same volume for any reason, use the &lt;a href="#scale-down">flusher&lt;/a> to flush that data.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>2 ingesters should not be working with the same volume/directory for the WAL. It will cause data corruptions.&lt;/li>
+&lt;li>Basing from above point, rollout should include bringing down an ingester completely and then starting the new ingester. Not the other way round, i.e. bringing another ingester live and taking the old one down.&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/production/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/tls/</guid><description>
+&lt;p>Cortex is a distributed system with significant traffic between its services.
+To allow for secure communication, Cortex supports TLS between all its
+components. This guide describes the process of setting up TLS.&lt;/p>
+&lt;h3 id="generation-of-certs-to-configure-tls">Generation of certs to configure TLS&lt;/h3>
+&lt;p>The first step to securing inter-service communication in Cortex with TLS is
+generating certificates. A Certifying Authority (CA) will be used for this
+purpose which should be private to the organization, as any certificates signed
+by this CA will have permissions to communicate with the cluster.&lt;/p>
+&lt;p>We will use the following script to generate self signed certs for the cluster:&lt;/p>
+&lt;pre>&lt;code># keys
+openssl genrsa -out root.key
+openssl genrsa -out client.key
+openssl genrsa -out server.key
+# root cert / certifying authority
+openssl req -x509 -new -nodes -key root.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=root&amp;quot; -sha256 -days 100000 -out root.crt
+# csrs - certificate signing requests
+openssl req -new -sha256 -key client.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=client&amp;quot; -out client.csr
+openssl req -new -sha256 -key server.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=localhost&amp;quot; -out server.csr
+# certificates
+openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -out client.crt -days 100000 -sha256
+openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
+&lt;/code>&lt;/pre>&lt;p>Note that the above script generates certificates that are valid for 100000 days.
+This can be changed by adjusting the &lt;code>-days&lt;/code> option in the above commands.
+It is recommended that the certs be replaced atleast once every 2 years.&lt;/p>
+&lt;p>The above script generates keys &lt;code>client.key, server.key&lt;/code> and certs
+&lt;code>client.crt, server.crt&lt;/code> for both the client and server. The CA cert is
+generated as &lt;code>root.crt&lt;/code>.&lt;/p>
+&lt;h3 id="load-certs-into-the-httpgrpc-serverclient">Load certs into the HTTP/GRPC server/client&lt;/h3>
+&lt;p>Every HTTP/GRPC link between Cortex components supports TLS configuration
+through the following config parameters:&lt;/p>
+&lt;h4 id="server-flags">Server flags&lt;/h4>
+&lt;pre>&lt;code> # Path to the TLS Cert for the HTTP Server
+-server.http-tls-cert-path=/path/to/server.crt
+# Path to the TLS Key for the HTTP Server
+-server.http-tls-key-path=/path/to/server.key
+# Type of Client Auth for the HTTP Server
+-server.http-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
+# Path to the Client CA Cert for the HTTP Server
+-server.http-tls-ca-path=&amp;quot;/path/to/root.crt&amp;quot;
+# Path to the TLS Cert for the GRPC Server
+-server.grpc-tls-cert-path=/path/to/server.crt
+# Path to the TLS Key for the GRPC Server
+-server.grpc-tls-key-path=/path/to/server.key
+# Type of Client Auth for the GRPC Server
+-server.grpc-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
+# Path to the Client CA Cert for the GRPC Server
+-server.grpc-tls-ca-path=/path/to/root.crt
+&lt;/code>&lt;/pre>&lt;h4 id="client-flags">Client flags&lt;/h4>
+&lt;p>Client flags are component specific.&lt;/p>
+&lt;p>For an HTTP client in the Alertmanager:&lt;/p>
+&lt;pre>&lt;code> # Path to the TLS Cert for the HTTP Client
+-alertmanager.configs.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the HTTP Client
+-alertmanager.configs.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the HTTP Client
+-alertmanager.configs.tls-ca-path=/path/to/root.crt
+&lt;/code>&lt;/pre>&lt;p>For a GRPC client in the Querier:&lt;/p>
+&lt;pre>&lt;code> # Path to the TLS Cert for the GRPC Client
+-querier.frontend-client.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the GRPC Client
+-querier.frontend-client.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the GRPC Client
+-querier.frontend-client.tls-ca-path=/path/to/root.crt
+&lt;/code>&lt;/pre>&lt;p>Similarly, for the GRPC Ingester Client:&lt;/p>
+&lt;pre>&lt;code> # Path to the TLS Cert for the GRPC Client
+-ingester.client.tls-cert-path=/path/to/client.crt
+# Path to the TLS Key for the GRPC Client
+-ingester.client.tls-key-path=/path/to/client.key
+# Path to the TLS CA for the GRPC Client
+-ingester.client.tls-ca-path=/path/to/root.crt
+&lt;/code>&lt;/pre>&lt;p>TLS can be configured in a similar fashion for other HTTP/GRPC clients in Cortex.&lt;/p></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/production/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/auth/</guid><description>
+&lt;p>All Cortex components take the tenant ID from a header &lt;code>X-Scope-OrgID&lt;/code>
+on each request. They trust this value completely: if you need to
+protect your Cortex installation from accidental or malicious calls
+then you must add an additional layer of protection.&lt;/p>
+&lt;p>Typically this means you run Cortex behind a reverse proxy, and you must
+ensure that all callers, both machines sending data over the &lt;code>remote_write&lt;/code>
+interface and humans sending queries from GUIs, supply credentials
+which identify them and confirm they are authorised.&lt;/p>
+&lt;p>When configuring the &lt;code>remote_write&lt;/code> API in Prometheus there is no way to
+add extra headers. The user and password fields of http Basic auth, or
+Bearer token, can be used to convey the tenant ID and/or credentials.&lt;/p>
+&lt;p>To disable the multi-tenant functionality, you can pass the argument
+&lt;code>-auth.enabled=false&lt;/code> to every Cortex component, which will set the OrgID
+to the string &lt;code>fake&lt;/code> for every request.&lt;/p></description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/production/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/production/ha-pair-handling/</guid><description>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p>
+&lt;p>Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p>
+&lt;p>In Cortex we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it&amp;rsquo;ll switch the leader to be T1.b.&lt;/p>
+&lt;p>This means if T1.a goes down for a few minutes Cortex&amp;rsquo;s HA sample handling will have switched and elected T1.b as the leader. This failover timeout is what enables us to only accept samples from a single replica at a time, but ensure we don&amp;rsquo;t drop too much data in case of issues. Note that with the default scrape period of 15s, and the default timeouts in Cortex, in most cases you&amp;rsquo;ll only lose a single scrape of data in the case of a leader election failover. For any rate queries the rate window should be at least 4x the scrape period to account for any of these failover scenarios, for example with the default scrape period of 15s then you should calculate rates over at least 1m periods.&lt;/p>
+&lt;p>Now we do the same leader election process T2.&lt;/p>
+&lt;h2 id="config">Config&lt;/h2>
+&lt;h3 id="client-side">Client Side&lt;/h3>
+&lt;p>So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are &lt;code>cluster&lt;/code> and &lt;code>__replica__&lt;/code>. For example:&lt;/p>
+&lt;pre>&lt;code>cluster: prom-team1
+__replica__: replica1 (or pod-name)
+&lt;/code>&lt;/pre>&lt;p>and&lt;/p>
+&lt;pre>&lt;code>cluster: prom-team1
+__replica__: replica2
+&lt;/code>&lt;/pre>&lt;p>Note: These are external labels and have nothing to do with remote_write config.&lt;/p>
+&lt;p>These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code>team&lt;/code>, &lt;code>cluster&lt;/code>, &lt;code>prometheus&lt;/code>, etc.&lt;/p>
+&lt;p>The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p>
+&lt;h3 id="server-side">Server Side&lt;/h3>
+&lt;p>The minimal configuration requires:&lt;/p>
+&lt;ul>
+&lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
+&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.&lt;/li>
+&lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
+&lt;/ul>
+&lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;consul&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
+&lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item></channel></rss>

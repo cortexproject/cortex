@@ -39,6 +39,7 @@ type Config struct {
 	IngesterStreaming    bool          `yaml:"ingester_streaming"`
 	MaxSamples           int           `yaml:"max_samples"`
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -84,6 +85,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should only be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
@@ -218,13 +220,14 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 		}
 
 		q := querier{
-			ctx:                ctx,
-			mint:               mint,
-			maxt:               maxt,
-			chunkIterFn:        chunkIterFn,
-			tombstonesLoader:   tombstonesLoader,
-			limits:             limits,
-			maxQueryIntoFuture: cfg.MaxQueryIntoFuture,
+			ctx:                 ctx,
+			mint:                mint,
+			maxt:                maxt,
+			chunkIterFn:         chunkIterFn,
+			tombstonesLoader:    tombstonesLoader,
+			limits:              limits,
+			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
+			queryStoreForLabels: cfg.QueryStoreForLabels,
 		}
 
 		dqr, err := distributor.Querier(ctx, mint, maxt)
@@ -266,9 +269,10 @@ type querier struct {
 	ctx         context.Context
 	mint, maxt  int64
 
-	tombstonesLoader   *purger.TombstonesLoader
-	limits             *validation.Overrides
-	maxQueryIntoFuture time.Duration
+	tombstonesLoader    *purger.TombstonesLoader
+	limits              *validation.Overrides
+	maxQueryIntoFuture  time.Duration
+	queryStoreForLabels bool
 }
 
 // Select implements storage.Querier interface.
@@ -287,7 +291,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	// querying the long-term storage.
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
-	if sp == nil || sp.Func == "series" {
+	if (sp == nil || sp.Func == "series") && !q.queryStoreForLabels {
 		// In this case, the query time range has already been validated when the querier has been
 		// created.
 		return q.metadataQuerier.Select(true, sp, matchers...)

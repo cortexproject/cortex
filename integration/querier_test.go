@@ -82,6 +82,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				"-store-gateway.sharding-strategy":                 testCfg.blocksShardingStrategy,
 				"-store-gateway.tenant-shard-size":                 fmt.Sprintf("%d", testCfg.tenantShardSize),
 				"-querier.ingester-streaming":                      strconv.FormatBool(testCfg.ingesterStreamingEnabled),
+				"-querier.query-store-for-labels-enabled":          "true",
 			})
 
 			// Start dependencies.
@@ -293,6 +294,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				"-blocks-storage.bucket-store.index-cache.backend":             testCfg.indexCacheBackend,
 				"-blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 				"-querier.ingester-streaming":                                  strconv.FormatBool(testCfg.ingesterStreamingEnabled),
+				"-querier.query-store-for-labels-enabled":                      "true",
 				// Ingester.
 				"-ring.store":      "consul",
 				"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -432,6 +434,7 @@ func testMetadataQueriesWithBlocksStorage(
 	var (
 		lastSeriesInIngesterBlocksName = getMetricName(lastSeriesInIngesterBlocks.Labels)
 		firstSeriesInIngesterHeadName  = getMetricName(firstSeriesInIngesterHead.Labels)
+		lastSeriesInStorageName        = getMetricName(lastSeriesInStorage.Labels)
 
 		lastSeriesInStorageTs        = util.TimeFromMillis(lastSeriesInStorage.Samples[0].Timestamp)
 		lastSeriesInIngesterBlocksTs = util.TimeFromMillis(lastSeriesInIngesterBlocks.Samples[0].Timestamp)
@@ -471,6 +474,10 @@ func testMetadataQueriesWithBlocksStorage(
 					lookup: lastSeriesInIngesterBlocksName,
 					ok:     false,
 				},
+				{
+					lookup: lastSeriesInStorageName,
+					ok:     false,
+				},
 			},
 			labelValuesTests: []labelValuesTest{
 				{
@@ -493,6 +500,10 @@ func testMetadataQueriesWithBlocksStorage(
 					ok:     true,
 					resp:   lastSeriesInIngesterBlocks.Labels,
 				},
+				{
+					lookup: lastSeriesInStorageName,
+					ok:     false,
+				},
 			},
 			labelValuesTests: []labelValuesTest{
 				{
@@ -502,7 +513,7 @@ func testMetadataQueriesWithBlocksStorage(
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
 		},
-		"query metadata partially inside the ingester range should return the head + local disk data": {
+		"query metadata partially inside the ingester range": {
 			from: lastSeriesInStorageTs.Add(-blockRangePeriod),
 			to:   firstSeriesInIngesterHeadTs.Add(blockRangePeriod),
 			seriesTests: []seriesTest{
@@ -516,6 +527,11 @@ func testMetadataQueriesWithBlocksStorage(
 					ok:     true,
 					resp:   lastSeriesInIngesterBlocks.Labels,
 				},
+				{
+					lookup: lastSeriesInStorageName,
+					ok:     true,
+					resp:   lastSeriesInStorage.Labels,
+				},
 			},
 			labelValuesTests: []labelValuesTest{
 				{
@@ -525,9 +541,9 @@ func testMetadataQueriesWithBlocksStorage(
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 		},
-		"query metadata entirely outside the ingester range should return the head data only": {
+		"query metadata entirely outside the ingester range should return the head data as well": {
 			from: lastSeriesInStorageTs.Add(-2 * blockRangePeriod),
-			to:   lastSeriesInStorageTs.Add(-blockRangePeriod),
+			to:   lastSeriesInStorageTs,
 			seriesTests: []seriesTest{
 				{
 					lookup: firstSeriesInIngesterHeadName,
@@ -537,6 +553,11 @@ func testMetadataQueriesWithBlocksStorage(
 				{
 					lookup: lastSeriesInIngesterBlocksName,
 					ok:     false,
+				},
+				{
+					lookup: lastSeriesInStorageName,
+					ok:     true,
+					resp:   lastSeriesInStorage.Labels,
 				},
 			},
 			labelValuesTests: []labelValuesTest{

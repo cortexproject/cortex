@@ -751,6 +751,11 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
+# Query long-term store for series, label values and label names APIs. Works
+# only with blocks engine.
+# CLI flag: -querier.query-store-for-labels-enabled
+[query_store_for_labels_enabled: <boolean> | default = false]
+
 # The time after which a metric should only be queried from storage and not just
 # ingesters. 0 means all queries are sent to store. When running the blocks
 # storage, if this option is enabled, the time range of the query sent to the

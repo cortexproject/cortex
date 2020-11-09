@@ -5,21 +5,48 @@ weight: 5
 slug: scaling-query-frontend
 ---
 
-Historically scaling the Cortex query frontend has [posed some challenges](https://cortexmetrics.io/docs/proposals/scalable-query-frontend/).
-This document aims to detail how to use some of the added configuration parameters to correctly scale the frontend.
+Historically scaling the Cortex query frontend has [posed some challenges](../proposals/scalable-query-frontend.md).
+This document aims to detail how to use some added configuration parameters to correctly scale the frontend.
 Note that these instructions apply in both the HA single binary scenario or microservices mode.
 
-## Using Query Scheduler
+## Scaling the Query Frontend
 
-Query scheduler is new service that moves the in-memory queue from query frontend to a separate component.
-This makes scaling query frontend easier, as it allows running multiple query frontends without increasing the number of queues,
-which makes life difficult for queriers (as above-linked document explains).
+For every query frontend the querier adds a [configurable number of goroutines](https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212)
+which are each capable of executing a query.
+Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
 
-It is recommended to run two query scheduler instances.
+Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits.
+Additionally, the PromQL engine itself is limited in the number of queries it can do as configured by the `-querier.max-concurrent` parameter.
+Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.
 
-When using single-binary mode, Cortex defaults to run **without** query-scheduler.
+For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively.
+This will lower effective resource utilization.
+Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.
 
-## DNS Configuration / Readiness
+### Querier Max Concurrency
+
+To guarantee that querier doesn't receive more queries that it can handle at the same time, make sure to configure the querier to match its PromQL concurrency with number of connections.
+This can be done by using `-querier.worker-match-max-concurrent=true` option, or `match_max_concurrent: true` field in `frontend_worker` section of YAML config file.
+This allows the operator to freely scale the frontend or scheduler up and down without impacting the amount of work an individual querier is attempting to perform.
+
+### Query Scheduler
+
+Query scheduler is a service that moves the in-memory queue from query frontend to a separate component.
+This makes scaling query frontend easier, as it allows running multiple query frontends without increasing the number of queues.
+
+In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
+(using `-frontend.scheduler-address` and `-querier.scheduler-address` options respectively).
+
+Note that querier will only fetch queries from query frontend OR query scheduler, but not both.
+If configured with both `-querier.frontend-address` and `-querier.scheduler-address`, querier will only use scheduler address.
+
+When using query scheduler, it is recommended to run two query scheduler instances.
+Running only one query scheduler poses a risk of increased query latency during scheduler restarts.
+It shouldn't be necessary to run more than two schedulers.
+
+When using single-binary mode, Cortex defaults to run **without** query scheduler.
+
+### DNS Configuration / Readiness
 
 When a new frontend is first created on scale up it will not immediately have queriers attached to it.
 The existing endpoint `/ready` was updated to only return http 200 when the query frontend was ready to serve queries.
@@ -27,23 +54,3 @@ Make sure to configure this endpoint as a healthcheck in your load balancer.
 Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.
 
 When using query frontend with query scheduler, `/ready` will report 200 status code only after frontend discovers some schedulers via DNS resolution.
-
-## Querier Max Concurrency
-
-When using query frontend (possibly in combination with query scheduler), queriers need to connect to frontends or schedulers.
-To make sure that querier doesn't receive more queries that it can handle at the same time, make sure to configure the querier to match its PromQL concurrency with number of connections.
-This allows the operator to freely scale the frontend or scheduler up and down without impacting the amount of work an individual querier is attempting to perform.
-More details [here](https://cortexmetrics.io/docs/proposals/scalable-query-frontend/#dynamic-querier-concurrency).
-
-### Example Configuration
-
-**CLI**
-```
--querier.worker-match-max-concurrent=true
-```
-
-**Config File**
-```yaml
-frontend_worker:
-  match_max_concurrent: true
-```

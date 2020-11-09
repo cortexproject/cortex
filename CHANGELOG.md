@@ -2,12 +2,7 @@
 
 ## master / unreleased
 
-## 1.5.0-rc.1 / 2020-11-03
-
-* [BUGFIX] Fixed the route label on `cortex_querier_.*` metrics. #3436
-* [BUGFIX] Fixed query-frontend and querier API authentication bypass when Cortex is running with authentication disabled. #3439
-
-## 1.5.0-rc.0 / 2020-10-28
+## 1.5.0 / 2020-11-09
 
 ### Cortex
 

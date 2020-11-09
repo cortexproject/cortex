@@ -325,7 +325,7 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 		}()
 	}
 
-	ix := 0
+	seriesRef := 0
 	for s, ok := it.Next(); ok; s, ok = it.Next() {
 		l := s.Metric
 		cs := s.Chunks
@@ -370,11 +370,11 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 			cs[ix].Chunk = nil
 		}
 
-		if err := indexWriter.AddSeries(uint64(ix), l, cs...); err != nil {
+		if err := indexWriter.AddSeries(uint64(seriesRef), l, cs...); err != nil {
 			return stats, errors.Wrapf(err, "adding series %v", l)
 		}
 
-		ix++
+		seriesRef++
 
 		stats.NumSamples += s.Samples
 		stats.NumSeries++

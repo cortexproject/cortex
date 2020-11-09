@@ -10,10 +10,8 @@ The public disclosure date is agreed between the Cortex Team and the bug submitt
 
 ## Private Vendors List
 
-Cortex is being used by several vendors to provide a hosted Prometheus experience
-to their users. We also have list that is used to provide actionable information
-to multiple vendors at once. This list is not intended for individuals to find out about
-security issues.
+We also have a list for vendors who provide Cortex to their users.
+This list is not intended for individuals to find out about security issues.
 
 ### Embargo Policy
 
@@ -66,16 +64,21 @@ company should:
 0. Have an actively monitored security email alias for our project.
 1. Have a public hosted version/distribution of Cortex.
 2. Have a user base not limited to your own organization.
-4. Not be a downstream or rebuild of another vendor.
-5. Be a participant and active contributor in the community.
-6. Accept the [Embargo Policy](#embargo-policy) that is outlined above.
-7. Be willing to [contribute back](#contributing-back) as outlined above.
+3. Not be a downstream or rebuild of another vendor.
+4. Be a participant and active contributor in the community.
+5. Accept the [Embargo Policy](#embargo-policy) that is outlined above.
+6. Be willing to [contribute back](#contributing-back) as outlined above.
 
 **Removal**: If your vendor stops meeting one or more of these criteria
 after joining the list then you will be unsubscribed.
 
 ### Request to Join
 
-Send an email to cortex-team@googlegroups.com proving that you’re eligible based on the
-above criteria. The team will review the application internally and will reach out to in
- case of any clarifications and will get back to you.
+Please open an issue to the repo with the details to prove that you're eligible based on
+the above criteria. The team will review the application and will reach out to you in case
+of any clarifications. Once the application is accepted you'll be added to the mailing-list
+and also to the list below.
+
+### Members of the list
+
+Members of the list are listed below:

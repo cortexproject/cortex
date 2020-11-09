@@ -4,17 +4,22 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-func setupFrontend(config Config) (*Frontend, error) {
+func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
 	frontend, err := New(config, limits{queriers: 3}, logger, nil)
@@ -22,15 +27,20 @@ func setupFrontend(config Config) (*Frontend, error) {
 		return nil, err
 	}
 
-	defer frontend.Close()
+	t.Cleanup(frontend.Close)
 	return frontend, nil
 }
 
-func testReq(ctx context.Context) *request {
+func testReq(ctx context.Context, reqID, user string) *request {
 	return &request{
 		originalCtx: ctx,
 		err:         make(chan error, 1),
-		response:    make(chan *httpgrpc.HTTPResponse, 1),
+		request: &httpgrpc.HTTPRequest{
+			// Good enough for testing.
+			Method: user,
+			Url:    reqID,
+		},
+		response: make(chan *httpgrpc.HTTPResponse, 1),
 	}
 }
 
@@ -39,194 +49,122 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 	flagext.DefaultValues(&config)
 	config.MaxOutstandingPerTenant = 10
 	userID := "1"
-	userID2 := "2"
 
-	f, err := setupFrontend(config)
+	f, err := setupFrontend(t, config)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 	expired, cancel := context.WithCancel(ctx)
 	cancel()
 
+	good := 0
 	for i := 0; i < config.MaxOutstandingPerTenant; i++ {
 		var err error
 		if i%5 == 0 {
-			err = f.queueRequest(ctx, testReq(ctx))
+			good++
+			err = f.queueRequest(ctx, testReq(ctx, fmt.Sprintf("good-%d", i), userID))
 		} else {
-			err = f.queueRequest(ctx, testReq(expired))
+			err = f.queueRequest(ctx, testReq(expired, fmt.Sprintf("expired-%d", i), userID))
 		}
 
 		require.Nil(t, err)
 	}
 
-	// the first request shouldn't be expired
-	req, idx, err := f.getNextRequestForQuerier(ctx, -1, "")
-	require.Nil(t, err)
-	require.NotNil(t, req)
-	require.Equal(t, 9, len(f.queues.getOrAddQueue(userID, 0)))
+	// Calling Process will only return when client disconnects or context is finished.
+	// We use context timeout to stop Process call.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel2()
 
-	// the next unexpired request should be the 5th index
-	req, idx, err = f.getNextRequestForQuerier(ctx, idx, "")
-	require.Nil(t, err)
-	require.NotNil(t, req)
-	require.Equal(t, 4, len(f.queues.getOrAddQueue(userID, 0)))
+	m := &processServerMock{ctx: ctx2, querierID: "querier"}
+	err = f.Process(m)
+	require.EqualError(t, err, context.DeadlineExceeded.Error())
 
-	// add one request to a second tenant queue
-	ctx2 := user.InjectOrgID(context.Background(), userID2)
-	err = f.queueRequest(ctx2, testReq(ctx2))
-	require.Nil(t, err)
-
-	// there should be no more unexpired requests in queue until the second tenant enqueues one.
-	req, _, err = f.getNextRequestForQuerier(ctx, idx, "")
-	require.Nil(t, err)
-	require.NotNil(t, req)
-
-	// ensure either one or two queues are fully drained, depending on which was requested first
-	_, ok := f.queues.userQueues[userID]
-	if ok {
-		// if the second user's queue was chosen for the last request,
-		// the first queue should still contain 4 (expired) requests.
-		require.Equal(t, 4, len(f.queues.getOrAddQueue(userID, 0)))
+	// Verify that only non-expired requests were forwarded to querier.
+	for _, r := range m.requests {
+		require.True(t, strings.HasPrefix(r.Url, "good-"), r.Url)
 	}
-	_, ok = f.queues.userQueues[userID2]
-	require.Equal(t, false, ok)
+	require.Len(t, m.requests, good)
 }
 
 func TestRoundRobinQueues(t *testing.T) {
 	var config Config
 	flagext.DefaultValues(&config)
-	config.MaxOutstandingPerTenant = 100
 
-	f, err := setupFrontend(config)
+	const (
+		requests = 100
+		tenants  = 10
+	)
+
+	config.MaxOutstandingPerTenant = requests
+
+	f, err := setupFrontend(t, config)
 	require.NoError(t, err)
 
-	for i := 0; i < 100; i++ {
-		userID := fmt.Sprint(i / 10)
+	for i := 0; i < requests; i++ {
+		userID := fmt.Sprint(i / tenants)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
-		err = f.queueRequest(ctx, testReq(ctx))
+		err = f.queueRequest(ctx, testReq(ctx, fmt.Sprintf("%d", i), userID))
 		require.NoError(t, err)
 	}
 
-	ctx := context.Background()
-	idx := -1
-	for i := 0; i < 100; i++ {
-		req, nidx, err := f.getNextRequestForQuerier(ctx, idx, "")
-		require.NoError(t, err)
-		require.NotNil(t, req)
-		idx = nidx
+	// Calling Process will only return when client disconnects or context is finished.
+	// We use context timeout to stop Process call.
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
-		userID, err := user.ExtractOrgID(req.originalCtx)
-		require.NoError(t, err)
-		intUserID, err := strconv.Atoi(userID)
+	m := &processServerMock{ctx: ctx, querierID: "querier"}
+	err = f.Process(m)
+	require.EqualError(t, err, context.DeadlineExceeded.Error())
+
+	require.Len(t, m.requests, requests)
+	for i, r := range m.requests {
+		intUserID, err := strconv.Atoi(r.Method)
 		require.NoError(t, err)
 
-		require.Equal(t, i%10, intUserID)
+		require.Equal(t, i%tenants, intUserID)
 	}
 }
 
-func BenchmarkGetNextRequest(b *testing.B) {
-	var config Config
-	flagext.DefaultValues(&config)
-	config.MaxOutstandingPerTenant = 2
+// This mock behaves as connected querier worker to frontend. It will remember each request
+// that frontend sends, and reply with 200 HTTP status code.
+type processServerMock struct {
+	ctx       context.Context
+	querierID string
 
-	const numTenants = 50
-	const queriers = 5
+	response *frontendv1pb.ClientToFrontend
 
-	frontends := make([]*Frontend, 0, b.N)
+	requests []*httpgrpc.HTTPRequest
+}
 
-	for n := 0; n < b.N; n++ {
-		f, err := setupFrontend(config)
-		if err != nil {
-			b.Fatal(err)
-		}
+func (p *processServerMock) Send(client *frontendv1pb.FrontendToClient) error {
+	switch {
+	case client.GetType() == frontendv1pb.GET_ID:
+		p.response = &frontendv1pb.ClientToFrontend{ClientID: p.querierID}
+		return nil
 
-		for ix := 0; ix < queriers; ix++ {
-			f.registerQuerierConnection(fmt.Sprintf("querier-%d", ix))
-		}
+	case client.GetType() == frontendv1pb.HTTP_REQUEST:
+		p.requests = append(p.requests, client.HttpRequest)
+		p.response = &frontendv1pb.ClientToFrontend{HttpResponse: &httpgrpc.HTTPResponse{Code: 200}}
+		return nil
 
-		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
-			for j := 0; j < numTenants; j++ {
-				userID := strconv.Itoa(j)
-				ctx := user.InjectOrgID(context.Background(), userID)
-
-				err = f.queueRequest(ctx, testReq(ctx))
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		}
-
-		frontends = append(frontends, f)
-	}
-
-	ctx := context.Background()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		idx := -1
-		for j := 0; j < config.MaxOutstandingPerTenant*numTenants; j++ {
-			querier := ""
-		b:
-			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
-			for _, q := range frontends[i].queues.userQueues {
-				for qid := range q.queriers {
-					querier = qid
-					break b
-				}
-			}
-
-			_, nidx, err := frontends[i].getNextRequestForQuerier(ctx, idx, querier)
-			if err != nil {
-				b.Fatal(err)
-			}
-			idx = nidx
-		}
+	default:
+		return errors.New("unknown message")
 	}
 }
 
-func BenchmarkQueueRequest(b *testing.B) {
-	var config Config
-	flagext.DefaultValues(&config)
-	config.MaxOutstandingPerTenant = 2
-
-	const numTenants = 50
-	const queriers = 5
-
-	frontends := make([]*Frontend, 0, b.N)
-	contexts := make([]context.Context, 0, numTenants)
-	requests := make([]*request, 0, numTenants)
-
-	for n := 0; n < b.N; n++ {
-		f, err := setupFrontend(config)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		for ix := 0; ix < queriers; ix++ {
-			f.registerQuerierConnection(fmt.Sprintf("querier-%d", ix))
-		}
-
-		frontends = append(frontends, f)
-
-		for j := 0; j < numTenants; j++ {
-			userID := strconv.Itoa(j)
-			ctx := user.InjectOrgID(context.Background(), userID)
-			r := testReq(ctx)
-
-			requests = append(requests, r)
-			contexts = append(contexts, ctx)
-		}
+func (p *processServerMock) Recv() (*frontendv1pb.ClientToFrontend, error) {
+	if p.response != nil {
+		m := p.response
+		p.response = nil
+		return m, nil
 	}
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		for i := 0; i < config.MaxOutstandingPerTenant; i++ {
-			for j := 0; j < numTenants; j++ {
-				err := frontends[n].queueRequest(contexts[j], requests[j])
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		}
-	}
+	return nil, errors.New("no message")
 }
+
+func (p *processServerMock) SetHeader(_ metadata.MD) error  { return nil }
+func (p *processServerMock) SendHeader(_ metadata.MD) error { return nil }
+func (p *processServerMock) SetTrailer(md metadata.MD)      {}
+func (p *processServerMock) Context() context.Context       { return p.ctx }
+func (p *processServerMock) SendMsg(m interface{}) error    { return nil }
+func (p *processServerMock) RecvMsg(m interface{}) error    { return nil }

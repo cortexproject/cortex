@@ -14,6 +14,7 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
@@ -27,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -114,7 +116,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 func TestFrontendCheckReady(t *testing.T) {
 	for _, tt := range []struct {
 		name             string
-		connectedClients int32
+		connectedClients int
 		msg              string
 		readyForRequests bool
 	}{
@@ -123,8 +125,11 @@ func TestFrontendCheckReady(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &Frontend{
-				connectedClients: atomic.NewInt32(tt.connectedClients),
-				log:              log.NewNopLogger(),
+				log:          log.NewNopLogger(),
+				requestQueue: queue.NewRequestQueue(5, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"})),
+			}
+			for i := 0; i < tt.connectedClients; i++ {
+				f.requestQueue.RegisterQuerierConnection("test")
 			}
 			err := f.CheckReady(context.Background())
 			errMsg := ""

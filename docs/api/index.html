@@ -101,7 +101,7 @@ GET,POST &lt;legacy-http-prefix&gt;/api/v1/query_range
 
 # Legacy
 GET,POST &lt;legacy-http-prefix&gt;/api/v1/series
-</code></pre><p>Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the <code>start</code> and <code>end</code> request parameters and always fetches the series from in-memory data stored in the ingesters.</p><p><em>For more information, please check out the Prometheus <a href=https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers>series endpoint</a> documentation.</em></p><p><em>Requires <a href=#authentication>authentication</a>.</em></p><h3 id=get-label-names>Get label names</h3><pre><code>GET,POST &lt;prometheus-http-prefix&gt;/api/v1/labels
+</code></pre><p>Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the <code>start</code> and <code>end</code> request parameters and always fetches the series from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the <em>blocks</em> storage engine when <code>-querier.query-store-for-labels-enabled</code> is set.</p><p><em>For more information, please check out the Prometheus <a href=https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers>series endpoint</a> documentation.</em></p><p><em>Requires <a href=#authentication>authentication</a>.</em></p><h3 id=get-label-names>Get label names</h3><pre><code>GET,POST &lt;prometheus-http-prefix&gt;/api/v1/labels
 
 # Legacy
 GET,POST &lt;legacy-http-prefix&gt;/api/v1/labels

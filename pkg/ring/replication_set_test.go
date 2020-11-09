@@ -127,104 +127,44 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:      context.Canceled,
 		},
 		{
-			name: "max errors = 0, should succeed on all successful instances",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}},
+			name:      "max errors = 0, should succeed on all successful instances",
+			instances: []IngesterDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f: func(c context.Context, id *IngesterDesc) (interface{}, error) {
 				return 1, nil
 			},
 			want: []interface{}{1, 1, 1},
 		},
 		{
-			name: "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (3 instances)",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}},
+			name:                "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (3 instances)",
+			instances:           []IngesterDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 1,
 			want:                []interface{}{1, 1},
 		},
 		{
-			name: "max unavailable zones = 1, should fail on instances failing in 2 out of 3 zones (3 instances)",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}},
+			name:                "max unavailable zones = 1, should fail on instances failing in 2 out of 3 zones (3 instances)",
+			instances:           []IngesterDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1", "zone2"),
 			maxUnavailableZones: 1,
 			expectedError:       errZoneFailure,
 		},
 		{
-			name: "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (6 instances)",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}, {
-				Zone: "zone3",
-			}},
+			name:                "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (6 instances)",
+			instances:           []IngesterDesc{{Zone: "zone1"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 1,
 			want:                []interface{}{1, 1, 1, 1},
 		},
 		{
-			name: "max unavailable zones = 2, should fail on instances failing in 3 out of 5 zones (5 instances)",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}, {
-				Zone: "zone4",
-			}, {
-				Zone: "zone5",
-			}},
+			name:                "max unavailable zones = 2, should fail on instances failing in 3 out of 5 zones (5 instances)",
+			instances:           []IngesterDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone4"}, {Zone: "zone5"}},
 			f:                   failingFunctionOnZones("zone1", "zone2", "zone3"),
 			maxUnavailableZones: 2,
 			expectedError:       errZoneFailure,
 		},
 		{
-			name: "max unavailable zones = 2, should succeed on instances failing in 2 out of 5 zones (10 instances)",
-			instances: []IngesterDesc{{
-				Zone: "zone1",
-			}, {
-				Zone: "zone1",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone2",
-			}, {
-				Zone: "zone3",
-			}, {
-				Zone: "zone3",
-			}, {
-				Zone: "zone4",
-			}, {
-				Zone: "zone4",
-			}, {
-				Zone: "zone5",
-			}, {
-				Zone: "zone5",
-			}},
+			name:                "max unavailable zones = 2, should succeed on instances failing in 2 out of 5 zones (10 instances)",
+			instances:           []IngesterDesc{{Zone: "zone1"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone3"}, {Zone: "zone4"}, {Zone: "zone4"}, {Zone: "zone5"}, {Zone: "zone5"}},
 			f:                   failingFunctionOnZones("zone1", "zone5"),
 			maxUnavailableZones: 2,
 			want:                []interface{}{1, 1, 1, 1, 1, 1},
@@ -245,11 +185,9 @@ func TestReplicationSet_Do(t *testing.T) {
 			if tt.cancelContextDelay > 0 {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)
-				go func() {
-					time.AfterFunc(tt.cancelContextDelay, func() {
-						cancel()
-					})
-				}()
+				time.AfterFunc(tt.cancelContextDelay, func() {
+					cancel()
+				})
 			}
 			got, err := r.Do(ctx, tt.delay, tt.f)
 			if tt.expectedError != nil {

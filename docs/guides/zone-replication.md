@@ -11,6 +11,8 @@ It is completely possible that all the replicas for the given data are held with
 
 For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is **enabled**, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.
 
+Reads from a zone-aware replication enabled Cortex Cluster can withstand zone failures as long as there are more than replication factor / 2 zones available without any failing instances. 
+
 The Cortex services supporting **zone-aware replication** are:
 
 - **[Distributors and Ingesters](#distributors-and-ingesters-time-series-replication)**

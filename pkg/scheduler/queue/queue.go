@@ -133,10 +133,11 @@ FindQueue:
 				q.queues.deleteQueue(userID)
 			}
 
+			q.queueLength.WithLabelValues(userID).Dec()
+
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
 
-			q.queueLength.WithLabelValues(userID).Dec()
 			return request, last, nil
 		}
 	}

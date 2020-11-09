@@ -70,7 +70,8 @@ func TestDequeuesExpiredRequests(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	// Replay entire conversation in one second.
+	// Calling Process will only return when client disconnects or context is finished.
+	// We use context timeout to stop Process call.
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel2()
 
@@ -107,7 +108,8 @@ func TestRoundRobinQueues(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Replay entire conversation.
+	// Calling Process will only return when client disconnects or context is finished.
+	// We use context timeout to stop Process call.
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
@@ -115,7 +117,7 @@ func TestRoundRobinQueues(t *testing.T) {
 	err = f.Process(m)
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 
-	require.Len(t, m.requests, 100)
+	require.Len(t, m.requests, requests)
 	for i, r := range m.requests {
 		intUserID, err := strconv.Atoi(r.Method)
 		require.NoError(t, err)
@@ -124,6 +126,8 @@ func TestRoundRobinQueues(t *testing.T) {
 	}
 }
 
+// This mock behaves as connected querier worker to frontend. It will remember each request
+// that frontend sends, and reply with 200 HTTP status code.
 type processServerMock struct {
 	ctx       context.Context
 	querierID string

@@ -10,21 +10,21 @@ import (
 )
 
 func BenchmarkGetNextRequest(b *testing.B) {
-	const maxOutstanding = 2
+	const maxOutstandingPerTenant = 2
 	const numTenants = 50
 	const queriers = 5
 
 	queues := make([]*RequestQueue, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		queue := NewRequestQueue(2, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
+		queue := NewRequestQueue(maxOutstandingPerTenant, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
 		queues = append(queues, queue)
 
 		for ix := 0; ix < queriers; ix++ {
 			queue.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
 		}
 
-		for i := 0; i < maxOutstanding; i++ {
+		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
 				userID := strconv.Itoa(j)
 
@@ -41,7 +41,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		idx := FirstUser()
-		for j := 0; j < maxOutstanding*numTenants; j++ {
+		for j := 0; j < maxOutstandingPerTenant*numTenants; j++ {
 			querier := ""
 		b:
 			// Find querier with at least one request to avoid blocking in getNextRequestForQuerier.
@@ -62,7 +62,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 }
 
 func BenchmarkQueueRequest(b *testing.B) {
-	const MaxOutstandingPerTenant = 2
+	const maxOutstandingPerTenant = 2
 	const numTenants = 50
 	const queriers = 5
 
@@ -71,7 +71,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(MaxOutstandingPerTenant, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
+		q := NewRequestQueue(maxOutstandingPerTenant, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
@@ -87,7 +87,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		for i := 0; i < MaxOutstandingPerTenant; i++ {
+		for i := 0; i < maxOutstandingPerTenant; i++ {
 			for j := 0; j < numTenants; j++ {
 				err := queues[n].EnqueueRequest(users[j], requests[j], 0, nil)
 				if err != nil {

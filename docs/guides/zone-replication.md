@@ -26,6 +26,8 @@ The Cortex time-series replication is used to hold multiple (typically 3) replic
 2. Rollout ingesters to apply the configured zone
 3. Enable time-series zone-aware replication via the `-distributor.zone-awareness-enabled` CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to distributors, queriers and rulers.
 
+The `-distributor.shard-by-all-labels` setting has an impact on zone replication. When set to `true` there will be more series stored that will be spread out over more instances. When an instance goes down fewer series will be impacted.
+
 ## Store-gateways: blocks replication
 
 The Cortex [store-gateway](../blocks-storage/store-gateway.md) (used only when Cortex is running with the [blocks storage](../blocks-storage/_index.md)) supports blocks sharding, used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.

@@ -44,6 +44,8 @@ func (t *defaultResultTracker) failed() bool {
 	return t.numErrors > t.maxErrors
 }
 
+// zoneAwareResultTracker tracks the results per zone.
+// All instances in a zone must succeed in order for the zone to succeed.
 type zoneAwareResultTracker struct {
 	waitingByZone       map[string]int
 	failuresByZone      map[string]int
@@ -60,7 +62,6 @@ func newZoneAwareResultTracker(instances []IngesterDesc, maxUnavailableZones int
 
 	for _, instance := range instances {
 		t.waitingByZone[instance.Zone]++
-		t.failuresByZone[instance.Zone] = 0
 	}
 	t.minSuccessfulZones = len(t.waitingByZone) - maxUnavailableZones
 
@@ -76,29 +77,20 @@ func (t *zoneAwareResultTracker) done(instance *IngesterDesc, err error) {
 }
 
 func (t *zoneAwareResultTracker) succeeded() bool {
-	actualSucceededZones := 0
+	successfulZones := 0
 
 	// The execution succeeded once we successfully received a successful result
 	// from "all zones - max unavailable zones".
 	for zone, numWaiting := range t.waitingByZone {
 		if numWaiting == 0 && t.failuresByZone[zone] == 0 {
-			actualSucceededZones++
+			successfulZones++
 		}
 	}
 
-	return actualSucceededZones >= t.minSuccessfulZones
+	return successfulZones >= t.minSuccessfulZones
 }
 
 func (t *zoneAwareResultTracker) failed() bool {
-	failedZones := 0
-
-	// The execution failed if the number of zones, for which we have tracked at least 1
-	// failure, exceeds the max unavailable zones.
-	for _, numFailures := range t.failuresByZone {
-		if numFailures > 0 {
-			failedZones++
-		}
-	}
-
+	failedZones := len(t.failuresByZone)
 	return failedZones > t.maxUnavailableZones
 }

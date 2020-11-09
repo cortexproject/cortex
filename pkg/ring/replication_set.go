@@ -25,10 +25,6 @@ type ReplicationSet struct {
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *IngesterDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
-		instance *IngesterDesc
-	}
-
-	type instanceError struct {
 		err      error
 		instance *IngesterDesc
 	}
@@ -42,9 +38,8 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	}
 
 	var (
-		errs        = make(chan instanceError, len(r.Ingesters))
-		resultsChan = make(chan instanceResult, len(r.Ingesters))
-		forceStart  = make(chan struct{}, r.MaxErrors)
+		ch         = make(chan instanceResult, len(r.Ingesters))
+		forceStart = make(chan struct{}, r.MaxErrors)
 	)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -64,16 +59,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 				}
 			}
 			result, err := f(ctx, ing)
-			if err != nil {
-				errs <- instanceError{
-					err:      err,
-					instance: ing,
-				}
-			} else {
-				resultsChan <- instanceResult{
-					res:      result,
-					instance: ing,
-				}
+			ch <- instanceResult{
+				res:      result,
+				err:      err,
+				instance: ing,
 			}
 		}(i, &r.Ingesters[i])
 	}
@@ -82,21 +71,20 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 
 	for !tracker.succeeded() {
 		select {
-		case err := <-errs:
-			tracker.done(err.instance, err.err)
+		case res := <-ch:
+			tracker.done(res.instance, res.err)
+			if res.err != nil {
+				if tracker.failed() {
+					return nil, res.err
+				}
 
-			if tracker.failed() {
-				return nil, err.err
+				// force one of the delayed requests to start
+				if delay > 0 && r.MaxUnavailableZones == 0 {
+					forceStart <- struct{}{}
+				}
+			} else {
+				results = append(results, res.res)
 			}
-
-			// force one of the delayed requests to start
-			if delay > 0 && r.MaxUnavailableZones == 0 {
-				forceStart <- struct{}{}
-			}
-
-		case result := <-resultsChan:
-			tracker.done(result.instance, nil)
-			results = append(results, result.res)
 
 		case <-ctx.Done():
 			return nil, ctx.Err()

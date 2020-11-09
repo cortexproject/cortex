@@ -364,11 +364,11 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	// Build the initial replication set, excluding unhealthy instances.
-	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	healthyInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
 	for _, ingester := range r.ringDesc.Ingesters {
 		if r.IsHealthy(&ingester, op) {
-			instances = append(instances, ingester)
+			healthyInstances = append(healthyInstances, ingester)
 		} else {
 			zoneFailures[ingester.Zone] = struct{}{}
 		}
@@ -397,13 +397,13 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			// enabled (data is replicated to RF different zones), there's no benefit in
 			// querying healthy instances from "failing zones".
 			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-			for _, ingester := range instances {
+			for _, ingester := range healthyInstances {
 				if _, ok := zoneFailures[ingester.Zone]; !ok {
 					filteredInstances = append(filteredInstances, ingester)
 				}
 			}
 
-			instances = filteredInstances
+			healthyInstances = filteredInstances
 		}
 
 		// Since we removed all instances from zones containing at least 1 failing
@@ -416,18 +416,18 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		if numRequired < r.cfg.ReplicationFactor {
 			numRequired = r.cfg.ReplicationFactor
 		}
-		maxUnavailable := r.cfg.ReplicationFactor / 2
-		numRequired -= maxUnavailable
+		// We can tolerate this many failures
+		numRequired -= r.cfg.ReplicationFactor / 2
 
-		if len(instances) < numRequired {
+		if len(healthyInstances) < numRequired {
 			return ReplicationSet{}, ErrTooManyFailedIngesters
 		}
 
-		maxErrors = len(instances) - numRequired
+		maxErrors = len(healthyInstances) - numRequired
 	}
 
 	return ReplicationSet{
-		Ingesters:           instances,
+		Ingesters:           healthyInstances,
 		MaxErrors:           maxErrors,
 		MaxUnavailableZones: maxUnavailableZones,
 	}, nil

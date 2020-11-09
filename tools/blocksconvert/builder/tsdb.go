@@ -332,7 +332,7 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 
 		readErrors := make([]error, len(cs))
 
-		// Read chunks into memory.
+		// Read chunks into memory by asking goroutines to load them.
 		for ix := range cs {
 			pendingChunks.Add(1)
 			ch <- chunkToRead{

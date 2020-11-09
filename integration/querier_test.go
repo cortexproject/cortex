@@ -82,7 +82,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				"-store-gateway.sharding-strategy":                 testCfg.blocksShardingStrategy,
 				"-store-gateway.tenant-shard-size":                 fmt.Sprintf("%d", testCfg.tenantShardSize),
 				"-querier.ingester-streaming":                      strconv.FormatBool(testCfg.ingesterStreamingEnabled),
-				"-querier.query-store-for-labels":                  "true",
+				"-querier.query-store-for-labels-enabled":          "true",
 			})
 
 			// Start dependencies.
@@ -294,7 +294,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				"-blocks-storage.bucket-store.index-cache.backend":             testCfg.indexCacheBackend,
 				"-blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 				"-querier.ingester-streaming":                                  strconv.FormatBool(testCfg.ingesterStreamingEnabled),
-				"-querier.query-store-for-labels":                              "true",
+				"-querier.query-store-for-labels-enabled":                      "true",
 				// Ingester.
 				"-ring.store":      "consul",
 				"-consul.hostname": consul.NetworkHTTPEndpoint(),

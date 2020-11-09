@@ -395,7 +395,8 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 			// We remove all instances (even healthy ones) from zones with at least
 			// 1 failing ingester. Due to how replication works when zone-awareness is
 			// enabled (data is replicated to RF different zones), there's no benefit in
-			// querying healthy instances from "failing zones".
+			// querying healthy instances from "failing zones". A zone is considered
+			// failed if there is single error.
 			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
 			for _, ingester := range healthyInstances {
 				if _, ok := zoneFailures[ingester.Zone]; !ok {

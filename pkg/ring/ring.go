@@ -385,7 +385,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// contains instances in a number of zones < RF.
 		numReplicatedZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
 		minSuccessZones := (numReplicatedZones / 2) + 1
-		maxUnavailableZones = numReplicatedZones - minSuccessZones
+		maxUnavailableZones = minSuccessZones - 1
 
 		if len(zoneFailures) > maxUnavailableZones {
 			return ReplicationSet{}, ErrTooManyFailedIngesters

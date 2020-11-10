@@ -14,7 +14,7 @@ It is recommended you use chunk storage with one of the following back-ends:&lt;
 &lt;p>Commercial cloud options are DynamoDB/S3 and Bigtable/GCS: the advantage is you don&amp;rsquo;t have to know how to manage them, but the downside is they have specific costs.&lt;/p>
 &lt;p>Alternatively you can choose Apache Cassandra, which you will have to install and manage.
 Cassandra support can also be used with commecial Cassandra-compatible services such as Azure Cosmos DB.&lt;/p>
-&lt;p>Cortex has an alternative to chunk storage: &lt;a href="/docs/blocks-storage/">block storage&lt;/a>. Block storage is not ready for production usage at this time.&lt;/p>
+&lt;p>Cortex has an alternative to chunks storage: &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>. Blocks storage is ready for production use and does not require a separate index store.&lt;/p>
 &lt;h2 id="2-deploy-query-frontend">2. Deploy Query Frontend&lt;/h2>
 &lt;p>The &lt;strong>Query Frontend&lt;/strong> is the Cortex component which parallelizes the execution of and caches the results of queries.
 The &lt;strong>Query Frontend&lt;/strong> is also responsible for retries and multi-tenant QoS.&lt;/p>

@@ -18,13 +18,14 @@ import (
 
 var (
 	// If you change the image tag, remember to update it in the preloading done
-	// by CircleCI too (see .circleci/config.yml).
+	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
 		"quay.io/cortexproject/cortex:v1.0.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
 		"quay.io/cortexproject/cortex:v1.4.0": preCortex16Flags,
+		"quay.io/cortexproject/cortex:v1.5.0": preCortex16Flags,
 	}
 )
 

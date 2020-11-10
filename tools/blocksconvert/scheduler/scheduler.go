@@ -55,7 +55,7 @@ func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg
 	}
 
 	var ignoredUserRegex *regexp.Regexp = nil
-	if users.AllUsersAllowed() && cfg.IgnoredUserPattern != "" {
+	if cfg.IgnoredUserPattern != "" {
 		re, err := regexp.Compile(cfg.IgnoredUserPattern)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to compile ignored user regex")

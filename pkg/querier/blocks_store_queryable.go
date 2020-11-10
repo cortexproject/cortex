@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -293,8 +294,7 @@ func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 }
 
 func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	// Cortex doesn't use this. It will ask ingesters for metadata.
-	return nil, nil, errors.New("not implemented")
+	return q.labelValues(name)
 }
 
 func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
@@ -304,6 +304,134 @@ func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 
 func (q *blocksStoreQuerier) Close() error {
 	return nil
+}
+
+func (q *blocksStoreQuerier) labelValues(name string) ([]string, storage.Warnings, error) {
+	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.labelValues")
+	defer spanLog.Span.Finish()
+
+	minT, maxT := q.minT, q.maxT
+
+	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
+	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
+	// optimization is particularly important for the blocks storage because can be used to skip
+	// querying most recent not-compacted-yet blocks from the storage.
+	if q.queryStoreAfter > 0 {
+		now := time.Now()
+		origMaxT := maxT
+		maxT = util.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+
+		if origMaxT != maxT {
+			level.Debug(spanLog).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
+		}
+
+		if maxT < minT {
+			q.metrics.storesHit.Observe(0)
+			level.Debug(spanLog).Log("msg", "empty query time range after max time manipulation")
+			return nil, nil, nil
+		}
+	}
+
+	// Find the list of blocks we need to query given the time range.
+	knownMetas, _, err := q.finder.GetBlocks(q.userID, minT, maxT)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(knownMetas) == 0 {
+		q.metrics.storesHit.Observe(0)
+		level.Debug(spanLog).Log("msg", "no blocks found")
+		return nil, nil, nil
+	}
+
+	level.Debug(spanLog).Log("msg", "found blocks to query", "expected", BlockMetas(knownMetas).String())
+
+	// At the beginning the list of blocks to query are all known blocks.
+	remainingBlocks := getULIDsFromBlockMetas(knownMetas)
+	// Find the set of store-gateway instances having the blocks. The exclude parameter is the
+	// map of blocks queried so far, with the list of store-gateway addresses for each block.
+	clients, err := q.stores.GetClientsFor(q.userID, remainingBlocks, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	level.Debug(spanLog).Log("msg", "found store-gateway instances to query", "num instances", len(clients))
+
+	// Fetch series from stores. If an error occur we do not retry because retries
+	// are only meant to cover missing blocks.
+	lnames, warnings, err := q.fetchLabelValuesFromStores(spanCtx, name, clients, minT, maxT)
+	if err != nil {
+		return nil, nil, err
+	}
+	level.Debug(spanLog).Log("msg", "received labels from all store-gateways")
+
+	return lnames, warnings, nil
+}
+func (q *blocksStoreQuerier) fetchLabelValuesFromStores(
+	ctx context.Context,
+	label string,
+	clients map[BlocksStoreClient][]ulid.ULID,
+	minT int64,
+	maxT int64,
+) ([]string, storage.Warnings, error) {
+	var (
+		reqCtx      = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		g, gCtx     = errgroup.WithContext(reqCtx)
+		mtx         = sync.Mutex{}
+		labelValues = map[string]struct{}{}
+		warnings    = storage.Warnings(nil)
+		spanLog     = spanlogger.FromContext(ctx)
+	)
+
+	// Concurrently fetch series from all clients.
+	for c, blockIDs := range clients {
+		// Change variables scope since it will be used in a goroutine.
+		c := c
+		blockIDs := blockIDs
+
+		g.Go(func() error {
+			valuesResp, err := c.LabelValues(gCtx, &storepb.LabelValuesRequest{
+				Label:                   label,
+				PartialResponseDisabled: true,
+				Start:                   minT,
+				End:                     maxT,
+			})
+			if err != nil {
+				return err
+			}
+
+			level.Debug(spanLog).Log("msg", "received label values from store-gateway",
+				"instance", c,
+				"num label values", len(valuesResp.Values),
+				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
+			)
+
+			// Store the result.
+			mtx.Lock()
+			for _, lval := range valuesResp.Values {
+				labelValues[lval] = struct{}{}
+			}
+
+			for _, warn := range valuesResp.Warnings {
+				warnings = append(warnings, errors.New(warn))
+			}
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	// Wait until all client requests complete.
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
+	}
+
+	finalValues := make([]string, 0, len(labelValues))
+	for val := range labelValues {
+		finalValues = append(finalValues, val)
+	}
+	sort.Strings(finalValues)
+
+	return finalValues, warnings, nil
 }
 
 func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
@@ -578,6 +706,15 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skip
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 	}, nil
+}
+
+func createLabelValuesRequest(minT, maxT int64, name string) *storepb.LabelValuesRequest {
+	return &storepb.LabelValuesRequest{
+		Label:                   name,
+		PartialResponseDisabled: true,
+		Start:                   minT,
+		End:                     maxT,
+	}
 }
 
 func convertULIDsToString(ids []ulid.ULID) []string {

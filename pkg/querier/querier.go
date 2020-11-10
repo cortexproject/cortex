@@ -373,10 +373,16 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	if q.queryStoreForLabels {
+		return q.metadataQuerier.LabelValues(name)
+	}
 	return q.metadataQuerier.LabelValues(name)
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
+	if q.queryStoreForLabels {
+		return q.metadataQuerier.LabelNames()
+	}
 	return q.metadataQuerier.LabelNames()
 }
 

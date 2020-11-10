@@ -3810,7 +3810,7 @@ tsdb:
   [wal_compression_enabled: <boolean> | default = false]
 
   # TSDB WAL segments files max size (bytes).
-  # CLI flag: -blocks-storage.tsdb.wal-segment-size
+  # CLI flag: -blocks-storage.tsdb.wal-segment-size-bytes
   [wal_segment_size_bytes: <int> | default = 134217728]
 
   # True to flush blocks to storage on shutdown. If false, incomplete blocks

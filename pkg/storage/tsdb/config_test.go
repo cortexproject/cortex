@@ -108,6 +108,12 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errEmptyBlockranges,
 		},
+		"should fail on invalid TSDB WAL segment size": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.WALSegmentSizeBytes = 0
+			},
+			expectedErr: errInvalidWALSegmentSizeBytes,
+		},
 	}
 
 	for testName, testData := range tests {

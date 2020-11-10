@@ -11,7 +11,7 @@ Note that these instructions apply in both the HA single binary scenario or micr
 
 ## Scaling the Query Frontend
 
-For every query frontend the querier adds a [configurable number of goroutines](https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212)
+For every query frontend the querier adds a [configurable number of concurrent workers](https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212)
 which are each capable of executing a query.
 Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
 
@@ -37,11 +37,11 @@ This makes scaling query frontend easier, as it allows running multiple query fr
 In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
 (using `-frontend.scheduler-address` and `-querier.scheduler-address` options respectively).
 
-Note that querier will only fetch queries from query frontend OR query scheduler, but not both.
-If configured with both `-querier.frontend-address` and `-querier.scheduler-address`, querier will only use scheduler address.
+Note that querier will only fetch queries from query frontend or query scheduler, but not both.
+`-querier.frontend-address` and `-querier.scheduler-address` options are mutually exclusive, and at most one can be set.
 
 When using query scheduler, it is recommended to run two query scheduler instances.
-Running only one query scheduler poses a risk of increased query latency during scheduler restarts.
+Running only one query scheduler poses a risk of increased query latency when single scheduler crashes or restarts.
 It shouldn't be necessary to run more than two schedulers.
 
 When using single-binary mode, Cortex defaults to run **without** query scheduler.
@@ -49,8 +49,8 @@ When using single-binary mode, Cortex defaults to run **without** query schedule
 ### DNS Configuration / Readiness
 
 When a new frontend is first created on scale up it will not immediately have queriers attached to it.
-The existing endpoint `/ready` was updated to only return http 200 when the query frontend was ready to serve queries.
-Make sure to configure this endpoint as a healthcheck in your load balancer.
-Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.
+The existing endpoint `/ready` returns HTTP 200 status code only when the query frontend is ready to serve queries.
+Make sure to configure this endpoint as a healthcheck in your load balancer,
+otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.
 
 When using query frontend with query scheduler, `/ready` will report 200 status code only after frontend discovers some schedulers via DNS resolution.

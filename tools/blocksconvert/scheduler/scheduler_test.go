@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,11 @@ func TestSchedulerScan(t *testing.T) {
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user4/5.error", strings.NewReader("")))
 	require.NoError(t, bucket.Upload(context.Background(), "migration/user4/6.finished.01E8GCW9J0HV0992HSZ0N6RAMN", strings.NewReader("")))
 
-	s := newSchedulerWithBucket(log.NewLogfmtLogger(os.Stdout), bucket, "migration", blocksconvert.AllowAllUsers, Config{
+	require.NoError(t, bucket.Upload(context.Background(), "migration/ignoredUser/7.plan", strings.NewReader("")))
+
+	ignoredUsers := regexp.MustCompile("ignored.*")
+
+	s := newSchedulerWithBucket(log.NewLogfmtLogger(os.Stdout), bucket, "migration", blocksconvert.AllowAllUsers, ignoredUsers, Config{
 		ScanInterval:        10 * time.Second,
 		PlanScanConcurrency: 5,
 		MaxProgressFileAge:  5 * time.Minute,

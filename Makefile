@@ -12,11 +12,25 @@ GOPROXY_VALUE=$(shell go env GOPROXY)
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
-# Use CIRCLE_TAG if present for releases.
-IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
+
+# For a tag push GITHUB_REF will look like refs/tags/<tag_name>,
+# If finding refs/tags/ does not equal emptystring then use
+# the tag we are at as the image tag.
+ifneq (,$(findstring refs/tags/, $(GITHUB_REF)))
+	GIT_TAG := $(shell git tag --points-at HEAD)
+endif
+# Keep circle-ci compatability for now.
+ifdef CIRCLE_TAG
+	GIT_TAG := $(CIRCLE_TAG)
+endif
+IMAGE_TAG ?= $(if $(GIT_TAG),$(GIT_TAG),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 UPTODATE := .uptodate
+
+.PHONY: image-tag
+image-tag:
+	@echo $(IMAGE_TAG)
 
 # Support gsed on OSX (installed via brew), falling back to sed. On Linux
 # systems gsed won't be installed, so will use sed as expected.

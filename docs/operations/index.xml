@@ -241,15 +241,37 @@ cortex_querytee_responses_compared_total&lt;span style="color:#ce5c00;font-weigh
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">hosts&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>{&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">socket_address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>{&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">address: cortex-secondary, port_value&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">80&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>}}&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">dns_refresh_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Scaling the Query Frontend</title><link>/docs/operations/scaling-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/scaling-query-frontend/</guid><description>
-&lt;p>Historically scaling the Cortex query frontend has &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/">posed some challenges&lt;/a>. This document aims to detail how to use some of the added configuration parameters to correctly scale the frontend. Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p>
-&lt;h2 id="dns-configuration--readiness">DNS Configuration / Readiness&lt;/h2>
-&lt;p>When a new frontend is first created on scale up it will not immediately have queriers attached to it. The existing endpoint &lt;code>/ready&lt;/code> was updated to only return http 200 when the query frontend was ready to serve queries. Make sure to configure this endpoint as a healthcheck in your load balancer. Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
-&lt;h2 id="querier-max-concurrency">Querier Max Concurrency&lt;/h2>
-&lt;p>Make sure to configure the querier frontend worker to match max concurrency. This will allow the operator to freely scale the frontend up and down without impacting the amount of work an individual querier is attempting to perform. More details &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/#dynamic-querier-concurrency">here&lt;/a>.&lt;/p>
-&lt;h3 id="example-configuration">Example Configuration&lt;/h3>
-&lt;p>&lt;strong>CLI&lt;/strong>&lt;/p>
-&lt;pre>&lt;code>-querier.worker-match-max-concurrent=true
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>Config File&lt;/strong>&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">frontend_worker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">match_max_concurrent&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>
+&lt;p>Historically scaling the Cortex query frontend has &lt;a href="/docs/proposals/scalable-query-frontend/">posed some challenges&lt;/a>.
+This document aims to detail how to use some added configuration parameters to correctly scale the frontend.
+Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p>
+&lt;h2 id="scaling-the-query-frontend">Scaling the Query Frontend&lt;/h2>
+&lt;p>For every query frontend the querier adds a &lt;a href="https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212">configurable number of concurrent workers&lt;/a>
+which are each capable of executing a query.
+Each worker is connected to a single query frontend instance, therefore scaling up the query frontend impacts the amount of work each individual querier is attempting to do at any given time.&lt;/p>
+&lt;p>Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits.
+Additionally, the PromQL engine itself is limited in the number of queries it can do as configured by the &lt;code>-querier.max-concurrent&lt;/code> parameter.
+Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.&lt;/p>
+&lt;p>For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively.
+This will lower effective resource utilization.
+Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.&lt;/p>
+&lt;h3 id="querier-max-concurrency">Querier Max Concurrency&lt;/h3>
+&lt;p>To guarantee that querier doesn&amp;rsquo;t receive more queries that it can handle at the same time, make sure to configure the querier to match its PromQL concurrency with number of connections.
+This can be done by using &lt;code>-querier.worker-match-max-concurrent=true&lt;/code> option, or &lt;code>match_max_concurrent: true&lt;/code> field in &lt;code>frontend_worker&lt;/code> section of YAML config file.
+This allows the operator to freely scale the frontend or scheduler up and down without impacting the amount of work an individual querier is attempting to perform.&lt;/p>
+&lt;h3 id="query-scheduler">Query Scheduler&lt;/h3>
+&lt;p>Query scheduler is a service that moves the in-memory queue from query frontend to a separate component.
+This makes scaling query frontend easier, as it allows running multiple query frontends without increasing the number of queues.&lt;/p>
+&lt;p>In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
+(using &lt;code>-frontend.scheduler-address&lt;/code> and &lt;code>-querier.scheduler-address&lt;/code> options respectively).&lt;/p>
+&lt;p>Note that querier will only fetch queries from query frontend or query scheduler, but not both.
+&lt;code>-querier.frontend-address&lt;/code> and &lt;code>-querier.scheduler-address&lt;/code> options are mutually exclusive, and at most one can be set.&lt;/p>
+&lt;p>When using query scheduler, it is recommended to run two query scheduler instances.
+Running only one query scheduler poses a risk of increased query latency when single scheduler crashes or restarts.
+Running two query-schedulers should be enough even for large Cortex clusters with an high QPS.&lt;/p>
+&lt;p>When using single-binary mode, Cortex defaults to run &lt;strong>without&lt;/strong> query scheduler.&lt;/p>
+&lt;h3 id="dns-configuration--readiness">DNS Configuration / Readiness&lt;/h3>
+&lt;p>When a new frontend is first created on scale up it will not immediately have queriers attached to it.
+The existing endpoint &lt;code>/ready&lt;/code> returns HTTP 200 status code only when the query frontend is ready to serve queries.
+Make sure to configure this endpoint as a healthcheck in your load balancer,
+otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
+&lt;p>When using query frontend with query scheduler, &lt;code>/ready&lt;/code> will report 200 status code only after frontend discovers some schedulers via DNS resolution.&lt;/p></description></item></channel></rss>

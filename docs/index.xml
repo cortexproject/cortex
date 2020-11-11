@@ -2700,14 +2700,15 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;p>The &lt;code>frontend_worker_config&lt;/code> configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Address of query frontend service, in host:port format. If&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -querier.scheduler-address is set as well, querier will use scheduler instead.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># If neither -querier.frontend-address or -querier.scheduler-address is set,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># queries must arrive via HTTP endpoint.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Only one of -querier.frontend-address or -querier.scheduler-address can be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># set. If neither is set, queries are only received via HTTP endpoint.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.frontend-address&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[frontend_address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Hostname (and port) of scheduler that querier will periodically resolve,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># connect to and receive queries from. If set, takes precedence over&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -querier.frontend-address.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># connect to and receive queries from. Only one of -querier.frontend-address or&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -querier.scheduler-address can be set. If neither is set, queries are only&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># received via HTTP endpoint.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.scheduler-address&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[scheduler_address&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -3886,6 +3887,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of concurrent compactions running.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.compaction-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[compaction_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks should be cleaned up concurrently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># (deletion of blocks previously marked for deletion).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Time before a block marked for deletion is deleted from bucket. If not 0,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will delete blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5177,6 +5183,13 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;p>The &lt;strong>query frontend&lt;/strong> is an &lt;strong>optional service&lt;/strong> providing the querier&amp;rsquo;s API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.&lt;/p>
 &lt;p>The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the &lt;code>-querier.frontend-address&lt;/code> CLI flag) in order to allow them to connect to the query frontends.&lt;/p>
 &lt;p>Query frontends are &lt;strong>stateless&lt;/strong>. However, due to how the internal queue works, it&amp;rsquo;s recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.&lt;/p>
+&lt;p>Flow of the query in the system when using query-frontend:&lt;/p>
+&lt;ol>
+&lt;li>Query is received by query frontend, which can optionally split it or serve from the cache.&lt;/li>
+&lt;li>Query frontend stores the query into in-memory queue, where it waits for some querier to pick it up.&lt;/li>
+&lt;li>Querier picks up the query, and executes it.&lt;/li>
+&lt;li>Querier sends result back to query-frontend, which then forwards it to the client.&lt;/li>
+&lt;/ol>
 &lt;h4 id="queueing">Queueing&lt;/h4>
 &lt;p>The query frontend queuing mechanism is used to:&lt;/p>
 &lt;ul>
@@ -5188,6 +5201,20 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;p>The query frontend splits multi-day queries into multiple single-day queries, executing these queries in parallel on downstream queriers and stitching the results back together again. This prevents large (multi-day) queries from causing out of memory issues in a single querier and helps to execute them faster.&lt;/p>
 &lt;h4 id="caching">Caching&lt;/h4>
 &lt;p>The query frontend supports caching query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any cortex caching backend (currently memcached, redis, and an in-memory cache).&lt;/p>
+&lt;h3 id="query-scheduler">Query Scheduler&lt;/h3>
+&lt;p>Query Scheduler is an &lt;strong>optional&lt;/strong> service that moves the internal queue from query frontend into separate component.
+This enables independent scaling of query frontends and number of queues (query scheduler).&lt;/p>
+&lt;p>In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
+(using &lt;code>-frontend.scheduler-address&lt;/code> and &lt;code>-querier.scheduler-address&lt;/code> options respectively).&lt;/p>
+&lt;p>Flow of the query in the system changes when using query scheduler:&lt;/p>
+&lt;ol>
+&lt;li>Query is received by query frontend, which can optionally split it or serve from the cache.&lt;/li>
+&lt;li>Query frontend forwards the query to random query scheduler process.&lt;/li>
+&lt;li>Query scheduler stores the query into in-memory queue, where it waits for some querier to pick it up.&lt;/li>
+&lt;li>Querier picks up the query, and executes it.&lt;/li>
+&lt;li>Querier sends result back to query-frontend, which then forwards it to the client.&lt;/li>
+&lt;/ol>
+&lt;p>Query schedulers are &lt;strong>stateless&lt;/strong>. It is recommended to run two replicas to make sure queries can still be serviced while one replica is restarting.&lt;/p>
 &lt;h3 id="ruler">Ruler&lt;/h3>
 &lt;p>The &lt;strong>ruler&lt;/strong> is an &lt;strong>optional service&lt;/strong> executing PromQL queries for recording rules and alerts. The ruler requires a database storing the recording rules and alerts for each tenant.&lt;/p>
 &lt;p>Ruler is &lt;strong>semi-stateful&lt;/strong> and can be scaled horizontally.
@@ -8090,6 +8117,11 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.compaction-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[compaction_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks should be cleaned up concurrently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># (deletion of blocks previously marked for deletion).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Time before a block marked for deletion is deleted from bucket. If not 0,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will delete&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks marked for deletion from the bucket. If delete-delay is 0, blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -8689,18 +8721,40 @@ querier_args+:: self.tsdb_config.blocks_metadata_caching_config + self.query_con
 ruler_args+:: self.tsdb_config.blocks_metadata_caching_config + self.query_config_during_migration, // + self.query_config_after_migration,
 }
 &lt;/code>&lt;/pre></description></item><item><title>Docs: Scaling the Query Frontend</title><link>/docs/operations/scaling-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/scaling-query-frontend/</guid><description>
-&lt;p>Historically scaling the Cortex query frontend has &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/">posed some challenges&lt;/a>. This document aims to detail how to use some of the added configuration parameters to correctly scale the frontend. Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p>
-&lt;h2 id="dns-configuration--readiness">DNS Configuration / Readiness&lt;/h2>
-&lt;p>When a new frontend is first created on scale up it will not immediately have queriers attached to it. The existing endpoint &lt;code>/ready&lt;/code> was updated to only return http 200 when the query frontend was ready to serve queries. Make sure to configure this endpoint as a healthcheck in your load balancer. Otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
-&lt;h2 id="querier-max-concurrency">Querier Max Concurrency&lt;/h2>
-&lt;p>Make sure to configure the querier frontend worker to match max concurrency. This will allow the operator to freely scale the frontend up and down without impacting the amount of work an individual querier is attempting to perform. More details &lt;a href="https://cortexmetrics.io/docs/proposals/scalable-query-frontend/#dynamic-querier-concurrency">here&lt;/a>.&lt;/p>
-&lt;h3 id="example-configuration">Example Configuration&lt;/h3>
-&lt;p>&lt;strong>CLI&lt;/strong>&lt;/p>
-&lt;pre>&lt;code>-querier.worker-match-max-concurrent=true
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>Config File&lt;/strong>&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">frontend_worker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">match_max_concurrent&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
+&lt;p>Historically scaling the Cortex query frontend has &lt;a href="/docs/proposals/scalable-query-frontend/">posed some challenges&lt;/a>.
+This document aims to detail how to use some added configuration parameters to correctly scale the frontend.
+Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p>
+&lt;h2 id="scaling-the-query-frontend">Scaling the Query Frontend&lt;/h2>
+&lt;p>For every query frontend the querier adds a &lt;a href="https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212">configurable number of concurrent workers&lt;/a>
+which are each capable of executing a query.
+Each worker is connected to a single query frontend instance, therefore scaling up the query frontend impacts the amount of work each individual querier is attempting to do at any given time.&lt;/p>
+&lt;p>Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits.
+Additionally, the PromQL engine itself is limited in the number of queries it can do as configured by the &lt;code>-querier.max-concurrent&lt;/code> parameter.
+Attempting more queries concurrently than this value causes the queries to queue up in the querier itself.&lt;/p>
+&lt;p>For similar reasons scaling down the query frontend may cause a querier to not use its allocated memory and cpu effectively.
+This will lower effective resource utilization.
+Also, because individual queriers will be doing less work, this may cause increased queueing in the query frontends.&lt;/p>
+&lt;h3 id="querier-max-concurrency">Querier Max Concurrency&lt;/h3>
+&lt;p>To guarantee that querier doesn&amp;rsquo;t receive more queries that it can handle at the same time, make sure to configure the querier to match its PromQL concurrency with number of connections.
+This can be done by using &lt;code>-querier.worker-match-max-concurrent=true&lt;/code> option, or &lt;code>match_max_concurrent: true&lt;/code> field in &lt;code>frontend_worker&lt;/code> section of YAML config file.
+This allows the operator to freely scale the frontend or scheduler up and down without impacting the amount of work an individual querier is attempting to perform.&lt;/p>
+&lt;h3 id="query-scheduler">Query Scheduler&lt;/h3>
+&lt;p>Query scheduler is a service that moves the in-memory queue from query frontend to a separate component.
+This makes scaling query frontend easier, as it allows running multiple query frontends without increasing the number of queues.&lt;/p>
+&lt;p>In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
+(using &lt;code>-frontend.scheduler-address&lt;/code> and &lt;code>-querier.scheduler-address&lt;/code> options respectively).&lt;/p>
+&lt;p>Note that querier will only fetch queries from query frontend or query scheduler, but not both.
+&lt;code>-querier.frontend-address&lt;/code> and &lt;code>-querier.scheduler-address&lt;/code> options are mutually exclusive, and at most one can be set.&lt;/p>
+&lt;p>When using query scheduler, it is recommended to run two query scheduler instances.
+Running only one query scheduler poses a risk of increased query latency when single scheduler crashes or restarts.
+Running two query-schedulers should be enough even for large Cortex clusters with an high QPS.&lt;/p>
+&lt;p>When using single-binary mode, Cortex defaults to run &lt;strong>without&lt;/strong> query scheduler.&lt;/p>
+&lt;h3 id="dns-configuration--readiness">DNS Configuration / Readiness&lt;/h3>
+&lt;p>When a new frontend is first created on scale up it will not immediately have queriers attached to it.
+The existing endpoint &lt;code>/ready&lt;/code> returns HTTP 200 status code only when the query frontend is ready to serve queries.
+Make sure to configure this endpoint as a healthcheck in your load balancer,
+otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
+&lt;p>When using query frontend with query scheduler, &lt;code>/ready&lt;/code> will report 200 status code only after frontend discovers some schedulers via DNS resolution.&lt;/p></description></item><item><title>Docs: Single-process</title><link>/docs/configuration/single-process-config/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/single-process-config/</guid><description>
 &lt;p>Configuration for running Cortex in single-process mode.
 This should not be used in production. It is only for getting started
 and development.&lt;/p>

@@ -2618,14 +2618,15 @@ The `frontend_worker_config` configures the worker - running within the Cortex q
 ```yaml
 # Address of query frontend service, in host:port format. If
 # -querier.scheduler-address is set as well, querier will use scheduler instead.
-# If neither -querier.frontend-address or -querier.scheduler-address is set,
-# queries must arrive via HTTP endpoint.
+# Only one of -querier.frontend-address or -querier.scheduler-address can be
+# set. If neither is set, queries are only received via HTTP endpoint.
 # CLI flag: -querier.frontend-address
 [frontend_address: <string> | default = ""]
 
 # Hostname (and port) of scheduler that querier will periodically resolve,
-# connect to and receive queries from. If set, takes precedence over
-# -querier.frontend-address.
+# connect to and receive queries from. Only one of -querier.frontend-address or
+# -querier.scheduler-address can be set. If neither is set, queries are only
+# received via HTTP endpoint.
 # CLI flag: -querier.scheduler-address
 [scheduler_address: <string> | default = ""]
 

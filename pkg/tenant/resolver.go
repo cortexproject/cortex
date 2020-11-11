@@ -8,6 +8,16 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+var defaultResolver Resolver = NewSingleResolver()
+
+func DefaultResolver() Resolver {
+	return defaultResolver
+}
+
+func WithDefaultResolver(r Resolver) {
+	defaultResolver = r
+}
+
 type Resolver interface {
 	// UserID extracts the user identifier from the context. This should be
 	// used to identify a user in log messages, metrics, fairness behaviour and

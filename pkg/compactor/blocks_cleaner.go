@@ -121,12 +121,8 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	return concurrency.ForeachUser(ctx, users, c.cfg.CleanupConcurrency, func(userID string) error {
-		if cleanErr := c.cleanUser(ctx, userID); cleanErr != nil {
-			return errors.Wrapf(cleanErr, "failed to delete user blocks (user: %s)", userID)
-		}
-
-		return nil
+	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete user blocks (user: %s)", userID)
 	})
 }
 

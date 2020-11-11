@@ -7,10 +7,10 @@ import (
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 )
 
-// ForeachUser runs the provided userFunc for each userIDs up to concurrency concurrent workers.
+// ForEachUser runs the provided userFunc for each userIDs up to concurrency concurrent workers.
 // In case userFunc returns error, it will continue to process remaining users but returns an
 // error with all errors userFunc has returned.
-func ForeachUser(ctx context.Context, userIDs []string, concurrency int, userFunc func(userID string) error) error {
+func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFunc func(ctx context.Context, userID string) error) error {
 	wg := sync.WaitGroup{}
 	ch := make(chan string)
 
@@ -29,7 +29,7 @@ func ForeachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 					break
 				}
 
-				if err := userFunc(userID); err != nil {
+				if err := userFunc(ctx, userID); err != nil {
 					errsMx.Lock()
 					errs.Add(err)
 					errsMx.Unlock()

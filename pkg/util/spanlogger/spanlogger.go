@@ -41,6 +41,8 @@ func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...int
 	if len(kvps) > 0 {
 		level.Debug(logger).Log(kvps...)
 	}
+
+	ctx = context.WithValue(ctx, loggerCtxKey, l)
 	return logger, ctx
 }
 

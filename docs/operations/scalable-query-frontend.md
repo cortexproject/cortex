@@ -13,7 +13,7 @@ Note that these instructions apply in both the HA single binary scenario or micr
 
 For every query frontend the querier adds a [configurable number of concurrent workers](https://github.com/cortexproject/cortex/blob/1797adfed2979f6096c3305b0dc9162c1ec0c046/pkg/querier/worker/worker.go#L212)
 which are each capable of executing a query.
-Therefore, scaling the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
+Each worker is connected to a single query frontend instance, therefore scaling up the query frontend impacts the amount of work each individual querier is attempting to do at any given time.
 
 Scaling up may cause a querier to attempt more work than they are configured for due to restrictions such as memory and cpu limits.
 Additionally, the PromQL engine itself is limited in the number of queries it can do as configured by the `-querier.max-concurrent` parameter.
@@ -42,7 +42,7 @@ Note that querier will only fetch queries from query frontend or query scheduler
 
 When using query scheduler, it is recommended to run two query scheduler instances.
 Running only one query scheduler poses a risk of increased query latency when single scheduler crashes or restarts.
-It shouldn't be necessary to run more than two schedulers.
+Running two query-schedulers should be enough even for large Cortex clusters with an high QPS.
 
 When using single-binary mode, Cortex defaults to run **without** query scheduler.
 

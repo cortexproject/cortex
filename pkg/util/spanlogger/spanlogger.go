@@ -52,7 +52,7 @@ func FromContext(ctx context.Context) *SpanLogger {
 	return FromContextWithFallback(ctx, util.Logger)
 }
 
-// FromContextWithContext returns a span logger using the current parent span.
+// FromContextWithFallback returns a span logger using the current parent span.
 // IF there is no parent span, the SpanLogger will only log to the logger
 // within the context. If the context doesn't have a logger, the fallback
 // logger is used.

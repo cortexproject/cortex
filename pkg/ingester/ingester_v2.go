@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -1339,11 +1340,11 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(ctx context.Context, userID string) error {
 		// Get the user's DB. If the user doesn't exist, we skip it.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
-			return
+			return nil
 		}
 
 		// Run the shipper's Sync() to upload unshipped blocks.
@@ -1352,6 +1353,8 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
+
+		return nil
 	})
 }
 
@@ -1391,16 +1394,16 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		}
 	}
 
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(ctx context.Context, userID string) error {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
-			return
+			return nil
 		}
 
 		// Don't do anything, if there is nothing to compact.
 		h := userDB.Head()
 		if h.NumSeries() == 0 {
-			return
+			return nil
 		}
 
 		var err error
@@ -1429,39 +1432,9 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
+
+		return nil
 	})
-}
-
-func (i *Ingester) runConcurrentUserWorkers(ctx context.Context, concurrency int, userFunc func(userID string)) {
-	wg := sync.WaitGroup{}
-	ch := make(chan string)
-
-	for ix := 0; ix < concurrency; ix++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for userID := range ch {
-				userFunc(userID)
-			}
-		}()
-	}
-
-sendLoop:
-	for _, userID := range i.getTSDBUsers() {
-		select {
-		case ch <- userID:
-			// ok
-		case <-ctx.Done():
-			// don't start new tasks.
-			break sendLoop
-		}
-	}
-
-	close(ch)
-
-	// wait for ongoing workers to finish.
-	wg.Wait()
 }
 
 // This method will flush all data. It is called as part of Lifecycler's shutdown (if flush on shutdown is configured), or from the flusher.

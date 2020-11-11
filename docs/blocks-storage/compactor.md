@@ -114,6 +114,11 @@ compactor:
   # CLI flag: -compactor.compaction-concurrency
   [compaction_concurrency: <int> | default = 1]
 
+  # Max number of tenants for which blocks should be cleaned up concurrently
+  # (deletion of blocks previously marked for deletion).
+  # CLI flag: -compactor.cleanup-concurrency
+  [cleanup_concurrency: <int> | default = 20]
+
   # Time before a block marked for deletion is deleted from bucket. If not 0,
   # blocks will be marked for deletion and compactor component will delete
   # blocks marked for deletion from the bucket. If delete-delay is 0, blocks

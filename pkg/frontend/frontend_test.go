@@ -1,7 +1,6 @@
 package frontend
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -10,7 +9,6 @@ import (
 	"net/url"
 	strconv "strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -94,25 +93,6 @@ func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
 	testFrontend(t, config, nil, test, true, nil)
 }
 
-type syncBuf struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (sb *syncBuf) Write(p []byte) (n int, err error) {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-
-	return sb.buf.Write(p)
-}
-
-func (sb *syncBuf) String() string {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-
-	return sb.buf.String()
-}
-
 func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	// Create an HTTP server listening locally. This server mocks the downstream
 	// Prometheus API-compatible server.
@@ -134,7 +114,7 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 	config.Handler.LogQueriesLongerThan = 1 * time.Microsecond
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
 
-	var buf syncBuf
+	var buf concurrency.SyncBuffer
 	l := log.NewLogfmtLogger(&buf)
 
 	test := func(addr string) {

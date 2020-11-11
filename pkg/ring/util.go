@@ -82,6 +82,38 @@ func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state In
 	return backoff.Err()
 }
 
+// WaitRingStability monitors the ring topology for the provided operation and waits until it
+// keeps stable for at least minStability.
+func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
+	const pollingFrequency = time.Second
+
+	// Configure the max waiting time as a context deadline.
+	ctx, cancel := context.WithTimeout(ctx, maxWaiting)
+	defer cancel()
+
+	// Get the initial ring state.
+	ringLastState, _ := r.GetAllHealthy(op) // nolint:errcheck
+	ringLastStateTs := time.Now()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollingFrequency):
+			// We ignore the error because in case of error it will return an empty
+			// replication set which we use to compare with the previous state.
+			currRingState, _ := r.GetAllHealthy(op) // nolint:errcheck
+
+			if HasReplicationSetChanged(ringLastState, currRingState) {
+				ringLastState = currRingState
+				ringLastStateTs = time.Now()
+			} else if ringLastStateTs.Add(minStability).Before(time.Now()) {
+				return nil
+			}
+		}
+	}
+}
+
 // getZones return the list zones from the provided tokens. The returned list
 // is guaranteed to be sorted.
 func getZones(tokens map[string][]TokenDesc) []string {

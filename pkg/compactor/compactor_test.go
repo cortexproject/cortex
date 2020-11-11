@@ -679,6 +679,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
@@ -698,26 +700,6 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	// Start all compactors
 	for _, c := range compactors {
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	}
-
-	// Wait until each compactor sees all ACTIVE compactors in the ring
-	for _, c := range compactors {
-		cortex_testutil.Poll(t, 10*time.Second, len(compactors), func() interface{} {
-			// it is safe to access c.ring here, since we know that all compactors are Running now
-			rs, err := c.ring.GetAllHealthy(ring.Compactor)
-			if err != nil {
-				return 0
-			}
-
-			numActive := 0
-			for _, i := range rs.Ingesters {
-				if i.GetState() == ring.ACTIVE {
-					numActive++
-				}
-			}
-
-			return numActive
-		})
 	}
 
 	// Wait until a run has been completed on each compactor
@@ -854,6 +836,10 @@ func prepareConfig() Config {
 
 	compactorCfg.retryMinBackoff = 0
 	compactorCfg.retryMaxBackoff = 0
+
+	// Do not wait for ring stability by default, in order to speed up tests.
+	compactorCfg.ShardingRing.WaitStabilityMinDuration = 0
+	compactorCfg.ShardingRing.WaitStabilityMaxDuration = 0
 
 	return compactorCfg
 }

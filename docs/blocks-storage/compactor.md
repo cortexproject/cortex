@@ -38,6 +38,14 @@ The compactor sharding is based on the Cortex [hash ring](../architecture.md#the
 
 This feature can be enabled via `-compactor.sharding-enabled=true` and requires the backend [hash ring](../architecture.md#the-hash-ring) to be configured via `-compactor.ring.*` flags (or their respective YAML config options).
 
+### Waiting for stable ring at startup
+
+In the event of a cluster cold start or scale up of 2+ compactor instances at the same time we may end up in a situation where each new compactor instance starts at a slightly different time and thus each one runs the first compaction based on a different state of the ring. This is not a critical condition, but may be inefficient, because multiple compactor replicas may start compacting the same tenant nearly at the same time.
+
+To reduce the likelihood this could happen, the compactor waits for a stable ring at startup. A ring is considered stable if no instance is added/removed to the ring for at least `-compactor.ring.wait-stability-min-duration`. If the ring keep getting changed after `-compactor.ring.wait-stability-max-duration`, the compactor will stop waiting for a stable ring and will proceed starting up normally.
+
+To disable this waiting logic, you can start the compactor with `-compactor.ring.wait-stability-min-duration=0`.
+
 ## Soft and hard blocks deletion
 
 When the compactor successfully compacts some source blocks into a larger block, source blocks are deleted from the storage. Blocks deletion is not immediate, but follows a two steps process:
@@ -192,6 +200,15 @@ compactor:
     # within the ring.
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+    # Minimum time to wait for ring stability at startup. 0 to disable.
+    # CLI flag: -compactor.ring.wait-stability-min-duration
+    [wait_stability_min_duration: <duration> | default = 1m]
+
+    # Maximum time to wait for ring stability at startup. If the compactor ring
+    # keep changing after this period of time, the compactor will start anyway.
+    # CLI flag: -compactor.ring.wait-stability-max-duration
+    [wait_stability_max_duration: <duration> | default = 5m]
 
     # Name of network interface to read address from.
     # CLI flag: -compactor.ring.instance-interface-names

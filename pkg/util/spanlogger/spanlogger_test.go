@@ -28,13 +28,13 @@ func TestSpanLogger_CustomLogger(t *testing.T) {
 		return nil
 	}
 	span, ctx := NewWithLogger(context.Background(), logger, "test")
-	span.Log("msg", "original spanlogger")
+	_ = span.Log("msg", "original spanlogger")
 
 	span = FromContextWithFallback(ctx, log.NewNopLogger())
-	span.Log("msg", "restored spanlogger")
+	_ = span.Log("msg", "restored spanlogger")
 
 	span = FromContextWithFallback(context.Background(), logger)
-	span.Log("msg", "fallback spanlogger")
+	_ = span.Log("msg", "fallback spanlogger")
 
 	expect := [][]interface{}{
 		{"method", "test", "msg", "original spanlogger"},

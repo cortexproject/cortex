@@ -266,6 +266,22 @@ func (c *Compactor) starting(ctx context.Context) error {
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
+
+		// In the event of a cluster cold start or scale up of 2+ compactor instances at the same
+		// time, we may end up in a situation where each new compactor instance starts at a slightly
+		// different time and thus each one starts with on a different state of the ring. It's better
+		// to just wait the ring stability for a short time.
+		if c.compactorCfg.ShardingRing.WaitStabilityMinDuration > 0 {
+			minWaiting := c.compactorCfg.ShardingRing.WaitStabilityMinDuration
+			maxWaiting := c.compactorCfg.ShardingRing.WaitStabilityMaxDuration
+
+			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
+			if err := ring.WaitRingStability(ctx, c.ring, ring.Compactor, minWaiting, maxWaiting); err != nil {
+				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
+			} else {
+				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
+			}
+		}
 	}
 
 	// Create the blocks cleaner (service).

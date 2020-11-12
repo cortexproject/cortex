@@ -3944,6 +3944,15 @@ sharding_ring:
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # Minimum time to wait for ring stability at startup. 0 to disable.
+  # CLI flag: -compactor.ring.wait-stability-min-duration
+  [wait_stability_min_duration: <duration> | default = 1m]
+
+  # Maximum time to wait for ring stability at startup. If the compactor ring
+  # keep changing after this period of time, the compactor will start anyway.
+  # CLI flag: -compactor.ring.wait-stability-max-duration
+  [wait_stability_max_duration: <duration> | default = 5m]
+
   # Name of network interface to read address from.
   # CLI flag: -compactor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]

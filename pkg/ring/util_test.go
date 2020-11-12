@@ -71,7 +71,7 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 	require.NoError(t, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, minStability, elapsedTime, float64(time.Second))
+	assert.InDelta(t, minStability, elapsedTime, float64(2*time.Second))
 }
 
 func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.T) {
@@ -120,7 +120,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 	require.NoError(t, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, minStability+addInstanceAfter, elapsedTime, float64(time.Second))
+	assert.InDelta(t, minStability+addInstanceAfter, elapsedTime, float64(2*time.Second))
 }
 
 func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
@@ -128,7 +128,7 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 
 	const (
 		minStability = 2 * time.Second
-		maxWaiting   = 5 * time.Second
+		maxWaiting   = 7 * time.Second
 	)
 
 	// Init the ring.
@@ -176,5 +176,5 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 	require.Equal(t, context.DeadlineExceeded, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, maxWaiting, elapsedTime, float64(time.Second))
+	assert.InDelta(t, maxWaiting, elapsedTime, float64(2*time.Second))
 }

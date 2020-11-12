@@ -85,8 +85,6 @@ func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state In
 // WaitRingStability monitors the ring topology for the provided operation and waits until it
 // keeps stable for at least minStability.
 func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability, maxWaiting time.Duration) error {
-	const pollingFrequency = time.Second
-
 	// Configure the max waiting time as a context deadline.
 	ctx, cancel := context.WithTimeout(ctx, maxWaiting)
 	defer cancel()
@@ -95,11 +93,15 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 	ringLastState, _ := r.GetAllHealthy(op) // nolint:errcheck
 	ringLastStateTs := time.Now()
 
+	const pollingFrequency = time.Second
+	pollingTicker := time.NewTicker(pollingFrequency)
+	defer pollingTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(pollingFrequency):
+		case <-pollingTicker.C:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
 			currRingState, _ := r.GetAllHealthy(op) // nolint:errcheck

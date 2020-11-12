@@ -72,7 +72,7 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	// We cache the entire row, so filter client side.
 	callback = chunk_util.QueryFilter(callback)
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return err
 	}

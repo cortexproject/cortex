@@ -10,12 +10,35 @@ import (
 
 var defaultResolver Resolver = NewSingleResolver()
 
-func DefaultResolver() Resolver {
-	return defaultResolver
-}
-
+// WithDefaultResolver updates the resolver used for the package methods.
 func WithDefaultResolver(r Resolver) {
 	defaultResolver = r
+}
+
+// UserID extracts the user identifier from the context. This should be
+// used to identify a user in log messages, metrics, fairness behaviour and
+// for config overrides.
+func UserID(ctx context.Context) (string, error) {
+	return defaultResolver.UserID(ctx)
+}
+
+// TenantID returns exactly a single tenant ID from the context. It should
+// be used when a certain endpoint should only support exactly a single
+// tenant ID. It fails when there is no tenant ID supplied.
+//
+// ignore stutter warning
+//nolint:golint
+func TenantID(ctx context.Context) (string, error) {
+	return defaultResolver.TenantID(ctx)
+}
+
+// TenantIDs returns potentially multiple tenant IDs from the context. It
+// should be used if a supply of multiple tenant IDs is expected.
+//
+// ignore stutter warning
+//nolint:golint
+func TenantIDs(ctx context.Context) ([]string, error) {
+	return defaultResolver.TenantIDs(ctx)
 }
 
 type Resolver interface {
@@ -67,7 +90,7 @@ type MultiResolver struct {
 }
 
 // NewMultiResolver creates a tenant resolver, which allows request to have
-// multiple tenant ids submitted sepearted by a '|' character. This enforces
+// multiple tenant ids submitted separated by a '|' character. This enforces
 // further limits on the character set allowed within tenants as detailed here:
 // https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming)
 func NewMultiResolver() *MultiResolver {
@@ -115,14 +138,14 @@ func (t *MultiResolver) TenantIDs(ctx context.Context) ([]string, error) {
 
 // ExtractTenantIDFromHTTPRequest extracts a single TenantID through a given
 // resolver directly from a HTTP request.
-func ExtractTenantIDFromHTTPRequest(resolver Resolver, req *http.Request) (string, context.Context, error) {
+func ExtractTenantIDFromHTTPRequest(req *http.Request) (string, context.Context, error) {
 	//lint:ignore faillint wrapper around upstream method
 	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(req)
 	if err != nil {
 		return "", nil, err
 	}
 
-	tenantID, err := resolver.TenantID(ctx)
+	tenantID, err := defaultResolver.TenantID(ctx)
 	if err != nil {
 		return "", nil, err
 	}

@@ -440,7 +440,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	// retain anything from `req` past the call to ReuseSlice
 	defer client.ReuseSlice(req.Timeseries)
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
@@ -683,7 +683,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return i.v2Query(ctx, req)
 	}
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -930,7 +930,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.userStatesMtx.RUnlock()
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}

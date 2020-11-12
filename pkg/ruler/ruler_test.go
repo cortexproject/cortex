@@ -163,7 +163,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	// We do expect 1 API call for the user create with the getOrCreateNotifier()
 	wg.Add(1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(tenant.DefaultResolver(), r)
+		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
 		wg.Done()

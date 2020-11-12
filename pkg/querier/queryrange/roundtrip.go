@@ -218,7 +218,7 @@ func NewTripperware(
 					op = "query_range"
 				}
 
-				user, err := tenant.DefaultResolver().UserID(r.Context())
+				user, err := tenant.UserID(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, err

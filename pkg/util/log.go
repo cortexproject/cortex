@@ -106,7 +106,7 @@ func (pl *PrometheusLogger) Log(kv ...interface{}) error {
 func WithContext(ctx context.Context, l log.Logger) log.Logger {
 	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
 	// even though the code-base generally uses `userID` to refer to the same thing.
-	userID, err := tenant.DefaultResolver().UserID(ctx)
+	userID, err := tenant.UserID(ctx)
 	if err == nil {
 		l = WithUserID(userID, l)
 	}

@@ -252,7 +252,7 @@ func (q *BlocksStoreQueryable) Querier(ctx context.Context, mint, maxt int64) (s
 		return nil, errors.Errorf("BlocksStoreQueryable is not running: %v", s)
 	}
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

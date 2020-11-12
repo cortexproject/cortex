@@ -129,7 +129,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 }
 
 func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.DefaultResolver().TenantID(q.ctx)
+	userID, err := tenant.TenantID(q.ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

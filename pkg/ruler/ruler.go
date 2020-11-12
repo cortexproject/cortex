@@ -585,7 +585,7 @@ func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring rin
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
@@ -725,7 +725,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}

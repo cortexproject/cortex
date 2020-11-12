@@ -428,7 +428,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					d.HATracker = r
 				}
 
-				userID, err := tenant.DefaultResolver().TenantID(ctx)
+				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
 				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
@@ -1315,7 +1315,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		i.metadata = map[uint32]map[client.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := tenant.DefaultResolver().TenantID(ctx)
+	orgid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

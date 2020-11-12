@@ -250,7 +250,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	userID, err := tenant.DefaultResolver().UserID(ctx)
+	userID, err := tenant.UserID(ctx)
 	if err != nil {
 		return err
 	}

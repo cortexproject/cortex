@@ -76,7 +76,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 // GetIngestersForQuery returns a replication set including all ingesters that should be queried
 // to fetch series matching input label matchers.
 func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
 	}
@@ -107,7 +107,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*lab
 // GetIngestersForMetadata returns a replication set including all ingesters that should be queried
 // to fetch metadata (eg. label names/values or series).
 func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.ReplicationSet, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
 	}

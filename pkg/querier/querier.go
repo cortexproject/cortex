@@ -210,7 +210,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
-		userID, err := tenant.DefaultResolver().TenantID(ctx)
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +300,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

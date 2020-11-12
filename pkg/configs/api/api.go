@@ -108,7 +108,7 @@ func (a *API) RegisterRoutes(r *mux.Router) {
 
 // getConfig returns the request configuration.
 func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(tenant.DefaultResolver(), r)
+	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -146,7 +146,7 @@ func (a *API) getConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(tenant.DefaultResolver(), r)
+	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -296,7 +296,7 @@ func (a *API) getConfigs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) deactivateConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(tenant.DefaultResolver(), r)
+	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -318,7 +318,7 @@ func (a *API) deactivateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) restoreConfig(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(tenant.DefaultResolver(), r)
+	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

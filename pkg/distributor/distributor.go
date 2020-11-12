@@ -385,7 +385,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

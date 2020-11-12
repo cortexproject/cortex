@@ -151,7 +151,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
 
-	userID, err := tenant.DefaultResolver().UserID(ctx)
+	userID, err := tenant.UserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ enqueueAgain:
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
-	userID, err := tenant.DefaultResolver().UserID(ctx)
+	userID, err := tenant.UserID(ctx)
 	if err != nil {
 		return nil, err
 	}

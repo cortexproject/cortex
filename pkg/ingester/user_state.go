@@ -172,7 +172,7 @@ func (us *userStates) teardown() {
 }
 
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
-	userID, err := tenant.DefaultResolver().TenantID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("no user id")
 	}

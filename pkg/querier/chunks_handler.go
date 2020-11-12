@@ -20,7 +20,7 @@ import (
 // on ingester chunk query streaming.
 func ChunksHandler(queryable storage.Queryable) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, err := tenant.DefaultResolver().TenantID(r.Context())
+		userID, err := tenant.TenantID(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

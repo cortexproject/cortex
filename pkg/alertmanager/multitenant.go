@@ -462,7 +462,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	userID, err := tenant.DefaultResolver().TenantID(req.Context())
+	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

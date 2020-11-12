@@ -4083,7 +4083,103 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># duration. Ideally this should be set to at least 24h.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -purger.delete-request-cancel-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[delete_request_cancel_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>24h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Cross-Tenant Query Federation</title><link>/docs/proposals/cross-tenant-query-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/cross-tenant-query-federation/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/simonswine">Christian Simon&lt;/a>&lt;/li>
+&lt;li>Date: October 2020&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This document aims to describe how to implement the ability to allow queries to cover data from more than a single Cortex tenant.&lt;/p>
+&lt;h2 id="reasoning">Reasoning&lt;/h2>
+&lt;p>Adopting a tenancy model within an organization with each tenant representing a department comes with the disadvantage that it will prevent queries from spanning multiple departments. This proposal tries to overcome those limitations.&lt;/p>
+&lt;h2 id="alternatives-considered">Alternatives considered&lt;/h2>
+&lt;h3 id="aggregation-in-promql-api-clients">Aggregation in PromQL API clients&lt;/h3>
+&lt;p>In theory PromQL API clients could be aggregating/correlating query results from multiple tenants. For example Grafana could be used with multiple data sources and a cross tenant query could be achieved through using &lt;a href="https://grafana.com/docs/grafana/latest/panels/transformations/">Transformations&lt;/a>.&lt;/p>
+&lt;p>As this approach comes with the following disadvantages, it was not considered further:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Every PromQL API client needs to support the aggregation from various sources.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Queries that are written in PromQL can&amp;rsquo;t be used without extra work across tenants.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="multi-tenant-aggregation-in-the-query-frontends">Multi tenant aggregation in the query frontends&lt;/h3>
+&lt;p>Another approach to multi tenant query federation could be achieved by aggregation of partial query results within the query frontend. For this a query needs to be split into sub queries per tenant and afterwards the partial results need reduced into the final result.&lt;/p>
+&lt;p>The &lt;a href="https://github.com/cortexproject/cortex/blob/f0c81bb59bf202db820403812e8dabcb64347bfd/pkg/querier/astmapper/parallel.go#L27">astmapper&lt;/a> package goes down a similar approach, but it cannot parallelize all query types. Ideally multi-tenant query federation should support the full PromQL language and the algorithms necessary would differ per query functions and operators used. This approach was deemed as a fairly complex way to achieve that tenant query federation.&lt;/p>
+&lt;h2 id="challenges">Challenges&lt;/h2>
+&lt;h3 id="aggregate-data-without-overlaps">Aggregate data without overlaps&lt;/h3>
+&lt;h4 id="challenge">Challenge&lt;/h4>
+&lt;p>The series in different tenants might have exactly the same labels and hence potentially collide which each other.&lt;/p>
+&lt;h4 id="proposal">Proposal&lt;/h4>
+&lt;p>In order to be able to always identify the tenant correctly, queries using multiple tenants should inject a tenant label named &lt;code>__tenant_id__&lt;/code> and its value containing the tenant ID into the results. A potentially existing label with the same name should be stored in a label with the prefix &lt;code>original_&lt;/code>.&lt;/p>
+&lt;p>Label selectors containing the tenant label should behave like any other labels. This can be achieved by selecting the tenants used in a multi tenant query.&lt;/p>
+&lt;h3 id="exposure-of-feature-to-the-user">Exposure of feature to the user&lt;/h3>
+&lt;h4 id="challenge-1">Challenge&lt;/h4>
+&lt;p>The tenant ID is currently read from the &lt;code>X-Scope-OrgID&lt;/code> HTTP header. The tenant ID has those &lt;a href="https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming">documented limitations&lt;/a> of values being allowed.&lt;/p>
+&lt;h4 id="proposal-1">Proposal&lt;/h4>
+&lt;p>For the query path a user should be able to specify a &lt;code>X-Scope-OrgID&lt;/code> header with multiple tenant IDs. Multiple tenant IDs should then be propagating throughout out the system until it reaches the querier. The &lt;code>Queryable&lt;/code> instance returned by the querier component, is wrapped by a &lt;code>mergeQueryable&lt;/code>, which will aggregate the results from a &lt;code>Queryable&lt;/code> per tenant and hence treated by the downstream components as a single tenant query.&lt;/p>
+&lt;p>To allow such queries to be processed we suggest that an experimental configuration flag &lt;code>-querier.tenant-federation.enabled&lt;/code> will be added, which is switched off by default. Once enabled the value of the &lt;code>X-Scope-OrgID&lt;/code> header should be interpreted as &lt;code>|&lt;/code> separated list of tenant ids. Components which are not expecting multiple tenant ids (e.g. the ingress path) must signal an error if multiple are used.&lt;/p>
+&lt;h3 id="implementing-limits-fairness-and-observability-for-cross-tenant-queries">Implementing Limits, Fairness and Observability for Cross-Tenant queries&lt;/h3>
+&lt;h4 id="challenge-2">Challenge&lt;/h4>
+&lt;p>In Cortex the tenant id is used as the primary identifier for those components:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>The limits that apply to a certain query.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>The query-frontend maintains a per tenant query queue to implement fairness.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Relevant metrics about the query are exposed under a &lt;code>user&lt;/code> label.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>Having a query spanning multiple tenants, the existing methods are no longer correct.&lt;/p>
+&lt;h4 id="proposal-2">Proposal&lt;/h4>
+&lt;p>The identifier for aforementioned features for queries involving more than a single tenant should be derived from: An ordered, distinct list of tenant IDs, which is joined by a &lt;code>|&lt;/code>. This will produce a reproducible identifier for the same set of tenants no matter which order they have been specified.&lt;/p>
+&lt;p>While this feature is considered experimental, this provides some insights and ability to limit multi-tenant queries with these short comings:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Cardinality costs to the possible amount of tenant ID combinations.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Query limits applied to single tenants part of a multi tenant query are ignored.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Challenge&lt;/th>
+&lt;th>Status&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Aggregate data without overlap&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Exposure of feature to the user&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Implementing Limits, Fairness and Observability for Cross-Tenant queries&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="future-work">Future work&lt;/h3>
+&lt;p>Those features are currently out of scope for this proposal, but we can foresee some interest implementing them after this proposal.&lt;/p>
+&lt;h4 id="cross-tenant-support-for-the-ruler">Cross Tenant support for the ruler&lt;/h4>
+&lt;p>Ability to use multi tenant queries in the ruler.&lt;/p>
+&lt;h4 id="allow-the-identifier-for-limits-fairness-and-observability-to-be-switched-out">Allow the identifier for limits, fairness and observability to be switched out&lt;/h4>
+&lt;p>It would be great if the source identifier could be made more pluggable. This could allow to for example base all of those features on another dimension (e.g. users rather than tenants)&lt;/p>
+&lt;h4 id="allow-customisation-of-the-label-used-to-expose-tenant-ids">Allow customisation of the label used to expose tenant ids&lt;/h4>
+&lt;p>As per this proposal the label name &lt;code>__tenant_id__&lt;/code> is fixed, but users might want to be able to modify that through a configuration option.&lt;/p>
+&lt;h4 id="retain-overlapping-tenant-id-label-values-recursively">Retain overlapping tenant id label values recursively&lt;/h4>
+&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>
@@ -9219,45 +9315,4 @@ for ingester).&lt;/p></description></item><item><title>Docs: Config for horizont
 &lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
 &lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
-&lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
-&lt;h2 id="context">Context&lt;/h2>
-&lt;p>You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p>
-&lt;p>Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheis T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheis, T1.a, T1.b and T2.a and T2.b.&lt;/p>
-&lt;p>In Cortex we make sure we only ingest from one of T1.a and T1.b, and only from one of T2.a and T2.b. We do this by electing a leader replica for each cluster of Prometheus. For example, in the case of T1, let it be T1.a. As long as T1.a is the leader, we drop the samples sent by T1.b. And if Cortex sees no new samples from T1.a for a short period (30s by default), it&amp;rsquo;ll switch the leader to be T1.b.&lt;/p>
-&lt;p>This means if T1.a goes down for a few minutes Cortex&amp;rsquo;s HA sample handling will have switched and elected T1.b as the leader. This failover timeout is what enables us to only accept samples from a single replica at a time, but ensure we don&amp;rsquo;t drop too much data in case of issues. Note that with the default scrape period of 15s, and the default timeouts in Cortex, in most cases you&amp;rsquo;ll only lose a single scrape of data in the case of a leader election failover. For any rate queries the rate window should be at least 4x the scrape period to account for any of these failover scenarios, for example with the default scrape period of 15s then you should calculate rates over at least 1m periods.&lt;/p>
-&lt;p>Now we do the same leader election process T2.&lt;/p>
-&lt;h2 id="config">Config&lt;/h2>
-&lt;h3 id="client-side">Client Side&lt;/h3>
-&lt;p>So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are &lt;code>cluster&lt;/code> and &lt;code>__replica__&lt;/code>. For example:&lt;/p>
-&lt;pre>&lt;code>cluster: prom-team1
-__replica__: replica1 (or pod-name)
-&lt;/code>&lt;/pre>&lt;p>and&lt;/p>
-&lt;pre>&lt;code>cluster: prom-team1
-__replica__: replica2
-&lt;/code>&lt;/pre>&lt;p>Note: These are external labels and have nothing to do with remote_write config.&lt;/p>
-&lt;p>These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code>team&lt;/code>, &lt;code>cluster&lt;/code>, &lt;code>prometheus&lt;/code>, etc.&lt;/p>
-&lt;p>The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data, but preserves the cluster label. This way, your timeseries won&amp;rsquo;t change when replicas change.&lt;/p>
-&lt;h3 id="server-side">Server Side&lt;/h3>
-&lt;p>The minimal configuration requires:&lt;/p>
-&lt;ul>
-&lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
-&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.&lt;/li>
-&lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
-&lt;/ul>
-&lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;consul&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
-&lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item></channel></rss>
+&lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item></channel></rss>

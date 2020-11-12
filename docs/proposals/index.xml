@@ -60,7 +60,103 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;li>A querier is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code>meta.json&lt;/code> file of every block&lt;/li>
 &lt;li>A store-gateway is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code>meta.json&lt;/code> and index header of each block matching its shard&lt;/li>
 &lt;li>If a querier hits 2+ store-gateways it may receive duplicated series if the 2+ store-gateways share some blocks due to the replication factor&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Cross-Tenant Query Federation</title><link>/docs/proposals/cross-tenant-query-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/cross-tenant-query-federation/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/simonswine">Christian Simon&lt;/a>&lt;/li>
+&lt;li>Date: October 2020&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This document aims to describe how to implement the ability to allow queries to cover data from more than a single Cortex tenant.&lt;/p>
+&lt;h2 id="reasoning">Reasoning&lt;/h2>
+&lt;p>Adopting a tenancy model within an organization with each tenant representing a department comes with the disadvantage that it will prevent queries from spanning multiple departments. This proposal tries to overcome those limitations.&lt;/p>
+&lt;h2 id="alternatives-considered">Alternatives considered&lt;/h2>
+&lt;h3 id="aggregation-in-promql-api-clients">Aggregation in PromQL API clients&lt;/h3>
+&lt;p>In theory PromQL API clients could be aggregating/correlating query results from multiple tenants. For example Grafana could be used with multiple data sources and a cross tenant query could be achieved through using &lt;a href="https://grafana.com/docs/grafana/latest/panels/transformations/">Transformations&lt;/a>.&lt;/p>
+&lt;p>As this approach comes with the following disadvantages, it was not considered further:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Every PromQL API client needs to support the aggregation from various sources.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Queries that are written in PromQL can&amp;rsquo;t be used without extra work across tenants.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="multi-tenant-aggregation-in-the-query-frontends">Multi tenant aggregation in the query frontends&lt;/h3>
+&lt;p>Another approach to multi tenant query federation could be achieved by aggregation of partial query results within the query frontend. For this a query needs to be split into sub queries per tenant and afterwards the partial results need reduced into the final result.&lt;/p>
+&lt;p>The &lt;a href="https://github.com/cortexproject/cortex/blob/f0c81bb59bf202db820403812e8dabcb64347bfd/pkg/querier/astmapper/parallel.go#L27">astmapper&lt;/a> package goes down a similar approach, but it cannot parallelize all query types. Ideally multi-tenant query federation should support the full PromQL language and the algorithms necessary would differ per query functions and operators used. This approach was deemed as a fairly complex way to achieve that tenant query federation.&lt;/p>
+&lt;h2 id="challenges">Challenges&lt;/h2>
+&lt;h3 id="aggregate-data-without-overlaps">Aggregate data without overlaps&lt;/h3>
+&lt;h4 id="challenge">Challenge&lt;/h4>
+&lt;p>The series in different tenants might have exactly the same labels and hence potentially collide which each other.&lt;/p>
+&lt;h4 id="proposal">Proposal&lt;/h4>
+&lt;p>In order to be able to always identify the tenant correctly, queries using multiple tenants should inject a tenant label named &lt;code>__tenant_id__&lt;/code> and its value containing the tenant ID into the results. A potentially existing label with the same name should be stored in a label with the prefix &lt;code>original_&lt;/code>.&lt;/p>
+&lt;p>Label selectors containing the tenant label should behave like any other labels. This can be achieved by selecting the tenants used in a multi tenant query.&lt;/p>
+&lt;h3 id="exposure-of-feature-to-the-user">Exposure of feature to the user&lt;/h3>
+&lt;h4 id="challenge-1">Challenge&lt;/h4>
+&lt;p>The tenant ID is currently read from the &lt;code>X-Scope-OrgID&lt;/code> HTTP header. The tenant ID has those &lt;a href="https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming">documented limitations&lt;/a> of values being allowed.&lt;/p>
+&lt;h4 id="proposal-1">Proposal&lt;/h4>
+&lt;p>For the query path a user should be able to specify a &lt;code>X-Scope-OrgID&lt;/code> header with multiple tenant IDs. Multiple tenant IDs should then be propagating throughout out the system until it reaches the querier. The &lt;code>Queryable&lt;/code> instance returned by the querier component, is wrapped by a &lt;code>mergeQueryable&lt;/code>, which will aggregate the results from a &lt;code>Queryable&lt;/code> per tenant and hence treated by the downstream components as a single tenant query.&lt;/p>
+&lt;p>To allow such queries to be processed we suggest that an experimental configuration flag &lt;code>-querier.tenant-federation.enabled&lt;/code> will be added, which is switched off by default. Once enabled the value of the &lt;code>X-Scope-OrgID&lt;/code> header should be interpreted as &lt;code>|&lt;/code> separated list of tenant ids. Components which are not expecting multiple tenant ids (e.g. the ingress path) must signal an error if multiple are used.&lt;/p>
+&lt;h3 id="implementing-limits-fairness-and-observability-for-cross-tenant-queries">Implementing Limits, Fairness and Observability for Cross-Tenant queries&lt;/h3>
+&lt;h4 id="challenge-2">Challenge&lt;/h4>
+&lt;p>In Cortex the tenant id is used as the primary identifier for those components:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>The limits that apply to a certain query.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>The query-frontend maintains a per tenant query queue to implement fairness.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Relevant metrics about the query are exposed under a &lt;code>user&lt;/code> label.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;p>Having a query spanning multiple tenants, the existing methods are no longer correct.&lt;/p>
+&lt;h4 id="proposal-2">Proposal&lt;/h4>
+&lt;p>The identifier for aforementioned features for queries involving more than a single tenant should be derived from: An ordered, distinct list of tenant IDs, which is joined by a &lt;code>|&lt;/code>. This will produce a reproducible identifier for the same set of tenants no matter which order they have been specified.&lt;/p>
+&lt;p>While this feature is considered experimental, this provides some insights and ability to limit multi-tenant queries with these short comings:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Cardinality costs to the possible amount of tenant ID combinations.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Query limits applied to single tenants part of a multi tenant query are ignored.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Challenge&lt;/th>
+&lt;th>Status&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Aggregate data without overlap&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Exposure of feature to the user&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Implementing Limits, Fairness and Observability for Cross-Tenant queries&lt;/td>
+&lt;td>Implementation in PR &lt;a href="https://github.com/cortexproject/cortex/pull/3250">#3250&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="future-work">Future work&lt;/h3>
+&lt;p>Those features are currently out of scope for this proposal, but we can foresee some interest implementing them after this proposal.&lt;/p>
+&lt;h4 id="cross-tenant-support-for-the-ruler">Cross Tenant support for the ruler&lt;/h4>
+&lt;p>Ability to use multi tenant queries in the ruler.&lt;/p>
+&lt;h4 id="allow-the-identifier-for-limits-fairness-and-observability-to-be-switched-out">Allow the identifier for limits, fairness and observability to be switched out&lt;/h4>
+&lt;p>It would be great if the source identifier could be made more pluggable. This could allow to for example base all of those features on another dimension (e.g. users rather than tenants)&lt;/p>
+&lt;h4 id="allow-customisation-of-the-label-used-to-expose-tenant-ids">Allow customisation of the label used to expose tenant ids&lt;/h4>
+&lt;p>As per this proposal the label name &lt;code>__tenant_id__&lt;/code> is fixed, but users might want to be able to modify that through a configuration option.&lt;/p>
+&lt;h4 id="retain-overlapping-tenant-id-label-values-recursively">Retain overlapping tenant id label values recursively&lt;/h4>
+&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>

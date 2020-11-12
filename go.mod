@@ -35,6 +35,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.2
 	github.com/json-iterator/go v1.1.10
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lib/pq v1.3.0
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.50
@@ -52,7 +53,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
-	github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52
+	github.com/thanos-io/thanos v0.13.1-0.20201112171553-05fbe15616c7
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
@@ -81,6 +82,9 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 // We can't upgrade to grpc 1.30.0 until go.etcd.io/etcd will support it.
 replace google.golang.org/grpc => google.golang.org/grpc v1.29.1
+
+// We can't upgrade until grpc upgrade is unblocked.
+replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab

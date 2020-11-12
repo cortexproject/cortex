@@ -99,9 +99,9 @@ type Compactor struct {
 	// If empty, no users are disabled. If not empty, users in the map are disabled (not owned by this compactor).
 	disabledUsers map[string]struct{}
 
-	// Function that creates bucket client and TSDB compactor using the context.
+	// Function that creates bucket client, TSDB planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error)
+	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error)
 
 	// Users scanner, used to discover users from the bucket.
 	usersScanner *UsersScanner
@@ -109,8 +109,9 @@ type Compactor struct {
 	// Blocks cleaner is responsible to hard delete blocks marked for deletion.
 	blocksCleaner *BlocksCleaner
 
-	// Underlying compactor used to compact TSDB blocks.
+	// Underlying compactor and planner used to compact TSDB blocks.
 	tsdbCompactor tsdb.Compactor
+	tsdbPlanner   compact.Planner
 
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.Bucket
@@ -135,17 +136,22 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
-	createBucketClientAndTsdbCompactor := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
+	createDependencies := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error) {
 		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "failed to create the bucket client")
+			return nil, nil, nil, errors.Wrap(err, "failed to create the bucket client")
 		}
 
 		compactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
-		return bucketClient, compactor, err
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		planner := compact.NewTSDBBasedPlanner(logger, compactorCfg.BlockRanges.ToMilliseconds())
+		return bucketClient, compactor, planner, nil
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createBucketClientAndTsdbCompactor)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createDependencies)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -158,16 +164,16 @@ func newCompactor(
 	storageCfg cortex_tsdb.BlocksStorageConfig,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	createBucketClientAndTsdbCompactor func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error),
+	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error),
 ) (*Compactor, error) {
 	c := &Compactor{
-		compactorCfg:                       compactorCfg,
-		storageCfg:                         storageCfg,
-		parentLogger:                       logger,
-		logger:                             log.With(logger, "component", "compactor"),
-		registerer:                         registerer,
-		syncerMetrics:                      newSyncerMetrics(registerer),
-		createBucketClientAndTsdbCompactor: createBucketClientAndTsdbCompactor,
+		compactorCfg:       compactorCfg,
+		storageCfg:         storageCfg,
+		parentLogger:       logger,
+		logger:             log.With(logger, "component", "compactor"),
+		registerer:         registerer,
+		syncerMetrics:      newSyncerMetrics(registerer),
+		createDependencies: createDependencies,
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -223,7 +229,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	var err error
 
 	// Create bucket client and compactor.
-	c.bucketClient, c.tsdbCompactor, err = c.createBucketClientAndTsdbCompactor(ctx)
+	c.bucketClient, c.tsdbCompactor, c.tsdbPlanner, err = c.createDependencies(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize compactor objects")
 	}
@@ -472,6 +478,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		syncer,
 		grouper,
+		c.tsdbPlanner,
 		c.tsdbCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,

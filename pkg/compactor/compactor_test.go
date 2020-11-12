@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
 
@@ -86,7 +87,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
+	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -229,7 +230,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient := &cortex_tsdb.BucketClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
+	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -385,14 +386,14 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 
-	c, tsdbCompactor, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
+	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
 	defer cleanup()
 
-	// Mock the compactor as if there's no compaction to do,
+	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -404,7 +405,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure a plan has been executed for the blocks of each user.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
@@ -496,14 +497,14 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", nil)
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil)
 
-	c, tsdbCompactor, logs, registry, cleanup := prepare(t, cfg, bucketClient)
+	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
 
-	// Mock the compactor as if there's no compaction to do,
+	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -515,7 +516,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Only one user's block is compacted.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 1)
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 1)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
@@ -600,14 +601,14 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
 
-	c, tsdbCompactor, logs, _, cleanup := prepare(t, cfg, bucketClient)
+	c, _, tsdbPlanner, logs, _, cleanup := prepare(t, cfg, bucketClient)
 	defer cleanup()
 
-	// Mock the compactor as if there's no compaction to do,
+	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -619,7 +620,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
 	// Ensure a plan has been executed for the blocks of each user.
-	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
@@ -683,18 +684,18 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
+		c, _, tsdbPlanner, l, _, cleanup := prepare(t, cfg, bucketClient)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 		defer cleanup()
 
 		compactors = append(compactors, c)
 		logs = append(logs, l)
 
-		// Mock the compactor as if there's no compaction to do,
+		// Mock the planner as if there's no compaction to do,
 		// in order to simplify tests (all in all, we just want to
 		// test our logic and not TSDB compactor which we expect to
 		// be already tested).
-		tsdbCompactor.On("Plan", mock.Anything).Return([]string{}, nil)
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 	}
 
 	// Start all compactors
@@ -844,7 +845,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *concurrency.SyncBuffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer, func()) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -858,16 +859,17 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	}
 
 	tsdbCompactor := &tsdbCompactorMock{}
+	tsdbPlanner := &tsdbPlannerMock{}
 	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 
-	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, error) {
-		return bucketClient, tsdbCompactor, nil
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error) {
+		return bucketClient, tsdbCompactor, tsdbPlanner, nil
 	})
 	require.NoError(t, err)
 
-	return c, tsdbCompactor, logs, registry, cleanup
+	return c, tsdbCompactor, tsdbPlanner, logs, registry, cleanup
 }
 
 type tsdbCompactorMock struct {
@@ -887,6 +889,15 @@ func (m *tsdbCompactorMock) Write(dest string, b tsdb.BlockReader, mint, maxt in
 func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Block) (ulid.ULID, error) {
 	args := m.Called(dest, dirs, open)
 	return args.Get(0).(ulid.ULID), args.Error(1)
+}
+
+type tsdbPlannerMock struct {
+	mock.Mock
+}
+
+func (m *tsdbPlannerMock) Plan(ctx context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
+	args := m.Called(ctx, metasByMinTime)
+	return args.Get(0).([]*metadata.Meta), args.Error(1)
 }
 
 func mockBlockMetaJSON(id string) string {

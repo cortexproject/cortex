@@ -57,3 +57,4 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)
+- Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)

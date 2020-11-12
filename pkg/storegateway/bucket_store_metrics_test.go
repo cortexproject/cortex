@@ -199,6 +199,37 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="+Inf"} 3
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_sum 1.328621e+06
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_count 3
+
+			# HELP cortex_bucket_store_indexheader_lazy_load_duration_seconds Duration of the index-header lazy loading in seconds.
+			# TYPE cortex_bucket_store_indexheader_lazy_load_duration_seconds histogram
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.02"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.05"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.2"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="0.5"} 0
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="1"} 3
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="2"} 3
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="5"} 3
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_sum 1.9500000000000002
+			cortex_bucket_store_indexheader_lazy_load_duration_seconds_count 3
+
+			# HELP cortex_bucket_store_indexheader_lazy_load_failed_total Total number of failed index-header lazy load operations.
+			# TYPE cortex_bucket_store_indexheader_lazy_load_failed_total counter
+			cortex_bucket_store_indexheader_lazy_load_failed_total 1.373659e+06
+
+			# HELP cortex_bucket_store_indexheader_lazy_load_total Total number of index-header lazy load operations.
+			# TYPE cortex_bucket_store_indexheader_lazy_load_total counter
+			cortex_bucket_store_indexheader_lazy_load_total 1.35114e+06
+
+			# HELP cortex_bucket_store_indexheader_lazy_unload_failed_total Total number of failed index-header lazy unload operations.
+			# TYPE cortex_bucket_store_indexheader_lazy_unload_failed_total counter
+			cortex_bucket_store_indexheader_lazy_unload_failed_total 1.418697e+06
+
+			# HELP cortex_bucket_store_indexheader_lazy_unload_total Total number of index-header lazy unload operations.
+			# TYPE cortex_bucket_store_indexheader_lazy_unload_total counter
+			cortex_bucket_store_indexheader_lazy_unload_total 1.396178e+06
 `))
 	require.NoError(t, err)
 }
@@ -298,6 +329,12 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.seriesFetchDuration.Observe(58 * base)
 	m.postingsFetchDuration.Observe(59 * base)
 
+	m.indexHeaderLazyLoadCount.Add(60 * base)
+	m.indexHeaderLazyLoadFailedCount.Add(61 * base)
+	m.indexHeaderLazyUnloadCount.Add(62 * base)
+	m.indexHeaderLazyUnloadFailedCount.Add(63 * base)
+	m.indexHeaderLazyLoadDuration.Observe(0.65)
+
 	return reg
 }
 
@@ -328,6 +365,12 @@ type mockedBucketStoreMetrics struct {
 
 	seriesFetchDuration   prometheus.Histogram
 	postingsFetchDuration prometheus.Histogram
+
+	indexHeaderLazyLoadCount         prometheus.Counter
+	indexHeaderLazyLoadFailedCount   prometheus.Counter
+	indexHeaderLazyUnloadCount       prometheus.Counter
+	indexHeaderLazyUnloadFailedCount prometheus.Counter
+	indexHeaderLazyLoadDuration      prometheus.Histogram
 }
 
 func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMetrics {
@@ -438,6 +481,28 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
 		Help:    "Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
+	})
+
+	m.indexHeaderLazyLoadCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_indexheader_lazy_load_total",
+		Help: "Total number of index-header lazy load operations.",
+	})
+	m.indexHeaderLazyLoadFailedCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_indexheader_lazy_load_failed_total",
+		Help: "Total number of failed index-header lazy load operations.",
+	})
+	m.indexHeaderLazyUnloadCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_indexheader_lazy_unload_total",
+		Help: "Total number of index-header lazy unload operations.",
+	})
+	m.indexHeaderLazyUnloadFailedCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_indexheader_lazy_unload_failed_total",
+		Help: "Total number of failed index-header lazy unload operations.",
+	})
+	m.indexHeaderLazyLoadDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_indexheader_lazy_load_duration_seconds",
+		Help:    "Duration of the index-header lazy loading in seconds.",
+		Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5},
 	})
 
 	return &m

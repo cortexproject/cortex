@@ -347,6 +347,8 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
+		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,
+		u.cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout,
 	)
 	if err != nil {
 		return nil, err

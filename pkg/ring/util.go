@@ -107,7 +107,7 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 			if HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
 				ringLastStateTs = time.Now()
-			} else if ringLastStateTs.Add(minStability).Before(time.Now()) {
+			} else if time.Since(ringLastStateTs) >= minStability {
 				return nil
 			}
 		}

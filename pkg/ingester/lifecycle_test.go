@@ -67,12 +67,12 @@ func TestIngesterRestart(t *testing.T) {
 	config := defaultIngesterTestConfig()
 	clientConfig := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
-	config.LifecyclerConfig.SkipUnregister = true
+	config.LifecyclerConfig.UnregisterFromRing = false
 
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 		time.Sleep(100 * time.Millisecond)
-		// doesn't actually unregister due to skipUnregister: true
+		// Doesn't actually unregister due to UnregisterFromRing: false.
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
@@ -83,7 +83,7 @@ func TestIngesterRestart(t *testing.T) {
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 		time.Sleep(100 * time.Millisecond)
-		// doesn't actually unregister due to skipUnregister: true
+		// Doesn't actually unregister due to UnregisterFromRing: false.
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ingester))
 	}
 
@@ -95,12 +95,12 @@ func TestIngesterRestart(t *testing.T) {
 }
 
 func TestIngester_ShutdownHandler(t *testing.T) {
-	for _, skipUnregister := range []bool{false, true} {
-		t.Run(fmt.Sprintf("SkipUnregister=%t", skipUnregister), func(t *testing.T) {
+	for _, unregister := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unregister=%t", unregister), func(t *testing.T) {
 			config := defaultIngesterTestConfig()
 			clientConfig := defaultClientTestConfig()
 			limits := defaultLimitsTestConfig()
-			config.LifecyclerConfig.SkipUnregister = skipUnregister
+			config.LifecyclerConfig.UnregisterFromRing = unregister
 			_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 
 			// Make sure the ingester has been added to the ring.
@@ -112,7 +112,7 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 			ingester.ShutdownHandler(recorder, nil)
 			require.Equal(t, http.StatusNoContent, recorder.Result().StatusCode)
 
-			// Make sure the ingester has been removed from the ring even when skipUnregister is true.
+			// Make sure the ingester has been removed from the ring even when UnregisterFromRing is false.
 			test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
 				return testutils.NumTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
 			})

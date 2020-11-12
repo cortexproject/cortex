@@ -1800,14 +1800,15 @@ func TestRingUpdates(t *testing.T) {
 
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
 	lcCfg := LifecyclerConfig{
-		RingConfig:      cfg,
-		NumTokens:       16,
-		HeartbeatPeriod: heartbeat,
-		ObservePeriod:   0,
-		JoinAfter:       0,
-		Zone:            fmt.Sprintf("zone-%d", lifecyclerID%zones),
-		Addr:            fmt.Sprintf("addr-%d", lifecyclerID),
-		ID:              fmt.Sprintf("ingester-%d", lifecyclerID),
+		RingConfig:         cfg,
+		NumTokens:          16,
+		HeartbeatPeriod:    heartbeat,
+		ObservePeriod:      0,
+		JoinAfter:          0,
+		Zone:               fmt.Sprintf("zone-%d", lifecyclerID%zones),
+		Addr:               fmt.Sprintf("addr-%d", lifecyclerID),
+		ID:                 fmt.Sprintf("ingester-%d", lifecyclerID),
+		UnregisterFromRing: true,
 	}
 
 	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, nil)

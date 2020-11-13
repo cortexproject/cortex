@@ -21,8 +21,8 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex currently supports two storage engines to store and query the time series:
 
-- Chunks (default, stable)
-- Blocks (experimental)
+- Chunks (default)
+- Blocks
 
 The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
 
@@ -44,13 +44,9 @@ For this reason, the chunks storage consists of:
   * [Google Cloud Storage](https://cloud.google.com/storage/)
   * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
 
-Internally, the access to the chunks storage relies on a unified interface called "chunks store". Unlike other Cortex components, the chunk store is not a separate service, but rather a library embedded in the services that need to access the long-term storage: [ingester](#ingester), [querier](#querier) and [ruler](#ruler).
+For more information, please check out the [Chunks storage](./chunks-storage/_index.md) documentation.
 
-The chunk and index format are versioned, this allows Cortex operators to upgrade the cluster to take advantage of new features and improvements. This strategy enables changes in the storage format without requiring any downtime or complex procedures to rewrite the stored data. A set of schemas are used to map the version while reading and writing time series belonging to a specific period of time.
-
-The current schema recommendation is the **v9 schema** for most use cases and **v10 schema** if you expect to have very high cardinality metrics (v11 is still experimental). For more information about the schema, please check out the [Schema](configuration/schema-config-reference.md) documentation.
-
-### Blocks storage (experimental)
+### Blocks storage
 
 The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by few files storing the chunks and the block index.
 
@@ -61,10 +57,10 @@ The blocks storage doesn't require a dedicated storage backend for the index. Th
 * [Amazon S3](https://aws.amazon.com/s3)
 * [Google Cloud Storage](https://cloud.google.com/storage/)
 * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
-* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 * [OpenStack Swift](https://wiki.openstack.org/wiki/Swift) (experimental)
+* [Local Filesystem](https://thanos.io/storage.md/#filesystem) (single node only)
 
-For more information, please check out the [Blocks storage](./blocks-storage/) documentation.
+For more information, please check out the [Blocks storage](./blocks-storage/_index.md) documentation.
 
 ## Services
 
@@ -110,7 +106,7 @@ The supported KV stores for the HA tracker are:
 
 Note: Memberlist is not supported. Memberlist-based KV store propagates updates using gossip, which is very slow for HA purposes: result is that different distributors may see different Prometheus server as elected HA replica, which is definitely not desirable.
 
-For more information, please refer to [config for sending HA pairs data to Cortex](production/ha-pair-handling.md) in the documentation.
+For more information, please refer to [config for sending HA pairs data to Cortex](guides/ha-pair-handling.md) in the documentation.
 
 #### Hashing
 
@@ -151,7 +147,7 @@ We recommend randomly load balancing write requests across distributor instances
 
 The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path.
 
-Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 12 hours for the chunks storage and 2 hours for the experimental blocks storage). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
+Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 12 hours for the chunks storage and 2 hours for the blocks storage). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
@@ -207,6 +203,13 @@ The query frontend internally performs some query adjustments and holds queries 
 
 Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
+Flow of the query in the system when using query-frontend:
+
+1) Query is received by query frontend, which can optionally split it or serve from the cache.
+2) Query frontend stores the query into in-memory queue, where it waits for some querier to pick it up.
+3) Querier picks up the query, and executes it.
+4) Querier sends result back to query-frontend, which then forwards it to the client.
+
 #### Queueing
 
 The query frontend queuing mechanism is used to:
@@ -222,6 +225,24 @@ The query frontend splits multi-day queries into multiple single-day queries, ex
 #### Caching
 
 The query frontend supports caching query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any cortex caching backend (currently memcached, redis, and an in-memory cache).
+
+### Query Scheduler
+
+Query Scheduler is an **optional** service that moves the internal queue from query frontend into separate component.
+This enables independent scaling of query frontends and number of queues (query scheduler).
+
+In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
+(using `-frontend.scheduler-address` and `-querier.scheduler-address` options respectively).
+
+Flow of the query in the system changes when using query scheduler:
+
+1) Query is received by query frontend, which can optionally split it or serve from the cache.
+2) Query frontend forwards the query to random query scheduler process.
+3) Query scheduler stores the query into in-memory queue, where it waits for some querier to pick it up.
+3) Querier picks up the query, and executes it.
+4) Querier sends result back to query-frontend, which then forwards it to the client.
+
+Query schedulers are **stateless**. It is recommended to run two replicas to make sure queries can still be serviced while one replica is restarting.
 
 ### Ruler
 

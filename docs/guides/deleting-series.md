@@ -1,7 +1,7 @@
 ---
 title: "Deleting Series"
 linkTitle: "Deleting Series"
-weight: 3
+weight: 10
 slug: deleting-series
 ---
 

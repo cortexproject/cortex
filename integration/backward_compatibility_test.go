@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
 	"fmt"
@@ -18,47 +18,40 @@ import (
 
 var (
 	// If you change the image tag, remember to update it in the preloading done
-	// by CircleCI too (see .circleci/config.yml).
+	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		// 0.6.0 used 204 status code for querier and ingester
-		// distributor didn't have /ready page, and we used check on the /ring page instead
-		"quay.io/cortexproject/cortex:v0.6.0": preCortex1Flags,
-
-		// 0.7.0 used 204 status code for all components
-		"quay.io/cortexproject/cortex:v0.7.0": preCortex1Flags,
-
-		"quay.io/cortexproject/cortex:v1.0.0": func(flags map[string]string) map[string]string {
-			return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-				"-experimental.store-gateway.sharding-enabled":              "",
-				"-experimental.store-gateway.sharding-ring.store":           "",
-				"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-				"-experimental.store-gateway.replication-factor":            "",
-			})
-		},
-
-		"quay.io/cortexproject/cortex:v1.1.0": nil,
-		"quay.io/cortexproject/cortex:v1.2.0": nil,
-		"quay.io/cortexproject/cortex:v1.3.0": nil,
+		"quay.io/cortexproject/cortex:v1.0.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.1.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.2.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.3.0": preCortex14Flags,
+		"quay.io/cortexproject/cortex:v1.4.0": preCortex16Flags,
+		"quay.io/cortexproject/cortex:v1.5.0": preCortex16Flags,
 	}
 )
 
-func preCortex1Flags(flags map[string]string) map[string]string {
+func preCortex14Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		"-schema-config-file":                                       "",
-		"-config-yaml":                                              flags["-schema-config-file"],
-		"-table-manager.poll-interval":                              "",
-		"-dynamodb.poll-interval":                                   flags["-table-manager.poll-interval"],
-		"-experimental.store-gateway.sharding-enabled":              "",
-		"-experimental.store-gateway.sharding-ring.store":           "",
-		"-experimental.store-gateway.sharding-ring.consul.hostname": "",
-		"-experimental.store-gateway.replication-factor":            "",
+		// Blocks storage CLI flags removed the "experimental" prefix in 1.4.
+		"-store-gateway.sharding-enabled":                 "",
+		"-store-gateway.sharding-ring.store":              "",
+		"-store-gateway.sharding-ring.consul.hostname":    "",
+		"-store-gateway.sharding-ring.replication-factor": "",
+		// Query-scheduler has been introduced in 1.6.0
+		"-frontend.scheduler-dns-lookup-period": "",
+	})
+}
+
+func preCortex16Flags(flags map[string]string) map[string]string {
+	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
+		// Query-scheduler has been introduced in 1.6.0
+		"-frontend.scheduler-dns-lookup-period": "",
 	})
 }
 
 func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}
@@ -71,7 +64,7 @@ func TestBackwardCompatibilityWithChunksStorage(t *testing.T) {
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags
+			flags := ChunksStorageFlags()
 			if flagsFn != nil {
 				flags = flagsFn(flags)
 			}
@@ -95,7 +88,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start Cortex table-manager (running on current version since the backward compatibility
 	// test is about testing a rolling update of other services).
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -104,7 +97,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags, "")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
 	// Wait until the distributor has updated the ring.
@@ -121,7 +114,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	// Start ingester-2 on new version, to ensure the transfer is backward compatible.
@@ -131,10 +124,11 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 	// stopped, which means the transfer to ingester-2 is completed.
 	require.NoError(t, s.Stop(ingester1))
 
-	checkQueries(t, consul, distributor,
+	checkQueries(t, consul,
 		expectedVector,
 		previousImage,
-		flagsForOldImage, ChunksStorageFlags,
+		flagsForOldImage,
+		ChunksStorageFlags(),
 		now,
 		s,
 		1,
@@ -152,7 +146,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(dynamo, consul))
 
-	flagsForNewImage := mergeFlags(ChunksStorageFlags, map[string]string{
+	flagsForNewImage := mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-distributor.replication-factor": "3",
 	})
 
@@ -160,7 +154,7 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 
 	// Start Cortex table-manager (running on current version since the backward compatibility
 	// test is about testing a rolling update of other services).
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags, "")
+	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're
@@ -188,17 +182,20 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	checkQueries(t, consul, distributor,
+	checkQueries(t, consul,
 		expectedVector,
 		previousImage,
-		flagsForPreviousImage, flagsForNewImage,
+		flagsForPreviousImage,
+		flagsForNewImage,
 		now,
 		s,
 		3,
 	)
 }
 
-func checkQueries(t *testing.T, consul *e2e.HTTPService, distributor *e2ecortex.CortexService,
+func checkQueries(
+	t *testing.T,
+	consul *e2e.HTTPService,
 	expectedVector model.Vector,
 	previousImage string,
 	flagsForOldImage, flagsForNewImage map[string]string,
@@ -206,31 +203,59 @@ func checkQueries(t *testing.T, consul *e2e.HTTPService, distributor *e2ecortex.
 	s *e2e.Scenario,
 	numIngesters int,
 ) {
-	// Query the new ingester both with the old and the new querier.
-	for _, image := range []string{previousImage, ""} {
-		var querier *e2ecortex.CortexService
+	cases := map[string]struct {
+		queryFrontendImage string
+		queryFrontendFlags map[string]string
+		querierImage       string
+		querierFlags       map[string]string
+	}{
+		"old query-frontend, new querier": {
+			queryFrontendImage: previousImage,
+			queryFrontendFlags: flagsForOldImage,
+			querierImage:       "",
+			querierFlags:       flagsForNewImage,
+		},
+		"new query-frontend, old querier": {
+			queryFrontendImage: "",
+			queryFrontendFlags: flagsForNewImage,
+			querierImage:       previousImage,
+			querierFlags:       flagsForOldImage,
+		},
+	}
 
-		if image == previousImage {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForOldImage, image)
-		} else {
-			querier = e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flagsForNewImage, image)
-		}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Start query-frontend.
+			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", c.queryFrontendFlags, c.queryFrontendImage)
+			require.NoError(t, s.Start(queryFrontend))
+			defer func() {
+				require.NoError(t, s.Stop(queryFrontend))
+			}()
 
-		require.NoError(t, s.StartAndWaitReady(querier))
+			// Start querier.
+			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), e2e.MergeFlagsWithoutRemovingEmpty(c.querierFlags, map[string]string{
+				"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+			}), c.querierImage)
 
-		// Wait until the querier has updated the ring.
-		require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numIngesters*512)), "cortex_ring_tokens_total"))
+			require.NoError(t, s.Start(querier))
+			defer func() {
+				require.NoError(t, s.Stop(querier))
+			}()
 
-		// Query the series
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
-		require.NoError(t, err)
+			// Wait until querier and query-frontend are ready, and the querier has updated the ring.
+			require.NoError(t, s.WaitReady(querier, queryFrontend))
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numIngesters*512)), "cortex_ring_tokens_total"))
 
-		result, err := c.Query("series_1", now)
-		require.NoError(t, err)
-		require.Equal(t, model.ValVector, result.Type())
-		assert.Equal(t, expectedVector, result.(model.Vector))
+			// Query the series.
+			for _, endpoint := range []string{queryFrontend.HTTPEndpoint(), querier.HTTPEndpoint()} {
+				c, err := e2ecortex.NewClient("", endpoint, "", "", "user-1")
+				require.NoError(t, err)
 
-		// Stop the querier, so that the test on the next image will work.
-		require.NoError(t, s.Stop(querier))
+				result, err := c.Query("series_1", now)
+				require.NoError(t, err)
+				require.Equal(t, model.ValVector, result.Type())
+				assert.Equal(t, expectedVector, result.(model.Vector))
+			}
+		})
 	}
 }

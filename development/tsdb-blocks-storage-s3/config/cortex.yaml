@@ -10,7 +10,7 @@ ingester_client:
     # Configure the client to allow messages up to 100MB.
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
-    use_gzip_compression: true
+    grpc_compression: gzip
 
 ingester:
   lifecycler:
@@ -70,9 +70,19 @@ blocks_storage:
 ruler:
   enable_api: true
   storage:
-    type: configdb
-    configdb:
-      configs_api_url: http://configstore:80/
+    type: s3
+    s3:
+      bucketnames: cortex-ruler
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+  enable_sharding: true
+  ring:
+    heartbeat_period:   5s
+    heartbeat_timeout:  15s
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
 
 alertmanager:
   enable_api: true
@@ -110,6 +120,10 @@ store_gateway:
 
 frontend_worker:
   frontend_address: "query-frontend:9007"
+  match_max_concurrent: true
+
+  # By setting scheduler_address, querier worker would use scheduler instead of frontend.
+  # scheduler_address: "query-scheduler:9012"
 
 query_range:
   split_queries_by_interval: 24h

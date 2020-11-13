@@ -1,3 +1,7 @@
+# Local settings (optional). See Makefile.local.example for an example.
+# WARNING: do not commit to a repository!
+-include Makefile.local
+
 .PHONY: all test clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 
@@ -8,11 +12,25 @@ GOPROXY_VALUE=$(shell go env GOPROXY)
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
-# Use CIRCLE_TAG if present for releases.
-IMAGE_TAG ?= $(if $(CIRCLE_TAG),$(CIRCLE_TAG),$(shell ./tools/image-tag))
+
+# For a tag push GITHUB_REF will look like refs/tags/<tag_name>,
+# If finding refs/tags/ does not equal emptystring then use
+# the tag we are at as the image tag.
+ifneq (,$(findstring refs/tags/, $(GITHUB_REF)))
+	GIT_TAG := $(shell git tag --points-at HEAD)
+endif
+# Keep circle-ci compatability for now.
+ifdef CIRCLE_TAG
+	GIT_TAG := $(CIRCLE_TAG)
+endif
+IMAGE_TAG ?= $(if $(GIT_TAG),$(GIT_TAG),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 UPTODATE := .uptodate
+
+.PHONY: image-tag
+image-tag:
+	@echo $(IMAGE_TAG)
 
 # Support gsed on OSX (installed via brew), falling back to sed. On Linux
 # systems gsed won't be installed, so will use sed as expected.
@@ -30,7 +48,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o -name packaging -prune -o
+DONT_FIND := -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o -name packaging -prune -o
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
@@ -60,14 +78,17 @@ $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
 pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
-pkg/querier/frontend/frontend.pb.go: pkg/querier/frontend/frontend.proto
+pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
+pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
+pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
+tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
 
 all: $(UPTODATE_FILES)
 test: protos
@@ -140,12 +161,22 @@ lint:
 	golangci-lint run
 
 	# Ensure no blacklisted package is imported.
-	faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+	GOFLAGS="-tags=requires_docker" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
+	# Ensure clean pkg structure.
+	faillint -paths "\
+		github.com/cortexproject/cortex/pkg/scheduler,\
+		github.com/cortexproject/cortex/pkg/frontend,\
+		github.com/cortexproject/cortex/pkg/frontend/transport,\
+		github.com/cortexproject/cortex/pkg/frontend/v1,\
+		github.com/cortexproject/cortex/pkg/frontend/v2" \
+		./pkg/querier/...
+	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
+
 	# Validate Kubernetes spec files. Requires:
-	# https://kubeval.instrumenta.dev
+	# https://kubeval.instrumenta.dev
 	kubeval ./k8s/*
 
 test:

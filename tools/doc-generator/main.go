@@ -22,11 +22,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
+	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -67,7 +68,7 @@ var (
 		},
 		{
 			name:       "query_frontend_config",
-			structType: reflect.TypeOf(frontend.Config{}),
+			structType: reflect.TypeOf(frontend.CombinedFrontendConfig{}),
 			desc:       "The query_frontend_config configures the Cortex query-frontend.",
 		},
 		{
@@ -112,8 +113,8 @@ var (
 		},
 		{
 			name:       "frontend_worker_config",
-			structType: reflect.TypeOf(frontend.WorkerConfig{}),
-			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend.",
+			structType: reflect.TypeOf(querier_worker.Config{}),
+			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.",
 		},
 		{
 			name:       "etcd_config",
@@ -168,17 +169,17 @@ var (
 		{
 			name:       "blocks_storage_config",
 			structType: reflect.TypeOf(tsdb.BlocksStorageConfig{}),
-			desc:       "The blocks_storage_config configures the experimental blocks storage.",
+			desc:       "The blocks_storage_config configures the blocks storage.",
 		},
 		{
 			name:       "compactor_config",
 			structType: reflect.TypeOf(compactor.Config{}),
-			desc:       "The compactor_config configures the compactor for the experimental blocks storage.",
+			desc:       "The compactor_config configures the compactor for the blocks storage.",
 		},
 		{
 			name:       "store_gateway_config",
 			structType: reflect.TypeOf(storegateway.Config{}),
-			desc:       "The store_gateway_config configures the store-gateway service used by the experimental blocks storage.",
+			desc:       "The store_gateway_config configures the store-gateway service used by the blocks storage.",
 		},
 		{
 			name:       "purger_config",

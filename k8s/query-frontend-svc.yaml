@@ -8,7 +8,7 @@ spec:
   clusterIP: None
   ports:
     - port: 9095
-      name: grcp
+      name: grpc
     - port: 80
       name: http
   selector:

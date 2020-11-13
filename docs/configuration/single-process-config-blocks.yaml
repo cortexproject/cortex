@@ -25,7 +25,7 @@ ingester_client:
     # Configure the client to allow messages up to 100MB.
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
-    use_gzip_compression: true
+    grpc_compression: gzip
 
 ingester:
   lifecycler:

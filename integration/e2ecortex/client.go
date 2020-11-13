@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -130,8 +131,28 @@ func (c *Client) QueryRange(query string, start, end time.Time, step time.Durati
 	return value, err
 }
 
+// QueryRangeRaw runs a ranged query directly against the querier API.
+func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Duration) (*http.Response, []byte, error) {
+	addr := fmt.Sprintf(
+		"http://%s/api/prom/api/v1/query_range?query=%s&start=%s&end=%s&step=%s",
+		c.querierAddress,
+		url.QueryEscape(query),
+		FormatTime(start),
+		FormatTime(end),
+		strconv.FormatFloat(step.Seconds(), 'f', -1, 64),
+	)
+
+	return c.query(addr)
+}
+
+// QueryRaw runs a query directly against the querier API.
 func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 	addr := fmt.Sprintf("http://%s/api/prom/api/v1/query?query=%s", c.querierAddress, url.QueryEscape(query))
+
+	return c.query(addr)
+}
+
+func (c *Client) query(addr string) (*http.Response, []byte, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -163,16 +184,14 @@ func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSe
 }
 
 // LabelValues gets label values
-func (c *Client) LabelValues(label string) (model.LabelValues, error) {
-	// Cortex currently doesn't support start/end time.
-	result, _, err := c.querierClient.LabelValues(context.Background(), label, time.Time{}, time.Time{})
+func (c *Client) LabelValues(label string, start, end time.Time) (model.LabelValues, error) {
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, start, end)
 	return result, err
 }
 
 // LabelNames gets label names
-func (c *Client) LabelNames() ([]string, error) {
-	// Cortex currently doesn't support start/end time.
-	result, _, err := c.querierClient.LabelNames(context.Background(), time.Time{}, time.Time{})
+func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
+	result, _, err := c.querierClient.LabelNames(context.Background(), start, end)
 	return result, err
 }
 
@@ -317,6 +336,28 @@ func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	return nil
 }
 
+// DeleteRuleNamespace deletes all the rule groups (and the namespace itself).
+func (c *Client) DeleteRuleNamespace(namespace string) error {
+	// Create HTTP request
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	_, err = c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // userConfig is used to communicate a users alertmanager configs
 type userConfig struct {
 	TemplateFiles      map[string]string `yaml:"template_files"`
@@ -417,4 +458,9 @@ func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error)
 
 	client := &http.Client{Timeout: c.timeout}
 	return client.Do(req)
+}
+
+// FormatTime converts a time to a string acceptable by the Prometheus API.
+func FormatTime(t time.Time) string {
+	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }

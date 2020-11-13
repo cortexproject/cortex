@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
@@ -624,8 +625,8 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	block1 := ulid.MustNew(1, nil)
 	block2 := ulid.MustNew(2, nil)
-	series1 := []storepb.Label{{Name: "__name__", Value: "metric_1"}}
-	series2 := []storepb.Label{{Name: "__name__", Value: "metric_2"}}
+	series1 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_1"}}
+	series2 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_2"}}
 
 	series1Samples := []promql.Point{
 		{T: 1589759955000, V: 1},
@@ -737,8 +738,8 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, matrix, 2)
 
-	assert.Equal(t, storepb.LabelsToPromLabels(series1), matrix[0].Metric)
-	assert.Equal(t, storepb.LabelsToPromLabels(series2), matrix[1].Metric)
+	assert.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
+	assert.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
 	assert.Equal(t, series1Samples, matrix[0].Points)
 	assert.Equal(t, series2Samples, matrix[1].Points)
 }
@@ -750,7 +751,7 @@ type blocksStoreSetMock struct {
 	nextResult      int
 }
 
-func (m *blocksStoreSetMock) GetClientsFor(_ []ulid.ULID, _ map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
 	if m.nextResult >= len(m.mockedResponses) {
 		panic("not enough mocked results")
 	}
@@ -815,11 +816,16 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 }
 
 type blocksStoreLimitsMock struct {
-	maxChunksPerQuery int
+	maxChunksPerQuery           int
+	storeGatewayTenantShardSize int
 }
 
 func (m *blocksStoreLimitsMock) MaxChunksPerQuery(_ string) int {
 	return m.maxChunksPerQuery
+}
+
+func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(userID string) int {
+	return m.storeGatewayTenantShardSize
 }
 
 func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *storepb.SeriesResponse {
@@ -835,7 +841,7 @@ func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *st
 	return &storepb.SeriesResponse{
 		Result: &storepb.SeriesResponse_Series{
 			Series: &storepb.Series{
-				Labels: storepb.PromLabelsToLabels(lbls),
+				Labels: labelpb.ZLabelsFromPromLabels(lbls),
 				Chunks: []storepb.AggrChunk{
 					{MinTime: timeMillis, MaxTime: timeMillis, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: chunkData}},
 				},

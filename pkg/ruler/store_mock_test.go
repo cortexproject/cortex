@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -14,8 +15,44 @@ type mockRuleStore struct {
 }
 
 var (
-	interval, _ = time.ParseDuration("1m")
-	mockRules   = map[string]rules.RuleGroupList{
+	interval, _         = time.ParseDuration("1m")
+	mockRulesNamespaces = map[string]rules.RuleGroupList{
+		"user1": {
+			&rules.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "namespace1",
+				User:      "user1",
+				Rules: []*rules.RuleDesc{
+					{
+						Record: "UP_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP_ALERT",
+						Expr:  "up < 1",
+					},
+				},
+				Interval: interval,
+			},
+			&rules.RuleGroupDesc{
+				Name:      "fail",
+				Namespace: "namespace2",
+				User:      "user1",
+				Rules: []*rules.RuleDesc{
+					{
+						Record: "UP2_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP2_ALERT",
+						Expr:  "up < 1",
+					},
+				},
+				Interval: interval,
+			},
+		},
+	}
+	mockRules = map[string]rules.RuleGroupList{
 		"user1": {
 			&rules.RuleGroupDesc{
 				Name:      "group1",
@@ -78,25 +115,36 @@ func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 	}
 }
 
-func (m *mockRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	copy := make(map[string]rules.RuleGroupList)
-	for k, v := range m.rules {
-		copy[k] = v
+	var result []string
+	for u := range m.rules {
+		result = append(result, u)
 	}
-
-	return copy, nil
+	return result, nil
 }
 
-func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace string) (rules.RuleGroupList, error) {
+func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rules.RuleGroupList, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	result := make(map[string]rules.RuleGroupList)
+	for k, v := range m.rules {
+		result[k] = append(rules.RuleGroupList(nil), v...)
+	}
+
+	return result, nil
+}
+
+func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, userID, namespace string) (rules.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	userRules, exists := m.rules[userID]
 	if !exists {
-		return nil, rules.ErrUserNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	if namespace == "" {
@@ -112,13 +160,18 @@ func (m *mockRuleStore) ListRuleGroups(ctx context.Context, userID, namespace st
 	}
 
 	if len(namespaceRules) == 0 {
-		return nil, rules.ErrGroupNamespaceNotFound
+		return rules.RuleGroupList{}, nil
 	}
 
 	return namespaceRules, nil
 }
 
-func (m *mockRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rules.RuleGroupList) error {
+	// Nothing to do, as mockRuleStore already returns groups with loaded rules.
+	return nil
+}
+
+func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -183,6 +236,35 @@ func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, name
 		if rg.Namespace == namespace && rg.Name == group {
 			m.rules[userID] = append(userRules[:i], userRules[:i+1]...)
 			return nil
+		}
+	}
+
+	return nil
+}
+
+func (m *mockRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	userRules, exists := m.rules[userID]
+	if !exists {
+		userRules = rules.RuleGroupList{}
+		m.rules[userID] = userRules
+	}
+
+	if namespace == "" {
+		return rules.ErrGroupNamespaceNotFound
+	}
+
+	for i, rg := range userRules {
+		if rg.Namespace == namespace {
+
+			// Only here to assert on partial failures.
+			if rg.Name == "fail" {
+				return fmt.Errorf("unable to delete rg")
+			}
+
+			m.rules[userID] = append(userRules[:i], userRules[i+1:]...)
 		}
 	}
 

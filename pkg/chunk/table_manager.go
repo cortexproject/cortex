@@ -12,8 +12,9 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	tsdberrors "github.com/prometheus/prometheus/tsdb/errors"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/mtime"
 
@@ -38,45 +39,35 @@ type tableManagerMetrics struct {
 
 func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
 	m := tableManagerMetrics{}
-	m.syncTableDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	m.syncTableDuration = promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_sync_duration_seconds",
 		Help:      "Time spent synching tables.",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"operation", "status_code"})
 
-	m.tableCapacity = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	m.tableCapacity = promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_capacity_units",
 		Help:      "Per-table capacity, measured in DynamoDB capacity units.",
 	}, []string{"op", "table"})
 
-	m.createFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.createFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_create_failures",
 		Help:      "Number of table creation failures during the last table-manager reconciliation",
 	})
-	m.deleteFailures = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.deleteFailures = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_delete_failures",
 		Help:      "Number of table deletion failures during the last table-manager reconciliation",
 	})
 
-	m.lastSuccessfulSync = prometheus.NewGauge(prometheus.GaugeOpts{
+	m.lastSuccessfulSync = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Namespace: "cortex",
 		Name:      "table_manager_sync_success_timestamp_seconds",
 		Help:      "Timestamp of the last successful table manager sync.",
 	})
-
-	if r != nil {
-		r.MustRegister(
-			m.syncTableDuration,
-			m.tableCapacity,
-			m.createFailures,
-			m.deleteFailures,
-			m.lastSuccessfulSync,
-		)
-	}
 
 	return &m
 }
@@ -150,7 +141,7 @@ func (cfg *TableManagerConfig) Validate() error {
 func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ThroughputUpdatesDisabled, "table-manager.throughput-updates-disabled", false, "If true, disable all changes to DB capacity")
 	f.BoolVar(&cfg.RetentionDeletesEnabled, "table-manager.retention-deletes-enabled", false, "If true, enables retention deletes of DB tables")
-	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Note: This setting is destructive to data!(default: 0, which disables deletion)")
+	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Must be either 0 (disabled) or a multiple of 24h. When enabled, be aware this setting is destructive to data!")
 	f.DurationVar(&cfg.PollInterval, "table-manager.poll-interval", 2*time.Minute, "How frequently to poll backend to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "table-manager.periodic-table.grace-period", 10*time.Minute, "Periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
 
@@ -479,7 +470,7 @@ func (m *TableManager) partitionTables(ctx context.Context, descriptions []Table
 
 func (m *TableManager) createTables(ctx context.Context, descriptions []TableDesc) error {
 	numFailures := 0
-	merr := tsdberrors.MultiError{}
+	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "creating table", "table", desc.Name)
@@ -496,7 +487,7 @@ func (m *TableManager) createTables(ctx context.Context, descriptions []TableDes
 
 func (m *TableManager) deleteTables(ctx context.Context, descriptions []TableDesc) error {
 	numFailures := 0
-	merr := tsdberrors.MultiError{}
+	merr := tsdb_errors.NewMulti()
 
 	for _, desc := range descriptions {
 		level.Info(util.Logger).Log("msg", "table has exceeded the retention period", "table", desc.Name)

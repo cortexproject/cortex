@@ -73,7 +73,7 @@ func filterMetrics(metrics []*io_prometheus_client.Metric, opts MetricsOptions) 
 	return filtered
 }
 
-func sumValues(values []float64) float64 {
+func SumValues(values []float64) float64 {
 	sum := 0.0
 	for _, v := range values {
 		sum += v

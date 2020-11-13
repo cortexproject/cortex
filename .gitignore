@@ -1,6 +1,7 @@
 cmd/test-exporter/test-exporter
 cmd/cortex/cortex
 cmd/query-tee/query-tee
+cmd/blocksconvert/blocksconvert
 .uptodate
 .pkg
 .cache
@@ -11,3 +12,18 @@ website/content/en/docs
 e2e_integration_test*
 active-query-tracker
 dist/
+
+# Binaries built from ./cmd
+blocksconvert
+cortex
+query-tee
+test-exporter
+
+!tools/blocksconvert
+
+# This is custom Makefile modification, if it exists.
+Makefile.local
+
+.idea
+compose
+compose-simple

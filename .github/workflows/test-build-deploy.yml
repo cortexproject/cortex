@@ -1,0 +1,252 @@
+name: ci
+on:
+  push:
+    branches: [master]
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        # Commands in the Makefile are hardcoded with an assumed file structure of the CI container
+        # Symlink ensures paths specified in previous commands don’t break
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Lint
+        run: make BUILD_IN_CONTAINER=false lint
+      - name: Check Vendor Directory
+        run: make BUILD_IN_CONTAINER=false mod-check
+      - name: Check Protos
+        run: make BUILD_IN_CONTAINER=false check-protos
+      - name: Check Generated Documentation
+        run: make BUILD_IN_CONTAINER=false check-doc
+      - name: Check White Noise.
+        run: make BUILD_IN_CONTAINER=false check-white-noise
+
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    services:
+      cassandra:
+        image: cassandra:3.11
+        env:
+          JVM_OPTS: "-Xms1024M -Xmx1024M"
+        ports:
+        - 9042:9042
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Run Tests
+        run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
+
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: ./.github/workflows/scripts/install-docker.sh
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Build Image
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false
+      - name: Build Website
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false web-build
+      - name: Upload Website Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: website public
+          path: website/public/
+      - name: Save Images
+        run: |
+          mkdir /tmp/images
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false save-images
+      - name: Create Docker Images Archive
+        run: tar -cvf images.tar /tmp/images
+      - name: Upload Docker Images Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: Docker Images
+          path: ./images.tar
+
+  integration:
+    needs: build
+    runs-on: ubuntu-16.04
+    steps:
+      - name: Upgrade golang
+        run: |
+          cd /tmp
+          wget https://dl.google.com/go/go1.14.9.linux-amd64.tar.gz
+          tar -zxvf go1.14.9.linux-amd64.tar.gz
+          sudo rm -fr /usr/local/go
+          sudo mv /tmp/go /usr/local/go
+          cd -
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: sudo ./.github/workflows/scripts/install-docker.sh
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          sudo mkdir -p /go/src/github.com/cortexproject/cortex
+          sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Docker Images Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Load Docker Images
+        run: |
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false load-images
+      - name: Preload Images
+        # We download docker images used by integration tests so that all images are available
+        # locally and the download time doesn't account in the test execution time, which is subject
+        # to a timeout
+        run: |
+          docker pull minio/minio:RELEASE.2019-12-30T05-45-39Z
+          docker pull amazon/dynamodb-local:1.11.477
+          docker pull consul:1.8.4
+          docker pull gcr.io/etcd-development/etcd:v3.4.7
+          docker pull quay.io/cortexproject/cortex:v1.0.0
+          docker pull quay.io/cortexproject/cortex:v1.1.0
+          docker pull quay.io/cortexproject/cortex:v1.2.0
+          docker pull quay.io/cortexproject/cortex:v1.3.0
+          docker pull quay.io/cortexproject/cortex:v1.4.0
+          docker pull quay.io/cortexproject/cortex:v1.5.0
+          docker pull shopify/bigtable-emulator:0.1.0
+          docker pull rinscy/cassandra:3.11.0
+          docker pull memcached:1.6.1
+          docker pull bouncestorage/swift-aio:55ba4331
+      - name: Integration Tests
+        run: |
+          export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
+          export IMAGE_TAG=$(make image-tag)
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG"
+          export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
+          echo "Running integration tests with image: $CORTEX_IMAGE"
+          go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/...
+        env:
+          IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
+
+  integration-configs-db:
+    needs: build
+    runs-on: ubuntu-16.04
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: sudo ./.github/workflows/scripts/install-docker.sh
+      - name: Download Docker Images Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Run Integration Configs Tests
+        # Github Actions does not support TTY in their default runners yet
+        run: |
+          touch build-image/.uptodate
+          MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP TTY='' configs-integration-test
+
+  deploy_website:
+    needs: [build, test]
+    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        with:
+          # web-deploy script expects repo to be cloned with ssh for some commands to work
+          ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Website Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: website public
+          path: website/public
+      - name: Setup SSH Keys and known_hosts for Github Authentication to Deploy Website
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        shell: bash
+      - name: Deploy Website
+        # SSH is used to authentricate with Github because web-deploy script uses git to checkout and push to gh-pages
+        run: make BUILD_IN_CONTAINER=false web-deploy
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+
+  deploy:
+    needs: [build, test, lint, integration, integration-configs-db]
+    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+      - name: Install Docker Client
+        run: ./.github/workflows/scripts/install-docker.sh
+      - name: Sym link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Download Docker Images Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: Docker Images
+      - name: Extract Docker Images Archive
+        run: tar -xvf images.tar -C /
+      - name: Load Images
+        run: |
+          ln -s /tmp/images ./docker-images
+          make BUILD_IN_CONTAINER=false load-images
+      - name: Deploy
+        run: |
+          if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+            docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+          fi
+          if [ -n "$QUAY_REGISTRY_PASSWORD" ]; then
+            docker login -u "$QUAY_REGISTRY_USER" -p "$QUAY_REGISTRY_PASSWORD" quay.io;
+          fi
+          export IMAGE_TAG=$(make image-tag)
+          ./push-images $NOQUAY
+        env:
+          DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+          QUAY_REGISTRY_USER: ${{secrets.QUAY_REGISTRY_USER}}
+          QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_REGISTRY_PASSWORD}}
+          NOQUAY: ${{secrets.NOQUAY}}

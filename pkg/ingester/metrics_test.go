@@ -84,9 +84,26 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_wal_truncations_total counter
 			cortex_ingester_tsdb_wal_truncations_total 1387834
 
+			# HELP cortex_ingester_tsdb_wal_corruptions_total Total number of TSDB WAL corruptions.
+			# TYPE cortex_ingester_tsdb_wal_corruptions_total counter
+			cortex_ingester_tsdb_wal_corruptions_total 2.676537e+06
+
 			# HELP cortex_ingester_tsdb_wal_writes_failed_total Total number of TSDB WAL writes that failed.
 			# TYPE cortex_ingester_tsdb_wal_writes_failed_total counter
 			cortex_ingester_tsdb_wal_writes_failed_total 1486965
+
+			# HELP cortex_ingester_tsdb_head_truncations_failed_total Total number of TSDB head truncations that failed.
+			# TYPE cortex_ingester_tsdb_head_truncations_failed_total counter
+			cortex_ingester_tsdb_head_truncations_failed_total 2.775668e+06
+
+			# HELP cortex_ingester_tsdb_head_truncations_total Total number of TSDB head truncations attempted.
+			# TYPE cortex_ingester_tsdb_head_truncations_total counter
+			cortex_ingester_tsdb_head_truncations_total 2.874799e+06
+
+			# HELP cortex_ingester_tsdb_head_gc_duration_seconds Runtime of garbage collection in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_gc_duration_seconds summary
+			cortex_ingester_tsdb_head_gc_duration_seconds_sum 9
+			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
 
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
@@ -308,6 +325,30 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of memory-mapped chunk corruptions.",
 	})
 	mmapChunkCorruptionTotal.Add(26 * base)
+
+	walCorruptionsTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_corruptions_total",
+		Help: "Total number of WAL corruptions.",
+	})
+	walCorruptionsTotal.Add(27 * base)
+
+	headTruncateFail := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_truncations_failed_total",
+		Help: "Total number of head truncations that failed.",
+	})
+	headTruncateFail.Add(28 * base)
+
+	headTruncateTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_truncations_total",
+		Help: "Total number of head truncations attempted.",
+	})
+	headTruncateTotal.Add(29 * base)
+
+	gcDuration := promauto.With(r).NewSummary(prometheus.SummaryOpts{
+		Name: "prometheus_tsdb_head_gc_duration_seconds",
+		Help: "Runtime of garbage collection in the head block.",
+	})
+	gcDuration.Observe(3)
 
 	return r
 }

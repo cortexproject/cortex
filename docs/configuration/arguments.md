@@ -30,19 +30,23 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 
    Maximum number of samples a single query can load into memory, to avoid blowing up on enormous queries.
 
-The next three options only apply when the querier is used together with the Query Frontend:
+The next three options only apply when the querier is used together with the Query Frontend or Query Scheduler:
 
 - `-querier.frontend-address`
 
    Address of query frontend service, used by workers to find the frontend which will give them queries to execute.
 
+- `-querier.scheduler-address`
+
+   Address of query scheduler service, used by workers to find the scheduler which will give them queries to execute. If set, `-querier.frontend-address` is ignored, and querier will use query scheduler.
+
 - `-querier.dns-lookup-period`
 
-   How often the workers will query DNS to re-check where the frontend is.
+   How often the workers will query DNS to re-check where the query frontend or query scheduler is.
 
 - `-querier.worker-parallelism`
 
-   Number of simultaneous queries to process, per query frontend.
+   Number of simultaneous queries to process, per query frontend or scheduler.
    See note on `-querier.max-concurrent`
 
 - `-querier.worker-match-max-concurrent`
@@ -86,7 +90,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
     sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
    )
    ```
-   When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `config-yaml` CLI flag). This is the same schema config the queriers consume.
+   When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `-schema-config-file` CLI flag). This is the same schema config the queriers consume.
    It's also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:
 
    - `querier.max-outstanding-requests-per-tenant`
@@ -183,10 +187,41 @@ prefix these flags with `distributor.ha-tracker.`
    The timeout for the etcd connection.
 - `etcd.max-retries`
    The maximum number of retries to do for failed ops.
+- `etcd.tls-enabled`
+   Enable TLS.
+- `etcd.tls-cert-path`
+   The TLS certificate file path.
+- `etcd.tls-key-path`
+   The TLS private key file path.
+- `etcd.tls-ca-path`
+   The trusted CA file path.
+- `etcd.tls-insecure-skip-verify`
+   Skip validating server certificate.
 
 #### memberlist
 
-Flags for configuring KV store based on memberlist library (works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker).
+Warning: memberlist KV works only for the [hash ring](../architecture.md#the-hash-ring), not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.
+
+When using memberlist-based KV store, each node maintains its own copy of the hash ring.
+Updates generated locally, and received from other nodes are merged together to form the current state of the ring on the node.
+Updates are also propagated to other nodes.
+All nodes run the following two loops:
+
+1. Every "gossip interval", pick random "gossip nodes" number of nodes, and send recent ring updates to them.
+2. Every "push/pull sync interval", choose random single node, and exchange full ring information with it (push/pull sync). After this operation, rings on both nodes are the same.
+
+When a node receives a ring update, node will merge it into its own ring state, and if that resulted in a change, node will add that update to the list of gossiped updates.
+Such update will be gossiped `R * log(N+1)` times by this node (R = retransmit multiplication factor, N = number of gossiping nodes in the cluster).
+
+If you find the propagation to be too slow, there are some tuning possibilities (default values are memberlist settings for LAN networks):
+- Decrease gossip interval (default: 200ms)
+- Increase gossip nodes (default 3)
+- Decrease push/pull sync interval (default 30s)
+- Increase retransmit multiplication factor (default 4)
+
+To find propagation delay, you can use `cortex_ring_oldest_member_timestamp{state="ACTIVE"}` metric.
+
+Flags for configuring KV store based on memberlist library:
 
 - `memberlist.nodename`
    Name of the node in memberlist cluster. Defaults to hostname.
@@ -308,11 +343,11 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 - `-ingester.join-after`
 
-   How long to wait in PENDING state during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the chunks storage). (default 0s)
+   How long to wait in PENDING state during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). (default 0s)
 
 - `-ingester.max-transfer-retries`
 
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the chunks storage). Negative value or zero disables hand-over process completely. (default 10)
+   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). Negative value or zero disables hand-over process completely. (default 10)
 
 - `-ingester.normalise-tokens`
 
@@ -458,12 +493,24 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
    Like `max_series_per_user` and `max_series_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
 
-   Requires `-distributor.replication-factor` and `-distributor.shard-by-all-labels` set for the ingesters too.
+   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
+
+- `max_metadata_per_user` / `-ingester.max-metadata-per-user`
+- `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`
+
+  Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+
+- `max_global_metadata_per_user` / `-ingester.max-global-metadata-per-user`
+- `max_global_metadata_per_metric` / `-ingester.max-global-metadata-per-metric`
+
+   Like `max_metadata_per_user` and `max_metadata_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
+
+   Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 ## Storage
 
@@ -486,6 +533,22 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 - **`dns+`**<br />
   The domain name after the prefix is looked up as an A/AAAA query. For example: `dns+memcached.local:11211`
 - **`dnssrv+`**<br />
-  The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: `dnssrv+memcached.namespace.svc.cluster.local`
+  The domain name after the prefix is looked up as a SRV query, and then each SRV record is resolved as an A/AAAA record. For example: `dnssrv+_memcached._tcp.memcached.namespace.svc.cluster.local`
 - **`dnssrvnoa+`**<br />
-  The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+memcached.namespace.svc.cluster.local`
+  The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local`
+
+## Logging of IP of reverse proxy
+
+If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
+
+- `-server.log_source_ips_enabled`
+
+  Set this to `true` to add logging of the IP when a Forwarded, X-Real-IP or X-Forwarded-For header is used. A field called `sourceIPs` will be added to error logs when data is pushed into Cortex.
+
+- `-server.log-source-ips-header`
+
+  Header field storing the source IPs. It is only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-regex` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.
+
+- `-server.log-source-ips-regex`
+
+  Regular expression for matching the source IPs. It should contain at least one capturing group the first of which will be returned. Only used if `-server.log-source-ips-enabled` is true and if `-server.log-source-ips-header` is set. If not set the default Forwarded, X-Real-IP or X-Forwarded-For headers are searched.

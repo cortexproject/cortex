@@ -22,9 +22,13 @@ type RingConfig struct {
 	HeartbeatPeriod  time.Duration `yaml:"heartbeat_period"`
 	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`
 
+	// Wait ring stability.
+	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
+	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
+
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
-	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"hidden"`
+	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 
@@ -45,9 +49,13 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeartbeatPeriod, "compactor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "compactor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which compactors are considered unhealthy within the ring.")
 
+	// Wait stability flags.
+	f.DurationVar(&cfg.WaitStabilityMinDuration, "compactor.ring.wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
+	f.DurationVar(&cfg.WaitStabilityMaxDuration, "compactor.ring.wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the compactor ring keep changing after this period of time, the compactor will start anyway.")
+
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
-	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), "compactor.ring.instance-interface", "Name of network interface to read address from.")
+	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), "compactor.ring.instance-interface-names", "Name of network interface to read address from.")
 	f.StringVar(&cfg.InstanceAddr, "compactor.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "compactor.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "compactor.ring.instance-id", hostname, "Instance ID to register in the ring.")

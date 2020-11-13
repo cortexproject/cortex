@@ -1,7 +1,7 @@
 ---
 title: "Tracing"
 linkTitle: "Tracing"
-weight: 101
+weight: 10
 slug: tracing
 ---
 

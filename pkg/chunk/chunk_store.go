@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,8 +17,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -74,10 +77,16 @@ func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "Cache config for index entry writing. ", f)
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
-	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Limit how long back data can be queried")
+	f.Var(&cfg.MaxLookBackPeriod, "store.max-look-back-period", "Deprecated: use -querier.max-query-lookback instead. Limit how long back data can be queried. This setting applies to chunks storage only.") // To be removed in Cortex 1.8.
 }
 
-func (cfg *StoreConfig) Validate() error {
+// Validate validates the store config.
+func (cfg *StoreConfig) Validate(logger log.Logger) error {
+	if cfg.MaxLookBackPeriod > 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
+	}
+
 	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
 		return err
 	}
@@ -138,7 +147,7 @@ func newStore(cfg StoreConfig, schema StoreSchema, index IndexClient, chunks Cli
 	}, nil
 }
 
-// Put implements ChunkStore
+// Put implements Store
 func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	for _, chunk := range chunks {
 		if err := c.PutOne(ctx, chunk.From, chunk.Through, chunk); err != nil {
@@ -148,7 +157,7 @@ func (c *store) Put(ctx context.Context, chunks []Chunk) error {
 	return nil
 }
 
-// PutOne implements ChunkStore
+// PutOne implements Store
 func (c *store) PutOne(ctx context.Context, from, through model.Time, chunk Chunk) error {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.PutOne")
 	defer log.Finish()
@@ -676,7 +685,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 	var newChunks []*Chunk
 	if partiallyDeletedInterval.Start > chunk.From {
 		newChunk, err := chunk.Slice(chunk.From, partiallyDeletedInterval.Start-1)
-		if err != nil && err != ErrSliceNoDataInRange {
+		if err != nil && err != encoding.ErrSliceNoDataInRange {
 			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", chunk.From, partiallyDeletedInterval.Start-1)
 		}
 
@@ -687,7 +696,7 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 
 	if partiallyDeletedInterval.End < chunk.Through {
 		newChunk, err := chunk.Slice(partiallyDeletedInterval.End+1, chunk.Through)
-		if err != nil && err != ErrSliceNoDataInRange {
+		if err != nil && err != encoding.ErrSliceNoDataInRange {
 			return errors.Wrapf(err, "when slicing chunk for interval %d - %d", partiallyDeletedInterval.End+1, chunk.Through)
 		}
 
@@ -713,4 +722,8 @@ func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, pa
 func (c *store) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
 	// SeriesID is something which is only used in SeriesStore so we need not do anything here
 	return nil
+}
+
+func (c *baseStore) GetChunkFetcher(_ model.Time) *Fetcher {
+	return c.fetcher
 }

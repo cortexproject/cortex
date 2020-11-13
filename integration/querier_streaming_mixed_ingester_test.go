@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
 	"context"
@@ -26,18 +26,17 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	chunksFlags := mergeFlags(ChunksStorageFlags, map[string]string{})
-
-	blockFlags := mergeFlags(BlocksStorageFlags, map[string]string{
-		"-experimental.blocks-storage.tsdb.block-ranges-period":      "1h",
-		"-experimental.blocks-storage.tsdb.head-compaction-interval": "1m",
-		"-experimental.store-gateway.sharding-enabled":               "false",
-		"-querier.ingester-streaming":                                "true",
+	chunksFlags := ChunksStorageFlags()
+	blockFlags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period":      "1h",
+		"-blocks-storage.tsdb.head-compaction-interval": "1m",
+		"-store-gateway.sharding-enabled":               "false",
+		"-querier.ingester-streaming":                   "true",
 	})
 
 	// Start dependencies.
 	consul := e2edb.NewConsul()
-	minio := e2edb.NewMinio(9000, blockFlags["-experimental.blocks-storage.s3.bucket-name"])
+	minio := e2edb.NewMinio(9000, blockFlags["-blocks-storage.s3.bucket-name"])
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components.
@@ -48,8 +47,8 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 
 	// Sharding is disabled, pass gateway address.
 	querierFlags := mergeFlags(blockFlags, map[string]string{
-		"-experimental.querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
-		"-distributor.shard-by-all-labels":              "true",
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+		"-distributor.shard-by-all-labels": "true",
 	})
 	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), querierFlags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))

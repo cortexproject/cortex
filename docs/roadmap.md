@@ -1,15 +1,11 @@
 ---
 title: "Roadmap"
 linkTitle: "Roadmap"
-weight: 50
+weight: 10
 slug: roadmap
 ---
 
 The following is only a selection of some of the major features we plan to implement in the near future. To get a more complete overview of planned features and current work, see the issue trackers for the various repositories, for example, the [Cortex repo](https://github.com/cortexproject/cortex/issues). Note that these are not ordered by priority.
-
-## Making a NoSQL store optional
-
-Currently Cortex depends on a NoSQL store (like Bigtable, DynamoDB, Cassandra) for its index storage. This adds a lot of complexity and cost to manage and we are currently working on making the NoSQL store optional by using an ObjectStore for index storage as well.
 
 ## Helm charts and other packaging
 

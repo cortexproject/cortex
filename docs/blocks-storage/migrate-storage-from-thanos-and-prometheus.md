@@ -1,7 +1,7 @@
 ---
 title: "Migrate the storage from Thanos and Prometheus"
 linkTitle: "Migrate the storage from Thanos and Prometheus"
-weight: 5
+weight: 7
 slug: migrate-storage-from-thanos-and-prometheus
 ---
 

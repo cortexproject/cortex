@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
 	"fmt"
@@ -45,13 +45,17 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
-	labelValues, err := c.LabelValues("foo")
+	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, model.LabelValues{"bar"}, labelValues)
 
-	labelNames, err := c.LabelNames()
+	labelNames, err := c.LabelNames(time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"__name__", "foo"}, labelNames)
+
+	// Check that a range query does not return an error to sanity check the queryrange tripperware.
+	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)
+	require.NoError(t, err)
 }
 
 func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
@@ -69,11 +73,11 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	// Start Cortex in single binary mode, reading the config from file and overwriting
 	// the backend config to make it work with Minio.
 	flags := map[string]string{
-		"-experimental.blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-experimental.blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-experimental.blocks-storage.s3.bucket-name":       bucketName,
-		"-experimental.blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
-		"-experimental.blocks-storage.s3.insecure":          "true",
+		"-blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-blocks-storage.s3.bucket-name":       bucketName,
+		"-blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":          "true",
 	}
 
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
@@ -96,11 +100,15 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
-	labelValues, err := c.LabelValues("foo")
+	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, model.LabelValues{"bar"}, labelValues)
 
-	labelNames, err := c.LabelNames()
+	labelNames, err := c.LabelNames(time.Time{}, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, []string{"__name__", "foo"}, labelNames)
+
+	// Check that a range query does not return an error to sanity check the queryrange tripperware.
+	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)
+	require.NoError(t, err)
 }

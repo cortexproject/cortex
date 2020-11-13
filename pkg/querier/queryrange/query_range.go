@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -38,7 +39,7 @@ var (
 	PrometheusCodec Codec = &prometheusCodec{}
 
 	// Name of the cache control header.
-	cachecontrolHeader = "Cache-Control"
+	cacheControlHeader = "Cache-Control"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -72,8 +73,10 @@ type Request interface {
 	GetStep() int64
 	// GetQuery returns the query of the request.
 	GetQuery() string
+	// GetCachingOptions returns the caching options.
+	GetCachingOptions() CachingOptions
 	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(int64, int64) Request
+	WithStartEnd(startTime int64, endTime int64) Request
 	// WithQuery clone the current request with a different query.
 	WithQuery(string) Request
 	proto.Message
@@ -84,6 +87,8 @@ type Request interface {
 // Response represents a query range response.
 type Response interface {
 	proto.Message
+	// GetHeaders returns the HTTP headers in the response.
+	GetHeaders() []*PrometheusResponseHeader
 }
 
 type prometheusCodec struct{}
@@ -130,15 +135,20 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+// NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
+func NewEmptyPrometheusResponse() *PrometheusResponse {
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: model.ValMatrix.String(),
+			Result:     []SampleStream{},
+		},
+	}
+}
+
 func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	if len(responses) == 0 {
-		return &PrometheusResponse{
-			Status: StatusSuccess,
-			Data: PrometheusData{
-				ResultType: model.ValMatrix.String(),
-				Result:     []SampleStream{},
-			},
-		}, nil
+		return NewEmptyPrometheusResponse(), nil
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
@@ -205,6 +215,14 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
+
+	for _, value := range r.Header.Values(cacheControlHeader) {
+		if strings.Contains(value, noStoreValue) {
+			result.CachingOptions.Disabled = true
+			break
+		}
+	}
+
 	return &result, nil
 }
 

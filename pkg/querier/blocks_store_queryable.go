@@ -57,7 +57,7 @@ type BlocksStoreSet interface {
 	// GetClientsFor returns the store gateway clients that should be used to
 	// query the set of blocks in input. The exclude parameter is the map of
 	// blocks -> store-gateway addresses that should be excluded.
-	GetClientsFor(blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
+	GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
 }
 
 // BlocksFinder is the interface used to find blocks for a given user and time range.
@@ -82,6 +82,7 @@ type BlocksStoreClient interface {
 // BlocksStoreLimits is the interface that should be implemented by the limits provider.
 type BlocksStoreLimits interface {
 	MaxChunksPerQuery(userID string) int
+	StoreGatewayTenantShardSize(userID string) int
 }
 
 type blocksStoreQueryableMetrics struct {
@@ -125,8 +126,6 @@ type BlocksStoreQueryable struct {
 }
 
 func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consistency *BlocksConsistencyChecker, limits BlocksStoreLimits, queryStoreAfter time.Duration, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
-	util.WarnExperimentalUse("Blocks storage engine")
-
 	manager, err := services.NewManager(stores, finder)
 	if err != nil {
 		return nil, errors.Wrap(err, "register blocks storage queryable subservices")
@@ -193,7 +192,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			reg.MustRegister(storesRing)
 		}
 
-		stores, err = newBlocksStoreReplicationSet(storesRing, querierCfg.StoreGatewayClient, logger, reg)
+		stores, err = newBlocksStoreReplicationSet(storesRing, gatewayCfg.ShardingStrategy, limits, querierCfg.StoreGatewayClient, logger, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store set")
 		}
@@ -368,7 +367,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	for attempt := 1; attempt <= maxFetchSeriesAttempts; attempt++ {
 		// Find the set of store-gateway instances having the blocks. The exclude parameter is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.
-		clients, err := q.stores.GetClientsFor(remainingBlocks, attemptedBlocks)
+		clients, err := q.stores.GetClientsFor(q.userID, remainingBlocks, attemptedBlocks)
 		if err != nil {
 			// If it's a retry and we get an error, it means there are no more store-gateways left
 			// from which running another attempt, so we're just stopping retrying.
@@ -383,7 +382,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 		// Fetch series from stores. If an error occur we do not retry because retries
 		// are only meant to cover missing blocks.
-		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
+		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
@@ -434,6 +433,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 
 func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	ctx context.Context,
+	sp *storage.SelectHints,
 	clients map[BlocksStoreClient][]ulid.ULID,
 	minT int64,
 	maxT int64,
@@ -460,7 +460,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		blockIDs := blockIDs
 
 		g.Go(func() error {
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, blockIDs)
+			// See: https://github.com/prometheus/prometheus/pull/8050
+			// TODO(goutham): we should ideally be passing the hints down to the storage layer
+			// and let the TSDB return us data with no chunks as in prometheus#8050.
+			// But this is an acceptable workaround for now.
+			skipChunks := sp != nil && sp.Func == "series"
+
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -547,7 +553,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	return seriesSets, queriedBlocks, warnings, int(numChunks.Load()), nil
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -570,6 +576,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, bloc
 		Matchers:                matchers,
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 		Hints:                   anyHints,
+		SkipChunks:              skipChunks,
 	}, nil
 }
 

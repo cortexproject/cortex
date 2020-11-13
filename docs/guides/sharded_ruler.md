@@ -1,7 +1,7 @@
 ---
 title: "Config for horizontally scaling the Ruler"
 linkTitle: "Config for horizontally scaling the Ruler"
-weight: 4
+weight: 10
 slug: ruler-sharding
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: "Getting Started with Gossiped Ring (experimental)"
-linkTitle: "Gossip Ring (experimental)"
+title: "Getting Started with Gossiped Ring"
+linkTitle: "Gossip Ring"
 weight: 2
 slug: getting-started-with-gossiped-ring
 ---

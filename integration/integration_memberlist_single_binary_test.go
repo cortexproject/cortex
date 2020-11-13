@@ -1,6 +1,6 @@
 // +build requires_docker
 
-package main
+package integration
 
 import (
 	"testing"
@@ -77,7 +77,7 @@ func newSingleBinary(name string, join string) *e2ecortex.CortexService {
 
 	serv := e2ecortex.NewSingleBinary(
 		name,
-		mergeFlags(ChunksStorageFlags, flags),
+		mergeFlags(ChunksStorageFlags(), flags),
 		"",
 		8000,
 	)

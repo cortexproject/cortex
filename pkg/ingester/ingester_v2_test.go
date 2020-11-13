@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -51,6 +53,7 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
 		"cortex_discarded_samples_total",
+		"cortex_ingester_active_series",
 	}
 	userID := "test"
 
@@ -61,6 +64,7 @@ func TestIngester_v2Push(t *testing.T) {
 		expectedMetadataIngested []*client.MetricMetadata
 		expectedMetrics          string
 		additionalMetrics        []string
+		disableActiveSeries      bool
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*client.WriteRequest{
@@ -125,6 +129,48 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"successful push, active series disabled": {
+			disableActiveSeries: true,
+			reqs: []*client.WriteRequest{
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
+					client.API),
+				client.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
+					client.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []client.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 2
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
 		"should soft fail on sample out of order": {
@@ -166,6 +212,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 		"should soft fail on sample out of bound": {
@@ -207,6 +256,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
@@ -248,6 +300,9 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="new-value-for-timestamp",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
 	}
@@ -262,6 +317,7 @@ func TestIngester_v2Push(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 
 			i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
 			require.NoError(t, err)
@@ -308,6 +364,11 @@ func TestIngester_v2Push(t *testing.T) {
 
 			// Order is never guaranteed.
 			assert.ElementsMatch(t, testData.expectedMetadataIngested, mres.Metadata)
+
+			// Update active series for metrics check.
+			if !testData.disableActiveSeries {
+				i.v2UpdateActiveSeries()
+			}
 
 			// Append additional metrics to assert on.
 			mn := append(metricNames, testData.additionalMetrics...)
@@ -391,6 +452,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
+		"cortex_ingester_active_series",
 	}
 
 	registry := prometheus.NewRegistry()
@@ -432,6 +494,9 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		}
 	}
 
+	// Update active series for metrics check.
+	i.v2UpdateActiveSeries()
+
 	// Check tracked Prometheus metrics
 	expectedMetrics := `
 		# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -454,6 +519,84 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="test-1"} 0
 		cortex_ingester_memory_series_removed_total{user="test-2"} 0
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="test-1"} 1
+		cortex_ingester_active_series{user="test-2"} 1
+	`
+
+	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+}
+
+func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
+	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricNames := []string{
+		"cortex_ingester_memory_series_created_total",
+		"cortex_ingester_memory_series_removed_total",
+		"cortex_ingester_active_series",
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.ActiveSeriesMetricsIdleTimeout = 100 * time.Millisecond
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, registry)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push timeseries for each user
+	for _, userID := range []string{"test-1", "test-2"} {
+		reqs := []*client.WriteRequest{
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				nil,
+				client.API),
+			client.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				nil,
+				client.API),
+		}
+
+		for _, req := range reqs {
+			ctx := user.InjectOrgID(context.Background(), userID)
+			_, err := i.v2Push(ctx, req)
+			require.NoError(t, err)
+		}
+	}
+
+	// Wait a bit to make series inactive (set to 100ms above).
+	time.Sleep(200 * time.Millisecond)
+
+	// Update active series for metrics check. This will remove inactive series.
+	i.v2UpdateActiveSeries()
+
+	// Check tracked Prometheus metrics
+	expectedMetrics := `
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="test-1"} 1
+		cortex_ingester_memory_series_created_total{user="test-2"} 1
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="test-1"} 0
+		cortex_ingester_memory_series_removed_total{user="test-2"} 0
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="test-1"} 0
+		cortex_ingester_active_series{user="test-2"} 0
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
@@ -1455,46 +1598,115 @@ func newIngesterMockWithTSDBStorageAndLimits(ingesterCfg Config, limits validati
 	return ingester, nil
 }
 
-func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
+func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		setup func(*testing.T, string)
-		check func(*testing.T, *Ingester)
+		concurrency int
+		setup       func(*testing.T, string)
+		check       func(*testing.T, *Ingester)
+		expectedErr string
 	}{
-		"empty user dir": {
+		"should not load TSDB if the user directory is empty": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user0"), 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.Empty(t, i.getTSDB("user0"), "tsdb created for empty user dir")
+				require.Nil(t, i.getTSDB("user0"))
 			},
 		},
-		"empty tsdbs": {
-			setup: func(t *testing.T, dir string) {},
+		"should not load any TSDB if the root directory is empty": {
+			concurrency: 10,
+			setup:       func(t *testing.T, dir string) {},
 			check: func(t *testing.T, i *Ingester) {
-				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on empty dir")
+				require.Zero(t, len(i.TSDBState.dbs))
 			},
 		},
-		"missing tsdb dir": {
+		"should not load any TSDB is the root directory is missing": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.Remove(dir))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.Zero(t, len(i.TSDBState.dbs), "user tsdb's were created on missing dir")
+				require.Zero(t, len(i.TSDBState.dbs))
 			},
 		},
-		"populated user dirs with unpopulated": {
+		"should load TSDB for any non-empty user directory": {
+			concurrency: 10,
 			setup: func(t *testing.T, dir string) {
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
 				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
 				require.NoError(t, os.Mkdir(filepath.Join(dir, "user2"), 0700))
 			},
 			check: func(t *testing.T, i *Ingester) {
-				require.NotNil(t, i.getTSDB("user0"), "tsdb not created for non-empty user dir")
-				require.NotNil(t, i.getTSDB("user1"), "tsdb not created for non-empty user dir")
-				require.Empty(t, i.getTSDB("user2"), "tsdb created for empty user dir")
+				require.Equal(t, 2, len(i.TSDBState.dbs))
+				require.NotNil(t, i.getTSDB("user0"))
+				require.NotNil(t, i.getTSDB("user1"))
+				require.Nil(t, i.getTSDB("user2"))
 			},
+		},
+		"should load all TSDBs on concurrency < number of TSDBs": {
+			concurrency: 2,
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user3", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user4", "dummy"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 5, len(i.TSDBState.dbs))
+				require.NotNil(t, i.getTSDB("user0"))
+				require.NotNil(t, i.getTSDB("user1"))
+				require.NotNil(t, i.getTSDB("user2"))
+				require.NotNil(t, i.getTSDB("user3"))
+				require.NotNil(t, i.getTSDB("user4"))
+			},
+		},
+		"should fail and rollback if an error occur while loading a TSDB on concurrency > number of TSDBs": {
+			concurrency: 10,
+			setup: func(t *testing.T, dir string) {
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid unless
+				// it's the last one and opening TSDB should fail).
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "wal", ""), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "chunks_head", ""), 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user0", "chunks_head", "00000001"), nil, 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user0", "chunks_head", "00000002"), nil, 0700))
+
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 0, len(i.TSDBState.dbs))
+				require.Nil(t, i.getTSDB("user0"))
+				require.Nil(t, i.getTSDB("user1"))
+			},
+			expectedErr: "unable to open TSDB for user user0",
+		},
+		"should fail and rollback if an error occur while loading a TSDB on concurrency < number of TSDBs": {
+			concurrency: 2,
+			setup: func(t *testing.T, dir string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user0", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user3", "dummy"), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user4", "dummy"), 0700))
+
+				// Create a fake TSDB on disk with an empty chunks head segment file (it's invalid unless
+				// it's the last one and opening TSDB should fail).
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "wal", ""), 0700))
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2", "chunks_head", ""), 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user2", "chunks_head", "00000001"), nil, 0700))
+				require.NoError(t, ioutil.WriteFile(filepath.Join(dir, "user2", "chunks_head", "00000002"), nil, 0700))
+			},
+			check: func(t *testing.T, i *Ingester) {
+				require.Equal(t, 0, len(i.TSDBState.dbs))
+				require.Nil(t, i.getTSDB("user0"))
+				require.Nil(t, i.getTSDB("user1"))
+				require.Nil(t, i.getTSDB("user2"))
+				require.Nil(t, i.getTSDB("user3"))
+				require.Nil(t, i.getTSDB("user4"))
+			},
+			expectedErr: "unable to open TSDB for user user2",
 		},
 	}
 
@@ -1516,6 +1728,7 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 			ingesterCfg := defaultIngesterTestConfig()
 			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
+			ingesterCfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup = testData.concurrency
 			ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
 			ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 
@@ -1524,10 +1737,16 @@ func TestIngester_v2LoadTSDBOnStartup(t *testing.T) {
 
 			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
 			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+
+			startErr := services.StartAndAwaitRunning(context.Background(), ingester)
+			if testData.expectedErr == "" {
+				require.NoError(t, startErr)
+			} else {
+				require.Error(t, startErr)
+				assert.Contains(t, startErr.Error(), testData.expectedErr)
+			}
 
 			defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
-
 			testData.check(t, ingester)
 		})
 	}
@@ -1546,7 +1765,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 	defer cleanup()
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -1638,13 +1857,78 @@ func TestIngester_flushing(t *testing.T) {
 				// Nothing shipped yet.
 				m.AssertNumberOfCalls(t, "Sync", 0)
 
-				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/shutdown", nil))
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
+					return db.Head().NumSeries()
+				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
 				time.Sleep(1 * time.Second)
 
 				verifyCompactedHead(t, i, true)
 				m.AssertNumberOfCalls(t, "Sync", 1)
+			},
+		},
+
+		"flushMultipleBlocksWithDataSpanning3Days": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, m *shipperMock) {
+				// Pushing 5 samples, spanning over 3 days.
+				// First block
+				pushSingleSampleAtTime(t, i, 23*time.Hour.Milliseconds())
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()-1)
+
+				// Second block
+				pushSingleSampleAtTime(t, i, 24*time.Hour.Milliseconds()+1)
+				pushSingleSampleAtTime(t, i, 25*time.Hour.Milliseconds())
+
+				// Third block, far in the future.
+				pushSingleSampleAtTime(t, i, 50*time.Hour.Milliseconds())
+
+				// Nothing shipped yet.
+				m.AssertNumberOfCalls(t, "Sync", 0)
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+
+				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
+				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+					db := i.getTSDB(userID)
+					if db == nil {
+						return false
+					}
+					return db.Head().NumSeries()
+				})
+
+				// The above waiting only ensures compaction, waiting another second to register the Sync call.
+				time.Sleep(1 * time.Second)
+
+				verifyCompactedHead(t, i, true)
+
+				m.AssertNumberOfCalls(t, "Sync", 1)
+
+				userDB := i.getTSDB(userID)
+				require.NotNil(t, userDB)
+
+				blocks := userDB.Blocks()
+				require.Equal(t, 3, len(blocks))
+				require.Equal(t, 23*time.Hour.Milliseconds(), blocks[0].Meta().MinTime)
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[0].Meta().MaxTime) // Block maxt is exclusive.
+
+				// Even though we added 24*time.Hour.Milliseconds()+1, the Head compaction
+				// will leave Head's mint to 24*time.Hour.Milliseconds(). Hence the block mint.
+				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
+				require.Equal(t, 26*time.Hour.Milliseconds(), blocks[1].Meta().MaxTime)
+
+				require.Equal(t, 50*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.
 			},
 		},
 	} {
@@ -1669,7 +1953,7 @@ func TestIngester_flushing(t *testing.T) {
 			})
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 				return i.lifecycler.GetState()
 			})
 
@@ -1699,7 +1983,7 @@ func TestIngester_ForFlush(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -1878,7 +2162,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -1937,6 +2221,13 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 func pushSingleSample(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	_, err := i.v2Push(ctx, req)
+	require.NoError(t, err)
+}
+
+func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }
@@ -2030,7 +2321,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 10*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
 
@@ -2046,4 +2337,185 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	// Verify that DB is no longer in memory, but was closed
 	db = i.getTSDB(userID)
 	require.Nil(t, db)
+}
+
+func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
+	chunkRange := 2 * time.Hour
+	chunkRangeMilliSec := chunkRange.Milliseconds()
+	cfg := defaultIngesterTestConfig()
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{chunkRange}
+	cfg.BlocksStorageConfig.TSDB.Retention = time.Millisecond // Which means delete all but first block.
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some data to create 3 blocks.
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for j := int64(0); j < 5; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	require.Nil(t, db.Compact())
+
+	oldBlocks := db.Blocks()
+	require.Equal(t, 3, len(oldBlocks))
+
+	// Saying that we have shipped the second block, so only that should get deleted.
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
+		Version:  shipper.MetaVersion1,
+		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
+	}))
+
+	// Add more samples that could trigger another compaction and hence reload of blocks.
+	for j := int64(5); j < 6; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+	require.Nil(t, db.Compact())
+
+	// Only the second block should be gone along with a new block.
+	newBlocks := db.Blocks()
+	require.Equal(t, 3, len(newBlocks))
+	require.Equal(t, oldBlocks[0].Meta().ULID, newBlocks[0].Meta().ULID)    // First block remains same.
+	require.Equal(t, oldBlocks[2].Meta().ULID, newBlocks[1].Meta().ULID)    // 3rd block becomes 2nd now.
+	require.NotEqual(t, oldBlocks[1].Meta().ULID, newBlocks[2].Meta().ULID) // The new block won't match previous 2nd block.
+
+	// Shipping 2 more blocks, hence all the blocks from first round.
+	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
+		Version:  shipper.MetaVersion1,
+		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
+	}))
+
+	// Add more samples that could trigger another compaction and hence reload of blocks.
+	for j := int64(6); j < 7; j++ {
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		_, err := i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+	require.Nil(t, db.Compact())
+
+	// All blocks from the old blocks should be gone now.
+	newBlocks2 := db.Blocks()
+	require.Equal(t, 2, len(newBlocks2))
+
+	require.Equal(t, newBlocks[2].Meta().ULID, newBlocks2[0].Meta().ULID) // Block created in last round.
+	for _, b := range oldBlocks {
+		// Second block is not one among old blocks.
+		require.NotEqual(t, b.Meta().ULID, newBlocks2[1].Meta().ULID)
+	}
+}
+
+func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), nil)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push a sample, it should succeed.
+	pushSingleSample(t, i)
+
+	// We mock a flushing by setting the boolean.
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	db.forcedCompactionInProgressMtx.Lock()
+	require.False(t, db.forcedCompactionInProgress)
+	db.forcedCompactionInProgress = true
+	db.forcedCompactionInProgressMtx.Unlock()
+
+	// Ingestion should fail with a 503.
+	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = i.v2Push(ctx, req)
+	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
+
+	// Ingestion is successful after a flush.
+	db.forcedCompactionInProgressMtx.Lock()
+	require.True(t, db.forcedCompactionInProgress)
+	db.forcedCompactionInProgress = false
+	db.forcedCompactionInProgressMtx.Unlock()
+	pushSingleSample(t, i)
+}
+
+func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	i, cleanup, err := newIngesterMockWithTSDBStorage(defaultIngesterTestConfig(), registry)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push few samples.
+	for j := 0; j < 5; j++ {
+		pushSingleSample(t, i)
+	}
+
+	// Verifying that compaction won't happen when a request is in flight.
+
+	// This mocks a request in flight.
+	db := i.getTSDB(userID)
+	require.NoError(t, db.acquireAppendLock())
+
+	// Flush handler only triggers compactions, but doesn't wait for them to finish.
+	i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+
+	// Flushing should not have succeeded even after 5 seconds.
+	time.Sleep(5 * time.Second)
+	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
+		# TYPE cortex_ingester_tsdb_compactions_total counter
+		cortex_ingester_tsdb_compactions_total 0
+	`), "cortex_ingester_tsdb_compactions_total"))
+
+	// No requests in flight after this.
+	db.releaseAppendLock()
+
+	// Let's wait until all head series have been flushed.
+	test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+		db := i.getTSDB(userID)
+		if db == nil {
+			return false
+		}
+		return db.Head().NumSeries()
+	})
+
+	require.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
+		# TYPE cortex_ingester_tsdb_compactions_total counter
+		cortex_ingester_tsdb_compactions_total 1
+	`), "cortex_ingester_tsdb_compactions_total"))
 }

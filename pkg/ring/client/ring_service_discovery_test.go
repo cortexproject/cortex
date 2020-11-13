@@ -58,6 +58,6 @@ type mockReadRing struct {
 	mockedErr            error
 }
 
-func (m *mockReadRing) GetAll(_ ring.Operation) (ring.ReplicationSet, error) {
+func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return m.mockedReplicationSet, m.mockedErr
 }

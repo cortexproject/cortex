@@ -82,11 +82,13 @@ func NewQuerierWithConfigFile(name, consulAddress, configFile string, flags map[
 			"-querier.frontend-client.backoff-max-period": "100ms",
 			"-querier.frontend-client.backoff-retries":    "1",
 			"-querier.worker-parallelism":                 "1",
+			// Quickly detect query-frontend and query-scheduler when running it.
+			"-querier.dns-lookup-period": "1s",
 			// Store-gateway ring backend.
-			"-experimental.store-gateway.sharding-enabled":              "true",
-			"-experimental.store-gateway.sharding-ring.store":           "consul",
-			"-experimental.store-gateway.sharding-ring.consul.hostname": consulAddress,
-			"-experimental.store-gateway.replication-factor":            "1",
+			"-store-gateway.sharding-enabled":                 "true",
+			"-store-gateway.sharding-ring.store":              "consul",
+			"-store-gateway.sharding-ring.consul.hostname":    consulAddress,
+			"-store-gateway.sharding-ring.replication-factor": "1",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -114,10 +116,10 @@ func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags
 			"-target":    "store-gateway",
 			"-log.level": "warn",
 			// Store-gateway ring backend.
-			"-experimental.store-gateway.sharding-enabled":              "true",
-			"-experimental.store-gateway.sharding-ring.store":           "consul",
-			"-experimental.store-gateway.sharding-ring.consul.hostname": consulAddress,
-			"-experimental.store-gateway.replication-factor":            "1",
+			"-store-gateway.sharding-enabled":                 "true",
+			"-store-gateway.sharding-ring.store":              "consul",
+			"-store-gateway.sharding-ring.consul.hostname":    consulAddress,
+			"-store-gateway.sharding-ring.replication-factor": "1",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -203,6 +205,34 @@ func NewQueryFrontendWithConfigFile(name, configFile string, flags map[string]st
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "query-frontend",
+			"-log.level": "warn",
+			// Quickly detect query-scheduler when running it.
+			"-frontend.scheduler-dns-lookup-period": "1s",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+	)
+}
+
+func NewQueryScheduler(name string, flags map[string]string, image string) *CortexService {
+	return NewQuerySchedulerWithConfigFile(name, "", flags, image)
+}
+
+func NewQuerySchedulerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
+	if configFile != "" {
+		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "query-scheduler",
 			"-log.level": "warn",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),

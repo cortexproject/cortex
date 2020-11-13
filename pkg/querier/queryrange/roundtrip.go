@@ -34,7 +34,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 )
 
 const day = 24 * time.Hour
@@ -82,7 +81,7 @@ func (cfg *Config) Validate(log log.Logger) error {
 		if cfg.SplitQueriesByInterval <= 0 {
 			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
 		}
-		if err := cfg.ResultsCacheConfig.CacheConfig.Validate(); err != nil {
+		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}
@@ -126,6 +125,17 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
+// Tripperware is a signature for all http client-side middleware.
+type Tripperware func(http.RoundTripper) http.RoundTripper
+
+// RoundTripFunc is to http.RoundTripper what http.HandlerFunc is to http.Handler.
+type RoundTripFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper.
+func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
 // NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
 func NewTripperware(
 	cfg Config,
@@ -138,7 +148,7 @@ func NewTripperware(
 	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
-) (frontend.Tripperware, cache.Cache, error) {
+) (Tripperware, cache.Cache, error) {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Namespace: "cortex",
@@ -149,7 +159,7 @@ func NewTripperware(
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
 
-	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
+	queryRangeMiddleware := []Middleware{NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
@@ -160,7 +170,10 @@ func NewTripperware(
 
 	var c cache.Cache
 	if cfg.CacheResults {
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, registerer)
+		shouldCache := func(r Request) bool {
+			return !r.GetCachingOptions().Disabled
+		}
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -193,11 +206,11 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
 
-	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			queryrange := NewRoundTripper(next, codec, queryRangeMiddleware...)
-			return frontend.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"
 				if isQueryRange {
@@ -218,7 +231,7 @@ func NewTripperware(
 			})
 		}
 		return next
-	}), c, nil
+	}, c, nil
 }
 
 type roundTripper struct {

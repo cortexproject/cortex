@@ -1,7 +1,7 @@
 ---
 title: "HTTP API"
 linkTitle: "HTTP API"
-weight: 5
+weight: 7
 slug: api
 menu:
 no_section_index_title: true
@@ -22,6 +22,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Services status](#services-status) | _All services_ | `GET /services` |
 | [Readiness probe](#readiness-probe) | _All services_ | `GET /ready` |
 | [Metrics](#metrics) | _All services_ | `GET /metrics` |
+| [Pprof](#pprof) | _All services_ | `GET /debug/pprof` |
+| [Fgprof](#fgprof) | _All services_ | `GET /debug/fgprof` |
 | [Remote write](#remote-write) | Distributor | `POST /api/v1/push` |
 | [Tenants stats](#tenants-stats) | Distributor | `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor | `GET /distributor/ha_tracker` |
@@ -45,6 +47,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get rule group](#get-rule-group) | Ruler | `GET /api/v1/rules/{namespace}/{groupName}` |
 | [Set rule group](#set-rule-group) | Ruler | `POST /api/v1/rules/{namespace}` |
 | [Delete rule group](#delete-rule-group) | Ruler | `DELETE /api/v1/rules/{namespace}/{groupName}` |
+| [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
@@ -82,7 +85,7 @@ When multi-tenancy is enabled, endpoints requiring authentication are expected t
 
 Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
 
-_For more information, please refer to the dedicated [Authentication and Authorisation](../production/auth.md) guide._
+_For more information, please refer to the dedicated [Authentication and Authorisation](../guides/authentication-and-authorisation.md) guide._
 
 ## All services
 
@@ -128,6 +131,31 @@ GET /metrics
 
 Returns the metrics for the running Cortex service in the Prometheus exposition format.
 
+### Pprof
+
+```
+GET /debug/pprof/heap
+GET /debug/pprof/block
+GET /debug/pprof/profile
+GET /debug/pprof/trace
+GET /debug/pprof/goroutine
+GET /debug/pprof/mutex
+```
+
+Returns the runtime profiling data in the format expected by the pprof visualization tool. There are many things which can be profiled using this including heap, trace, goroutine, etc.
+
+_For more information, please check out the official documentation of [pprof](https://golang.org/pkg/net/http/pprof/)._
+
+### Fgprof
+
+```
+GET /debug/fgprof
+```
+
+Returns the sampling Go profiling data which allows you to analyze On-CPU as well as Off-CPU (e.g. I/O) time together.
+
+_For more information, please check out the official documentation of [fgprof](https://github.com/felixge/fgprof)._
+
 ## Distributor
 
 ### Remote write
@@ -169,6 +197,7 @@ GET /ha-tracker
 
 Displays a web page with the current status of the HA tracker, including the elected replica for each Prometheus HA cluster.
 
+
 ## Ingester
 
 ### Flush chunks / blocks
@@ -180,7 +209,7 @@ GET,POST /ingester/flush
 GET,POST /flush
 ```
 
-Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-experimental.blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
+Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
 
 ### Shutdown
 
@@ -250,7 +279,7 @@ GET,POST <prometheus-http-prefix>/api/v1/series
 GET,POST <legacy-http-prefix>/api/v1/series
 ```
 
-Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the series from in-memory data stored in the ingesters.
+Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the series from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
 
 _For more information, please check out the Prometheus [series endpoint](https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers) documentation._
 
@@ -558,6 +587,21 @@ _This experimental endpoint is disabled by default and can be enabled via the `-
 
 _Requires [authentication](#authentication)._
 
+### Delete namespace
+
+```
+DELETE /api/v1/rules/{namespace}
+
+# Legacy
+DELETE <legacy-http-prefix>/rules/{namespace}
+```
+
+Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
+
+_This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
+
 ## Alertmanager
 
 ### Alertmanager status
@@ -623,6 +667,8 @@ alertmanager_config: |
   global:
     smtp_smarthost: 'localhost:25'
     smtp_from: 'youraddress@example.org'
+  templates:
+    - 'default_template'
   route:
     receiver: example-email
   receivers:
@@ -748,7 +794,16 @@ The following schema is used both when retrieving the current configs from the A
 - **`config.rules_files`**<br />
   The contents of a rules file should be as described [here](http://prometheus.io/docs/prometheus/latest/configuration/recording_rules/), encoded as a single string to fit within the overall JSON payload.
 - **`config.template_files`**<br />
-  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload.
+  The contents of a template file should be as described [here](https://prometheus.io/docs/alerting/notification_examples/#defining-reusable-templates), encoded as a single string to fit within the overall JSON payload. These entries should match the `templates` entries in `alertmanager_config`. Example:
+  ```yaml
+  template_files:
+    myorg.tmpl: |
+      {{ define "__alertmanager" }}AlertManager{{ end }}
+      {{ define "__alertmanagerURL" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver | urlquery }}{{ end }}
+  alertmanager_config: |
+    templates:
+      - 'myorg.tmpl'
+  ```
 
 ### Get rule files
 

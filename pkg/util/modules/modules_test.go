@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -10,7 +11,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func mockInitFunc() (services.Service, error) { return nil, nil }
+func mockInitFunc() (services.Service, error) { return services.NewIdleService(nil, nil), nil }
+
+func mockInitFuncFail() (services.Service, error) { return nil, errors.New("Error") }
 
 func TestDependencies(t *testing.T) {
 	var testModules = map[string]module{
@@ -24,6 +27,10 @@ func TestDependencies(t *testing.T) {
 
 		"serviceC": {
 			initFn: mockInitFunc,
+		},
+
+		"serviceD": {
+			initFn: mockInitFuncFail,
 		},
 	}
 
@@ -39,13 +46,30 @@ func TestDependencies(t *testing.T) {
 	require.Len(t, invDeps, 1)
 	assert.Equal(t, invDeps[0], "serviceB")
 
-	svcs, err := mm.InitModuleServices("serviceC")
-	assert.NotNil(t, svcs)
-	assert.NoError(t, err)
-
-	svcs, err = mm.InitModuleServices("service_unknown")
-	assert.Nil(t, svcs)
+	// Test unknown module
+	svc, err := mm.InitModuleServices("service_unknown")
 	assert.Error(t, err, fmt.Errorf("unrecognised module name: service_unknown"))
+	assert.Empty(t, svc)
+
+	// Test init failure
+	svc, err = mm.InitModuleServices("serviceD")
+	assert.Error(t, err)
+	assert.Empty(t, svc)
+
+	// Test loading several modules
+	svc, err = mm.InitModuleServices("serviceA", "serviceB")
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(svc))
+
+	svc, err = mm.InitModuleServices("serviceC")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(svc))
+
+	// Test loading of the module second time - should produce the same set of services, but new instances.
+	svc2, err := mm.InitModuleServices("serviceC")
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(svc))
+	assert.NotEqual(t, svc, svc2)
 }
 
 func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {
@@ -125,4 +149,19 @@ func TestIsUserVisibleModule(t *testing.T) {
 
 	result = sut.IsUserVisibleModule("ghost")
 	assert.False(t, result, "expects result be false when module does not exist")
+}
+
+func TestDependenciesForModule(t *testing.T) {
+	m := NewManager()
+	m.RegisterModule("test", nil)
+	m.RegisterModule("dep1", nil)
+	m.RegisterModule("dep2", nil)
+	m.RegisterModule("dep3", nil)
+
+	require.NoError(t, m.AddDependency("test", "dep2", "dep1"))
+	require.NoError(t, m.AddDependency("dep1", "dep2"))
+	require.NoError(t, m.AddDependency("dep2", "dep3"))
+
+	deps := m.DependenciesForModule("test")
+	assert.Equal(t, []string{"dep1", "dep2", "dep3"}, deps)
 }

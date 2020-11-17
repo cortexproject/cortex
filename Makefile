@@ -113,9 +113,9 @@ GO_FLAGS := -ldflags "-X main.Branch=$(GIT_BRANCH) -X main.Revision=$(GIT_REVISI
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated \
-			-v $(shell pwd)/.pkg:/go/pkg:delegated \
-			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated
+GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
+			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
+			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
 exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -131,7 +131,7 @@ configs-integration-test: build-image/$(UPTODATE)
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
 	$(SUDO) docker run $(RM) $(TTY) -i $(GOVOLUMES) \
-		-v $(shell pwd)/cmd/cortex/migrations:/migrations \
+		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		-e DB_ADDR=configs-db.cortex.local \
@@ -294,7 +294,7 @@ packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.cache
 	@echo ">>>> Entering build container: $@"
 	@$(SUDO) time docker run $(RM) $(TTY) \
-		-v  $(shell pwd):/src/github.com/cortexproject/cortex:delegated \
+		-v  $(shell pwd):/src/github.com/cortexproject/cortex:delegated,z \
 		-i $(PACKAGE_IMAGE) $@;
 
 else

@@ -265,9 +265,18 @@ func (c *baseStore) LabelValuesForMetricName(ctx context.Context, userID string,
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+	var indexTotalChunks, totalFilteredChunks int
 	log, ctx := spanlogger.New(ctx, "ChunkStore.LabelNamesForMetricName")
-	defer log.Span.Finish()
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName)
+	defer func() {
+		level.Debug(log).Log(
+			"from", from,
+			"through", through,
+			"metricName", metricName,
+			"Chunks in index", indexTotalChunks,
+			"Chunks post filtering", totalFilteredChunks,
+		)
+		log.Span.Finish()
+	}()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -280,12 +289,12 @@ func (c *store) LabelNamesForMetricName(ctx context.Context, userID string, from
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("msg", "Chunks in index", "chunks", len(chunks))
+	indexTotalChunks = len(chunks)
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
 	filtered, keys := filterChunksByUniqueFingerprint(filtered)
-	level.Debug(log).Log("msg", "Chunks post filtering", "chunks", len(chunks))
+	totalFilteredChunks = len(chunks)
 
 	// Now fetch the actual chunk data from Memcache / S3
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered, keys)
@@ -356,20 +365,30 @@ func (c *baseStore) validateQuery(ctx context.Context, userID string, from *mode
 }
 
 func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, through model.Time, allMatchers []*labels.Matcher, metricName string) ([]Chunk, error) {
+	var indexTotalChunks, totalFilteredChunks int
 	log, ctx := spanlogger.New(ctx, "ChunkStore.getMetricNameChunks")
-	defer log.Finish()
-	level.Debug(log).Log("from", from, "through", through, "metricName", metricName, "matchers", len(allMatchers))
+	defer func() {
+		level.Debug(log).Log(
+			"from", from,
+			"through", through,
+			"metricName", metricName,
+			"matchers", len(allMatchers),
+			"Chunks in index", indexTotalChunks,
+			"Chunks post filtering", totalFilteredChunks,
+		)
+		log.Span.Finish()
+	}()
 
 	filters, matchers := util.SplitFiltersAndMatchers(allMatchers)
 	chunks, err := c.lookupChunksByMetricName(ctx, userID, from, through, matchers, metricName)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("Chunks in index", len(chunks))
+	indexTotalChunks = len(chunks)
 
 	// Filter out chunks that are not in the selected time range.
 	filtered := filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	totalFilteredChunks = len(chunks)
 
 	maxChunksPerQuery := c.limits.MaxChunksPerQuery(userID)
 	if maxChunksPerQuery > 0 && len(filtered) > maxChunksPerQuery {
@@ -392,27 +411,38 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.lookupChunksByMetricName")
-	defer log.Finish()
+	defer func() {
+
+		log.Finish()
+	}()
 
 	// Just get chunks for metric if there are no matchers
 	if len(matchers) == 0 {
+		var totalQueries, totalEntries, totalChunkIDs int
+		defer func() {
+			level.Debug(log).Log(
+				"queries", totalQueries,
+				"entries", totalEntries,
+				"chunkIDs", totalChunkIDs,
+			)
+		}()
 		queries, err := c.schema.GetReadQueriesForMetric(from, through, userID, metricName)
 		if err != nil {
 			return nil, err
 		}
-		level.Debug(log).Log("queries", len(queries))
+		totalQueries = len(queries)
 
 		entries, err := c.lookupEntriesByQueries(ctx, queries)
 		if err != nil {
 			return nil, err
 		}
-		level.Debug(log).Log("entries", len(entries))
+		totalEntries = len(entries)
 
 		chunkIDs, err := c.parseIndexEntries(ctx, entries, nil)
 		if err != nil {
 			return nil, err
 		}
-		level.Debug(log).Log("chunkIDs", len(chunkIDs))
+		totalChunkIDs = len(chunkIDs)
 
 		return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	}
@@ -458,8 +488,19 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 }
 
 func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formatMatcher(matcher))
-	defer log.Span.Finish()
+	matcherString := formatMatcher(matcher)
+	var totalQueries, totalFilteredQueries, totalEntries, totalIds int
+	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", matcherString)
+	defer func() {
+		level.Debug(log).Log(
+			"matcher", matcherString,
+			"queries", totalQueries,
+			"filteredQueries", totalFilteredQueries,
+			"entries", totalEntries,
+			"ids", totalIds,
+		)
+		log.Span.Finish()
+	}()
 
 	var err error
 	var queries []IndexQuery
@@ -476,11 +517,11 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "queries", len(queries))
+	totalQueries = len(queries)
 
 	if filter != nil {
 		queries = filter(queries)
-		level.Debug(log).Log("matcher", formatMatcher(matcher), "filteredQueries", len(queries))
+		totalFilteredQueries = len(queries)
 	}
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
@@ -491,13 +532,13 @@ func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, thro
 	} else if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "entries", len(entries))
+	totalEntries = len(entries)
 
 	ids, err := c.parseIndexEntries(ctx, entries, matcher)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("matcher", formatMatcher(matcher), "ids", len(ids))
+	totalIds = len(ids)
 
 	return ids, nil
 }

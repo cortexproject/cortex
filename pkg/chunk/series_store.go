@@ -153,7 +153,15 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, nil, nil
 	}
 
-	level.Debug(log).Log("metric", metricName)
+	var totalSeries, totalChunkIDs, totalChunkIDsFiltered int
+	defer func() {
+		level.Debug(log).Log(
+			"metric", metricName,
+			"series-ids", totalSeries,
+			"chunk-ids", totalChunkIDs,
+			"chunks-post-filtering", totalChunkIDsFiltered,
+		)
+	}()
 
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
@@ -162,7 +170,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	if err != nil {
 		return nil, nil, err
 	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
+	totalSeries = len(seriesIDs)
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
@@ -170,7 +178,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
 		return nil, nil, err
 	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+	totalChunkIDs = len(chunkIDs)
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
@@ -179,7 +187,7 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, userID string, from, thr
 	}
 
 	chunks = filterChunksByTime(from, through, chunks)
-	level.Debug(log).Log("chunks-post-filtering", len(chunks))
+	totalChunkIDsFiltered = len(chunks)
 	chunksPerQuery.Observe(float64(len(chunks)))
 
 	// We should return an empty chunks slice if there are no chunks.
@@ -201,6 +209,15 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	} else if shortcut {
 		return nil, nil
 	}
+
+	var totalSeries, totalNames int
+	defer func() {
+		level.Debug(log).Log(
+			"metric", metricName,
+			"series-ids", totalSeries,
+			"labelNames", totalNames,
+		)
+	}()
 	level.Debug(log).Log("metric", metricName)
 
 	// Fetch the series IDs from the index
@@ -208,7 +225,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("series-ids", len(seriesIDs))
+	totalSeries = len(seriesIDs)
 
 	// Lookup the series in the index to get label names.
 	labelNames, err := c.lookupLabelNamesBySeries(ctx, from, through, userID, seriesIDs)
@@ -220,14 +237,21 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 		level.Error(log).Log("msg", "lookupLabelNamesBySeries", "err", err)
 		return nil, err
 	}
-	level.Debug(log).Log("labelNames", len(labelNames))
+	totalNames = len(labelNames)
 
 	return labelNames, nil
 }
 
 func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+	var totalChunkIDs, totalChunkIDsFiltered int
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesByChunks")
-	defer log.Span.Finish()
+	defer func() {
+		level.Debug(log).Log(
+			"chunk-ids", totalChunkIDs,
+			"Chunks post filtering", totalChunkIDsFiltered,
+		)
+		log.Span.Finish()
+	}()
 
 	// Lookup the series in the index to get the chunks.
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
@@ -235,7 +259,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 		level.Error(log).Log("msg", "lookupChunksBySeries", "err", err)
 		return nil, err
 	}
-	level.Debug(log).Log("chunk-ids", len(chunkIDs))
+	totalChunkIDs = len(chunkIDs)
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
@@ -246,7 +270,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
 	filtered := filterChunksByTime(from, through, chunks)
 	filtered, keys := filterChunksByUniqueFingerprint(filtered)
-	level.Debug(log).Log("Chunks post filtering", len(chunks))
+	totalChunkIDsFiltered = len(chunks)
 
 	chunksPerQuery.Observe(float64(len(filtered)))
 
@@ -350,10 +374,18 @@ func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from,
 }
 
 func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+	var totalSeries, totalQueries, totalEntries int
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupChunksBySeries")
-	defer log.Span.Finish()
+	defer func() {
+		level.Debug(log).Log(
+			"seriesIDs", totalSeries,
+			"queries", totalQueries,
+			"entries", totalEntries,
+		)
+		log.Span.Finish()
+	}()
 
-	level.Debug(log).Log("seriesIDs", len(seriesIDs))
+	totalSeries = len(seriesIDs)
 
 	queries := make([]IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
@@ -363,23 +395,31 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 		}
 		queries = append(queries, qs...)
 	}
-	level.Debug(log).Log("queries", len(queries))
+	totalQueries = len(queries)
 
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("entries", len(entries))
+	totalEntries = len(entries)
 
 	result, err := c.parseIndexEntries(ctx, entries, nil)
 	return result, err
 }
 
 func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+	var totalSeries, totalQueries, totalEntries int
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesBySeries")
-	defer log.Span.Finish()
+	defer func() {
+		level.Debug(log).Log(
+			"seriesIDs", totalSeries,
+			"queries", totalQueries,
+			"entries", totalEntries,
+		)
+		log.Span.Finish()
+	}()
 
-	level.Debug(log).Log("seriesIDs", len(seriesIDs))
+	totalSeries = len(seriesIDs)
 	queries := make([]IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
 		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
@@ -388,12 +428,12 @@ func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, throug
 		}
 		queries = append(queries, qs...)
 	}
-	level.Debug(log).Log("queries", len(queries))
+	totalQueries = len(queries)
 	entries, err := c.lookupEntriesByQueries(ctx, queries)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(log).Log("entries", len(entries))
+	totalEntries = len(entries)
 
 	var result UniqueStrings
 	result.Add(model.MetricNameLabel)

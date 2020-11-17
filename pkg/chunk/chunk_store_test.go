@@ -16,11 +16,14 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/test"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1201,4 +1204,46 @@ func TestDisableIndexDeduplication(t *testing.T) {
 
 	}
 
+}
+
+func Benchmark_GetRefsChunk(b *testing.B) {
+	debug := logging.Level{}
+	require.NoError(b, debug.Set("debug"))
+	util.InitLogger(&server.Config{
+		LogLevel: debug,
+	})
+	ctx := context.Background()
+	fooMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
+	}
+	fooMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
+	}
+
+	now := model.Now()
+	chunks := []Chunk{
+		dummyChunkFor(now, fooMetric1),
+		dummyChunkFor(now, fooMetric2),
+	}
+	s := newTestChunkStore(b, "v11")
+	err := s.Put(ctx, chunks)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_, _, err := s.GetChunkRefs(ctx, userID,
+			now.Add(-1*time.Hour), now.Add(1*time.Hour),
+			mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
+			mustNewLabelMatcher(labels.MatchEqual, "toms", "code"),
+			mustNewLabelMatcher(labels.MatchRegexp, "bar", "baz|beep"),
+		)
+		require.NoError(b, err)
+	}
 }

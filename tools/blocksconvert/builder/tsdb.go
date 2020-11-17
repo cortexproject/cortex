@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -27,7 +28,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
-const unsortedChunksDir = "unsorted_chunks"
+const (
+	unsortedChunksDir     = "unsorted_chunks"
+	readChunksConcurrency = 16
+)
 
 // This builder uses TSDB's chunk and index writer directly, without
 // using TSDB Head.
@@ -297,18 +301,59 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 		return stats, errors.Wrap(err, "reading series")
 	}
 
-	ix := 0
+	type chunkToRead struct {
+		ref   uint64
+		chunk *chunkenc.Chunk
+		err   *error
+	}
+
+	ch := make(chan chunkToRead)
+	defer close(ch) // To make sure that goroutines stop.
+
+	// Number of chunks that should be loaded.
+	var pendingChunks sync.WaitGroup
+
+	// These goroutines read chunks into memory.
+	for n := 0; n < readChunksConcurrency; n++ {
+		go func() {
+			for ctr := range ch {
+				c, e := unsortedChunksReader.Chunk(ctr.ref)
+				*ctr.chunk = c
+				*ctr.err = e
+				pendingChunks.Done()
+			}
+		}()
+	}
+
+	seriesRef := 0
 	for s, ok := it.Next(); ok; s, ok = it.Next() {
 		l := s.Metric
 		cs := s.Chunks
 
-		// Read chunks into memory.
-		for ix := range s.Chunks {
-			cs[ix].Chunk, err = unsortedChunksReader.Chunk(cs[ix].Ref)
-			if err != nil {
-				return stats, errors.Wrap(err, "failed to read chunk")
+		readErrors := make([]error, len(cs))
+
+		// Read chunks into memory by asking goroutines to load them.
+		for ix := range cs {
+			pendingChunks.Add(1)
+			ch <- chunkToRead{
+				ref:   cs[ix].Ref,
+				chunk: &cs[ix].Chunk,
+				err:   &readErrors[ix],
 			}
 			cs[ix].Ref = 0
+		}
+
+		// Wait for all chunks to be fetched.
+		pendingChunks.Wait()
+
+		multi := tsdb_errors.NewMulti()
+		for _, e := range readErrors {
+			if e != nil {
+				multi.Add(e)
+			}
+		}
+		if err := multi.Err(); err != nil {
+			return stats, errors.Wrap(err, "failed to read chunks")
 		}
 
 		// Write chunks again. This time they will be written in the same order as series.
@@ -325,11 +370,11 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 			cs[ix].Chunk = nil
 		}
 
-		if err := indexWriter.AddSeries(uint64(ix), l, cs...); err != nil {
+		if err := indexWriter.AddSeries(uint64(seriesRef), l, cs...); err != nil {
 			return stats, errors.Wrapf(err, "adding series %v", l)
 		}
 
-		ix++
+		seriesRef++
 
 		stats.NumSamples += s.Samples
 		stats.NumSeries++

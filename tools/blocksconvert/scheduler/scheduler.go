@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type Config struct {
 	PlanScanConcurrency int
 	MaxProgressFileAge  time.Duration
 	AllowedUsers        string
+	IgnoredUserPattern  string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -38,6 +40,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.PlanScanConcurrency, "scheduler.plan-scan-concurrency", 5, "Limit of concurrent plan scans.")
 	f.DurationVar(&cfg.MaxProgressFileAge, "scheduler.max-progress-file-age", 30*time.Minute, "Progress files older than this duration are deleted.")
 	f.StringVar(&cfg.AllowedUsers, "scheduler.allowed-users", "", "Allowed users that can be converted, comma-separated")
+	f.StringVar(&cfg.IgnoredUserPattern, "scheduler.ignore-users-regex", "", "If set and user ID matches this regex pattern, it will be ignored. Checked after applying -scheduler.allowed-users, if set.")
 }
 
 func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer, http *mux.Router, grpcServ *grpc.Server) (*Scheduler, error) {
@@ -51,19 +54,29 @@ func NewScheduler(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg
 		users = blocksconvert.ParseAllowedUsers(cfg.AllowedUsers)
 	}
 
-	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, users, cfg, reg)
+	var ignoredUserRegex *regexp.Regexp = nil
+	if cfg.IgnoredUserPattern != "" {
+		re, err := regexp.Compile(cfg.IgnoredUserPattern)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to compile ignored user regex")
+		}
+		ignoredUserRegex = re
+	}
+
+	s := newSchedulerWithBucket(l, b, scfg.BucketPrefix, users, ignoredUserRegex, cfg, reg)
 	blocksconvert.RegisterSchedulerServer(grpcServ, s)
 	http.HandleFunc("/plans", s.httpPlans)
 	return s, nil
 }
 
-func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, users blocksconvert.AllowedUsers, cfg Config, reg prometheus.Registerer) *Scheduler {
+func newSchedulerWithBucket(l log.Logger, b objstore.Bucket, bucketPrefix string, users blocksconvert.AllowedUsers, ignoredUsers *regexp.Regexp, cfg Config, reg prometheus.Registerer) *Scheduler {
 	s := &Scheduler{
 		log:          l,
 		cfg:          cfg,
 		bucket:       b,
 		bucketPrefix: bucketPrefix,
 		allowedUsers: users,
+		ignoredUsers: ignoredUsers,
 
 		planStatus: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_blocksconvert_scheduler_scanned_plans",
@@ -93,6 +106,7 @@ type Scheduler struct {
 	log log.Logger
 
 	allowedUsers blocksconvert.AllowedUsers
+	ignoredUsers *regexp.Regexp // Can be nil.
 
 	bucket       objstore.Bucket
 	bucketPrefix string
@@ -141,6 +155,7 @@ func (s *Scheduler) scanBucketForPlans(ctx context.Context) error {
 
 	allUsers := len(users)
 	users = s.allowedUsers.GetAllowedUsers(users)
+	users = s.ignoreUsers(users)
 
 	level.Info(s.log).Log("msg", "found users", "all", allUsers, "allowed", len(users))
 
@@ -476,4 +491,18 @@ func (s *Scheduler) updateQueuedPlansMetrics() {
 		s.oldestPlanTimestamp.Set(0)
 		s.newestPlanTimestamp.Set(0)
 	}
+}
+
+func (s *Scheduler) ignoreUsers(users []string) []string {
+	if s.ignoredUsers == nil {
+		return users
+	}
+
+	result := make([]string, 0, len(users))
+	for _, u := range users {
+		if !s.ignoredUsers.MatchString(u) {
+			result = append(result, u)
+		}
+	}
+	return result
 }

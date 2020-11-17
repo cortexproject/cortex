@@ -19,6 +19,7 @@ const (
 	Ingester
 	Querier
 	QueryFrontend
+	QueryScheduler
 	TableManager
 	AlertManager
 	Ruler
@@ -29,15 +30,16 @@ const (
 var (
 	// Service-specific metrics prefixes which shouldn't be used by any other service.
 	serviceMetricsPrefixes = map[ServiceType][]string{
-		Distributor:   {},
-		Ingester:      {"!cortex_ingester_client", "cortex_ingester"}, // The metrics prefix cortex_ingester_client may be used by other components so we ignore it.
-		Querier:       {"cortex_querier"},
-		QueryFrontend: {"cortex_frontend", "cortex_query_frontend"},
-		TableManager:  {},
-		AlertManager:  {"cortex_alertmanager"},
-		Ruler:         {},
-		StoreGateway:  {"!cortex_storegateway_client", "cortex_storegateway"}, // The metrics prefix cortex_storegateway_client may be used by other components so we ignore it.
-		Purger:        {"cortex_purger"},
+		Distributor:    {},
+		Ingester:       {"!cortex_ingester_client", "cortex_ingester"}, // The metrics prefix cortex_ingester_client may be used by other components so we ignore it.
+		Querier:        {"cortex_querier"},
+		QueryFrontend:  {"cortex_frontend", "cortex_query_frontend"},
+		QueryScheduler: {"cortex_query_scheduler"},
+		TableManager:   {},
+		AlertManager:   {"cortex_alertmanager"},
+		Ruler:          {},
+		StoreGateway:   {"!cortex_storegateway_client", "cortex_storegateway"}, // The metrics prefix cortex_storegateway_client may be used by other components so we ignore it.
+		Purger:         {"cortex_purger"},
 	}
 
 	// Blacklisted metrics prefixes across any Cortex service.
@@ -48,6 +50,10 @@ var (
 )
 
 func assertServiceMetricsPrefixes(t *testing.T, serviceType ServiceType, service *e2ecortex.CortexService) {
+	if service == nil {
+		return
+	}
+
 	metrics, err := service.Metrics()
 	require.NoError(t, err)
 
@@ -67,7 +73,7 @@ func assertServiceMetricsPrefixes(t *testing.T, serviceType ServiceType, service
 				break
 			}
 
-			assert.NotRegexp(t, "^"+prefix, metricLine, "service: %s", service.Name())
+			assert.NotRegexp(t, "^"+prefix, metricLine, "service: %s endpoint: %s", service.Name(), service.HTTPEndpoint())
 		}
 	}
 }

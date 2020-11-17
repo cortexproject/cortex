@@ -19,11 +19,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	frontendv2 "github.com/cortexproject/cortex/pkg/frontend/v2"
+	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
@@ -51,12 +56,13 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 type API struct {
-	cfg            Config
-	authMiddleware middleware.Interface
-	server         *server.Server
-	logger         log.Logger
-	sourceIPs      *middleware.SourceIPExtractor
-	indexPage      *IndexPageContent
+	AuthMiddleware middleware.Interface
+
+	cfg       Config
+	server    *server.Server
+	logger    log.Logger
+	sourceIPs *middleware.SourceIPExtractor
+	indexPage *IndexPageContent
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -75,7 +81,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 
 	api := &API{
 		cfg:            cfg,
-		authMiddleware: cfg.HTTPAuthMiddleware,
+		AuthMiddleware: cfg.HTTPAuthMiddleware,
 		server:         s,
 		logger:         logger,
 		sourceIPs:      sourceIPs,
@@ -84,7 +90,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
 	if cfg.HTTPAuthMiddleware == nil {
-		api.authMiddleware = middleware.AuthenticateUser
+		api.AuthMiddleware = middleware.AuthenticateUser
 	}
 
 	return api, nil
@@ -97,7 +103,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
 	if auth {
-		handler = a.authMiddleware.Wrap(handler)
+		handler = a.AuthMiddleware.Wrap(handler)
 	}
 	if len(methods) == 0 {
 		a.server.HTTP.Path(path).Handler(handler)
@@ -109,7 +115,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth bool, methods ...string) {
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "prefix", prefix, "auth", auth)
 	if auth {
-		handler = a.authMiddleware.Wrap(handler)
+		handler = a.AuthMiddleware.Wrap(handler)
 	}
 	if len(methods) == 0 {
 		a.server.HTTP.PathPrefix(prefix).Handler(handler)
@@ -308,9 +314,21 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 // RegisterQueryFrontend registers the Prometheus routes supported by the
 // Cortex querier service. Currently this can not be registered simultaneously
 // with the Querier.
-func (a *API) RegisterQueryFrontend(f *frontend.Frontend) {
-	frontend.RegisterFrontendServer(a.server.GRPC, f)
-	a.RegisterQueryAPI(f.Handler())
+func (a *API) RegisterQueryFrontendHandler(h http.Handler) {
+	a.RegisterQueryAPI(h)
+}
+
+func (a *API) RegisterQueryFrontend1(f *frontendv1.Frontend) {
+	frontendv1pb.RegisterFrontendServer(a.server.GRPC, f)
+}
+
+func (a *API) RegisterQueryFrontend2(f *frontendv2.Frontend) {
+	frontendv2pb.RegisterFrontendForQuerierServer(a.server.GRPC, f)
+}
+
+func (a *API) RegisterQueryScheduler(f *scheduler.Scheduler) {
+	schedulerpb.RegisterSchedulerForFrontendServer(a.server.GRPC, f)
+	schedulerpb.RegisterSchedulerForQuerierServer(a.server.GRPC, f)
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

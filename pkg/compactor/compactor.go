@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"math/rand"
 	"path"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -37,6 +39,7 @@ type Config struct {
 	CompactionInterval    time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries     int                      `yaml:"compaction_retries"`
 	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
+	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
@@ -69,6 +72,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
+	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks should be cleaned up concurrently (deletion of blocks previously marked for deletion).")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
@@ -262,6 +266,22 @@ func (c *Compactor) starting(ctx context.Context) error {
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")
+
+		// In the event of a cluster cold start or scale up of 2+ compactor instances at the same
+		// time, we may end up in a situation where each new compactor instance starts at a slightly
+		// different time and thus each one starts with on a different state of the ring. It's better
+		// to just wait the ring stability for a short time.
+		if c.compactorCfg.ShardingRing.WaitStabilityMinDuration > 0 {
+			minWaiting := c.compactorCfg.ShardingRing.WaitStabilityMinDuration
+			maxWaiting := c.compactorCfg.ShardingRing.WaitStabilityMaxDuration
+
+			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
+			if err := ring.WaitRingStability(ctx, c.ring, ring.Compactor, minWaiting, maxWaiting); err != nil {
+				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
+			} else {
+				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
+			}
+		}
 	}
 
 	// Create the blocks cleaner (service).
@@ -269,7 +289,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 		DataDir:             c.compactorCfg.DataDir,
 		MetaSyncConcurrency: c.compactorCfg.MetaSyncConcurrency,
 		DeletionDelay:       c.compactorCfg.DeletionDelay,
-		CleanupInterval:     util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05),
+		CleanupInterval:     util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.1),
+		CleanupConcurrency:  c.compactorCfg.CleanupConcurrency,
 	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
@@ -343,7 +364,14 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
 
-	errs := util.NewMultiError()
+	// When starting multiple compactor replicas nearly at the same time, running in a cluster with
+	// a large number of tenants, we may end up in a situation where the 1st user is compacted by
+	// multiple replicas at the same time. Shuffling users helps reduce the likelihood this will happen.
+	rand.Shuffle(len(users), func(i, j int) {
+		users[i], users[j] = users[j], users[i]
+	})
+
+	errs := tsdb_errors.NewMulti()
 
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).

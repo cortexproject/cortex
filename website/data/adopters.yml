@@ -9,6 +9,9 @@ adopters:
 - name: Electronic Arts
   url: https://www.ea.com/
   logo: ea.png
+- name: EverQuote
+  url: https://www.everquote.com/
+  logo: everquote.png
 - name: GoJek
   url: https://www.gojek.io/
   logo: gojek.png

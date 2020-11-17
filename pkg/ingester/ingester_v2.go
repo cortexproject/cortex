@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -53,6 +55,11 @@ type userTSDB struct {
 	activeSeries   *ActiveSeries
 	seriesInMetric *metricCounter
 	limiter        *Limiter
+
+	forcedCompactionInProgressMtx sync.RWMutex
+	forcedCompactionInProgress    bool
+
+	pushesInFlight sync.WaitGroup
 
 	// Used to detect idle TSDBs.
 	lastUpdate *atomic.Int64
@@ -91,8 +98,24 @@ func (u *userTSDB) Compact() error {
 	return u.db.Compact()
 }
 
+func (u *userTSDB) StartTime() (int64, error) {
+	return u.db.StartTime()
+}
+
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
+	u.forcedCompactionInProgressMtx.Lock()
+	u.forcedCompactionInProgress = true
+	u.forcedCompactionInProgressMtx.Unlock()
+	defer func() {
+		u.forcedCompactionInProgressMtx.Lock()
+		u.forcedCompactionInProgress = false
+		u.forcedCompactionInProgressMtx.Unlock()
+	}()
+	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
+	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
+	u.pushesInFlight.Wait()
+
 	h := u.Head()
 
 	minTime, maxTime := h.MinTime(), h.MaxTime()
@@ -501,6 +524,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 	i.userStatesMtx.RUnlock()
 
+	if err := db.acquireAppendLock(); err != nil {
+		return &client.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
+	}
+	defer db.releaseAppendLock()
+
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
 	i.pushMetadata(ctx, userID, req.GetMetadata())
@@ -651,6 +679,22 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	return &client.WriteResponse{}, nil
 }
 
+func (u *userTSDB) acquireAppendLock() error {
+	u.forcedCompactionInProgressMtx.RLock()
+	defer u.forcedCompactionInProgressMtx.RUnlock()
+
+	if u.forcedCompactionInProgress {
+		return errors.New("forced compaction in progress")
+	}
+
+	u.pushesInFlight.Add(1)
+	return nil
+}
+
+func (u *userTSDB) releaseAppendLock() {
+	u.pushesInFlight.Done()
+}
+
 func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -718,10 +762,12 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -748,10 +794,12 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -784,10 +832,12 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 		return nil, err
 	}
 
-	// Since ingester may run with a variable TSDB retention which could be few days long,
-	// we only query the TSDB head time range in order to avoid heavy queries (which could
-	// lead to ingesters out-of-memory) in case the TSDB retention is several days.
-	q, err := db.Querier(ctx, db.Head().MinTime(), db.Head().MaxTime())
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
@@ -1051,6 +1101,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		NoLockfile:              true,
 		StripeSize:              i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		WALCompression:          i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALSegmentSize:          i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback: userDB,
 		BlocksToDelete:          userDB.blocksToDelete,
 	})
@@ -1289,11 +1340,11 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(ctx context.Context, userID string) error {
 		// Get the user's DB. If the user doesn't exist, we skip it.
 		userDB := i.getTSDB(userID)
 		if userDB == nil || userDB.shipper == nil {
-			return
+			return nil
 		}
 
 		// Run the shipper's Sync() to upload unshipped blocks.
@@ -1302,6 +1353,8 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
+
+		return nil
 	})
 }
 
@@ -1341,16 +1394,16 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		}
 	}
 
-	i.runConcurrentUserWorkers(ctx, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(userID string) {
+	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(ctx context.Context, userID string) error {
 		userDB := i.getTSDB(userID)
 		if userDB == nil {
-			return
+			return nil
 		}
 
 		// Don't do anything, if there is nothing to compact.
 		h := userDB.Head()
 		if h.NumSeries() == 0 {
-			return
+			return nil
 		}
 
 		var err error
@@ -1379,39 +1432,9 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		} else {
 			level.Debug(util.Logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
+
+		return nil
 	})
-}
-
-func (i *Ingester) runConcurrentUserWorkers(ctx context.Context, concurrency int, userFunc func(userID string)) {
-	wg := sync.WaitGroup{}
-	ch := make(chan string)
-
-	for ix := 0; ix < concurrency; ix++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for userID := range ch {
-				userFunc(userID)
-			}
-		}()
-	}
-
-sendLoop:
-	for _, userID := range i.getTSDBUsers() {
-		select {
-		case ch <- userID:
-			// ok
-		case <-ctx.Done():
-			// don't start new tasks.
-			break sendLoop
-		}
-	}
-
-	close(ch)
-
-	// wait for ongoing workers to finish.
-	wg.Wait()
 }
 
 // This method will flush all data. It is called as part of Lifecycler's shutdown (if flush on shutdown is configured), or from the flusher.
@@ -1487,4 +1510,31 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	}()
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
+func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB) (mint, maxt int64, err error) {
+	// Ingesters are run with limited retention and we don't support querying the store-gateway for labels yet.
+	// This means if someone loads a dashboard that is outside the range of the ingester, and we only return the
+	// data for the timerange requested (which will be empty), the dashboards will break. To fix this we should
+	// return the "head block" range until we can query the store-gateway.
+
+	// Now the question would be what to do when the query is partially in the ingester range. I would err on the side
+	// of caution and query the entire db, as I can't think of a good way to query the head + the overlapping range.
+	mint, maxt = queryStart, queryEnd
+
+	lowestTs, err := db.StartTime()
+	if err != nil {
+		return mint, maxt, err
+	}
+
+	// Completely outside.
+	if queryEnd < lowestTs {
+		mint, maxt = db.Head().MinTime(), db.Head().MaxTime()
+	} else if queryStart < lowestTs {
+		// Partially inside.
+		mint, maxt = 0, math.MaxInt64
+	}
+
+	return
 }

@@ -643,14 +643,16 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName model.LabelName) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	req := &client.LabelValuesRequest{
-		LabelName: string(labelName),
+		LabelName:        string(labelName),
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
 	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
@@ -674,13 +676,16 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, labelName mod
 }
 
 // LabelNames returns all of the label names.
-func (d *Distributor) LabelNames(ctx context.Context) ([]string, error) {
+func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &client.LabelNamesRequest{}
+	req := &client.LabelNamesRequest{
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+	}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})
@@ -830,7 +835,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	req := &client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.ForReplicationSet(), so we can fail after first error.
-	replicationSet, err := d.ingestersRing.GetAll(ring.Read)
+	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}

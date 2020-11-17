@@ -25,112 +25,146 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-type queryFrontendSetup func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
+type queryFrontendTestConfig struct {
+	testMissingMetricName bool
+	querySchedulerEnabled bool
+	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
+}
 
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		flags = BlocksStorageFlags()
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			flags = BlocksStorageFlags()
 
-		minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
-		require.NoError(t, s.StartAndWaitReady(minio))
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
 
-		return "", flags
+			return "", flags
+		},
+	})
+}
+
+func TestQueryFrontendWithBlocksStorageViaFlagsAndWithQueryScheduler(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		querySchedulerEnabled: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			flags = BlocksStorageFlags()
+
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			return "", flags
+		},
 	})
 }
 
 func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
-	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
-		minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
-		require.NoError(t, s.StartAndWaitReady(minio))
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
 
-		return cortexConfigFile, e2e.EmptyFlags()
+			return cortexConfigFile, e2e.EmptyFlags()
+		},
 	})
 }
 
 func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, true, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
-		dynamo := e2edb.NewDynamoDB()
-		require.NoError(t, s.StartAndWaitReady(dynamo))
+			dynamo := e2edb.NewDynamoDB()
+			require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		flags = ChunksStorageFlags()
-		tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
-		require.NoError(t, s.StartAndWaitReady(tableManager))
+			flags = ChunksStorageFlags()
+			tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
+			require.NoError(t, s.StartAndWaitReady(tableManager))
 
-		// Wait until the first table-manager sync has completed, so that we're
-		// sure the tables have been created.
-		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+			// Wait until the first table-manager sync has completed, so that we're
+			// sure the tables have been created.
+			require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
-		return "", flags
+			return "", flags
+		},
 	})
 }
 
 func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
-	runQueryFrontendTest(t, true, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(ChunksStorageConfig)))
-		require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(ChunksStorageConfig)))
+			require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
-		dynamo := e2edb.NewDynamoDB()
-		require.NoError(t, s.StartAndWaitReady(dynamo))
+			dynamo := e2edb.NewDynamoDB()
+			require.NoError(t, s.StartAndWaitReady(dynamo))
 
-		tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "")
-		require.NoError(t, s.StartAndWaitReady(tableManager))
+			tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "")
+			require.NoError(t, s.StartAndWaitReady(tableManager))
 
-		// Wait until the first table-manager sync has completed, so that we're
-		// sure the tables have been created.
-		require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+			// Wait until the first table-manager sync has completed, so that we're
+			// sure the tables have been created.
+			require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
-		return cortexConfigFile, e2e.EmptyFlags()
+			return cortexConfigFile, e2e.EmptyFlags()
+		},
 	})
 }
 
 func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, false, func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-		flags = mergeFlags(
-			BlocksStorageFlags(),
-			getServerTLSFlags(),
-			getClientTLSFlagsWithPrefix("ingester.client"),
-			getClientTLSFlagsWithPrefix("querier.frontend-client"),
-		)
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			flags = mergeFlags(
+				BlocksStorageFlags(),
+				getServerTLSFlags(),
+				getClientTLSFlagsWithPrefix("ingester.client"),
+				getClientTLSFlagsWithPrefix("querier.frontend-client"),
+			)
 
-		minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
-		require.NoError(t, s.StartAndWaitReady(minio))
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
 
-		// set the ca
-		ca := ca.New("Cortex Test")
+			// set the ca
+			cert := ca.New("Cortex Test")
 
-		// Ensure the entire path of directories exist.
-		require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
+			// Ensure the entire path of directories exist.
+			require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
 
-		require.NoError(t, ca.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
+			require.NoError(t, cert.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
 
-		// server certificate
-		require.NoError(t, ca.WriteCertificate(
-			&x509.Certificate{
-				Subject:     pkix.Name{CommonName: "client"},
-				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-			},
-			filepath.Join(s.SharedDir(), clientCertFile),
-			filepath.Join(s.SharedDir(), clientKeyFile),
-		))
-		require.NoError(t, ca.WriteCertificate(
-			&x509.Certificate{
-				Subject:     pkix.Name{CommonName: "server"},
-				DNSNames:    []string{"querier.frontend-client", "ingester.client"},
-				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			},
-			filepath.Join(s.SharedDir(), serverCertFile),
-			filepath.Join(s.SharedDir(), serverKeyFile),
-		))
+			// server certificate
+			require.NoError(t, cert.WriteCertificate(
+				&x509.Certificate{
+					Subject:     pkix.Name{CommonName: "client"},
+					ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				},
+				filepath.Join(s.SharedDir(), clientCertFile),
+				filepath.Join(s.SharedDir(), clientKeyFile),
+			))
+			require.NoError(t, cert.WriteCertificate(
+				&x509.Certificate{
+					Subject:     pkix.Name{CommonName: "server"},
+					DNSNames:    []string{"querier.frontend-client", "ingester.client"},
+					ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+				},
+				filepath.Join(s.SharedDir(), serverCertFile),
+				filepath.Join(s.SharedDir(), serverKeyFile),
+			))
 
-		return "", flags
+			return "", flags
+		},
 	})
 }
 
-func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryFrontendSetup) {
+func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
 
@@ -142,7 +176,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	consul := e2edb.NewConsul()
 	require.NoError(t, s.StartAndWaitReady(consul, memcached))
 
-	configFile, flags := setup(t, s)
+	configFile, flags := cfg.setup(t, s)
 
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
@@ -151,16 +185,27 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 	})
 
-	// Start Cortex components.
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
-	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
-	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	// Start the query-scheduler if enabled.
+	var queryScheduler *e2ecortex.CortexService
+	if cfg.querySchedulerEnabled {
+		queryScheduler = e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+		require.NoError(t, s.StartAndWaitReady(queryScheduler))
+		flags["-frontend.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+		flags["-querier.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+	}
 
+	// Start the query-frontend.
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", configFile, flags, "")
 	require.NoError(t, s.Start(queryFrontend))
 
-	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, mergeFlags(flags, map[string]string{
-		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
-	}), "")
+	if !cfg.querySchedulerEnabled {
+		flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	}
+
+	// Start all other services.
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", consul.NetworkHTTPEndpoint(), configFile, flags, "")
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", consul.NetworkHTTPEndpoint(), configFile, flags, "")
 
 	require.NoError(t, s.StartAndWaitReady(querier, ingester, distributor))
 	require.NoError(t, s.WaitReady(queryFrontend))
@@ -200,7 +245,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 		require.NoError(t, err)
 
 		// No need to repeat the test on missing metric name for each user.
-		if userID == 0 && testMissingMetricName {
+		if userID == 0 && cfg.testMissingMetricName {
 			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
 			require.NoError(t, err)
 			require.Equal(t, 422, res.StatusCode)
@@ -250,7 +295,7 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	wg.Wait()
 
 	extra := float64(2)
-	if testMissingMetricName {
+	if cfg.testMissingMetricName {
 		extra++
 	}
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
@@ -266,4 +311,5 @@ func runQueryFrontendTest(t *testing.T, testMissingMetricName bool, setup queryF
 	assertServiceMetricsPrefixes(t, Ingester, ingester)
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
+	assertServiceMetricsPrefixes(t, QueryScheduler, queryScheduler)
 }

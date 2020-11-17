@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -22,6 +23,18 @@ import (
 )
 
 func TestBlocksCleaner(t *testing.T) {
+	for _, concurrency := range []int{1, 2, 10} {
+		concurrency := concurrency
+
+		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+			t.Parallel()
+
+			testBlocksCleanerWithConcurrency(t, concurrency)
+		})
+	}
+}
+
+func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	// Create a temporary directory for local storage.
 	storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
 	require.NoError(t, err)
@@ -46,17 +59,21 @@ func TestBlocksCleaner(t *testing.T) {
 	block4 := ulid.MustNew(4, rand.Reader)
 	block5 := ulid.MustNew(5, rand.Reader)
 	block6 := createTSDBBlock(t, filepath.Join(storageDir, "user-1"), 40, 50, nil)
+	block7 := createTSDBBlock(t, filepath.Join(storageDir, "user-2"), 10, 20, nil)
+	block8 := createTSDBBlock(t, filepath.Join(storageDir, "user-2"), 40, 50, nil)
 	createDeletionMark(t, filepath.Join(storageDir, "user-1"), block2, now.Add(-deletionDelay).Add(time.Hour))  // Block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, filepath.Join(storageDir, "user-1"), block3, now.Add(-deletionDelay).Add(-time.Hour)) // Block reached the deletion threshold.
 	createDeletionMark(t, filepath.Join(storageDir, "user-1"), block4, now.Add(-deletionDelay).Add(time.Hour))  // Partial block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, filepath.Join(storageDir, "user-1"), block5, now.Add(-deletionDelay).Add(-time.Hour)) // Partial block reached the deletion threshold.
 	require.NoError(t, bucketClient.Delete(ctx, path.Join("user-1", block6.String(), metadata.MetaFilename)))   // Partial block without deletion mark.
+	createDeletionMark(t, filepath.Join(storageDir, "user-2"), block7, now.Add(-deletionDelay).Add(-time.Hour)) // Block reached the deletion threshold.
 
 	cfg := BlocksCleanerConfig{
 		DataDir:             dataDir,
 		MetaSyncConcurrency: 10,
 		DeletionDelay:       deletionDelay,
 		CleanupInterval:     time.Minute,
+		CleanupConcurrency:  concurrency,
 	}
 
 	logger := log.NewNopLogger()
@@ -80,6 +97,14 @@ func TestBlocksCleaner(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, exists)
 
+	exists, err = bucketClient.Exists(ctx, path.Join("user-2", block7.String(), metadata.MetaFilename))
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	exists, err = bucketClient.Exists(ctx, path.Join("user-2", block8.String(), metadata.MetaFilename))
+	require.NoError(t, err)
+	assert.True(t, exists)
+
 	// Should delete a partial block with deletion mark who hasn't reached the deletion threshold yet.
 	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block4.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
@@ -98,6 +123,6 @@ func TestBlocksCleaner(t *testing.T) {
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
-	assert.Equal(t, float64(3), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(4), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 }

@@ -1,7 +1,6 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
@@ -406,7 +406,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
 
-	assert.Equal(t, []string{
+	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
 		`level=info component=cleaner org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
 		`level=info component=cleaner org_id=user-1 msg="cleaning of blocks marked for deletion done"`,
@@ -517,7 +517,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	// Only one user's block is compacted.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 1)
 
-	assert.Equal(t, []string{
+	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
 		`level=info component=cleaner org_id=user-1 msg="started cleaning of blocks marked for deletion"`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
@@ -621,7 +621,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbCompactor.AssertNumberOfCalls(t, "Plan", 2)
 
-	assert.Equal(t, []string{
+	assert.ElementsMatch(t, []string{
 		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
 		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
 		`level=info component=cleaner msg="started hard deletion of blocks marked for deletion"`,
@@ -671,14 +671,16 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	kvstore := consul.NewInMemoryClient(ring.GetCodec())
 
 	// Create two compactors
-	compactors := []*Compactor{}
-	logs := []*bytes.Buffer{}
+	var compactors []*Compactor
+	var logs []*concurrency.SyncBuffer
 
 	for i := 1; i <= 2; i++ {
 		cfg := prepareConfig()
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, tsdbCompactor, l, _, cleanup := prepare(t, cfg, bucketClient)
@@ -698,26 +700,6 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	// Start all compactors
 	for _, c := range compactors {
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
-	}
-
-	// Wait until each compactor sees all ACTIVE compactors in the ring
-	for _, c := range compactors {
-		cortex_testutil.Poll(t, 10*time.Second, len(compactors), func() interface{} {
-			// it is safe to access c.ring here, since we know that all compactors are Running now
-			rs, err := c.ring.GetAll(ring.Compactor)
-			if err != nil {
-				return 0
-			}
-
-			numActive := 0
-			for _, i := range rs.Ingesters {
-				if i.GetState() == ring.ACTIVE {
-					numActive++
-				}
-			}
-
-			return numActive
-		})
 	}
 
 	// Wait until a run has been completed on each compactor
@@ -808,9 +790,9 @@ func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTim
 	require.NoError(t, ioutil.WriteFile(markPath, []byte(content), os.ModePerm))
 }
 
-func findCompactorByUserID(compactors []*Compactor, logs []*bytes.Buffer, userID string) (*Compactor, *bytes.Buffer, error) {
+func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
-	var log *bytes.Buffer
+	var log *concurrency.SyncBuffer
 
 	for i, c := range compactors {
 		owned, err := c.ownUser(userID)
@@ -855,10 +837,14 @@ func prepareConfig() Config {
 	compactorCfg.retryMinBackoff = 0
 	compactorCfg.retryMaxBackoff = 0
 
+	// Do not wait for ring stability by default, in order to speed up tests.
+	compactorCfg.ShardingRing.WaitStabilityMinDuration = 0
+	compactorCfg.ShardingRing.WaitStabilityMaxDuration = 0
+
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *bytes.Buffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *concurrency.SyncBuffer, prometheus.Gatherer, func()) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -872,7 +858,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	}
 
 	tsdbCompactor := &tsdbCompactorMock{}
-	logs := &bytes.Buffer{}
+	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 

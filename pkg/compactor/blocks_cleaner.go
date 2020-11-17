@@ -18,6 +18,7 @@ import (
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -26,6 +27,7 @@ type BlocksCleanerConfig struct {
 	MetaSyncConcurrency int
 	DeletionDelay       time.Duration
 	CleanupInterval     time.Duration
+	CleanupConcurrency  int
 }
 
 type BlocksCleaner struct {
@@ -119,20 +121,9 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	errs := util.NewMultiError()
-	for _, userID := range users {
-		// Ensure the context has not been canceled (ie. shutdown has been triggered).
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		if err = c.cleanUser(ctx, userID); err != nil {
-			errs.Add(errors.Wrapf(err, "failed to delete user blocks (user: %s)", userID))
-			continue
-		}
-	}
-
-	return errs.Err()
+	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete user blocks (user: %s)", userID)
+	})
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {

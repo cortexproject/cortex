@@ -4645,4 +4645,5 @@ and development.&lt;/p>
 &lt;li>Metric relabeling in the distributor.&lt;/li>
 &lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
 &lt;li>Querying store for series, labels APIs (&lt;code>-querier.query-store-for-labels-enabled&lt;/code>)&lt;/li>
+&lt;li>Blocks storage: lazy mmap of block indexes in the store-gateway (&lt;code>-blocks-storage.bucket-store.index-header-lazy-loading-enabled&lt;/code>)&lt;/li>
 &lt;/ul></description></item></channel></rss>

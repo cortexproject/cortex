@@ -321,7 +321,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -log.level=debug"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address= -log.level=debug"]
     depends_on:
       - consul
       - minio

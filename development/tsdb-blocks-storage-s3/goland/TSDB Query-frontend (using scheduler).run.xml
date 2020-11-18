@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="TSDB Query-frontend (using scheduler)" type="GoRemoteDebugConfigurationType" factoryName="Go Remote" port="18012">
+    <option name="disconnectOption" value="ASK" />
+    <method v="2" />
+  </configuration>
+</component>

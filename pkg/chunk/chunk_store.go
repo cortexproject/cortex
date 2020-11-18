@@ -411,10 +411,7 @@ func (c *store) getMetricNameChunks(ctx context.Context, userID string, from, th
 
 func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, from, through model.Time, matchers []*labels.Matcher, metricName string) ([]Chunk, error) {
 	log, ctx := spanlogger.New(ctx, "ChunkStore.lookupChunksByMetricName")
-	defer func() {
-
-		log.Finish()
-	}()
+	defer log.Finish()
 
 	// Just get chunks for metric if there are no matchers
 	if len(matchers) == 0 {

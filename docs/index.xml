@@ -5343,7 +5343,7 @@ Current supported backend are PostgreSQL and in-memory.&lt;/p>
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.&lt;/p>
 &lt;p>This document will focus on single-process Cortex with the blocks storage.
-See &lt;a href="/docs/architecture/">the architecture doc&lt;/a> for more information about the microservices and &lt;a href="../blocks-storage/">blocks operation&lt;/a>
+See &lt;a href="/docs/architecture/">the architecture doc&lt;/a> for more information about the microservices and &lt;a href="/docs/blocks-storage/">blocks operation&lt;/a>
 for more information about the blocks storage.&lt;/p>
 &lt;p>Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
 Cortex can also make use of external Memcacheds and Redis for caching but this feature is not (yet) available using blocks storage.&lt;/p>

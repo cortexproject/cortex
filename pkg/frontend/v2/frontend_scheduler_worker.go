@@ -237,7 +237,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 		if err != nil {
 			return err
 		}
-		return errors.Errorf("unexpected status received: %v", resp.Status)
+		return errors.Errorf("unexpected status received for init: %v", resp.Status)
 	}
 
 	ctx := loop.Context()
@@ -308,10 +308,14 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				return err
 			}
 
-			// Not interested in cancellation response.
-			_, err = loop.Recv()
+			resp, err := loop.Recv()
 			if err != nil {
 				return err
+			}
+
+			// Scheduler may be shutting down, report that.
+			if resp.Status != schedulerpb.OK {
+				return errors.Errorf("unexpected status received for cancellation: %v", resp.Status)
 			}
 		}
 	}

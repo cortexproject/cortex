@@ -653,6 +653,7 @@ even if you plan to use the default values.&lt;/p></description></item><item><ti
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
 &lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>
+&lt;p>Reads from a zone-aware replication enabled Cortex Cluster can withstand zone failures as long as there are no more than &lt;code>floor(replication factor / 2)&lt;/code> zones with failing instances.&lt;/p>
 &lt;p>The Cortex services supporting &lt;strong>zone-aware replication&lt;/strong> are:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>&lt;a href="#distributors-and-ingesters-time-series-replication">Distributors and Ingesters&lt;/a>&lt;/strong>&lt;/li>
@@ -666,6 +667,8 @@ even if you plan to use the default values.&lt;/p></description></item><item><ti
 &lt;li>Rollout ingesters to apply the configured zone&lt;/li>
 &lt;li>Enable time-series zone-aware replication via the &lt;code>-distributor.zone-awareness-enabled&lt;/code> CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to distributors, queriers and rulers.&lt;/li>
 &lt;/ol>
+&lt;p>The &lt;code>-distributor.shard-by-all-labels&lt;/code> setting has an impact on read availability. When enabled, a metric is sharded across all ingesters and querier needs to fetch series from all ingesters while, when disabled, a metric is sharded only across &lt;code>&amp;lt;replication factor&amp;gt;&lt;/code> ingesters.&lt;/p>
+&lt;p>In the event of a large outage impacting ingesters in more than 1 zone, when &lt;code>-distributor.shard-by-all-labels=true&lt;/code> all queries will fail, while when disabled some queries may still succeed if the ingesters holding the required metric are not impacted by the outage.&lt;/p>
 &lt;h2 id="store-gateways-blocks-replication">Store-gateways: blocks replication&lt;/h2>
 &lt;p>The Cortex &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> (used only when Cortex is running with the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>) supports blocks sharding, used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.&lt;/p>
 &lt;p>To enable the zone-aware replication for the store-gateways, please refer to the &lt;a href="/docs/blocks-storage/store-gateway/#zone-awareness">store-gateway&lt;/a> documentation.&lt;/p>

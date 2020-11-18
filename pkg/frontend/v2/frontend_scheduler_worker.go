@@ -210,7 +210,7 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 			continue
 		}
 
-		loopErr = w.schedulerLoop(ctx, loop)
+		loopErr = w.schedulerLoop(loop)
 		if closeErr := loop.CloseSend(); closeErr != nil {
 			level.Debug(w.log).Log("msg", "failed to close frontend loop", "err", loopErr, "addr", w.schedulerAddr)
 		}
@@ -225,7 +225,7 @@ func (w *frontendSchedulerWorker) runOne(ctx context.Context, client schedulerpb
 	}
 }
 
-func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
+func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) error {
 	if err := loop.Send(&schedulerpb.FrontendToScheduler{
 		Type:            schedulerpb.INIT,
 		FrontendAddress: w.frontendAddr,
@@ -240,9 +240,17 @@ func (w *frontendSchedulerWorker) schedulerLoop(ctx context.Context, loop schedu
 		return errors.Errorf("unexpected status received: %v", resp.Status)
 	}
 
+	ctx := loop.Context()
+
 	for {
 		select {
 		case <-ctx.Done():
+			// No need to report error if our internal context is canceled. This can happen during shutdown,
+			// or when scheduler is no longer resolvable. (It would be nice if this context reported "done" also when
+			// connection scheduler stops the call, but that doesn't seem to be the case).
+			//
+			// Reporting error here would delay reopening the stream (if the worker context is not done yet).
+			level.Debug(w.log).Log("msg", "stream context finished", "err", ctx.Err())
 			return nil
 
 		case req := <-w.requestCh:

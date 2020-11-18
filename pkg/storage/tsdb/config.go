@@ -263,7 +263,7 @@ type BucketStoreConfig struct {
 	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
 
 	// Controls whether index-header lazy loading is enabled. This config option is hidden
-	// until experimental.
+	// while it is marked as experimental.
 	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled" doc:"hidden"`
 	IndexHeaderLazyLoadingIdleTimeout time.Duration `yaml:"index_header_lazy_loading_idle_timeout" doc:"hidden"`
 

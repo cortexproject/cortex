@@ -49,10 +49,10 @@ func (m singleValueWithLabelsMap) WriteToMetricChannel(out chan<- prometheus.Met
 // Keeping map of metric name to its family makes it easier to do searches later.
 type MetricFamilyMap map[string]*dto.MetricFamily
 
-// NewUserMetricFamilies sorts output from Gatherer.Gather method into a map.
+// NewMetricFamilyMap sorts output from Gatherer.Gather method into a map.
 // Gatherer.Gather specifies that there metric families are uniquely named, and we use that fact here.
 // If they are not, this method returns error.
-func NewUserMetricFamilies(metrics []*dto.MetricFamily) (MetricFamilyMap, error) {
+func NewMetricFamilyMap(metrics []*dto.MetricFamily) (MetricFamilyMap, error) {
 	perMetricName := MetricFamilyMap{}
 
 	for _, m := range metrics {
@@ -549,7 +549,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		m, err := entry.reg.Gather()
 		if err == nil {
 			var mfm MetricFamilyMap // := would shadow err from outer block, and single err check will not work
-			mfm, err = NewUserMetricFamilies(m)
+			mfm, err = NewMetricFamilyMap(m)
 			if err == nil {
 				data = append(data, struct {
 					user    string

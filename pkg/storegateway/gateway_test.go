@@ -301,7 +301,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			// Start the configure number of gateways.
 			var gateways []*StoreGateway
 			var gatewayIds []string
-			registries := map[string]*prometheus.Registry{}
+			registries := util.NewUserRegistries()
 
 			for i := 1; i <= testData.numGateways; i++ {
 				instanceID := fmt.Sprintf("gateway-%d", i)
@@ -333,7 +333,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 
 				gateways = append(gateways, g)
 				gatewayIds = append(gatewayIds, instanceID)
-				registries[instanceID] = reg
+				registries.AddUserRegistry(instanceID, reg)
 			}
 
 			// Wait until the ring client of each gateway has synced (to avoid flaky tests on subsequent assertions).
@@ -356,7 +356,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 			}
 
 			// Assert on the number of blocks loaded extracting this information from metrics.
-			metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(registries)
+			metrics := registries.BuildMetricFamiliesPerUser()
 			assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
 			assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
 
@@ -550,7 +550,9 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
 			// Assert on the initial state.
-			metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{"test": reg})
+			regs := util.NewUserRegistries()
+			regs.AddUserRegistry("test", reg)
+			metrics := regs.BuildMetricFamiliesPerUser()
 			assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total"))
 
 			// Change the ring topology.
@@ -563,14 +565,14 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			// Assert whether the sync triggered or not.
 			if testData.expectedSync {
 				test.Poll(t, time.Second, float64(2), func() interface{} {
-					metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{"test": reg})
+					metrics := regs.BuildMetricFamiliesPerUser()
 					return metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total")
 				})
 			} else {
 				// Give some time to the store-gateway to trigger the sync (if any).
 				time.Sleep(250 * time.Millisecond)
 
-				metrics := util.BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{"test": reg})
+				metrics := regs.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total"))
 			}
 		})

@@ -99,7 +99,7 @@ func (m *syncerMetrics) gatherThanosSyncerMetrics(reg *prometheus.Registry) {
 		return
 	}
 
-	mfm, err := util.NewMetricFamilyMap(mf)
+	mfm, err := util.NewUserMetricFamilies("", mf)
 	if err != nil {
 		level.Warn(util.Logger).Log("msg", "failed to gather metrics from syncer registry after compaction", "err", err)
 		return

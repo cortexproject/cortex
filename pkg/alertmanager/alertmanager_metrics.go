@@ -1,8 +1,6 @@
 package alertmanager
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -11,9 +9,7 @@ import (
 // This struct aggregates metrics exported by Alertmanager
 // and re-exports those aggregates as Cortex metrics.
 type alertmanagerMetrics struct {
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
+	regs *util.UserRegistries
 
 	// exported metrics, gathered from Alertmanager API
 	alertsReceived *prometheus.Desc
@@ -52,8 +48,7 @@ type alertmanagerMetrics struct {
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
 	return &alertmanagerMetrics{
-		regs:   map[string]*prometheus.Registry{},
-		regsMu: sync.Mutex{},
+		regs: util.NewUserRegistries(),
 		alertsReceived: prometheus.NewDesc(
 			"cortex_alertmanager_alerts_received_total",
 			"The total number of received alerts.",
@@ -146,21 +141,7 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 }
 
 func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Registry) {
-	m.regsMu.Lock()
-	m.regs[user] = reg
-	m.regsMu.Unlock()
-}
-
-func (m *alertmanagerMetrics) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+	m.regs.AddUserRegistry(user, reg)
 }
 
 func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
@@ -189,7 +170,7 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
+	data := m.regs.BuildMetricFamiliesPerUser()
 
 	data.SendSumOfCountersPerUser(out, m.alertsReceived, "alertmanager_alerts_received_total")
 	data.SendSumOfCountersPerUser(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")

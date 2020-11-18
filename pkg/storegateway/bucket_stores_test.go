@@ -2,11 +2,14 @@ package storegateway
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,7 +46,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	require.NoError(t, err)
 
 	for userID, metricName := range userToMetric {
-		generateStorageBlock(t, storageDir, userID, metricName, 10, 100)
+		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
 	}
 
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
@@ -130,7 +133,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run an initial sync to discover 1 block.
-	generateStorageBlock(t, storageDir, userID, metricName, 10, 100)
+	generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
 	require.NoError(t, stores.InitialSync(ctx))
 
 	// Query a range for which we have no samples.
@@ -140,7 +143,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	assert.Empty(t, seriesSet)
 
 	// Generate another block and sync blocks again.
-	generateStorageBlock(t, storageDir, userID, metricName, 100, 200)
+	generateStorageBlock(t, storageDir, userID, metricName, 100, 200, 15)
 	require.NoError(t, stores.SyncBlocks(ctx))
 
 	seriesSet, warnings, err = querySeries(stores, userID, metricName, 150, 180)
@@ -227,6 +230,83 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	}
 }
 
+func TestBucketStores_Series_ShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *testing.T) {
+	for _, lazyLoadingEnabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("lazy loading enabled = %v", lazyLoadingEnabled), func(t *testing.T) {
+			testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t, lazyLoadingEnabled)
+		})
+	}
+}
+
+func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *testing.T, lazyLoadingEnabled bool) {
+	const (
+		userID     = "user-1"
+		metricName = "series_1"
+	)
+
+	ctx := context.Background()
+	cfg, cleanup := prepareStorageConfig(t)
+	cfg.BucketStore.IndexHeaderLazyLoadingEnabled = lazyLoadingEnabled
+	cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout = time.Minute
+	defer cleanup()
+
+	storageDir, err := ioutil.TempDir(os.TempDir(), "storage-*")
+	require.NoError(t, err)
+
+	// Generate a single block with 1 series and a lot of samples.
+	generateStorageBlock(t, storageDir, userID, metricName, 0, 10000, 1)
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(ctx))
+
+	tests := map[string]struct {
+		reqMinTime      int64
+		reqMaxTime      int64
+		expectedSamples int
+	}{
+		"query the entire block": {
+			reqMinTime:      math.MinInt64,
+			reqMaxTime:      math.MaxInt64,
+			expectedSamples: 10000,
+		},
+		"query the beginning of the block": {
+			reqMinTime:      0,
+			reqMaxTime:      100,
+			expectedSamples: store.MaxSamplesPerChunk,
+		},
+		"query the middle of the block": {
+			reqMinTime:      4000,
+			reqMaxTime:      4050,
+			expectedSamples: store.MaxSamplesPerChunk,
+		},
+		"query the end of the block": {
+			reqMinTime:      9800,
+			reqMaxTime:      10000,
+			expectedSamples: (store.MaxSamplesPerChunk * 2) + (10000 % store.MaxSamplesPerChunk),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Query a range for which we have no samples.
+			seriesSet, warnings, err := querySeries(stores, userID, metricName, testData.reqMinTime, testData.reqMaxTime)
+			require.NoError(t, err)
+			assert.Empty(t, warnings)
+			assert.Len(t, seriesSet, 1)
+
+			// Count returned samples.
+			samples, err := readSamplesFromChunks(seriesSet[0].Chunks)
+			require.NoError(t, err)
+			assert.Equal(t, testData.expectedSamples, len(samples))
+		})
+	}
+}
+
 func prepareStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "blocks-sync-*")
 	require.NoError(t, err)
@@ -242,9 +322,7 @@ func prepareStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()
 	return cfg, cleanup
 }
 
-func generateStorageBlock(t *testing.T, storageDir, userID string, metricName string, minT, maxT int64) {
-	const step = 15
-
+func generateStorageBlock(t *testing.T, storageDir, userID string, metricName string, minT, maxT int64, step int) {
 	// Create a directory for the user (if doesn't already exist).
 	userDir := filepath.Join(storageDir, userID)
 	if _, err := os.Stat(userDir); err != nil {
@@ -268,7 +346,7 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 	series := labels.Labels{labels.Label{Name: labels.MetricName, Value: metricName}}
 
 	app := db.Appender(context.Background())
-	for ts := minT; ts < maxT; ts += step {
+	for ts := minT; ts < maxT; ts += int64(step) {
 		_, err = app.Add(series, ts, 1)
 		require.NoError(t, err)
 	}

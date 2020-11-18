@@ -186,8 +186,8 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		}
 
 		// We can safely delete only partial blocks with a deletion mark.
-		_, err := metadata.ReadDeletionMark(ctx, userBucket, userLogger, blockID.String())
-		if err == metadata.ErrorDeletionMarkNotFound {
+		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})
+		if err == metadata.ErrorMarkerNotFound {
 			continue
 		}
 		if err != nil {

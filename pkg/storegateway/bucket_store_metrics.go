@@ -40,6 +40,12 @@ type BucketStoreMetrics struct {
 
 	seriesFetchDuration   *prometheus.Desc
 	postingsFetchDuration *prometheus.Desc
+
+	indexHeaderLazyLoadCount         *prometheus.Desc
+	indexHeaderLazyLoadFailedCount   *prometheus.Desc
+	indexHeaderLazyUnloadCount       *prometheus.Desc
+	indexHeaderLazyUnloadFailedCount *prometheus.Desc
+	indexHeaderLazyLoadDuration      *prometheus.Desc
 }
 
 func NewBucketStoreMetrics() *BucketStoreMetrics {
@@ -137,6 +143,27 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_cached_postings_fetch_duration_seconds",
 			"Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.",
 			nil, nil),
+
+		indexHeaderLazyLoadCount: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_lazy_load_total",
+			"Total number of index-header lazy load operations.",
+			nil, nil),
+		indexHeaderLazyLoadFailedCount: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_lazy_load_failed_total",
+			"Total number of failed index-header lazy load operations.",
+			nil, nil),
+		indexHeaderLazyUnloadCount: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_lazy_unload_total",
+			"Total number of index-header lazy unload operations.",
+			nil, nil),
+		indexHeaderLazyUnloadFailedCount: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_lazy_unload_failed_total",
+			"Total number of failed index-header lazy unload operations.",
+			nil, nil),
+		indexHeaderLazyLoadDuration: prometheus.NewDesc(
+			"cortex_bucket_store_indexheader_lazy_load_duration_seconds",
+			"Duration of the index-header lazy loading in seconds.",
+			nil, nil),
 	}
 }
 
@@ -183,6 +210,12 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 
 	out <- m.seriesFetchDuration
 	out <- m.postingsFetchDuration
+
+	out <- m.indexHeaderLazyLoadCount
+	out <- m.indexHeaderLazyLoadFailedCount
+	out <- m.indexHeaderLazyUnloadCount
+	out <- m.indexHeaderLazyUnloadFailedCount
+	out <- m.indexHeaderLazyLoadDuration
 }
 
 func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -215,4 +248,10 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfHistograms(out, m.seriesFetchDuration, "thanos_bucket_store_cached_series_fetch_duration_seconds")
 	data.SendSumOfHistograms(out, m.postingsFetchDuration, "thanos_bucket_store_cached_postings_fetch_duration_seconds")
+
+	data.SendSumOfCounters(out, m.indexHeaderLazyLoadCount, "thanos_bucket_store_indexheader_lazy_load_total")
+	data.SendSumOfCounters(out, m.indexHeaderLazyLoadFailedCount, "thanos_bucket_store_indexheader_lazy_load_failed_total")
+	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadCount, "thanos_bucket_store_indexheader_lazy_unload_total")
+	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadFailedCount, "thanos_bucket_store_indexheader_lazy_unload_failed_total")
+	data.SendSumOfHistograms(out, m.indexHeaderLazyLoadDuration, "thanos_bucket_store_indexheader_lazy_load_duration_seconds")
 }

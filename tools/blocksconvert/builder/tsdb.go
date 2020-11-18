@@ -211,6 +211,8 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 			},
 		},
 
+		// We populate SegmentFiles (which is deprecated, but still used). The new Files property
+		// will be populated by Thanos block.Upload().
 		Thanos: metadata.Thanos{
 			Labels:       labels,
 			Source:       metadata.SourceType(source),
@@ -282,7 +284,7 @@ func (d *tsdbBuilder) finishBlock(source string, labels map[string]string) (ulid
 		return ulid.ULID{}, errors.Wrap(err, "deleting unsorted chunks")
 	}
 
-	if err := metadata.Write(d.log, d.tmpBlockDir, meta); err != nil {
+	if err := meta.WriteToDir(d.log, d.tmpBlockDir); err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "writing meta.json")
 	}
 

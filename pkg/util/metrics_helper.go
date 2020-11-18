@@ -540,9 +540,7 @@ func (r *UserRegistries) Registries() []UserRegistry {
 	defer r.regsMu.Unlock()
 
 	copy := make([]UserRegistry, 0, len(r.regs))
-	for _, reg := range r.regs {
-		copy = append(copy, reg)
-	}
+	copy = append(copy, r.regs...)
 
 	return copy
 }

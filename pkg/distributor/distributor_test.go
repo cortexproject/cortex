@@ -1283,6 +1283,9 @@ func (i *mockIngester) series() map[uint32]*client.PreallocTimeseries {
 }
 
 func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	i.Lock()
+	defer i.Unlock()
+
 	i.trackCall("Check")
 
 	return &grpc_health_v1.HealthCheckResponse{}, nil

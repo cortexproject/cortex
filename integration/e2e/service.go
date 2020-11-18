@@ -168,10 +168,15 @@ func (s *ConcreteService) Kill() error {
 
 	logger.Log("Killing", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=0", s.containerName()); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "kill", s.containerName()); err != nil {
 		logger.Log(string(out))
 		return err
 	}
+
+	// Wait until the container actually stopped. However, this could fail if
+	// the container already exited, so we just ignore the error.
+	_, _ = RunCommandAndGetOutput("docker", "wait", s.containerName())
+
 	s.usedNetworkName = ""
 
 	return nil

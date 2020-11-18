@@ -11,6 +11,8 @@ It is completely possible that all the replicas for the given data are held with
 
 For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is **enabled**, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.
 
+Reads from a zone-aware replication enabled Cortex Cluster can withstand zone failures as long as there are no more than `floor(replication factor / 2)` zones with failing instances.
+
 The Cortex services supporting **zone-aware replication** are:
 
 - **[Distributors and Ingesters](#distributors-and-ingesters-time-series-replication)**
@@ -25,6 +27,10 @@ The Cortex time-series replication is used to hold multiple (typically 3) replic
 1. Configure the availability zone for each ingester via the `-ingester.availability-zone` CLI flag (or its respective YAML config option)
 2. Rollout ingesters to apply the configured zone
 3. Enable time-series zone-aware replication via the `-distributor.zone-awareness-enabled` CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to distributors, queriers and rulers.
+
+The `-distributor.shard-by-all-labels` setting has an impact on read availability. When enabled, a metric is sharded across all ingesters and querier needs to fetch series from all ingesters while, when disabled, a metric is sharded only across `<replication factor>` ingesters.
+
+In the event of a large outage impacting ingesters in more than 1 zone, when `-distributor.shard-by-all-labels=true` all queries will fail, while when disabled some queries may still succeed if the ingesters holding the required metric are not impacted by the outage.
 
 ## Store-gateways: blocks replication
 

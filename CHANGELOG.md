@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [CHANGE] Querier: deprecated `-store.max-look-back-period`. You should use `-querier.max-query-lookback` instead. #3452
+* [ENHANCEMENT] Added zone-awareness support on queries. When zone-awareness is enabled, queries will still succeed if all ingesters in a single zone will fail. #3414
 * [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
   - `cortex_ingester_tsdb_wal_corruptions_total`
   - `cortex_ingester_tsdb_head_truncations_failed_total`

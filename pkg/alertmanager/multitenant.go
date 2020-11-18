@@ -348,9 +348,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 }
 
 func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
-	if amConfig == nil { // shouldn't happen, but check just in case
-		return nil, fmt.Errorf("no usable Cortex configuration for %v", userID)
-	}
 	if am.cfg.AutoWebhookRoot != "" {
 		for _, r := range amConfig.Receivers {
 			for _, w := range r.WebhookConfigs {
@@ -405,13 +402,19 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	} else {
 		userAmConfig, err = amconfig.Load(cfg.RawConfig)
 		if err != nil && hasExisting {
-			// XXX: This means that if a user has a working configuration and
-			// they submit a broken one, we'll keep processing the last known
-			// working configuration, and they'll never know.
-			// TODO: Provide a way of communicating this to the user and for removing
-			// Alertmanager instances.
+			// This means that if a user has a working config and
+			// they submit a broken one, the Manager will keep running the last known
+			// working configuration.
 			return fmt.Errorf("invalid Cortex configuration for %v: %v", cfg.User, err)
 		}
+	}
+
+	// We can have an empty configuration here if:
+	// 1) the user had a previous alertmanager
+	// 2) then, submitted a non-working configuration (and we kept running the prev working config)
+	// 3) finally, the cortex AM instance is restarted and the running version is no longer present
+	if userAmConfig == nil {
+		return fmt.Errorf("no usable Alertmanager configuration for %v", cfg.User)
 	}
 
 	if userAmConfig, err = am.transformConfig(cfg.User, userAmConfig); err != nil {

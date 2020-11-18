@@ -350,6 +350,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 			delete(am.cfgs, user)
 			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(user)
 			am.multitenantMetrics.lastReloadSuccessfulTimestamp.DeleteLabelValues(user)
+			am.alertmanagerMetrics.deleteUserRegistry(user)
 			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", user)
 		}
 	}
@@ -435,10 +436,17 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[cfg.User].RawConfig != cfg.RawConfig || hasTemplateChanges {
 		level.Info(am.logger).Log("msg", "updating new per-tenant alertmanager", "user", cfg.User)
+		activeBefore := existing.IsActive()
 		// If the config changed, apply the new one.
 		err := existing.ApplyConfig(cfg.User, userAmConfig, rawCfg)
 		if err != nil {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", cfg.User, err)
+		}
+		activeAfter := existing.IsActive()
+
+		// If we went from paused to active, we need to re-add the user-regitry.
+		if !activeBefore && activeAfter {
+			am.alertmanagerMetrics.addUserRegistry(cfg.User, existing.registry)
 		}
 	}
 	am.cfgs[cfg.User] = cfg

@@ -96,11 +96,15 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
+		# TYPE cortex_alertmanager_alerts_received_total counter
+		cortex_alertmanager_alerts_received_total{user="user1"} 0
+		cortex_alertmanager_alerts_received_total{user="user2"} 0
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
 		# TYPE cortex_alertmanager_config_last_reload_successful gauge
 		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
-	`), "cortex_alertmanager_config_last_reload_successful"))
+	`), "cortex_alertmanager_config_last_reload_successful", "cortex_alertmanager_alerts_received_total"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -113,12 +117,17 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Len(t, am.alertmanagers, 3)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
+		# TYPE cortex_alertmanager_alerts_received_total counter
+		cortex_alertmanager_alerts_received_total{user="user1"} 0
+		cortex_alertmanager_alerts_received_total{user="user2"} 0
+		cortex_alertmanager_alerts_received_total{user="user3"} 0
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
 		# TYPE cortex_alertmanager_config_last_reload_successful gauge
 		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
-	`), "cortex_alertmanager_config_last_reload_successful"))
+	`), "cortex_alertmanager_config_last_reload_successful", "cortex_alertmanager_alerts_received_total"))
 
 	// Ensure the config is updated
 	mockStore.configs["user1"] = alerts.AlertConfigDesc{
@@ -146,11 +155,15 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
+		# TYPE cortex_alertmanager_alerts_received_total counter
+		cortex_alertmanager_alerts_received_total{user="user1"} 0
+		cortex_alertmanager_alerts_received_total{user="user2"} 0
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
 		# TYPE cortex_alertmanager_config_last_reload_successful gauge
 		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
-	`), "cortex_alertmanager_config_last_reload_successful"))
+	`), "cortex_alertmanager_config_last_reload_successful", "cortex_alertmanager_alerts_received_total"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
 	mockStore.configs["user3"] = alerts.AlertConfigDesc{
@@ -170,12 +183,17 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
+		# TYPE cortex_alertmanager_alerts_received_total counter
+		cortex_alertmanager_alerts_received_total{user="user1"} 0
+		cortex_alertmanager_alerts_received_total{user="user2"} 0
+		cortex_alertmanager_alerts_received_total{user="user3"} 0
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
 		# TYPE cortex_alertmanager_config_last_reload_successful gauge
 		cortex_alertmanager_config_last_reload_successful{user="user1"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
-	`), "cortex_alertmanager_config_last_reload_successful"))
+	`), "cortex_alertmanager_config_last_reload_successful", "cortex_alertmanager_alerts_received_total"))
 }
 
 func TestAlertmanager_NoExternalURL(t *testing.T) {

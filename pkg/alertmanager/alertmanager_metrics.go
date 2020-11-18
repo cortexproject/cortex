@@ -154,7 +154,6 @@ func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Regis
 	m.regs.AddUserRegistry(user, reg)
 }
 
-// DeleteUserRegistry removes user-specific Prometheus registry.
 func (m *alertmanagerMetrics) deleteUserRegistry(user string) {
 	m.regsMu.Lock()
 	defer m.regsMu.Unlock()

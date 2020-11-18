@@ -1,7 +1,10 @@
 package util
 
 import (
+	"math/rand"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
@@ -115,17 +118,16 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 	user1Reg.MustRegister(user1Metric)
 	user2Reg.MustRegister(user2Metric)
 
-	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
+	regs := NewUserRegistries()
+	regs.AddUserRegistry("user-1", user1Reg)
+	regs.AddUserRegistry("user-2", user2Reg)
+	mf := regs.BuildMetricFamiliesPerUser()
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(180)}},
 			{Label: makeLabels("label_one", "a", "user", "user-2"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
@@ -135,10 +137,9 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
 			{Label: makeLabels("label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
@@ -150,10 +151,9 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfGaugesPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(100)}},
 			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Gauge: &dto.Gauge{Value: proto.Float64(80)}},
@@ -168,19 +168,18 @@ func TestSendMaxOfGauges(t *testing.T) {
 	user1Reg := prometheus.NewRegistry()
 	user2Reg := prometheus.NewRegistry()
 	desc := prometheus.NewDesc("test_metric", "", nil, nil)
+	regs := NewUserRegistries()
+	regs.AddUserRegistry("user-1", user1Reg)
+	regs.AddUserRegistry("user-2", user2Reg)
 
 	// No matching metric.
-	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
-	actual, err := collectMetrics(func(out chan prometheus.Metric) {
+	mf := regs.BuildMetricFamiliesPerUser()
+	actual := collectMetrics(t, func(out chan prometheus.Metric) {
 		mf.SendMaxOfGauges(out, desc, "test_metric")
 	})
 	expected := []*dto.Metric{
 		{Label: nil, Gauge: &dto.Gauge{Value: proto.Float64(0)}},
 	}
-	require.NoError(t, err)
 	require.ElementsMatch(t, expected, actual)
 
 	// Register a metric for each user.
@@ -188,18 +187,14 @@ func TestSendMaxOfGauges(t *testing.T) {
 	user2Metric := promauto.With(user2Reg).NewGauge(prometheus.GaugeOpts{Name: "test_metric"})
 	user1Metric.Set(100)
 	user2Metric.Set(80)
-	mf = BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
+	mf = regs.BuildMetricFamiliesPerUser()
 
-	actual, err = collectMetrics(func(out chan prometheus.Metric) {
+	actual = collectMetrics(t, func(out chan prometheus.Metric) {
 		mf.SendMaxOfGauges(out, desc, "test_metric")
 	})
 	expected = []*dto.Metric{
 		{Label: nil, Gauge: &dto.Gauge{Value: proto.Float64(100)}},
 	}
-	require.NoError(t, err)
 	require.ElementsMatch(t, expected, actual)
 }
 
@@ -217,17 +212,16 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 	user1Reg.MustRegister(user1Metric)
 	user2Reg.MustRegister(user2Metric)
 
-	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
+	regs := NewUserRegistries()
+	regs.AddUserRegistry("user-1", user1Reg)
+	regs.AddUserRegistry("user-2", user2Reg)
+	mf := regs.BuildMetricFamiliesPerUser()
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"label_one"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a"), Histogram: &dto.Histogram{SampleCount: uint64p(4), SampleSum: float64p(10), Bucket: []*dto.Bucket{
 				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
@@ -240,10 +234,9 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
 				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
@@ -261,10 +254,9 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"label_one", "label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a", "label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
 				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
@@ -296,17 +288,16 @@ func TestSumOfCounterPerUserWithLabels(t *testing.T) {
 	user1Reg.MustRegister(user1Metric)
 	user2Reg.MustRegister(user2Metric)
 
-	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
+	regs := NewUserRegistries()
+	regs.AddUserRegistry("user-1", user1Reg)
+	regs.AddUserRegistry("user-2", user2Reg)
+	mf := regs.BuildMetricFamiliesPerUser()
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_one")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(180)}},
 			{Label: makeLabels("label_one", "a", "user", "user-2"), Counter: &dto.Counter{Value: proto.Float64(100)}},
@@ -316,10 +307,9 @@ func TestSumOfCounterPerUserWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_two", "b", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(100)}},
 			{Label: makeLabels("label_two", "c", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(80)}},
@@ -331,10 +321,9 @@ func TestSumOfCounterPerUserWithLabels(t *testing.T) {
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one", "label_two"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfCountersPerUserWithLabels(out, desc, "test_metric", "label_one", "label_two")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{Label: makeLabels("label_one", "a", "label_two", "b", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(100)}},
 			{Label: makeLabels("label_one", "a", "label_two", "c", "user", "user-1"), Counter: &dto.Counter{Value: proto.Float64(80)}},
@@ -361,17 +350,16 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 	user1Reg.MustRegister(user1Metric)
 	user2Reg.MustRegister(user2Metric)
 
-	mf := BuildMetricFamiliesPerUserFromUserRegistries(map[string]*prometheus.Registry{
-		"user-1": user1Reg,
-		"user-2": user2Reg,
-	})
+	regs := NewUserRegistries()
+	regs.AddUserRegistry("user-1", user1Reg)
+	regs.AddUserRegistry("user-2", user2Reg)
+	mf := regs.BuildMetricFamiliesPerUser()
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user"}, nil)
-		actual, err := collectMetrics(func(out chan prometheus.Metric) {
+		actual := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfSummariesPerUser(out, desc, "test_metric")
 		})
-		require.NoError(t, err)
 		expected := []*dto.Metric{
 			{
 				Label: makeLabels("user", "user-1"),
@@ -420,7 +408,107 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 	}
 }
 
-func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error) {
+func TestFloat64PrecisionStability(t *testing.T) {
+	const (
+		numRuns       = 100
+		numRegistries = 100
+		cardinality   = 20
+	)
+
+	// Randomise the seed but log it in case we need to reproduce the test on failure.
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	t.Log("random generator seed:", seed)
+
+	// Generate a large number of registries with different metrics each.
+	registries := NewUserRegistries()
+	for userID := 1; userID <= numRegistries; userID++ {
+		reg := prometheus.NewRegistry()
+		labelNames := []string{"label_one", "label_two"}
+
+		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			g.WithLabelValues("a", strconv.Itoa(i)).Set(rand.Float64())
+		}
+
+		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			c.WithLabelValues("a", strconv.Itoa(i)).Add(rand.Float64())
+		}
+
+		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{0.1, 0.5, 1}}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			h.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+		}
+
+		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			s.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+		}
+
+		registries.AddUserRegistry(strconv.Itoa(userID), reg)
+	}
+
+	// Ensure multiple runs always return the same exact results.
+	expected := map[string][]*dto.Metric{}
+
+	for run := 0; run < numRuns; run++ {
+		mf := registries.BuildMetricFamiliesPerUser()
+
+		gauge := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfGauges(out, prometheus.NewDesc("test_gauge", "", nil, nil), "test_gauge")
+		})
+		gaugeWithLabels := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfGaugesWithLabels(out, prometheus.NewDesc("test_gauge", "", []string{"label_one"}, nil), "test_gauge", "label_one")
+		})
+
+		counter := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfCounters(out, prometheus.NewDesc("test_counter", "", nil, nil), "test_counter")
+		})
+		counterWithLabels := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfCountersWithLabels(out, prometheus.NewDesc("test_counter", "", []string{"label_one"}, nil), "test_counter", "label_one")
+		})
+
+		histogram := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfHistograms(out, prometheus.NewDesc("test_histogram", "", nil, nil), "test_histogram")
+		})
+		histogramWithLabels := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfHistogramsWithLabels(out, prometheus.NewDesc("test_histogram", "", []string{"label_one"}, nil), "test_histogram", "label_one")
+		})
+
+		summary := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfSummaries(out, prometheus.NewDesc("test_summary", "", nil, nil), "test_summary")
+		})
+		summaryWithLabels := collectMetrics(t, func(out chan prometheus.Metric) {
+			mf.SendSumOfSummariesWithLabels(out, prometheus.NewDesc("test_summary", "", []string{"label_one"}, nil), "test_summary", "label_one")
+		})
+
+		// The first run we just store the expected value.
+		if run == 0 {
+			expected["gauge"] = gauge
+			expected["gauge_with_labels"] = gaugeWithLabels
+			expected["counter"] = counter
+			expected["counter_with_labels"] = counterWithLabels
+			expected["histogram"] = histogram
+			expected["histogram_with_labels"] = histogramWithLabels
+			expected["summary"] = summary
+			expected["summary_with_labels"] = summaryWithLabels
+			continue
+		}
+
+		// All subsequent runs we assert the actual metric with the expected one.
+		require.Equal(t, expected["gauge"], gauge)
+		require.Equal(t, expected["gauge_with_labels"], gaugeWithLabels)
+		require.Equal(t, expected["counter"], counter)
+		require.Equal(t, expected["counter_with_labels"], counterWithLabels)
+		require.Equal(t, expected["histogram"], histogram)
+		require.Equal(t, expected["histogram_with_labels"], histogramWithLabels)
+		require.Equal(t, expected["summary"], summary)
+		require.Equal(t, expected["summary_with_labels"], summaryWithLabels)
+	}
+}
+
+func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.Metric {
 	out := make(chan prometheus.Metric)
 
 	go func() {
@@ -428,18 +516,16 @@ func collectMetrics(send func(out chan prometheus.Metric)) ([]*dto.Metric, error
 		close(out)
 	}()
 
-	metrics := []*dto.Metric{}
+	var metrics []*dto.Metric
 	for m := range out {
 		collected := &dto.Metric{}
 		err := m.Write(collected)
-		if err != nil {
-			return nil, err
-		}
+		require.NoError(t, err)
 
 		metrics = append(metrics, collected)
 	}
 
-	return metrics, nil
+	return metrics
 }
 
 func float64p(v float64) *float64 {

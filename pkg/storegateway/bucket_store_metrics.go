@@ -1,8 +1,6 @@
 package storegateway
 
 import (
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -11,9 +9,7 @@ import (
 // BucketStoreMetrics aggregates metrics exported by Thanos Bucket Store
 // and re-exports those aggregates as Cortex metrics.
 type BucketStoreMetrics struct {
-	// Maps userID -> registry
-	regsMu sync.Mutex
-	regs   map[string]*prometheus.Registry
+	regs *util.UserRegistries
 
 	// exported metrics, gathered from Thanos BucketStore
 	blockLoads            *prometheus.Desc
@@ -50,7 +46,7 @@ type BucketStoreMetrics struct {
 
 func NewBucketStoreMetrics() *BucketStoreMetrics {
 	return &BucketStoreMetrics{
-		regs: map[string]*prometheus.Registry{},
+		regs: util.NewUserRegistries(),
 
 		blockLoads: prometheus.NewDesc(
 			"cortex_bucket_store_block_loads_total",
@@ -168,21 +164,7 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 }
 
 func (m *BucketStoreMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {
-	m.regsMu.Lock()
-	m.regs[user] = reg
-	m.regsMu.Unlock()
-}
-
-func (m *BucketStoreMetrics) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+	m.regs.AddUserRegistry(user, reg)
 }
 
 func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
@@ -219,7 +201,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
-	data := util.BuildMetricFamiliesPerUserFromUserRegistries(m.registries())
+	data := m.regs.BuildMetricFamiliesPerUser()
 
 	data.SendSumOfCounters(out, m.blockLoads, "thanos_bucket_store_block_loads_total")
 	data.SendSumOfCounters(out, m.blockLoadFailures, "thanos_bucket_store_block_load_failures_total")

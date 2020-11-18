@@ -22,7 +22,7 @@ func TestManagerMetrics(t *testing.T) {
 	managerMetrics.AddUserRegistry("user3", populateManager(100))
 
 	managerMetrics.AddUserRegistry("user4", populateManager(1000))
-	managerMetrics.DeleteUserRegistry("user4")
+	managerMetrics.RemoveUserRegistry("user4")
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`

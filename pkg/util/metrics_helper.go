@@ -541,9 +541,11 @@ func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) 
 		}
 
 		if r.softRemoveUserRegistry(&r.regs[idx]) {
-			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
-		} else {
+			// Keep it.
 			idx++
+		} else {
+			// Remove it.
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
 		}
 	}
 
@@ -568,9 +570,9 @@ func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 		}
 
 		if !hard && r.softRemoveUserRegistry(&r.regs[idx]) {
-			idx++
+			idx++ // keep it
 		} else {
-			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...) // remove it.
 		}
 	}
 }

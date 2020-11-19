@@ -142,17 +142,17 @@ func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
-	for _, userEntry := range d {
-		v := userEntry.metrics.SumCounters(counter)
-
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, v, userEntry.user)
-	}
+	d.SendSumOfCountersPerUserWithLabels(out, desc, counter)
 }
 
 // SendSumOfCountersPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
 // first label on the provided metric Desc
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
 	for _, userEntry := range d {
+		if userEntry.user == "" {
+			continue
+		}
+
 		result := singleValueWithLabelsMap{}
 		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, counterValue, result.aggregateFn)
 		result.prependUserLabelValue(userEntry.user)
@@ -176,10 +176,18 @@ func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.M
 	d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames).WriteToMetricChannel(out, desc, prometheus.GaugeValue)
 }
 
+func (d MetricFamiliesPerUser) SendSumOfGaugesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	d.SendSumOfGaugesPerUserWithLabels(out, desc, gauge)
+}
+
 // SendSumOfGaugesPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
 // first label on the provided metric Desc
 func (d MetricFamiliesPerUser) SendSumOfGaugesPerUserWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, metric string, labelNames ...string) {
 	for _, userEntry := range d {
+		if userEntry.user == "" {
+			continue
+		}
+
 		result := singleValueWithLabelsMap{}
 		userEntry.metrics.sumOfSingleValuesWithLabels(metric, labelNames, gaugeValue, result.aggregateFn)
 		result.prependUserLabelValue(userEntry.user)
@@ -213,6 +221,10 @@ func (d MetricFamiliesPerUser) SendMaxOfGauges(out chan<- prometheus.Metric, des
 
 func (d MetricFamiliesPerUser) SendMaxOfGaugesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
 	for _, userEntry := range d {
+		if userEntry.user == "" {
+			continue
+		}
+
 		result := userEntry.metrics.MaxGauges(gauge)
 		out <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, result, userEntry.user)
 	}
@@ -257,6 +269,10 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesWithLabels(out chan<- prometheu
 
 func (d MetricFamiliesPerUser) SendSumOfSummariesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, summaryName string) {
 	for _, userEntry := range d {
+		if userEntry.user == "" {
+			continue
+		}
+
 		data := userEntry.metrics.SumSummaries(summaryName)
 		out <- data.Metric(desc, userEntry.user)
 	}
@@ -491,8 +507,11 @@ func (h *HistogramDataCollector) Add(hd HistogramData) {
 
 // UserRegistry holds a Prometheus registry associated to a specific user.
 type UserRegistry struct {
-	user string
-	reg  *prometheus.Registry
+	user string               // Set to "" when registry is soft-removed.
+	reg  *prometheus.Registry // Set to nil, when registry is soft-removed.
+
+	// Set to last result of Gather() call when removing registry.
+	lastGather MetricFamilyMap
 }
 
 // UserRegistries holds Prometheus registries for multiple users, guaranteeing
@@ -507,11 +526,28 @@ func NewUserRegistries() *UserRegistries {
 	return &UserRegistries{}
 }
 
-// AddUserRegistry adds an user registry. It allows to add multiple registries for
-// the same user and no check is done on user uniqueness.
+// AddUserRegistry adds an user registry. If user already has a registry,
+// previous registry is removed, but latest metric values are preserved
+// in order to avoid counter resets.
 func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) {
 	r.regsMu.Lock()
 	defer r.regsMu.Unlock()
+
+	// Soft-remove user registry, if user has one already.
+	for idx := 0; idx < len(r.regs); {
+		if r.regs[idx].user != user {
+			idx++
+			continue
+		}
+
+		if r.softRemoveUserRegistry(&r.regs[idx]) {
+			// Keep it.
+			idx++
+		} else {
+			// Remove it.
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
+		}
+	}
 
 	// New registries must be added to the end of the list, to guarantee stability.
 	r.regs = append(r.regs, UserRegistry{
@@ -521,15 +557,60 @@ func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) 
 }
 
 // RemoveUserRegistry removes all Prometheus registries for a given user.
-func (r *UserRegistries) RemoveUserRegistry(user string) {
+// If hard is true, registry is removed completely.
+// If hard is false, latest registry values are preserved for future aggregations.
+func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 	r.regsMu.Lock()
 	defer r.regsMu.Unlock()
 
-	for idx, entry := range r.regs {
-		if user == entry.user {
-			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
+	for idx := 0; idx < len(r.regs); {
+		if user != r.regs[idx].user {
+			idx++
+			continue
+		}
+
+		if !hard && r.softRemoveUserRegistry(&r.regs[idx]) {
+			idx++ // keep it
+		} else {
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...) // remove it.
 		}
 	}
+}
+
+// Returns true, if we should keep latest metrics. Returns false if we failed to gather latest metrics,
+// and this can be removed completely.
+func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
+	last, err := ur.reg.Gather()
+	if err != nil {
+		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		return false
+	}
+
+	for ix := 0; ix < len(last); {
+		// Only keep metrics for which we don't want to go down, since that indicates reset (counter, summary, histogram).
+		switch last[ix].GetType() {
+		case dto.MetricType_COUNTER, dto.MetricType_SUMMARY, dto.MetricType_HISTOGRAM:
+			ix++
+		default:
+			// Remove gauges and unknowns.
+			last = append(last[:ix], last[ix+1:]...)
+		}
+	}
+
+	// No metrics left.
+	if len(last) == 0 {
+		return false
+	}
+
+	ur.lastGather, err = NewMetricFamilyMap(last)
+	if err != nil {
+		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		return false
+	}
+
+	ur.user = ""
+	ur.reg = nil
+	return true
 }
 
 // Registries returns a copy of the user registries list.
@@ -546,6 +627,18 @@ func (r *UserRegistries) Registries() []UserRegistry {
 func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 	data := MetricFamiliesPerUser{}
 	for _, entry := range r.Registries() {
+		// Set for removed users.
+		if entry.reg == nil {
+			if entry.lastGather != nil {
+				data = append(data, struct {
+					user    string
+					metrics MetricFamilyMap
+				}{user: "", metrics: entry.lastGather})
+			}
+
+			continue
+		}
+
 		m, err := entry.reg.Gather()
 		if err == nil {
 			var mfm MetricFamilyMap // := would shadow err from outer block, and single err check will not work

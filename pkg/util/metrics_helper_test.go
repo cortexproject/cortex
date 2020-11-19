@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
@@ -506,6 +508,465 @@ func TestFloat64PrecisionStability(t *testing.T) {
 		require.Equal(t, expected["summary"], summary)
 		require.Equal(t, expected["summary_with_labels"], summaryWithLabels)
 	}
+}
+
+// This test is a baseline for following tests, that remove or replace a registry.
+// It shows output for metrics from setupTestMetrics before doing any modifications.
+func TestUserRegistries_RemoveBaseline(t *testing.T) {
+	mainRegistry := prometheus.NewPedanticRegistry()
+	mainRegistry.MustRegister(setupTestMetrics())
+
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+		# HELP counter help
+		# TYPE counter counter
+		counter 75
+
+		# HELP counter_labels help
+		# TYPE counter_labels counter
+		counter_labels{label_one="a"} 75
+
+		# HELP counter_user help
+		# TYPE counter_user counter
+		counter_user{user="1"} 5
+		counter_user{user="2"} 10
+		counter_user{user="3"} 15
+		counter_user{user="4"} 20
+		counter_user{user="5"} 25
+
+		# HELP gauge help
+		# TYPE gauge gauge
+		gauge 75
+
+		# HELP gauge_labels help
+		# TYPE gauge_labels gauge
+		gauge_labels{label_one="a"} 75
+
+		# HELP gauge_user help
+		# TYPE gauge_user gauge
+		gauge_user{user="1"} 5
+		gauge_user{user="2"} 10
+		gauge_user{user="3"} 15
+		gauge_user{user="4"} 20
+		gauge_user{user="5"} 25
+
+		# HELP histogram help
+		# TYPE histogram histogram
+		histogram_bucket{le="1"} 5
+		histogram_bucket{le="3"} 15
+		histogram_bucket{le="5"} 25
+		histogram_bucket{le="+Inf"} 25
+		histogram_sum 75
+		histogram_count 25
+
+		# HELP histogram_labels help
+		# TYPE histogram_labels histogram
+		histogram_labels_bucket{label_one="a",le="1"} 5
+		histogram_labels_bucket{label_one="a",le="3"} 15
+		histogram_labels_bucket{label_one="a",le="5"} 25
+		histogram_labels_bucket{label_one="a",le="+Inf"} 25
+		histogram_labels_sum{label_one="a"} 75
+		histogram_labels_count{label_one="a"} 25
+
+		# HELP summary help
+		# TYPE summary summary
+		summary_sum 75
+		summary_count 25
+
+		# HELP summary_labels help
+		# TYPE summary_labels summary
+		summary_labels_sum{label_one="a"} 75
+		summary_labels_count{label_one="a"} 25
+
+		# HELP summary_user help
+		# TYPE summary_user summary
+		summary_user_sum{user="1"} 5
+		summary_user_count{user="1"} 5
+		summary_user_sum{user="2"} 10
+		summary_user_count{user="2"} 5
+		summary_user_sum{user="3"} 15
+		summary_user_count{user="3"} 5
+		summary_user_sum{user="4"} 20
+		summary_user_count{user="4"} 5
+		summary_user_sum{user="5"} 25
+		summary_user_count{user="5"} 5
+	`)))
+}
+
+func TestUserRegistries_RemoveUserRegistry_SoftRemoval(t *testing.T) {
+	tm := setupTestMetrics()
+
+	mainRegistry := prometheus.NewPedanticRegistry()
+	mainRegistry.MustRegister(tm)
+
+	// Soft-remove single registry.
+	tm.regs.RemoveUserRegistry(strconv.Itoa(3), false)
+
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+			# HELP counter help
+			# TYPE counter counter
+	# No change in counter
+			counter 75
+	
+			# HELP counter_labels help
+			# TYPE counter_labels counter
+	# No change in counter per label.
+			counter_labels{label_one="a"} 75
+	
+			# HELP counter_user help
+			# TYPE counter_user counter
+	# User 3 is now missing.
+			counter_user{user="1"} 5
+			counter_user{user="2"} 10
+			counter_user{user="4"} 20
+			counter_user{user="5"} 25
+	
+			# HELP gauge help
+			# TYPE gauge gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge 60
+	
+			# HELP gauge_labels help
+			# TYPE gauge_labels gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge_labels{label_one="a"} 60
+	
+			# HELP gauge_user help
+			# TYPE gauge_user gauge
+	# User 3 is now missing.
+			gauge_user{user="1"} 5
+			gauge_user{user="2"} 10
+			gauge_user{user="4"} 20
+			gauge_user{user="5"} 25
+	
+			# HELP histogram help
+			# TYPE histogram histogram
+	# No change in the histogram
+			histogram_bucket{le="1"} 5
+			histogram_bucket{le="3"} 15
+			histogram_bucket{le="5"} 25
+			histogram_bucket{le="+Inf"} 25
+			histogram_sum 75
+			histogram_count 25
+	
+			# HELP histogram_labels help
+			# TYPE histogram_labels histogram
+	# No change in the histogram per label
+			histogram_labels_bucket{label_one="a",le="1"} 5
+			histogram_labels_bucket{label_one="a",le="3"} 15
+			histogram_labels_bucket{label_one="a",le="5"} 25
+			histogram_labels_bucket{label_one="a",le="+Inf"} 25
+			histogram_labels_sum{label_one="a"} 75
+			histogram_labels_count{label_one="a"} 25
+	
+			# HELP summary help
+			# TYPE summary summary
+	# No change in the summary
+			summary_sum 75
+			summary_count 25
+	
+			# HELP summary_labels help
+			# TYPE summary_labels summary
+	# No change in the summary per label
+			summary_labels_sum{label_one="a"} 75
+			summary_labels_count{label_one="a"} 25
+	
+			# HELP summary_user help
+			# TYPE summary_user summary
+	# Summary for user 3 is now missing.
+			summary_user_sum{user="1"} 5
+			summary_user_count{user="1"} 5
+			summary_user_sum{user="2"} 10
+			summary_user_count{user="2"} 5
+			summary_user_sum{user="4"} 20
+			summary_user_count{user="4"} 5
+			summary_user_sum{user="5"} 25
+			summary_user_count{user="5"} 5
+	`)))
+}
+func TestUserRegistries_RemoveUserRegistry_HardRemoval(t *testing.T) {
+	tm := setupTestMetrics()
+
+	mainRegistry := prometheus.NewPedanticRegistry()
+	mainRegistry.MustRegister(tm)
+
+	// Soft-remove single registry.
+	tm.regs.RemoveUserRegistry(strconv.Itoa(3), true)
+
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+			# HELP counter help
+			# TYPE counter counter
+	# Counter drop (reset!)
+			counter 60
+	
+			# HELP counter_labels help
+			# TYPE counter_labels counter
+	# Counter drop (reset!)
+			counter_labels{label_one="a"} 60
+	
+			# HELP counter_user help
+			# TYPE counter_user counter
+	# User 3 is now missing.
+			counter_user{user="1"} 5
+			counter_user{user="2"} 10
+			counter_user{user="4"} 20
+			counter_user{user="5"} 25
+	
+			# HELP gauge help
+			# TYPE gauge gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge 60
+	
+			# HELP gauge_labels help
+			# TYPE gauge_labels gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge_labels{label_one="a"} 60
+	
+			# HELP gauge_user help
+			# TYPE gauge_user gauge
+	# User 3 is now missing.
+			gauge_user{user="1"} 5
+			gauge_user{user="2"} 10
+			gauge_user{user="4"} 20
+			gauge_user{user="5"} 25
+	
+			# HELP histogram help
+			# TYPE histogram histogram
+	# Histogram drop (reset for sum and count!)
+			histogram_bucket{le="1"} 5
+			histogram_bucket{le="3"} 10
+			histogram_bucket{le="5"} 20
+			histogram_bucket{le="+Inf"} 20
+			histogram_sum 60
+			histogram_count 20
+	
+			# HELP histogram_labels help
+			# TYPE histogram_labels histogram
+	# No change in the histogram per label
+			histogram_labels_bucket{label_one="a",le="1"} 5
+			histogram_labels_bucket{label_one="a",le="3"} 10
+			histogram_labels_bucket{label_one="a",le="5"} 20
+			histogram_labels_bucket{label_one="a",le="+Inf"} 20
+			histogram_labels_sum{label_one="a"} 60
+			histogram_labels_count{label_one="a"} 20
+	
+			# HELP summary help
+			# TYPE summary summary
+	# Summary drop!
+			summary_sum 60
+			summary_count 20
+	
+			# HELP summary_labels help
+			# TYPE summary_labels summary
+	# Summary drop!
+			summary_labels_sum{label_one="a"} 60
+			summary_labels_count{label_one="a"} 20
+	
+			# HELP summary_user help
+			# TYPE summary_user summary
+	# Summary for user 3 is now missing.
+			summary_user_sum{user="1"} 5
+			summary_user_count{user="1"} 5
+			summary_user_sum{user="2"} 10
+			summary_user_count{user="2"} 5
+			summary_user_sum{user="4"} 20
+			summary_user_count{user="4"} 5
+			summary_user_sum{user="5"} 25
+			summary_user_count{user="5"} 5
+	`)))
+}
+
+func TestUserRegistries_AddUserRegistry_ReplaceRegistry(t *testing.T) {
+	tm := setupTestMetrics()
+
+	mainRegistry := prometheus.NewPedanticRegistry()
+	mainRegistry.MustRegister(tm)
+
+	// Replace registry for user 5 with empty registry. Replacement does soft-delete previous registry.
+	tm.regs.AddUserRegistry(strconv.Itoa(5), prometheus.NewRegistry())
+
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+			# HELP counter help
+			# TYPE counter counter
+	# No change in counter
+			counter 75
+	
+			# HELP counter_labels help
+			# TYPE counter_labels counter
+	# No change in counter per label
+			counter_labels{label_one="a"} 75
+	
+			# HELP counter_user help
+			# TYPE counter_user counter
+	# Per-user counter now missing.
+			counter_user{user="1"} 5
+			counter_user{user="2"} 10
+			counter_user{user="3"} 15
+			counter_user{user="4"} 20
+	
+			# HELP gauge help
+			# TYPE gauge gauge
+	# Gauge drops by 25 (value for user 5, times 5)
+			gauge 50
+	
+			# HELP gauge_labels help
+			# TYPE gauge_labels gauge
+	# Gauge drops by 25 (value for user 5, times 5)
+			gauge_labels{label_one="a"} 50
+	
+			# HELP gauge_user help
+			# TYPE gauge_user gauge
+	# Gauge for user 5 is missing
+			gauge_user{user="1"} 5
+			gauge_user{user="2"} 10
+			gauge_user{user="3"} 15
+			gauge_user{user="4"} 20
+	
+			# HELP histogram help
+			# TYPE histogram histogram
+	# No change in histogram
+			histogram_bucket{le="1"} 5
+			histogram_bucket{le="3"} 15
+			histogram_bucket{le="5"} 25
+			histogram_bucket{le="+Inf"} 25
+			histogram_sum 75
+			histogram_count 25
+	
+			# HELP histogram_labels help
+			# TYPE histogram_labels histogram
+	# No change in histogram per label.
+			histogram_labels_bucket{label_one="a",le="1"} 5
+			histogram_labels_bucket{label_one="a",le="3"} 15
+			histogram_labels_bucket{label_one="a",le="5"} 25
+			histogram_labels_bucket{label_one="a",le="+Inf"} 25
+			histogram_labels_sum{label_one="a"} 75
+			histogram_labels_count{label_one="a"} 25
+	
+			# HELP summary help
+			# TYPE summary summary
+	# No change in summary
+			summary_sum 75
+			summary_count 25
+	
+			# HELP summary_labels help
+			# TYPE summary_labels summary
+	# No change in summary per label
+			summary_labels_sum{label_one="a"} 75
+			summary_labels_count{label_one="a"} 25
+	
+			# HELP summary_user help
+			# TYPE summary_user summary
+	# Summary for user 5 now zero (reset)
+			summary_user_sum{user="1"} 5
+			summary_user_count{user="1"} 5
+			summary_user_sum{user="2"} 10
+			summary_user_count{user="2"} 5
+			summary_user_sum{user="3"} 15
+			summary_user_count{user="3"} 5
+			summary_user_sum{user="4"} 20
+			summary_user_count{user="4"} 5
+			summary_user_sum{user="5"} 0
+			summary_user_count{user="5"} 0
+	`)))
+}
+
+func setupTestMetrics() *testMetrics {
+	const numUsers = 5
+	const cardinality = 5
+
+	tm := newTestMetrics()
+
+	for userID := 1; userID <= numUsers; userID++ {
+		reg := prometheus.NewRegistry()
+
+		labelNames := []string{"label_one", "label_two"}
+
+		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			g.WithLabelValues("a", strconv.Itoa(i)).Set(float64(userID))
+		}
+
+		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			c.WithLabelValues("a", strconv.Itoa(i)).Add(float64(userID))
+		}
+
+		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{1, 3, 5}}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			h.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
+		}
+
+		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
+		for i := 0; i < cardinality; i++ {
+			s.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
+		}
+
+		tm.regs.AddUserRegistry(strconv.Itoa(userID), reg)
+	}
+	return tm
+}
+
+type testMetrics struct {
+	regs *UserRegistries
+
+	gauge             *prometheus.Desc
+	gaugePerUser      *prometheus.Desc
+	gaugeWithLabels   *prometheus.Desc
+	counter           *prometheus.Desc
+	counterPerUser    *prometheus.Desc
+	counterWithLabels *prometheus.Desc
+	histogram         *prometheus.Desc
+	histogramLabels   *prometheus.Desc
+	summary           *prometheus.Desc
+	summaryPerUser    *prometheus.Desc
+	summaryLabels     *prometheus.Desc
+}
+
+func newTestMetrics() *testMetrics {
+	return &testMetrics{
+		regs: NewUserRegistries(),
+
+		gauge:             prometheus.NewDesc("gauge", "help", nil, nil),
+		gaugePerUser:      prometheus.NewDesc("gauge_user", "help", []string{"user"}, nil),
+		gaugeWithLabels:   prometheus.NewDesc("gauge_labels", "help", []string{"label_one"}, nil),
+		counter:           prometheus.NewDesc("counter", "help", nil, nil),
+		counterPerUser:    prometheus.NewDesc("counter_user", "help", []string{"user"}, nil),
+		counterWithLabels: prometheus.NewDesc("counter_labels", "help", []string{"label_one"}, nil),
+		histogram:         prometheus.NewDesc("histogram", "help", nil, nil),
+		histogramLabels:   prometheus.NewDesc("histogram_labels", "help", []string{"label_one"}, nil),
+		summary:           prometheus.NewDesc("summary", "help", nil, nil),
+		summaryPerUser:    prometheus.NewDesc("summary_user", "help", []string{"user"}, nil),
+		summaryLabels:     prometheus.NewDesc("summary_labels", "help", []string{"label_one"}, nil),
+	}
+}
+
+func (tm *testMetrics) Describe(out chan<- *prometheus.Desc) {
+	out <- tm.gauge
+	out <- tm.gaugePerUser
+	out <- tm.gaugeWithLabels
+	out <- tm.counter
+	out <- tm.counterPerUser
+	out <- tm.counterWithLabels
+	out <- tm.histogram
+	out <- tm.histogramLabels
+	out <- tm.summary
+	out <- tm.summaryPerUser
+	out <- tm.summaryLabels
+}
+
+func (tm *testMetrics) Collect(out chan<- prometheus.Metric) {
+	data := tm.regs.BuildMetricFamiliesPerUser()
+
+	data.SendSumOfGauges(out, tm.gauge, "test_gauge")
+	data.SendSumOfGaugesPerUser(out, tm.gaugePerUser, "test_gauge")
+	data.SendSumOfGaugesWithLabels(out, tm.gaugeWithLabels, "test_gauge", "label_one")
+	data.SendSumOfCounters(out, tm.counter, "test_counter")
+	data.SendSumOfCountersPerUser(out, tm.counterPerUser, "test_counter")
+	data.SendSumOfCountersWithLabels(out, tm.counterWithLabels, "test_counter", "label_one")
+	data.SendSumOfHistograms(out, tm.histogram, "test_histogram")
+	data.SendSumOfHistogramsWithLabels(out, tm.histogramLabels, "test_histogram", "label_one")
+	data.SendSumOfSummaries(out, tm.summary, "test_summary")
+	data.SendSumOfSummariesPerUser(out, tm.summaryPerUser, "test_summary")
+	data.SendSumOfSummariesWithLabels(out, tm.summaryLabels, "test_summary", "label_one")
 }
 
 func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.Metric {

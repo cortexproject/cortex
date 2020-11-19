@@ -81,11 +81,17 @@ func (s *StorageClient) query(ctx context.Context, query chunk.IndexQuery, callb
 	return nil
 }
 
-func (r *QueryIndexResponse) Iterator() chunk.ReadBatchIterator {
-	return &grpcIter{
-		i:                  -1,
-		QueryIndexResponse: r,
+func (r *QueryIndexResponse) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &grpcIter{
+			i:                  -1,
+			QueryIndexResponse: r,
+		}
 	}
+	concrete := iter.(*grpcIter)
+	concrete.i = -1
+	concrete.QueryIndexResponse = r
+	return concrete
 }
 
 type grpcIter struct {

@@ -162,7 +162,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 }
 
 func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	chunkRef, err := chunk.ParseExternalKey(userID, []byte(chunkID))
 	if err != nil {
 		return err
 	}

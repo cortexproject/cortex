@@ -100,6 +100,15 @@ type IndexQuery struct {
 	Immutable bool
 }
 
+// IndexQueryEntry describes an entry after index lookup used for querying.
+type IndexQueryEntry struct {
+	// For writes, RangeValue will always be set.
+	RangeValue []byte
+
+	// New for v6 schema, label value is not written as part of the range key.
+	Value []byte
+}
+
 // IndexEntry describes an entry in the chunk index
 type IndexEntry struct {
 	TableName string

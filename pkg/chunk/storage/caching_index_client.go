@@ -134,13 +134,13 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 
 		results[key] = rb
 	}
-
+	var iter chunk.ReadBatchIterator
 	err = s.IndexClient.QueryPages(ctx, cacheableMissed, func(cacheableQuery chunk.IndexQuery, r chunk.ReadBatch) bool {
 		resultsMtx.Lock()
 		defer resultsMtx.Unlock()
 		key := queryKey(cacheableQuery)
 		existing := results[key]
-		for iter := r.Iterator(); iter.Next(); {
+		for iter = r.Iterator(iter); iter.Next(); {
 			existing.Entries = append(existing.Entries, Entry{Column: iter.RangeValue(), Value: iter.Value()})
 		}
 		results[key] = existing
@@ -184,11 +184,17 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 }
 
 // Iterator implements chunk.ReadBatch.
-func (b ReadBatch) Iterator() chunk.ReadBatchIterator {
-	return &readBatchIterator{
-		index:     -1,
-		readBatch: b,
+func (b ReadBatch) Iterator(it chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if it == nil {
+		return &readBatchIterator{
+			index:     -1,
+			readBatch: b,
+		}
 	}
+	m := it.(*readBatchIterator)
+	m.index = -1
+	m.readBatch = b
+	return m
 }
 
 type readBatchIterator struct {

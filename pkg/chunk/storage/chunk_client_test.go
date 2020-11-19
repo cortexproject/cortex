@@ -42,7 +42,7 @@ func TestChunksBasic(t *testing.T) {
 					continue
 				}
 				keysToGet[key] = struct{}{}
-				chunk, err := chunk.ParseExternalKey(userID, key)
+				chunk, err := chunk.ParseExternalKey(userID, []byte(key))
 				require.NoError(t, err)
 				chunksToGet = append(chunksToGet, chunk)
 			}

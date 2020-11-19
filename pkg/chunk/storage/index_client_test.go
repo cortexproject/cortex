@@ -32,8 +32,9 @@ func TestIndexBasic(t *testing.T) {
 				},
 			}
 			var have []chunk.IndexEntry
+			var iter chunk.ReadBatchIterator
 			err := client.QueryPages(ctx, entries, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-				iter := read.Iterator()
+				iter = read.Iterator(iter)
 				for iter.Next() {
 					have = append(have, chunk.IndexEntry{
 						RangeValue: iter.RangeValue(),
@@ -174,8 +175,9 @@ func TestQueryPages(t *testing.T) {
 				run := true
 				for run {
 					var have []chunk.IndexEntry
+					var iter chunk.ReadBatchIterator
 					err = client.QueryPages(ctx, []chunk.IndexQuery{tt.query}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-						iter := read.Iterator()
+						iter = read.Iterator(iter)
 						for iter.Next() {
 							have = append(have, chunk.IndexEntry{
 								TableName:  tt.query.TableName,
@@ -214,11 +216,12 @@ func TestCardinalityLimit(t *testing.T) {
 		require.NoError(t, err)
 
 		var have int
+		var iter chunk.ReadBatchIterator
 		err = client.QueryPages(ctx, []chunk.IndexQuery{{
 			TableName: tableName,
 			HashValue: "bar",
 		}}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-			iter := read.Iterator()
+			iter = read.Iterator(iter)
 			for iter.Next() {
 				have++
 			}

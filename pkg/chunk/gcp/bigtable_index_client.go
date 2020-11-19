@@ -292,11 +292,17 @@ type columnKeyBatch struct {
 	items []bigtable.ReadItem
 }
 
-func (c *columnKeyBatch) Iterator() chunk.ReadBatchIterator {
-	return &columnKeyIterator{
-		i:              -1,
-		columnKeyBatch: c,
+func (c *columnKeyBatch) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &columnKeyIterator{
+			i:              -1,
+			columnKeyBatch: c,
+		}
 	}
+	concrete := iter.(*columnKeyIterator)
+	concrete.i = -1
+	concrete.columnKeyBatch = c
+	return concrete
 }
 
 type columnKeyIterator struct {
@@ -371,10 +377,16 @@ type rowBatch struct {
 	row bigtable.Row
 }
 
-func (b *rowBatch) Iterator() chunk.ReadBatchIterator {
-	return &rowBatchIterator{
-		rowBatch: b,
+func (b *rowBatch) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &rowBatchIterator{
+			rowBatch: b,
+		}
 	}
+	concrete := iter.(*rowBatchIterator)
+	concrete.consumed = false
+	concrete.rowBatch = b
+	return concrete
 }
 
 type rowBatchIterator struct {

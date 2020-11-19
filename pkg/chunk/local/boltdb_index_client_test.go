@@ -155,8 +155,9 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 		HashValue: fmt.Sprintf("hash%s", "test"),
 	}
 	var have []chunk.IndexEntry
+	var iter chunk.ReadBatchIterator
 	err = indexClient.query(context.Background(), entry, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-		iter := read.Iterator()
+		iter = read.Iterator(iter)
 		for iter.Next() {
 			have = append(have, chunk.IndexEntry{
 				RangeValue: iter.RangeValue(),
@@ -246,11 +247,12 @@ func TestBoltDB_Writes(t *testing.T) {
 
 			// verifying test writes by querying
 			var have []chunk.IndexEntry
+			var iter chunk.ReadBatchIterator
 			err = indexClient.query(context.Background(), chunk.IndexQuery{
 				TableName: tableName,
 				HashValue: "hash",
 			}, func(_ chunk.IndexQuery, read chunk.ReadBatch) bool {
-				iter := read.Iterator()
+				iter = read.Iterator(iter)
 				for iter.Next() {
 					have = append(have, chunk.IndexEntry{
 						RangeValue: iter.RangeValue(),

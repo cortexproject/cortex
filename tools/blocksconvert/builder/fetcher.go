@@ -30,7 +30,7 @@ func (f *Fetcher) fetchChunks(ctx context.Context, chunkIDs []string) ([]chunk.C
 	chunks := make([]chunk.Chunk, 0, len(chunkIDs))
 
 	for _, cid := range chunkIDs {
-		c, err := chunk.ParseExternalKey(f.userID, cid)
+		c, err := chunk.ParseExternalKey(f.userID, []byte(cid))
 		if err != nil {
 			return nil, err
 		}

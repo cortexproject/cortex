@@ -333,10 +333,16 @@ type boltReadBatch struct {
 	value      []byte
 }
 
-func (b boltReadBatch) Iterator() chunk.ReadBatchIterator {
-	return &boltReadBatchIterator{
-		boltReadBatch: b,
+func (b boltReadBatch) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &boltReadBatchIterator{
+			boltReadBatch: b,
+		}
 	}
+	concrete := iter.(*boltReadBatchIterator)
+	concrete.consumed = false
+	concrete.boltReadBatch = b
+	return concrete
 }
 
 type boltReadBatchIterator struct {

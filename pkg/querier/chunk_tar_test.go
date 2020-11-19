@@ -123,7 +123,7 @@ func loadChunks(userID, filename string) ([]chunk.Chunk, error) {
 			return nil, errors.Wrap(err, "here 1")
 		}
 
-		c, err := chunk.ParseExternalKey(userID, hdr.Name)
+		c, err := chunk.ParseExternalKey(userID, []byte(hdr.Name))
 		if err != nil {
 			return nil, errors.Wrap(err, "here 2")
 		}

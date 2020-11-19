@@ -390,10 +390,16 @@ type readBatch struct {
 	value      []byte
 }
 
-func (r *readBatch) Iterator() chunk.ReadBatchIterator {
-	return &readBatchIter{
-		readBatch: r,
+func (r *readBatch) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &readBatchIter{
+			readBatch: r,
+		}
 	}
+	concrete := iter.(*readBatchIter)
+	concrete.consumed = false
+	concrete.readBatch = r
+	return concrete
 }
 
 type readBatchIter struct {
@@ -505,7 +511,7 @@ func (s *ObjectClient) getChunk(ctx context.Context, decodeContext *chunk.Decode
 }
 
 func (s *ObjectClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	chunkRef, err := chunk.ParseExternalKey(userID, []byte(chunkID))
 	if err != nil {
 		return err
 	}

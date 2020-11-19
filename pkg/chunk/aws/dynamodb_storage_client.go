@@ -544,7 +544,7 @@ func (a dynamoDBStorageClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 }
 
 func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
-	chunkRef, err := chunk.ParseExternalKey(userID, chunkID)
+	chunkRef, err := chunk.ParseExternalKey(userID, []byte(chunkID))
 	if err != nil {
 		return err
 	}
@@ -587,11 +587,17 @@ type dynamoDBReadResponse struct {
 	items []map[string]*dynamodb.AttributeValue
 }
 
-func (b *dynamoDBReadResponse) Iterator() chunk.ReadBatchIterator {
-	return &dynamoDBReadResponseIterator{
-		i:                    -1,
-		dynamoDBReadResponse: b,
+func (b *dynamoDBReadResponse) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &dynamoDBReadResponseIterator{
+			i:                    -1,
+			dynamoDBReadResponse: b,
+		}
 	}
+	concrete := iter.(*dynamoDBReadResponseIterator)
+	concrete.i = -1
+	concrete.dynamoDBReadResponse = b
+	return concrete
 }
 
 type dynamoDBReadResponseIterator struct {

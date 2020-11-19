@@ -76,11 +76,17 @@ type filteringBatch struct {
 	chunk.ReadBatch
 }
 
-func (f filteringBatch) Iterator() chunk.ReadBatchIterator {
-	return &filteringBatchIter{
-		query:             f.query,
-		ReadBatchIterator: f.ReadBatch.Iterator(),
+func (f filteringBatch) Iterator(iter chunk.ReadBatchIterator) chunk.ReadBatchIterator {
+	if iter == nil {
+		return &filteringBatchIter{
+			query:             f.query,
+			ReadBatchIterator: f.ReadBatch.Iterator(iter),
+		}
 	}
+	bi := iter.(*filteringBatchIter)
+	bi.query = f.query
+	bi.ReadBatchIterator = f.ReadBatch.Iterator(bi.ReadBatchIterator)
+	return bi
 }
 
 type filteringBatchIter struct {

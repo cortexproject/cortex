@@ -87,7 +87,7 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		c, err := chunk.ParseExternalKey(userID, found[0])
+		c, err := chunk.ParseExternalKey(userID, []byte(found[0]))
 		require.NoError(t, err)
 		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
 		require.NoError(t, err)
@@ -104,7 +104,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 
 	result := []chunk.Chunk{}
 	for i := range found {
-		c, err := chunk.ParseExternalKey(userID, found[i])
+		c, err := chunk.ParseExternalKey(userID, []byte(found[i]))
 		require.NoError(t, err)
 		err = c.Decode(chunk.NewDecodeContext(), bufs[i])
 		require.NoError(t, err)

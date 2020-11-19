@@ -227,10 +227,10 @@ func TestPurger_BuildPlan(t *testing.T) {
 						numChunks += numChunksInGroup
 
 						sort.Slice(chunks, func(i, j int) bool {
-							chunkI, err := chunk.ParseExternalKey(userID, chunks[i].ID)
+							chunkI, err := chunk.ParseExternalKey(userID, []byte(chunks[i].ID))
 							require.NoError(t, err)
 
-							chunkJ, err := chunk.ParseExternalKey(userID, chunks[j].ID)
+							chunkJ, err := chunk.ParseExternalKey(userID, []byte(chunks[j].ID))
 							require.NoError(t, err)
 
 							return chunkI.From < chunkJ.From

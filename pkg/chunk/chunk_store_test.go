@@ -876,8 +876,8 @@ func BenchmarkParseIndexEntriesRegexSet50000(b *testing.B) {
 	benchmarkParseIndexEntries(50000, "labelvalue0|labelvalue1|labelvalue2|labelvalue3|labelvalue600", b)
 }
 
-func generateIndexEntries(n int64) []IndexEntry {
-	res := make([]IndexEntry, 0, n)
+func generateIndexEntries(n int64) []IndexQueryEntry {
+	res := make([]IndexQueryEntry, 0, n)
 	for i := int64(n - 1); i >= 0; i-- {
 		labelValue := fmt.Sprintf("labelvalue%d", i%(n/2))
 		chunkID := fmt.Sprintf("chunkid%d", i%(n/2))
@@ -888,7 +888,7 @@ func generateIndexEntries(n int64) []IndexEntry {
 		rangeValue = append(rangeValue, 0)
 		rangeValue = append(rangeValue, []byte(chunkID)...)
 		rangeValue = append(rangeValue, 0)
-		res = append(res, IndexEntry{
+		res = append(res, IndexQueryEntry{
 			RangeValue: rangeValue,
 		})
 	}

@@ -511,7 +511,7 @@ func formatMatcher(matcher *labels.Matcher) string {
 	return matcher.String()
 }
 
-func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexEntry, error) {
+func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQuery) ([]IndexQueryEntry, error) {
 	log, ctx := spanlogger.New(ctx, "store.lookupEntriesByQueries")
 	defer log.Span.Finish()
 
@@ -521,14 +521,13 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 	}
 
 	var lock sync.Mutex
-	var entries []IndexEntry
+	var entries []IndexQueryEntry
+	var iter ReadBatchIterator
 	err := c.index.QueryPages(ctx, queries, func(query IndexQuery, resp ReadBatch) bool {
-		iter := resp.Iterator()
 		lock.Lock()
+		iter = resp.Iterator(iter)
 		for iter.Next() {
-			entries = append(entries, IndexEntry{
-				TableName:  query.TableName,
-				HashValue:  query.HashValue,
+			entries = append(entries, IndexQueryEntry{
 				RangeValue: iter.RangeValue(),
 				Value:      iter.Value(),
 			})
@@ -542,7 +541,7 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 	return entries, err
 }
 
-func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.Matcher) ([][]byte, error) {
+func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexQueryEntry, matcher *labels.Matcher) ([][]byte, error) {
 	// Nothing to do if there are no entries.
 	if len(entries) == 0 {
 		return nil, nil
@@ -562,11 +561,10 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 		if err != nil {
 			return nil, err
 		}
-		labelValue := util.YoloString(labelbuf)
 		// If the matcher is like a set (=~"a|b|c|d|...") and
 		// the label value is not in that set move on.
 		if len(matchSet) > 0 {
-			if _, ok := matchSet[labelValue]; !ok {
+			if _, ok := matchSet[string(labelbuf)]; !ok {
 				continue
 			}
 
@@ -576,7 +574,7 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 			continue
 		}
 
-		if matcher != nil && !matcher.Matches(labelValue) {
+		if matcher != nil && !matcher.Matches(string(labelbuf)) {
 			continue
 		}
 		result = append(result, chunkKey)

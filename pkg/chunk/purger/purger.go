@@ -350,7 +350,7 @@ func (p *Purger) executePlan(userID, requestID string, planNo int, logger log.Lo
 		level.Debug(logger).Log("msg", "deleting chunks", "labels", plan.ChunksGroup[i].Labels)
 
 		for _, chunkDetails := range plan.ChunksGroup[i].Chunks {
-			chunkRef, err := chunk.ParseExternalKey(userID, chunkDetails.ID)
+			chunkRef, err := chunk.ParseExternalKey(userID, []byte(chunkDetails.ID))
 			if err != nil {
 				return err
 			}

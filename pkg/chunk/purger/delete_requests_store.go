@@ -212,8 +212,9 @@ func (ds *DeleteStore) GetPendingDeleteRequestsForUser(ctx context.Context, user
 
 func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []chunk.IndexQuery) ([]DeleteRequest, error) {
 	deleteRequests := []DeleteRequest{}
+	var itr chunk.ReadBatchIterator
 	err := ds.indexClient.QueryPages(ctx, deleteQuery, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
-		itr := batch.Iterator()
+		itr = batch.Iterator(itr)
 		for itr.Next() {
 			userID, requestID := splitUserIDAndRequestID(string(itr.RangeValue()))
 
@@ -239,7 +240,7 @@ func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery []ch
 
 		var parseError error
 		err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
-			itr := batch.Iterator()
+			itr = batch.Iterator(itr)
 			itr.Next()
 
 			deleteRequest, err = parseDeleteRequestTimestamps(itr.RangeValue(), deleteRequest)
@@ -285,8 +286,9 @@ func (ds *DeleteStore) queryCacheGenerationNumber(ctx context.Context, userID st
 	query := chunk.IndexQuery{TableName: ds.cfg.RequestsTableName, HashValue: fmt.Sprintf("%s:%s:%s", cacheGenNum, userID, kind)}
 
 	genNumber := ""
+	var itr chunk.ReadBatchIterator
 	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{query}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
-		itr := batch.Iterator()
+		itr := batch.Iterator(itr)
 		for itr.Next() {
 			genNumber = string(itr.Value())
 			break

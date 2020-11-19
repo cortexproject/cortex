@@ -82,8 +82,9 @@ func TestTempCachingStorageClient(t *testing.T) {
 		{TableName: "table", HashValue: "baz"},
 	}
 	results := 0
+	var iter chunk.ReadBatchIterator
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -96,7 +97,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -110,7 +111,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	results = 0
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -141,8 +142,9 @@ func TestPermCachingStorageClient(t *testing.T) {
 		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
+	var iter chunk.ReadBatchIterator
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -155,7 +157,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -169,7 +171,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	results = 0
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results++
 		}
@@ -189,7 +191,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	client := newCachingIndexClient(store, cache, 1*time.Second, limits, logger)
 	queries := []chunk.IndexQuery{{TableName: "table", HashValue: "foo"}}
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		assert.False(t, batch.Iterator().Next())
+		assert.False(t, batch.Iterator(nil).Next())
 		return true
 	})
 	require.NoError(t, err)
@@ -197,7 +199,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		assert.False(t, batch.Iterator().Next())
+		assert.False(t, batch.Iterator(nil).Next())
 		return true
 	})
 	require.NoError(t, err)
@@ -232,8 +234,9 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	}
 
 	var results ReadBatch
+	var iter chunk.ReadBatchIterator
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results.Entries = append(results.Entries, Entry{
 				Column: iter.RangeValue(),
@@ -249,7 +252,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = ReadBatch{}
 	err = client.QueryPages(ctx, queries, func(query chunk.IndexQuery, batch chunk.ReadBatch) bool {
-		iter := batch.Iterator()
+		iter = batch.Iterator(iter)
 		for iter.Next() {
 			results.Entries = append(results.Entries, Entry{
 				Column: iter.RangeValue(),

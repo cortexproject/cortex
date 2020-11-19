@@ -219,7 +219,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, tableName
 	// With metric, we find out which index entries to remove.
 	batch := indexClient.NewWriteBatch()
 	for _, cid := range e.Chunks {
-		c, err := chunk.ParseExternalKey(cp.userID, cid)
+		c, err := chunk.ParseExternalKey(cp.userID, []byte(cid))
 		if err != nil {
 			return errors.Wrap(err, "failed to parse chunk key")
 		}
@@ -293,7 +293,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, tableName
 func fetchSingleChunk(ctx context.Context, userID string, chunkClient chunk.Client, chunksIds []string) (*chunk.Chunk, error) {
 	// Fetch single chunk
 	for _, cid := range chunksIds {
-		c, err := chunk.ParseExternalKey(userID, cid)
+		c, err := chunk.ParseExternalKey(userID, []byte(cid))
 		if err != nil {
 			return nil, errors.Wrap(err, "fetching chunks")
 		}

@@ -506,11 +506,17 @@ type mockReadBatch struct {
 	items []mockItem
 }
 
-func (b *mockReadBatch) Iterator() ReadBatchIterator {
-	return &mockReadBatchIter{
-		index:         -1,
-		mockReadBatch: b,
+func (b *mockReadBatch) Iterator(it ReadBatchIterator) ReadBatchIterator {
+	if it == nil {
+		return &mockReadBatchIter{
+			index:         -1,
+			mockReadBatch: b,
+		}
 	}
+	m := it.(*mockReadBatchIter)
+	m.index = -1
+	m.mockReadBatch = b
+	return m
 }
 
 type mockReadBatchIter struct {

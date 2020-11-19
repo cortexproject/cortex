@@ -673,6 +673,12 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
     [head_compaction_idle_timeout: <duration> | default = 1h]
 
+    # The write buffer size used by the head chunks mapper. Lower values reduce
+    # memory utilisation on clusters with a large number of tenants at the cost
+    # of increased disk I/O operations.
+    # CLI flag: -blocks-storage.tsdb.head-chunks-write-buffer-size-bytes
+    [head_chunks_write_buffer_size_bytes: <int> | default = 4194304]
+
     # The number of shards of series to use in TSDB (must be a power of 2).
     # Reducing this will decrease memory footprint, but can negatively impact
     # performance.

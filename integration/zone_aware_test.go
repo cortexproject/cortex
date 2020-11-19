@@ -1,3 +1,5 @@
+// +build requires_docker
+
 package integration
 
 import (

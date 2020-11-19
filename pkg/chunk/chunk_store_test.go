@@ -1222,7 +1222,7 @@ func Benchmark_GetRefsChunkWithManyChunks(b *testing.B) {
 
 	now := model.Now()
 	toInsert := []Chunk{}
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		toInsert = append(toInsert, dummyChunkFor(now, append(fooMetric1, labels.Label{Name: "1", Value: fmt.Sprintf("%d", i)})))
 		toInsert = append(toInsert, dummyChunkFor(now, append(fooMetric2, labels.Label{Name: "2", Value: fmt.Sprintf("%d", i)})))
 	}

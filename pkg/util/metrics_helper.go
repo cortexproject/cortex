@@ -142,15 +142,7 @@ func (d MetricFamiliesPerUser) SendSumOfCountersWithLabels(out chan<- prometheus
 }
 
 func (d MetricFamiliesPerUser) SendSumOfCountersPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, counter string) {
-	for _, userEntry := range d {
-		if userEntry.user == "" {
-			continue
-		}
-
-		v := userEntry.metrics.SumCounters(counter)
-
-		out <- prometheus.MustNewConstMetric(desc, prometheus.CounterValue, v, userEntry.user)
-	}
+	d.SendSumOfCountersPerUserWithLabels(out, desc, counter)
 }
 
 // SendSumOfCountersPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
@@ -182,6 +174,10 @@ func (d MetricFamiliesPerUser) SendSumOfGauges(out chan<- prometheus.Metric, des
 
 func (d MetricFamiliesPerUser) SendSumOfGaugesWithLabels(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string, labelNames ...string) {
 	d.sumOfSingleValuesWithLabels(gauge, gaugeValue, labelNames).WriteToMetricChannel(out, desc, prometheus.GaugeValue)
+}
+
+func (d MetricFamiliesPerUser) SendSumOfGaugesPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, gauge string) {
+	d.SendSumOfGaugesPerUserWithLabels(out, desc, gauge)
 }
 
 // SendSumOfGaugesPerUserWithLabels provides metrics with the provided label names on a per-user basis. This function assumes that `user` is the
@@ -531,7 +527,8 @@ func NewUserRegistries() *UserRegistries {
 }
 
 // AddUserRegistry adds an user registry. If user already has a registry,
-// previous registry is removed, but latest metric values are preserved.
+// previous registry is removed, but latest metric values are preserved
+// in order to avoid counter resets.
 func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) {
 	r.regsMu.Lock()
 	defer r.regsMu.Unlock()

@@ -510,7 +510,9 @@ func TestFloat64PrecisionStability(t *testing.T) {
 	}
 }
 
-func TestMetrics(t *testing.T) {
+// This test is a baseline for following tests, that remove or replace a registry.
+// It shows output for metrics from setupTestMetrics before doing any modifications.
+func TestUserRegistries_RemoveBaseline(t *testing.T) {
 	mainRegistry := prometheus.NewPedanticRegistry()
 	mainRegistry.MustRegister(setupTestMetrics())
 
@@ -590,7 +592,7 @@ func TestMetrics(t *testing.T) {
 	`)))
 }
 
-func TestRemoveUserRegistrySoft(t *testing.T) {
+func TestUserRegistries_RemoveUserRegistry_SoftRemoval(t *testing.T) {
 	tm := setupTestMetrics()
 
 	mainRegistry := prometheus.NewPedanticRegistry()
@@ -681,7 +683,7 @@ func TestRemoveUserRegistrySoft(t *testing.T) {
 			summary_user_count{user="5"} 5
 	`)))
 }
-func TestRemoveUserRegistryHard(t *testing.T) {
+func TestUserRegistries_RemoveUserRegistry_HardRemoval(t *testing.T) {
 	tm := setupTestMetrics()
 
 	mainRegistry := prometheus.NewPedanticRegistry()
@@ -773,7 +775,7 @@ func TestRemoveUserRegistryHard(t *testing.T) {
 	`)))
 }
 
-func TestReplaceRegistry(t *testing.T) {
+func TestUserRegistries_AddUserRegistry_ReplaceRegistry(t *testing.T) {
 	tm := setupTestMetrics()
 
 	mainRegistry := prometheus.NewPedanticRegistry()

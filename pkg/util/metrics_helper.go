@@ -533,10 +533,17 @@ func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) 
 	r.regsMu.Lock()
 	defer r.regsMu.Unlock()
 
-	// Soft-remove user registry.
-	for idx, entry := range r.regs {
-		if entry.user == user {
-			r.softRemoveUserRegistry(&r.regs[idx])
+	// Soft-remove user registry, if user has one already.
+	for idx := 0; idx < len(r.regs); {
+		if r.regs[idx].user != user {
+			idx++
+			continue
+		}
+
+		if r.softRemoveUserRegistry(&r.regs[idx]) {
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
+		} else {
+			idx++
 		}
 	}
 
@@ -545,32 +552,6 @@ func (r *UserRegistries) AddUserRegistry(user string, reg *prometheus.Registry) 
 		user: user,
 		reg:  reg,
 	})
-}
-
-func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) {
-	last, err := ur.reg.Gather()
-	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
-	}
-
-	for ix := 0; ix < len(last); {
-		// Only keep metrics for which we don't want to go down, since that indicates reset.
-		if t := last[ix].GetType(); t == dto.MetricType_COUNTER || t == dto.MetricType_SUMMARY || t == dto.MetricType_HISTOGRAM {
-			// keep it
-			ix++
-		} else {
-			// Remove gauges and unknowns.
-			last = append(last[:ix], last[ix+1:]...)
-		}
-	}
-
-	ur.lastGather, err = NewMetricFamilyMap(last)
-	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
-	}
-
-	ur.user = ""
-	ur.reg = nil
 }
 
 // RemoveUserRegistry removes all Prometheus registries for a given user.
@@ -586,13 +567,48 @@ func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 			continue
 		}
 
-		if hard {
-			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
-		} else {
-			r.softRemoveUserRegistry(&r.regs[idx])
+		if !hard && r.softRemoveUserRegistry(&r.regs[idx]) {
 			idx++
+		} else {
+			r.regs = append(r.regs[:idx], r.regs[idx+1:]...)
 		}
 	}
+}
+
+// Returns true, if we should keep latest metrics. Returns false if we failed to gather latest metrics,
+// and this can be removed completely.
+func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
+	last, err := ur.reg.Gather()
+	if err != nil {
+		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		return false
+	}
+
+	for ix := 0; ix < len(last); {
+		// Only keep metrics for which we don't want to go down, since that indicates reset (counter, summary, histogram).
+		switch last[ix].GetType() {
+		case dto.MetricType_COUNTER, dto.MetricType_SUMMARY, dto.MetricType_HISTOGRAM:
+			ix++
+		default:
+			// Remove gauges and unknowns.
+			last = append(last[:ix], last[ix+1:]...)
+		}
+	}
+
+	// No metrics left.
+	if len(last) == 0 {
+		return false
+	}
+
+	ur.lastGather, err = NewMetricFamilyMap(last)
+	if err != nil {
+		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		return false
+	}
+
+	ur.user = ""
+	ur.reg = nil
+	return true
 }
 
 // Registries returns a copy of the user registries list.

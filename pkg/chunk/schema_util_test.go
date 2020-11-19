@@ -95,8 +95,8 @@ func TestParseChunkTimeRangeValue(t *testing.T) {
 	} {
 		chunkID, labelValue, err := parseChunkTimeRangeValue(c.encoded, nil)
 		require.NoError(t, err)
-		assert.Equal(t, model.LabelValue(c.value), labelValue)
-		assert.Equal(t, c.chunkID, chunkID)
+		assert.Equal(t, model.LabelValue(c.value), model.LabelValue(string(labelValue)))
+		assert.Equal(t, c.chunkID, string(chunkID))
 	}
 }
 

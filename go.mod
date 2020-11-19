@@ -59,6 +59,7 @@ require (
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.7.0
+	go4.org v0.0.0-20200411211856-f5505b9728dd
 	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
 	golang.org/x/sync v0.0.0-20200930132711-30421366ff76
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e

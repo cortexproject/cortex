@@ -225,7 +225,7 @@ func (c *seriesStore) LabelNamesForMetricName(ctx context.Context, userID string
 	return labelNames, nil
 }
 
-func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs [][]byte) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesByChunks")
 	defer log.Span.Finish()
 
@@ -258,7 +258,7 @@ func (c *seriesStore) lookupLabelNamesByChunks(ctx context.Context, from, throug
 	}
 	return labelNamesFromChunks(allChunks), nil
 }
-func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from, through model.Time, userID, metricName string, matchers []*labels.Matcher) ([][]byte, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupSeriesByMetricNameMatchers", "metricName", metricName, "matchers", len(matchers))
 	defer log.Span.Finish()
 
@@ -285,7 +285,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// Otherwise get series which include other matchers
-	incomingIDs := make(chan []string)
+	incomingIDs := make(chan [][]byte)
 	incomingErrors := make(chan error)
 	indexLookupsPerQuery.Observe(float64(len(matchers)))
 	for _, matcher := range matchers {
@@ -300,7 +300,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	}
 
 	// Receive series IDs from all matchers, intersect as we go.
-	var ids []string
+	var ids [][]byte
 	var preIntersectionCount int
 	var lastErr error
 	var cardinalityExceededErrors int
@@ -314,7 +314,7 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 				ids = incoming
 				initialized = true
 			} else {
-				ids = intersectStrings(ids, incoming)
+				ids = intersectByteArrays(ids, incoming)
 			}
 		case err := <-incomingErrors:
 			// The idea is that if we have 2 matchers, and if one returns a lot of
@@ -343,13 +343,13 @@ func (c *seriesStore) lookupSeriesByMetricNameMatchers(ctx context.Context, from
 	return ids, nil
 }
 
-func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
+func (c *seriesStore) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([][]byte, error) {
 	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []IndexQuery) []IndexQuery {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs [][]byte) ([][]byte, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupChunksBySeries")
 	defer log.Span.Finish()
 
@@ -357,7 +357,7 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 
 	queries := make([]IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
-		qs, err := c.schema.GetChunksForSeries(from, through, userID, []byte(seriesID))
+		qs, err := c.schema.GetChunksForSeries(from, through, userID, seriesID)
 		if err != nil {
 			return nil, err
 		}
@@ -375,14 +375,14 @@ func (c *seriesStore) lookupChunksBySeries(ctx context.Context, from, through mo
 	return result, err
 }
 
-func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *seriesStore) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs [][]byte) ([]string, error) {
 	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesBySeries")
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("seriesIDs", len(seriesIDs))
 	queries := make([]IndexQuery, 0, len(seriesIDs))
 	for _, seriesID := range seriesIDs {
-		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, []byte(seriesID))
+		qs, err := c.schema.GetLabelNamesForSeries(from, through, userID, seriesID)
 		if err != nil {
 			return nil, err
 		}
@@ -568,7 +568,7 @@ func (c *seriesStore) DeleteSeriesIDs(ctx context.Context, from, through model.T
 }
 
 func (c *seriesStore) hasChunksForInterval(ctx context.Context, userID, seriesID string, from, through model.Time) (bool, error) {
-	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, []string{seriesID})
+	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, [][]byte{[]byte(seriesID)})
 	if err != nil {
 		return false, err
 	}

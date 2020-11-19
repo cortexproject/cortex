@@ -113,7 +113,7 @@ func TestChunkCodec(t *testing.T) {
 			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
-			have, err := ParseExternalKey(userID, c.chunk.ExternalKey())
+			have, err := ParseExternalKey(userID, []byte(c.chunk.ExternalKey()))
 			require.NoError(t, err)
 
 			buf := make([]byte, len(encoded))
@@ -155,7 +155,7 @@ func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
 	// Chunk encoded using code at commit b1777a50ab19
 	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
 	decodeContext := NewDecodeContext()
-	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
+	have, err := ParseExternalKey(userID, []byte("userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c"))
 	require.NoError(t, err)
 	require.NoError(t, have.Decode(decodeContext, rawData))
 	want := chunk
@@ -193,7 +193,7 @@ func TestParseExternalKey(t *testing.T) {
 
 		{key: "invalidUserID/2:270d8f00:270d8f00:f84c5745", chunk: Chunk{}, err: ErrWrongMetadata},
 	} {
-		chunk, err := ParseExternalKey(userID, c.key)
+		chunk, err := ParseExternalKey(userID, []byte(c.key))
 		require.Equal(t, c.err, errors.Cause(err))
 		require.Equal(t, c.chunk, chunk)
 	}

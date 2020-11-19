@@ -1129,7 +1129,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(seriesIDs))
-			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
+			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), string(seriesIDs[0]))
 
 			// lets delete the other chunk partially and try deleting the series ID
 			err = store.DeleteChunk(ctx, fooChunk2.From, fooChunk2.Through, userID, fooChunk2.ExternalKey(), metric2,
@@ -1148,7 +1148,7 @@ func TestStore_DeleteSeriesIDs(t *testing.T) {
 				userID, "foo", nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, 1, len(seriesIDs))
-			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), seriesIDs[0])
+			require.Equal(t, string(labelsSeriesID(fooChunk2.Metric)), string(seriesIDs[0]))
 		})
 	}
 }
@@ -1201,4 +1201,47 @@ func TestDisableIndexDeduplication(t *testing.T) {
 
 	}
 
+}
+
+var chunks [][]Chunk
+var fetchers []*Fetcher
+
+func Benchmark_GetRefsChunkWithManyChunks(b *testing.B) {
+	ctx := context.Background()
+	fooMetric1 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "flip", Value: "flop"},
+		{Name: "toms", Value: "code"},
+	}
+	fooMetric2 := labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "beep"},
+		{Name: "toms", Value: "code"},
+	}
+
+	now := model.Now()
+	toInsert := []Chunk{}
+	for i := 0; i < 1000; i++ {
+		toInsert = append(toInsert, dummyChunkFor(now, append(fooMetric1, labels.Label{Name: "1", Value: fmt.Sprintf("%d", i)})))
+		toInsert = append(toInsert, dummyChunkFor(now, append(fooMetric2, labels.Label{Name: "2", Value: fmt.Sprintf("%d", i)})))
+	}
+	s := newTestChunkStore(b, "v11")
+	err := s.Put(ctx, toInsert)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c, f, err := s.GetChunkRefs(ctx, userID,
+			now.Add(-1*time.Hour), now.Add(1*time.Hour),
+			mustNewLabelMatcher(labels.MatchEqual, labels.MetricName, "foo"),
+			mustNewLabelMatcher(labels.MatchEqual, "toms", "code"),
+			mustNewLabelMatcher(labels.MatchRegexp, "bar", "baz|beep"),
+		)
+		require.NoError(b, err)
+		chunks = c
+		fetchers = f
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -418,7 +417,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	}
 
 	// Otherwise get chunks which include other matchers
-	incomingChunkIDs := make(chan []string)
+	incomingChunkIDs := make(chan [][]byte)
 	incomingErrors := make(chan error)
 	for _, matcher := range matchers {
 		go func(matcher *labels.Matcher) {
@@ -432,7 +431,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	}
 
 	// Receive chunkSets from all matchers
-	var chunkIDs []string
+	var chunkIDs [][]byte
 	var lastErr error
 	var initialized bool
 	for i := 0; i < len(matchers); i++ {
@@ -442,7 +441,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 				chunkIDs = incoming
 				initialized = true
 			} else {
-				chunkIDs = intersectStrings(chunkIDs, incoming)
+				chunkIDs = intersectByteArrays(chunkIDs, incoming)
 			}
 		case err := <-incomingErrors:
 			lastErr = err
@@ -457,7 +456,7 @@ func (c *store) lookupChunksByMetricName(ctx context.Context, userID string, fro
 	return c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 }
 
-func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([]string, error) {
+func (c *baseStore) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]IndexQuery) []IndexQuery) ([][]byte, error) {
 	log, ctx := spanlogger.New(ctx, "Store.lookupIdsByMetricNameMatcher", "metricName", metricName, "matcher", formatMatcher(matcher))
 	defer log.Span.Finish()
 
@@ -543,7 +542,7 @@ func (c *baseStore) lookupEntriesByQueries(ctx context.Context, queries []IndexQ
 	return entries, err
 }
 
-func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.Matcher) ([]string, error) {
+func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, matcher *labels.Matcher) ([][]byte, error) {
 	// Nothing to do if there are no entries.
 	if len(entries) == 0 {
 		return nil, nil
@@ -557,17 +556,17 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 		}
 	}
 
-	result := make([]string, 0, len(entries))
+	result := make([][]byte, 0, len(entries))
 	for _, entry := range entries {
-		chunkKey, labelValue, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
+		chunkKey, labelbuf, err := parseChunkTimeRangeValue(entry.RangeValue, entry.Value)
 		if err != nil {
 			return nil, err
 		}
-
+		labelValue := util.YoloString(labelbuf)
 		// If the matcher is like a set (=~"a|b|c|d|...") and
 		// the label value is not in that set move on.
 		if len(matchSet) > 0 {
-			if _, ok := matchSet[string(labelValue)]; !ok {
+			if _, ok := matchSet[labelValue]; !ok {
 				continue
 			}
 
@@ -577,18 +576,18 @@ func (c *baseStore) parseIndexEntries(_ context.Context, entries []IndexEntry, m
 			continue
 		}
 
-		if matcher != nil && !matcher.Matches(string(labelValue)) {
+		if matcher != nil && !matcher.Matches(labelValue) {
 			continue
 		}
 		result = append(result, chunkKey)
 	}
 	// Return ids sorted and deduped because they will be merged with other sets.
-	sort.Strings(result)
-	result = uniqueStrings(result)
+	result = SortByteArrays(result)
+	result = uniqueByteArrays(result)
 	return result, nil
 }
 
-func (c *baseStore) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs []string) ([]Chunk, error) {
+func (c *baseStore) convertChunkIDsToChunks(ctx context.Context, userID string, chunkIDs [][]byte) ([]Chunk, error) {
 	chunkSet := make([]Chunk, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
 		chunk, err := ParseExternalKey(userID, chunkID)
@@ -660,7 +659,7 @@ func (c *baseStore) deleteChunk(ctx context.Context,
 }
 
 func (c *baseStore) reboundChunk(ctx context.Context, userID, chunkID string, partiallyDeletedInterval model.Interval, putChunkFunc func(chunk Chunk) error) error {
-	chunk, err := ParseExternalKey(userID, chunkID)
+	chunk, err := ParseExternalKey(userID, []byte(chunkID))
 	if err != nil {
 		return errors.Wrap(err, "when parsing external key")
 	}

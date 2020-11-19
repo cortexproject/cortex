@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/golang/snappy"
@@ -15,6 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	errs "github.com/weaveworks/common/errors"
+	strutil "go4.org/strutil"
 
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -87,8 +86,8 @@ func NewChunk(userID string, fp model.Fingerprint, metric labels.Labels, c prom_
 // Post-checksums, externals keys become the same across DynamoDB, Memcache
 // and S3.  Numbers become hex encoded.  Keys look like:
 // `<user id>/<fingerprint>:<start time>:<end time>:<checksum>`.
-func ParseExternalKey(userID, externalKey string) (Chunk, error) {
-	if !strings.Contains(externalKey, "/") {
+func ParseExternalKey(userID string, externalKey []byte) (Chunk, error) {
+	if !bytes.Contains(externalKey, []byte("/")) {
 		return parseLegacyChunkID(userID, externalKey)
 	}
 	chunk, err := parseNewExternalKey(externalKey)
@@ -101,20 +100,20 @@ func ParseExternalKey(userID, externalKey string) (Chunk, error) {
 	return chunk, nil
 }
 
-func parseLegacyChunkID(userID, key string) (Chunk, error) {
-	parts := strings.Split(key, ":")
+func parseLegacyChunkID(userID string, key []byte) (Chunk, error) {
+	parts := bytes.Split(key, []byte(":"))
 	if len(parts) != 3 {
-		return Chunk{}, errInvalidChunkID(key)
+		return Chunk{}, errInvalidChunkID(string(key))
 	}
-	fingerprint, err := strconv.ParseUint(parts[0], 10, 64)
+	fingerprint, err := strutil.ParseUintBytes(parts[0], 10, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	from, err := strconv.ParseInt(parts[1], 10, 64)
+	from, err := strutil.ParseUintBytes(parts[1], 10, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	through, err := strconv.ParseInt(parts[2], 10, 64)
+	through, err := strutil.ParseUintBytes(parts[2], 10, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
@@ -126,34 +125,35 @@ func parseLegacyChunkID(userID, key string) (Chunk, error) {
 	}, nil
 }
 
-func parseNewExternalKey(key string) (Chunk, error) {
-	parts := strings.Split(key, "/")
+func parseNewExternalKey(key []byte) (Chunk, error) {
+	parts := bytes.Split(key, []byte("/"))
 	if len(parts) != 2 {
-		return Chunk{}, errInvalidChunkID(key)
+		return Chunk{}, errInvalidChunkID(string(key))
 	}
 	userID := parts[0]
-	hexParts := strings.Split(parts[1], ":")
+	hexParts := bytes.Split(parts[1], []byte(":"))
 	if len(hexParts) != 4 {
-		return Chunk{}, errInvalidChunkID(key)
+		return Chunk{}, errInvalidChunkID(string(key))
 	}
-	fingerprint, err := strconv.ParseUint(hexParts[0], 16, 64)
+
+	fingerprint, err := strutil.ParseUintBytes(hexParts[0], 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	from, err := strconv.ParseInt(hexParts[1], 16, 64)
+	from, err := strutil.ParseUintBytes(hexParts[1], 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	through, err := strconv.ParseInt(hexParts[2], 16, 64)
+	through, err := strutil.ParseUintBytes(hexParts[2], 16, 64)
 	if err != nil {
 		return Chunk{}, err
 	}
-	checksum, err := strconv.ParseUint(hexParts[3], 16, 32)
+	checksum, err := strutil.ParseUintBytes(hexParts[3], 16, 32)
 	if err != nil {
 		return Chunk{}, err
 	}
 	return Chunk{
-		UserID:      userID,
+		UserID:      string(userID),
 		Fingerprint: model.Fingerprint(fingerprint),
 		From:        model.Time(from),
 		Through:     model.Time(through),

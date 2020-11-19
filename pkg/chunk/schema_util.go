@@ -112,13 +112,13 @@ func encodeBase64Value(value string) []byte {
 	return encoded
 }
 
-func decodeBase64Value(bs []byte) (model.LabelValue, error) {
+func decodeBase64Value(bs []byte) ([]byte, error) {
 	decodedLen := base64.RawStdEncoding.DecodedLen(len(bs))
 	decoded := make([]byte, decodedLen)
 	if _, err := base64.RawStdEncoding.Decode(decoded, bs); err != nil {
-		return "", err
+		return []byte{}, err
 	}
-	return model.LabelValue(decoded), nil
+	return decoded, nil
 }
 
 func encodeTime(t uint32) []byte {
@@ -189,7 +189,7 @@ var componentsPool = sync.Pool{
 // parseChunkTimeRangeValue returns the chunkID and labelValue for chunk time
 // range values.
 func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
-	chunkID string, labelValue model.LabelValue, err error,
+	chunkID []byte, labelValue []byte, err error,
 ) {
 	componentRef := componentsPool.Get().(*componentRef)
 	defer componentsPool.Put(componentRef)
@@ -203,8 +203,8 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 	// v1 & v2 schema had three components - label name, label value and chunk ID.
 	// No version number.
 	case len(components) == 3:
-		chunkID = string(components[2])
-		labelValue = model.LabelValue(components[1])
+		chunkID = components[2]
+		labelValue = components[1]
 		return
 
 	case len(components[3]) == 1:
@@ -213,42 +213,42 @@ func parseChunkTimeRangeValue(rangeValue []byte, value []byte) (
 		// "version" is 1 and label value is base64 encoded.
 		// (older code wrote "version" as 1, not '1')
 		case chunkTimeRangeKeyV1a, chunkTimeRangeKeyV1:
-			chunkID = string(components[2])
+			chunkID = components[2]
 			labelValue, err = decodeBase64Value(components[1])
 			return
 
 		// v4 schema wrote v3 range keys and a new range key - version 2,
 		// with four components - <empty>, <empty>, chunk ID and version.
 		case chunkTimeRangeKeyV2:
-			chunkID = string(components[2])
+			chunkID = components[2]
 			return
 
 		// v5 schema version 3 range key is chunk end time, <empty>, chunk ID, version
 		case chunkTimeRangeKeyV3:
-			chunkID = string(components[2])
+			chunkID = components[2]
 			return
 
 		// v5 schema version 4 range key is chunk end time, label value, chunk ID, version
 		case chunkTimeRangeKeyV4:
-			chunkID = string(components[2])
+			chunkID = components[2]
 			labelValue, err = decodeBase64Value(components[1])
 			return
 
 		// v6 schema added version 5 range keys, which have the label value written in
 		// to the value, not the range key. So they are [chunk end time, <empty>, chunk ID, version].
 		case chunkTimeRangeKeyV5:
-			chunkID = string(components[2])
-			labelValue = model.LabelValue(value)
+			chunkID = components[2]
+			labelValue = value
 			return
 
 		// v9 schema actually return series IDs
 		case seriesRangeKeyV1:
-			chunkID = string(components[0])
+			chunkID = components[0]
 			return
 
 		case labelSeriesRangeKeyV1:
-			chunkID = string(components[1])
-			labelValue = model.LabelValue(value)
+			chunkID = components[1]
+			labelValue = value
 			return
 		}
 	}

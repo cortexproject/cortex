@@ -222,6 +222,7 @@ func (ds *DeleteStore) GetPendingDeleteRequestsForUser(ctx context.Context, user
 
 func (ds *DeleteStore) queryDeleteRequests(ctx context.Context, deleteQuery chunk.IndexQuery) ([]DeleteRequest, error) {
 	deleteRequests := []DeleteRequest{}
+	// No need to lock inside the callback since we run a single index query.
 	err := ds.indexClient.QueryPages(ctx, []chunk.IndexQuery{deleteQuery}, func(query chunk.IndexQuery, batch chunk.ReadBatch) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {

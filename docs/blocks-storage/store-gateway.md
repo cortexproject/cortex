@@ -703,6 +703,15 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
     [flush_blocks_on_shutdown: <boolean> | default = false]
 
+    # If TSDB has not received any data for this duration, and all blocks from
+    # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
+    # to positive value, this value should be equal or higher than
+    # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+    # prematurely, which could cause partial query results. 0 or negative value
+    # disables closing of idle TSDB.
+    # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
+    [close_idle_tsdb_timeout: <duration> | default = 0s]
+
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]

@@ -98,7 +98,7 @@ func (m *ManagerMetrics) AddUserRegistry(user string, reg *prometheus.Registry) 
 
 // RemoveUserRegistry removes user-specific Prometheus registry.
 func (m *ManagerMetrics) RemoveUserRegistry(user string) {
-	m.regs.RemoveUserRegistry(user)
+	m.regs.RemoveUserRegistry(user, true)
 }
 
 // Describe implements the Collector interface

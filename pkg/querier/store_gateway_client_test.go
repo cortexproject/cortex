@@ -79,6 +79,6 @@ func (m *mockStoreGatewayServer) LabelNames(context.Context, *storepb.LabelNames
 	return nil, nil
 }
 
-// func (m *mockStoreGatewayServer) LabelValues(context.Context, *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-// 	return nil, nil
-// }
+func (m *mockStoreGatewayServer) LabelValues(context.Context, *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	return nil, nil
+}

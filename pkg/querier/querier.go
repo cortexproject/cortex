@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -376,7 +377,51 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 
 // LabelsValue implements storage.Querier.
 func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	return q.metadataQuerier.LabelValues(name)
+	if !q.queryStoreForLabels {
+		return q.metadataQuerier.LabelValues(name)
+	}
+
+	if len(q.queriers) == 1 {
+		return q.queriers[0].LabelValues(name)
+	}
+
+	// Using an errgroup here instead of channels, etc because this
+	// is a better model imo and we should move to this everywhere.
+	var (
+		g, _     = errgroup.WithContext(q.ctx)
+		sets     = [][]string{}
+		warnings = storage.Warnings(nil)
+
+		resMtx sync.Mutex
+	)
+
+	for _, querier := range q.queriers {
+		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
+		querier := querier
+		g.Go(func() error {
+			myValues, myWarnings, err := querier.LabelValues(name)
+			if err != nil {
+				return err
+			}
+
+			// We need values to be sorted we can merge them.
+			sort.Strings(myValues)
+
+			resMtx.Lock()
+			sets = append(sets, myValues)
+			warnings = append(warnings, myWarnings...)
+			resMtx.Unlock()
+
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(sets...), warnings, nil
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {

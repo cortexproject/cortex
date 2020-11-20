@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -293,11 +294,6 @@ func (q *blocksStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	return q.selectSorted(sp, matchers...)
 }
 
-func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	// Cortex doesn't use this. It will ask ingesters for metadata.
-	return nil, nil, errors.New("not implemented")
-}
-
 func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.LabelNames")
 	defer spanLog.Span.Finish()
@@ -331,6 +327,41 @@ func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	}
 
 	return strutil.MergeSlices(resNameSets...), resWarnings, nil
+}
+
+func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.LabelValues")
+	defer spanLog.Span.Finish()
+
+	minT, maxT := q.minT, q.maxT
+
+	var (
+		resValueSets = [][]string{}
+		resWarnings  = storage.Warnings(nil)
+
+		resultMtx sync.Mutex
+	)
+
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
+		valueSets, warnings, queriedBlocks, err := q.fetchLabelValuesFromStore(spanCtx, name, clients, minT, maxT)
+		if err != nil {
+			return nil, err
+		}
+
+		resultMtx.Lock()
+		resValueSets = append(resValueSets, valueSets...)
+		resWarnings = append(resWarnings, warnings...)
+		resultMtx.Unlock()
+
+		return queriedBlocks, nil
+	}
+
+	err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, queryFunc)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(resValueSets...), resWarnings, nil
 }
 
 func (q *blocksStoreQuerier) Close() error {
@@ -673,6 +704,85 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 			mtx.Lock()
 			nameSets = append(nameSets, namesResp.Names)
 			for _, w := range namesResp.Warnings {
+				warnings = append(warnings, errors.New(w))
+			}
+			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	// Wait until all client requests complete.
+	if err := g.Wait(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return nameSets, warnings, queriedBlocks, nil
+}
+
+func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
+	ctx context.Context,
+	name string,
+	clients map[BlocksStoreClient][]ulid.ULID,
+	minT int64,
+	maxT int64,
+) ([][]string, storage.Warnings, []ulid.ULID, error) {
+	var (
+		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		g, gCtx       = errgroup.WithContext(reqCtx)
+		mtx           = sync.Mutex{}
+		nameSets      = [][]string{}
+		warnings      = storage.Warnings(nil)
+		queriedBlocks = []ulid.ULID(nil)
+		spanLog       = spanlogger.FromContext(ctx)
+	)
+
+	// Concurrently fetch series from all clients.
+	for c, blockIDs := range clients {
+		// Change variables scope since it will be used in a goroutine.
+		c := c
+		blockIDs := blockIDs
+
+		g.Go(func() error {
+			req, err := createLabelValuesRequest(minT, maxT, name, blockIDs)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create label names request")
+			}
+
+			valuesResp, err := c.LabelValues(gCtx, req)
+			if err != nil {
+				return errors.Wrapf(err, "failed to fetch series from %s", c)
+			}
+
+			myQueriedBlocks := []ulid.ULID(nil)
+			if valuesResp.Hints != nil {
+				hints := hintspb.LabelValuesResponseHints{}
+				if err := types.UnmarshalAny(valuesResp.Hints, &hints); err != nil {
+					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c)
+				}
+
+				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
+				if err != nil {
+					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
+				}
+
+				myQueriedBlocks = ids
+			}
+
+			level.Debug(spanLog).Log("msg", "received label names from store-gateway",
+				"instance", c,
+				"num labels", len(valuesResp.Values),
+				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
+				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
+
+			// Values returned need not be sorted, but we need them to be sorted so we can merge.
+			sort.Strings(valuesResp.Values)
+
+			// Store the result.
+			mtx.Lock()
+			nameSets = append(nameSets, valuesResp.Values)
+			for _, w := range valuesResp.Warnings {
 				warnings = append(warnings, errors.New(w))
 			}
 			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)

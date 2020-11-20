@@ -325,9 +325,9 @@ func (g *StoreGateway) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 }
 
 // LabelValues implements the Storegateway proto service.
-// func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-// 	return g.stores.LabelValues(ctx, req)
-// }
+func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	return g.stores.LabelValues(ctx, req)
+}
 
 func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.IngesterDesc) (ring.IngesterState, ring.Tokens) {
 	// When we initialize the store-gateway instance in the ring we want to start from

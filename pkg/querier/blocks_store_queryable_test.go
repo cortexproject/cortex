@@ -796,9 +796,9 @@ func (m *storeGatewayClientMock) LabelNames(context.Context, *storepb.LabelNames
 	return nil, nil
 }
 
-// func (m *storeGatewayClientMock) LabelValues(context.Context, *storepb.LabelValuesRequest, ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
-// 	return nil, nil
-// }
+func (m *storeGatewayClientMock) LabelValues(context.Context, *storepb.LabelValuesRequest, ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
+	return nil, nil
+}
 
 func (m *storeGatewayClientMock) RemoteAddress() string {
 	return m.remoteAddr

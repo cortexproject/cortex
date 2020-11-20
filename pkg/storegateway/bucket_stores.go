@@ -266,22 +266,22 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 }
 
 // LabelValues implements the Storegateway proto service.
-// func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
-// 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
-// 	defer spanLog.Span.Finish()
+func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
+	defer spanLog.Span.Finish()
 
-// 	userID := getUserIDFromGRPCContext(spanCtx)
-// 	if userID == "" {
-// 		return nil, fmt.Errorf("no userID")
-// 	}
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
 
-// 	store := u.getStore(userID)
-// 	if store == nil {
-// 		return nil, nil
-// 	}
+	store := u.getStore(userID)
+	if store == nil {
+		return nil, nil
+	}
 
-// 	return store.LabelValues(ctx, req)
-// }
+	return store.LabelValues(ctx, req)
+}
 
 // scanUsers in the bucket and return the list of found users. If an error occurs while
 // iterating the bucket, it may return both an error and a subset of the users in the bucket.

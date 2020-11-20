@@ -536,7 +536,7 @@ func testMetadataQueriesWithBlocksStorage(
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
+					resp:  []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
@@ -563,7 +563,7 @@ func testMetadataQueriesWithBlocksStorage(
 			labelValuesTests: []labelValuesTest{
 				{
 					label: labels.MetricName,
-					resp:  []string{firstSeriesInIngesterHeadName},
+					resp:  []string{lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, firstSeriesInIngesterHeadName},
@@ -590,7 +590,7 @@ func testMetadataQueriesWithBlocksStorage(
 				for _, val := range lvt.resp {
 					exp = append(exp, model.LabelValue(val))
 				}
-				require.ElementsMatch(t, exp, labelsRes)
+				require.Equal(t, exp, labelsRes)
 			}
 
 			labelNames, err := c.LabelNames(tc.from, tc.to)

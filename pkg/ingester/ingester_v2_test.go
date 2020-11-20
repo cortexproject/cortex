@@ -72,14 +72,14 @@ func TestIngester_v2Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 1, TimestampMs: 9}},
 					[]*client.MetricMetadata{
-						{MetricName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+						{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
 					},
 					client.API),
 				client.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]client.Sample{{Value: 2, TimestampMs: 10}},
 					[]*client.MetricMetadata{
-						{MetricName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
+						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
 					},
 					client.API),
 			},
@@ -88,8 +88,8 @@ func TestIngester_v2Push(t *testing.T) {
 				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
 			},
 			expectedMetadataIngested: []*client.MetricMetadata{
-				{MetricName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
-				{MetricName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
+				{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
 			},
 			additionalMetrics: []string{
 				// Metadata.

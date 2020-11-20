@@ -121,27 +121,27 @@ func TestValidateMetadata(t *testing.T) {
 	}{
 		{
 			"with a valid config",
-			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			nil,
 		},
 		{
 			"with no metric name",
-			&client.MetricMetadata{MetricName: "", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&client.MetricMetadata{MetricFamilyName: "", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata missing metric name"),
 		},
 		{
 			"with a long metric name",
-			&client.MetricMetadata{MetricName: "go_goroutines_and_routines_and_routines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&client.MetricMetadata{MetricFamilyName: "go_goroutines_and_routines_and_routines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'METRIC_NAME' value too long: \"go_goroutines_and_routines_and_routines\" metric \"go_goroutines_and_routines_and_routines\""),
 		},
 		{
 			"with a long help",
-			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines that currently exist.", Unit: ""},
+			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines that currently exist.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'HELP' value too long: \"Number of goroutines that currently exist.\" metric \"go_goroutines\""),
 		},
 		{
 			"with a long unit",
-			&client.MetricMetadata{MetricName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: "a_made_up_unit_that_is_really_long"},
+			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: "a_made_up_unit_that_is_really_long"},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'UNIT' value too long: \"a_made_up_unit_that_is_really_long\" metric \"go_goroutines\""),
 		},
 	} {

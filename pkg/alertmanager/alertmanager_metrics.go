@@ -16,9 +16,11 @@ type alertmanagerMetrics struct {
 	alertsInvalid  *prometheus.Desc
 
 	// exported metrics, gathered from Alertmanager PipelineBuilder
-	numNotifications           *prometheus.Desc
-	numFailedNotifications     *prometheus.Desc
-	notificationLatencySeconds *prometheus.Desc
+	numNotifications                   *prometheus.Desc
+	numFailedNotifications             *prometheus.Desc
+	numNotificationRequestsTotal       *prometheus.Desc
+	numNotificationRequestsFailedTotal *prometheus.Desc
+	notificationLatencySeconds         *prometheus.Desc
 
 	// exported metrics, gathered from Alertmanager nflog
 	nflogGCDuration              *prometheus.Desc
@@ -64,6 +66,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		numFailedNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_failed_total",
 			"The total number of failed notifications.",
+			[]string{"user", "integration"}, nil),
+		numNotificationRequestsTotal: prometheus.NewDesc(
+			"cortex_alertmanager_notification_requests_total",
+			"The total number of attempted notification requests.",
+			[]string{"user", "integration"}, nil),
+		numNotificationRequestsFailedTotal: prometheus.NewDesc(
+			"cortex_alertmanager_notification_requests_failed_total",
+			"The total number of failed notification requests.",
 			[]string{"user", "integration"}, nil),
 		notificationLatencySeconds: prometheus.NewDesc(
 			"cortex_alertmanager_notification_latency_seconds",
@@ -149,6 +159,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.alertsInvalid
 	out <- m.numNotifications
 	out <- m.numFailedNotifications
+	out <- m.numNotificationRequestsTotal
+	out <- m.numNotificationRequestsFailedTotal
 	out <- m.notificationLatencySeconds
 	out <- m.markerAlerts
 	out <- m.nflogGCDuration
@@ -177,6 +189,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfCountersPerUserWithLabels(out, m.numNotifications, "alertmanager_notifications_total", "integration")
 	data.SendSumOfCountersPerUserWithLabels(out, m.numFailedNotifications, "alertmanager_notifications_failed_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsTotal, "alertmanager_notification_requests_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsFailedTotal, "alertmanager_notification_requests_failed_total", "integration")
 	data.SendSumOfHistograms(out, m.notificationLatencySeconds, "alertmanager_notification_latency_seconds")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.markerAlerts, "alertmanager_alerts", "state")
 

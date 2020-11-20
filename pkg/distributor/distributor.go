@@ -510,7 +510,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 			continue
 		}
 
-		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricName))
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
 		validatedMetadata = append(validatedMetadata, m)
 	}
 
@@ -776,7 +776,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			dedupTracker[*m] = struct{}{}
 
 			result = append(result, scrape.MetricMetadata{
-				Metric: m.MetricName,
+				Metric: m.MetricFamilyName,
 				Help:   m.Help,
 				Unit:   m.Unit,
 				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),

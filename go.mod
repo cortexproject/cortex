@@ -12,7 +12,7 @@ require (
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/alicebob/miniredis v2.5.0+incompatible
 	github.com/armon/go-metrics v0.3.3
-	github.com/aws/aws-sdk-go v1.35.5
+	github.com/aws/aws-sdk-go v1.35.31
 	github.com/blang/semver v3.5.0+incompatible
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
@@ -26,7 +26,7 @@ require (
 	github.com/gogo/protobuf v1.3.1
 	github.com/gogo/status v1.0.3
 	github.com/golang-migrate/migrate/v4 v4.7.0
-	github.com/golang/protobuf v1.4.2
+	github.com/golang/protobuf v1.4.3
 	github.com/golang/snappy v0.0.2
 	github.com/gorilla/mux v1.7.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
@@ -44,26 +44,26 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/alertmanager v0.21.1-0.20200911160112-1fdff6b3f939
-	github.com/prometheus/client_golang v1.7.1
+	github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054
+	github.com/prometheus/client_golang v1.8.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.14.0
-	github.com/prometheus/prometheus v1.8.2-0.20201029103703-63be30dceed9
+	github.com/prometheus/common v0.15.0
+	github.com/prometheus/prometheus v1.8.2-0.20201119181812-c8f810083d3f
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
-	github.com/thanos-io/thanos v0.13.1-0.20201112171553-05fbe15616c7
+	github.com/thanos-io/thanos v0.13.1-0.20201119154119-8ba87aeb5fcf
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20200914083218-61ffdd448099
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.7.0
-	golang.org/x/net v0.0.0-20201006153459-a7d1128ccaa0
-	golang.org/x/sync v0.0.0-20200930132711-30421366ff76
+	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	google.golang.org/api v0.32.0
-	google.golang.org/grpc v1.32.0
+	google.golang.org/api v0.35.0
+	google.golang.org/grpc v1.33.1
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 	sigs.k8s.io/yaml v1.2.0
@@ -91,3 +91,19 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 
 // Fix a panic (see: https://github.com/opentracing-contrib/go-grpc/pull/12)
 replace github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
+
+// Pin github.com/go-openapi versions to match Prometheus alertmanager to avoid
+// breaking changing affecting the alertmanager.
+replace github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
+
+replace github.com/go-openapi/loads => github.com/go-openapi/loads v0.19.5
+
+replace github.com/go-openapi/runtime => github.com/go-openapi/runtime v0.19.15
+
+replace github.com/go-openapi/spec => github.com/go-openapi/spec v0.19.8
+
+replace github.com/go-openapi/strfmt => github.com/go-openapi/strfmt v0.19.5
+
+replace github.com/go-openapi/swag => github.com/go-openapi/swag v0.19.9
+
+replace github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8

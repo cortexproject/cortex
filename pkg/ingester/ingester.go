@@ -612,7 +612,7 @@ func (i *Ingester) appendMetadata(userID string, m *client.MetricMetadata) error
 
 	userMetadata := i.getOrCreateUserMetadata(userID)
 
-	return userMetadata.add(m.GetMetricName(), m)
+	return userMetadata.add(m.GetMetricFamilyName(), m)
 }
 
 func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {

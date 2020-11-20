@@ -644,7 +644,7 @@ func RepairIssue347(ctx context.Context, logger log.Logger, bkt objstore.Bucket,
 		return retry(errors.Wrapf(err, "download block %s", ie.id))
 	}
 
-	meta, err := metadata.Read(bdir)
+	meta, err := metadata.ReadFromDir(bdir)
 	if err != nil {
 		return errors.Wrapf(err, "read meta from %s", bdir)
 	}
@@ -726,7 +726,7 @@ func (cg *Group) compact(ctx context.Context, dir string, planner Planner, comp 
 		}
 
 		// Ensure all input blocks are valid.
-		stats, err := block.GatherIndexIssueStats(cg.logger, filepath.Join(bdir, block.IndexFilename), meta.MinTime, meta.MaxTime)
+		stats, err := block.GatherIndexHealthStats(cg.logger, filepath.Join(bdir, block.IndexFilename), meta.MinTime, meta.MaxTime)
 		if err != nil {
 			return false, ulid.ULID{}, errors.Wrapf(err, "gather index issues for block %s", bdir)
 		}

@@ -347,24 +347,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	}
 }
 
-func (am *MultitenantAlertmanager) transformConfig(userID string, amConfig *amconfig.Config) (*amconfig.Config, error) {
-	if am.cfg.AutoWebhookRoot != "" {
-		for _, r := range amConfig.Receivers {
-			for _, w := range r.WebhookConfigs {
-				if w.URL.String() == autoWebhookURL {
-					u, err := url.Parse(am.cfg.AutoWebhookRoot + "/" + userID + "/monitor")
-					if err != nil {
-						return nil, err
-					}
-					w.URL = &amconfig.URL{URL: u}
-				}
-			}
-		}
-	}
-
-	return amConfig, nil
-}
-
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
@@ -417,8 +399,20 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		return fmt.Errorf("no usable Alertmanager configuration for %v", cfg.User)
 	}
 
-	if userAmConfig, err = am.transformConfig(cfg.User, userAmConfig); err != nil {
-		return err
+	// Transform webhook configs URLs to the per tenant monitor
+	if am.cfg.AutoWebhookRoot != "" {
+		for i, r := range userAmConfig.Receivers {
+			for j, w := range r.WebhookConfigs {
+				if w.URL.String() == autoWebhookURL {
+					u, err := url.Parse(am.cfg.AutoWebhookRoot + "/" + cfg.User + "/monitor")
+					if err != nil {
+						return err
+					}
+
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.URL{URL: u}
+				}
+			}
+		}
 	}
 
 	// If no Alertmanager instance exists for this user yet, start one.

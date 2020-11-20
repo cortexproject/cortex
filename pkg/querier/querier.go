@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log/level"
@@ -14,7 +15,9 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -377,7 +380,48 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 }
 
 func (q querier) LabelNames() ([]string, storage.Warnings, error) {
-	return q.metadataQuerier.LabelNames()
+	if !q.queryStoreForLabels {
+		return q.metadataQuerier.LabelNames()
+	}
+
+	if len(q.queriers) == 1 {
+		return q.queriers[0].LabelNames()
+	}
+
+	// Using an errgroup here instead of channels, etc because this
+	// is a better model imo and we should move to this everywhere.
+	var (
+		g, _     = errgroup.WithContext(q.ctx)
+		sets     = [][]string{}
+		warnings = storage.Warnings(nil)
+
+		resMtx sync.Mutex
+	)
+
+	for _, querier := range q.queriers {
+		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
+		querier := querier
+		g.Go(func() error {
+			myNames, myWarnings, err := querier.LabelNames()
+			if err != nil {
+				return err
+			}
+
+			resMtx.Lock()
+			sets = append(sets, myNames)
+			warnings = append(warnings, myWarnings...)
+			resMtx.Unlock()
+
+			return nil
+		})
+	}
+
+	err := g.Wait()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(sets...), warnings, nil
 }
 
 func (querier) Close() error {

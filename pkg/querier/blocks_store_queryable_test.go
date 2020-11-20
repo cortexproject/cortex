@@ -792,6 +792,14 @@ func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesR
 	return seriesClient, nil
 }
 
+func (m *storeGatewayClientMock) LabelNames(context.Context, *storepb.LabelNamesRequest, ...grpc.CallOption) (*storepb.LabelNamesResponse, error) {
+	return nil, nil
+}
+
+// func (m *storeGatewayClientMock) LabelValues(context.Context, *storepb.LabelValuesRequest, ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
+// 	return nil, nil
+// }
+
 func (m *storeGatewayClientMock) RemoteAddress() string {
 	return m.remoteAddr
 }

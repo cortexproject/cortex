@@ -22,6 +22,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
@@ -298,8 +299,38 @@ func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warning
 }
 
 func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	// Cortex doesn't use this. It will ask ingesters for metadata.
-	return nil, nil, errors.New("not implemented")
+	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.LabelNames")
+	defer spanLog.Span.Finish()
+
+	minT, maxT := q.minT, q.maxT
+
+	var (
+		resNameSets = [][]string{}
+		resWarnings = storage.Warnings(nil)
+
+		resultMtx sync.Mutex
+	)
+
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
+		nameSets, warnings, queriedBlocks, err := q.fetchLabelNamesFromStore(spanCtx, clients, minT, maxT)
+		if err != nil {
+			return nil, err
+		}
+
+		resultMtx.Lock()
+		resNameSets = append(resNameSets, nameSets...)
+		resWarnings = append(resWarnings, warnings...)
+		resultMtx.Unlock()
+
+		return queriedBlocks, nil
+	}
+
+	err := q.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, queryFunc)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return strutil.MergeSlices(resNameSets...), resWarnings, nil
 }
 
 func (q *blocksStoreQuerier) Close() error {
@@ -546,7 +577,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if h := resp.GetHints(); h != nil {
 					hints := hintspb.SeriesResponseHints{}
 					if err := types.UnmarshalAny(h, &hints); err != nil {
-						return errors.Wrapf(err, "failed to unmarshal hints from %s", c)
+						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c)
 					}
 
 					ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
@@ -584,6 +615,81 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	return seriesSets, queriedBlocks, warnings, int(numChunks.Load()), nil
 }
 
+func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
+	ctx context.Context,
+	clients map[BlocksStoreClient][]ulid.ULID,
+	minT int64,
+	maxT int64,
+) ([][]string, storage.Warnings, []ulid.ULID, error) {
+	var (
+		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
+		g, gCtx       = errgroup.WithContext(reqCtx)
+		mtx           = sync.Mutex{}
+		nameSets      = [][]string{}
+		warnings      = storage.Warnings(nil)
+		queriedBlocks = []ulid.ULID(nil)
+		spanLog       = spanlogger.FromContext(ctx)
+	)
+
+	// Concurrently fetch series from all clients.
+	for c, blockIDs := range clients {
+		// Change variables scope since it will be used in a goroutine.
+		c := c
+		blockIDs := blockIDs
+
+		g.Go(func() error {
+			req, err := createLabelNamesRequest(minT, maxT, blockIDs)
+			if err != nil {
+				return errors.Wrapf(err, "failed to create label names request")
+			}
+
+			namesResp, err := c.LabelNames(gCtx, req)
+			if err != nil {
+				return errors.Wrapf(err, "failed to fetch series from %s", c)
+			}
+
+			myQueriedBlocks := []ulid.ULID(nil)
+			if namesResp.Hints != nil {
+				hints := hintspb.LabelNamesResponseHints{}
+				if err := types.UnmarshalAny(namesResp.Hints, &hints); err != nil {
+					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c)
+				}
+
+				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
+				if err != nil {
+					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
+				}
+
+				myQueriedBlocks = ids
+			}
+
+			level.Debug(spanLog).Log("msg", "received label names from store-gateway",
+				"instance", c,
+				"num labels", len(namesResp.Names),
+				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
+				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
+
+			// Store the result.
+			mtx.Lock()
+			nameSets = append(nameSets, namesResp.Names)
+			for _, w := range namesResp.Warnings {
+				warnings = append(warnings, errors.New(w))
+			}
+			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	// Wait until all client requests complete.
+	if err := g.Wait(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return nameSets, warnings, queriedBlocks, nil
+}
+
 func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
@@ -609,6 +715,69 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skip
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 	}, nil
+}
+
+func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.LabelNamesRequest, error) {
+	req := &storepb.LabelNamesRequest{
+		Start: minT,
+		End:   maxT,
+	}
+
+	if len(blockIDs) == 0 {
+		return req, nil
+	}
+
+	// Selectively query only specific blocks.
+	hints := &hintspb.LabelNamesRequestHints{
+		BlockMatchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_RE,
+				Name:  block.BlockIDLabel,
+				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
+			},
+		},
+	}
+
+	anyHints, err := types.MarshalAny(hints)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to marshal request hints")
+	}
+
+	req.Hints = anyHints
+
+	return req, nil
+}
+
+func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.ULID) (*storepb.LabelValuesRequest, error) {
+	req := &storepb.LabelValuesRequest{
+		Start: minT,
+		End:   maxT,
+		Label: label,
+	}
+
+	if len(blockIDs) == 0 {
+		return req, nil
+	}
+
+	// Selectively query only specific blocks.
+	hints := &hintspb.LabelValuesRequestHints{
+		BlockMatchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_RE,
+				Name:  block.BlockIDLabel,
+				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
+			},
+		},
+	}
+
+	anyHints, err := types.MarshalAny(hints)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to marshal request hints")
+	}
+
+	req.Hints = anyHints
+
+	return req, nil
 }
 
 func convertULIDsToString(ids []ulid.ULID) []string {

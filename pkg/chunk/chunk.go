@@ -183,8 +183,7 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
-	var buf bytes.Buffer
-	return c.EncodeTo(&buf)
+	return c.EncodeTo(nil)
 }
 
 // EncodeTo is like Encode but you can provide your own buffer to use.

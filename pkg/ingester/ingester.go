@@ -397,13 +397,13 @@ func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
 	i.lifecycler.SetFlushOnShutdown(true)
 
 	// In the case of an HTTP shutdown, we want to unregister no matter what.
-	originalUnregister := i.lifecycler.ShouldUnregisterFromRing()
-	i.lifecycler.SetUnregisterFromRing(true)
+	originalUnregister := i.lifecycler.ShouldUnregisterOnShutdown()
+	i.lifecycler.SetUnregisterOnShutdown(true)
 
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	// Set state back to original.
 	i.lifecycler.SetFlushOnShutdown(originalFlush)
-	i.lifecycler.SetUnregisterFromRing(originalUnregister)
+	i.lifecycler.SetUnregisterOnShutdown(originalUnregister)
 
 	w.WriteHeader(http.StatusNoContent)
 }

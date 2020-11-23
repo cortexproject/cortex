@@ -17,8 +17,14 @@ type ReplicationStrategy interface {
 	ShouldExtendReplicaSet(instance IngesterDesc, op Operation) bool
 }
 
-type DefaultReplicationStrategy struct {
+type defaultReplicationStrategy struct {
 	ExtendWrites bool
+}
+
+func NewDefaultReplicationStrategy(extendWrites bool) ReplicationStrategy {
+	return &defaultReplicationStrategy{
+		ExtendWrites: extendWrites,
+	}
 }
 
 // Filter decides, given the set of ingesters eligible for a key,
@@ -27,7 +33,7 @@ type DefaultReplicationStrategy struct {
 // - Filters out dead ingesters so the one doesn't even try to write to them.
 // - Checks there is enough ingesters for an operation to succeed.
 // The ingesters argument may be overwritten.
-func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]IngesterDesc, int, error) {
+func (s *defaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]IngesterDesc, int, error) {
 	// We need a response from a quorum of ingesters, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so use the bigger or the two.
@@ -65,13 +71,13 @@ func (s *DefaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	return ingesters, len(ingesters) - minSuccess, nil
 }
 
-func (s *DefaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDesc, op Operation) bool {
+func (s *defaultReplicationStrategy) ShouldExtendReplicaSet(ingester IngesterDesc, op Operation) bool {
 	// We do not want to Write to Ingesters that are not ACTIVE, but we do want
 	// to write the extra replica somewhere.  So we increase the size of the set
 	// of replicas for the key. This means we have to also increase the
 	// size of the replica set for read, but we can read from Leaving ingesters,
 	// so don't skip it in this case.
-	// NB dead ingester will be filtered later by DefaultReplicationStrategy.Filter().
+	// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
 	if op == Write {
 		if s.ExtendWrites {
 			return ingester.State != ACTIVE

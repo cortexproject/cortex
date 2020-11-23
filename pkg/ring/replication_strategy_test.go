@@ -90,7 +90,7 @@ func TestRingReplicationStrategy(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			strategy := &DefaultReplicationStrategy{}
+			strategy := NewDefaultReplicationStrategy(true)
 			liveIngesters, maxFailure, err := strategy.Filter(ingesters, tc.op, tc.RF, 100*time.Second, false)
 			if tc.ExpectedError == "" {
 				assert.NoError(t, err)

@@ -21,6 +21,8 @@
 * [ENHANCEMENT] Store-gateway: added `-blocks-storage.bucket-store.index-header-lazy-loading-enabled` to enable index-header lazy loading (experimental). When enabled, index-headers will be mmap-ed only once required by a query and will be automatically released after `-blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout` time of inactivity. #3498
 * [ENHANCEMENT] Alertmanager: added metrics `cortex_alertmanager_notification_requests_total` and `cortex_alertmanager_notification_requests_failed_total`. #3518
 * [ENHANCEMENT] Ingester: added `-blocks-storage.tsdb.head-chunks-write-buffer-size-bytes` to fine-tune the TSDB head chunks write buffer size when running Cortex blocks storage. #3518
+* [ENHANCEMENT] /metrics now supports OpenMetrics output. HTTP and gRPC servers metrics can now include exemplars. #3524
+* [ENHANCEMENT] Expose gRPC keepalive policy options by gRPC server. #3524
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422
 * [BUGFIX] Querier: fixed `-querier.max-query-into-future` which wasn't correctly enforced on range queries. #3452

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -131,6 +132,79 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 		"cortex_blocks_meta_sync_consistency_delay_seconds",
 		"cortex_querier_blocks_last_successful_scan_timestamp_seconds",
 	))
+}
+
+func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T) {
+	tenantIDs := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
+
+	// Mock the bucket to introduce a 1s sleep while iterating each tenant in the bucket.
+	bucket := &cortex_tsdb.BucketClientMock{}
+	bucket.MockIter("", tenantIDs, nil)
+	for _, tenantID := range tenantIDs {
+		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
+			time.Sleep(time.Second)
+		})
+	}
+
+	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
+	require.NoError(t, err)
+	defer os.RemoveAll(cacheDir)
+
+	cfg := prepareBlocksScannerConfig()
+	cfg.CacheDir = cacheDir
+	cfg.MetasConcurrency = 1
+	cfg.TenantsConcurrency = 1
+
+	s := NewBlocksScanner(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+
+	// Start the scanner, let it run for 1s and then issue a stop.
+	require.NoError(t, s.StartAsync(context.Background()))
+	time.Sleep(time.Second)
+
+	stopTime := time.Now()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+
+	// Expect to stop before having completed the full sync (which is expected to take
+	// 1s for each tenant due to the delay introduced in the mock).
+	assert.Less(t, time.Since(stopTime).Nanoseconds(), (3 * time.Second).Nanoseconds())
+}
+
+func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) {
+	var blockPaths []string
+	for i := 1; i <= 10; i++ {
+		blockPaths = append(blockPaths, "user-1/"+ulid.MustNew(uint64(i), nil).String())
+	}
+
+	// Mock the bucket to introduce a 1s sleep while syncing each block in the bucket.
+	bucket := &cortex_tsdb.BucketClientMock{}
+	bucket.MockIter("", []string{"user-1"}, nil)
+	bucket.MockIter("user-1/", blockPaths, nil)
+	bucket.On("Exists", mock.Anything, mock.Anything).Return(false, nil).Run(func(args mock.Arguments) {
+		// We return the meta.json doesn't exist, but introduce a 1s delay for each call.
+		time.Sleep(time.Second)
+	})
+
+	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
+	require.NoError(t, err)
+	defer os.RemoveAll(cacheDir)
+
+	cfg := prepareBlocksScannerConfig()
+	cfg.CacheDir = cacheDir
+	cfg.MetasConcurrency = 1
+	cfg.TenantsConcurrency = 1
+
+	s := NewBlocksScanner(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+
+	// Start the scanner, let it run for 1s and then issue a stop.
+	require.NoError(t, s.StartAsync(context.Background()))
+	time.Sleep(time.Second)
+
+	stopTime := time.Now()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+
+	// Expect to stop before having completed the full sync (which is expected to take
+	// 1s for each block due to the delay introduced in the mock).
+	assert.Less(t, time.Since(stopTime).Nanoseconds(), (3 * time.Second).Nanoseconds())
 }
 
 func TestBlocksScanner_PeriodicScanFindsNewUser(t *testing.T) {

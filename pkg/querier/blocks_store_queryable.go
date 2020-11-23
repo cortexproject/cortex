@@ -166,7 +166,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	scanner := NewBlocksScanner(BlocksScannerConfig{
 		ScanInterval:             storageCfg.BucketStore.SyncInterval,
 		TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
-		MetasConcurrency:         storageCfg.BucketStore.BlockSyncConcurrency,
+		MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 		CacheDir:                 storageCfg.BucketStore.SyncDir,
 		ConsistencyDelay:         storageCfg.BucketStore.ConsistencyDelay,
 		IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,

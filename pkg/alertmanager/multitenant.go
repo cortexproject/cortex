@@ -442,10 +442,9 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		if err != nil {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", cfg.User, err)
 		}
-		activeAfter := existing.IsActive()
 
 		// If we went from paused to active, we need to re-add the user-regitry.
-		if !activeBefore && activeAfter {
+		if !activeBefore && existing.IsActive() {
 			am.alertmanagerMetrics.addUserRegistry(cfg.User, existing.registry)
 		}
 	}

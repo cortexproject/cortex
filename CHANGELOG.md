@@ -20,7 +20,7 @@
 * [FEATURE] Query-frontend: introduced query statistics logged in the query-frontend when enabled via `-frontend.query-stats-enabled=true`. When enabled, the metric `cortex_query_seconds_total` is tracked, counting the sum of the wall time spent across all queriers while running queries (on a per-tenant basis). The metrics `cortex_request_duration_seconds` and `cortex_query_seconds_total` are different: the first one tracks the request duration (eg. HTTP request from the client), while the latter tracks the sum of the wall time on all queriers involved executing the query. #3539
 * [ENHANCEMENT] API: Add GZIP HTTP compression to the API responses. Compression can be enabled via `-api.response-compression-enabled`. #3536
 * [ENHANCEMENT] Added zone-awareness support on queries. When zone-awareness is enabled, queries will still succeed if all ingesters in a single zone will fail. #3414
-* [CHANGE] Alertmanager: Tenant-specific metrics will be unregistered when the alertmanager configuration is removed. #XXXX
+* [CHANGE] Alertmanager: Tenant-specific metrics will be unregistered when the alertmanager configuration is removed. #3507
 * [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
   - `cortex_ingester_tsdb_wal_corruptions_total`
   - `cortex_ingester_tsdb_head_truncations_failed_total`

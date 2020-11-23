@@ -155,22 +155,8 @@ func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Regis
 }
 
 func (m *alertmanagerMetrics) deleteUserRegistry(user string) {
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-
-	delete(m.regs, user)
-}
-
-func (m *alertmanagerMetrics) registries() map[string]*prometheus.Registry {
-	regs := map[string]*prometheus.Registry{}
-
-	m.regsMu.Lock()
-	defer m.regsMu.Unlock()
-	for uid, r := range m.regs {
-		regs[uid] = r
-	}
-
-	return regs
+	// We need soft-deletion as there are a high number of metrics that are aggregated in the Alertmanager.
+	m.regs.RemoveUserRegistry(user, false)
 }
 
 func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {

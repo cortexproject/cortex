@@ -3697,7 +3697,7 @@ bucket_store:
 
     # TTL for caching object attributes for chunks.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.attributes-ttl
-    [attributes_ttl: <duration> | default = 24h]
+    [attributes_ttl: <duration> | default = 168h]
 
     # TTL for caching individual chunks subranges.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-ttl
@@ -3777,6 +3777,10 @@ bucket_store:
     # Maximum size of metafile content to cache in bytes.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
     [metafile_max_size_bytes: <int> | default = 1048576]
+
+    # How long to cache attributes of the block metafile.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
+    [metafile_attributes_ttl: <duration> | default = 168h]
 
   # Duration after which the blocks marked for deletion will be filtered out
   # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore

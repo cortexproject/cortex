@@ -21,7 +21,7 @@ type defaultReplicationStrategy struct {
 	ExtendWrites bool
 }
 
-func NewDefaultReplicationStrategy(extendWrites bool) *defaultReplicationStrategy {
+func NewDefaultReplicationStrategy(extendWrites bool) ReplicationStrategy {
 	return &defaultReplicationStrategy{
 		ExtendWrites: extendWrites,
 	}

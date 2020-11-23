@@ -86,7 +86,7 @@ GET,POST /flush
 
 # Legacy
 GET,POST /shutdown
-</code></pre><p>Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a <code>SIGINT</code> / <code>SIGTERM</code> signal after the shutdown endpoint returns. In the meantime, <code>/ready</code> will not return 200. This endpoint will unregister the ingester from the ring even if <code>-ingester.unregister-from-ring</code> is disabled.</p><p><em>This API endpoint is usually used by scale down automations.</em></p><h3 id=ingesters-ring-status>Ingesters ring status</h3><pre><code>GET /ingester/ring
+</code></pre><p>Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a <code>SIGINT</code> / <code>SIGTERM</code> signal after the shutdown endpoint returns. In the meantime, <code>/ready</code> will not return 200. This endpoint will unregister the ingester from the ring even if <code>-ingester.unregister-on-shutdown</code> is disabled.</p><p><em>This API endpoint is usually used by scale down automations.</em></p><h3 id=ingesters-ring-status>Ingesters ring status</h3><pre><code>GET /ingester/ring
 
 # Legacy
 GET /ring

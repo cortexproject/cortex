@@ -352,6 +352,18 @@ grpc_tls_config:
 # CLI flag: -server.grpc.keepalive.timeout
 [grpc_server_keepalive_timeout: <duration> | default = 20s]
 
+# Minimum amount of time a client should wait before sending a keepalive ping.
+# If client sends keepalive ping more often, server will send GOAWAY and close
+# the connection.
+# CLI flag: -server.grpc.keepalive.min-time-between-pings
+[grpc_server_min_time_between_pings: <duration> | default = 5m]
+
+# If true, server allows keepalive pings even when there are no active
+# streams(RPCs). If false, and client sends ping when there are no active
+# streams, server will send GOAWAY and close the connection.
+# CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
+[grpc_server_ping_without_stream_allowed: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]

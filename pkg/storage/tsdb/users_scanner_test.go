@@ -1,4 +1,4 @@
-package compactor
+package tsdb
 
 import (
 	"context"
@@ -8,12 +8,10 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &BucketClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
 
 	isOwned := func(userID string) (bool, error) {
@@ -30,7 +28,7 @@ func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckFailed(t *testing.T) {
 	expected := []string{"user-1", "user-2"}
 
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &BucketClientMock{}
 	bucketClient.MockIter("", expected, nil)
 
 	isOwned := func(userID string) (bool, error) {

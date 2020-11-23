@@ -19,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -77,7 +78,7 @@ func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	}
 
 	logger := log.NewNopLogger()
-	scanner := NewUsersScanner(bucketClient, func(_ string) (bool, error) { return true, nil }, logger)
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))

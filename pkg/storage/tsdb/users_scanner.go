@@ -1,4 +1,4 @@
-package compactor
+package tsdb
 
 import (
 	"context"
@@ -8,6 +8,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
+
+// AllUsers returns true to each call and should be used whenever the UsersScanner should not filter out
+// any user due to sharding.
+func AllUsers(_ string) (bool, error) {
+	return true, nil
+}
 
 type UsersScanner struct {
 	bucketClient objstore.Bucket

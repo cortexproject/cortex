@@ -5,6 +5,9 @@
 * [CHANGE] Querier: deprecated `-store.max-look-back-period`. You should use `-querier.max-query-lookback` instead. #3452
 * [CHANGE] Blocks storage: increased `-blocks-storage.bucket-store.chunks-cache.attributes-ttl` default from `24h` to `168h` (1 week). #3528
 * [CHANGE] Blocks storage: the config option `-blocks-storage.bucket-store.index-cache.postings-compression-enabled` has been deprecated and postings compression is always enabled. #3538
+* [CHANGE] Ruler: gRPC message size default limits on the Ruler-client side have changed: #3523
+  - limit for outgoing gRPC messages has changed from 2147483647 to 16777216 bytes
+  - limit for incoming gRPC messages has changed from 4194304 to 104857600 bytes
 * [FEATURE] Distributor/Ingester: Provide ability to not overflow writes in the presence of a leaving or unhealthy ingester. This allows for more efficient ingester rolling restarts. #3305
 * [ENHANCEMENT] API: Add GZIP HTTP compression to the API responses. Compression can be enabled via `-api.response-compression-enabled`. #3536
 * [ENHANCEMENT] Added zone-awareness support on queries. When zone-awareness is enabled, queries will still succeed if all ingesters in a single zone will fail. #3414
@@ -35,6 +38,7 @@
 * [ENHANCEMENT] Exported process metrics to monitor the number of memory map areas allocated. #3537
   * - `process_memory_map_areas`
   * - `process_memory_map_areas_limit`
+* [ENHANCEMENT] Ruler: Expose gRPC client options. #3523
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422
 * [BUGFIX] Querier: fixed `-querier.max-query-into-future` which wasn't correctly enforced on range queries. #3452

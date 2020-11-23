@@ -53,7 +53,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	r := Ring{
 		cfg:      cfg,
 		ringDesc: desc,
-		strategy: &DefaultReplicationStrategy{},
+		strategy: NewDefaultReplicationStrategy(true),
 	}
 
 	ctx := context.Background()
@@ -94,7 +94,7 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 	r := Ring{
 		cfg:      Config{},
 		ringDesc: desc,
-		strategy: &DefaultReplicationStrategy{},
+		strategy: NewDefaultReplicationStrategy(true),
 	}
 	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
 }
@@ -199,7 +199,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				ringTokens:       r.getTokens(),
 				ringTokensByZone: r.getTokensByZone(),
 				ringZones:        getZones(r.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			ingesters := make([]IngesterDesc, 0, len(r.GetIngesters()))
@@ -290,7 +290,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			set, err := ring.GetAllHealthy(Read)
@@ -400,7 +400,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			set, err := ring.GetReplicationSetForOperation(Read)
@@ -717,7 +717,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			// Check the replication set has the correct settings
@@ -852,7 +852,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			shardRing := ring.ShuffleShard("tenant-id", testData.shardSize)
@@ -903,7 +903,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	for i := 1; i <= numTenants; i++ {
@@ -970,7 +970,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Compute the shard for each tenant.
@@ -1068,7 +1068,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			// Compute the initial shard for each tenant.
@@ -1130,7 +1130,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Get the replication set with shard size = 3.
@@ -1206,7 +1206,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Get the replication set with shard size = 2.
@@ -1463,7 +1463,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				ringTokens:       ringDesc.getTokens(),
 				ringTokensByZone: ringDesc.getTokensByZone(),
 				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         &DefaultReplicationStrategy{},
+				strategy:         NewDefaultReplicationStrategy(true),
 			}
 
 			// Replay the events on the timeline.
@@ -1525,7 +1525,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					ringTokens:       ringDesc.getTokens(),
 					ringTokensByZone: ringDesc.getTokensByZone(),
 					ringZones:        getZones(ringDesc.getTokensByZone()),
-					strategy:         &DefaultReplicationStrategy{},
+					strategy:         NewDefaultReplicationStrategy(true),
 				}
 
 				// The simulation starts with the minimum shard size. Random events can later increase it.
@@ -1662,7 +1662,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize in
 		ringTokens:         ringDesc.getTokens(),
 		ringTokensByZone:   ringDesc.getTokensByZone(),
 		ringZones:          getZones(ringDesc.getTokensByZone()),
-		strategy:           &DefaultReplicationStrategy{},
+		strategy:           NewDefaultReplicationStrategy(true),
 		lastTopologyChange: time.Now(),
 	}
 
@@ -1800,15 +1800,15 @@ func TestRingUpdates(t *testing.T) {
 
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
 	lcCfg := LifecyclerConfig{
-		RingConfig:         cfg,
-		NumTokens:          16,
-		HeartbeatPeriod:    heartbeat,
-		ObservePeriod:      0,
-		JoinAfter:          0,
-		Zone:               fmt.Sprintf("zone-%d", lifecyclerID%zones),
-		Addr:               fmt.Sprintf("addr-%d", lifecyclerID),
-		ID:                 fmt.Sprintf("ingester-%d", lifecyclerID),
-		UnregisterFromRing: true,
+		RingConfig:           cfg,
+		NumTokens:            16,
+		HeartbeatPeriod:      heartbeat,
+		ObservePeriod:        0,
+		JoinAfter:            0,
+		Zone:                 fmt.Sprintf("zone-%d", lifecyclerID%zones),
+		Addr:                 fmt.Sprintf("addr-%d", lifecyclerID),
+		ID:                   fmt.Sprintf("ingester-%d", lifecyclerID),
+		UnregisterOnShutdown: true,
 	}
 
 	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, nil)

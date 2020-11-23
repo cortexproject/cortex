@@ -67,7 +67,7 @@ func TestIngesterRestart(t *testing.T) {
 	config := defaultIngesterTestConfig()
 	clientConfig := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
-	config.LifecyclerConfig.UnregisterFromRing = false
+	config.LifecyclerConfig.UnregisterOnShutdown = false
 
 	{
 		_, ingester := newTestStore(t, config, clientConfig, limits, nil)
@@ -100,7 +100,7 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 			config := defaultIngesterTestConfig()
 			clientConfig := defaultClientTestConfig()
 			limits := defaultLimitsTestConfig()
-			config.LifecyclerConfig.UnregisterFromRing = unregister
+			config.LifecyclerConfig.UnregisterOnShutdown = unregister
 			_, ingester := newTestStore(t, config, clientConfig, limits, nil)
 
 			// Make sure the ingester has been added to the ring.

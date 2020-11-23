@@ -64,7 +64,7 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	startTime := time.Now()
@@ -98,7 +98,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Add 1 new instance after some time.
@@ -146,7 +146,7 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Keep changing the ring.

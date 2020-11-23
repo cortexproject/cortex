@@ -622,7 +622,7 @@ lifecycler:
 
     # Try writing to an additional ingester in the presence of an ingester not
     # in the ACTIVE state. It is useful to disable this along with
-    # -ingester.unregister-from-ring=false in order to not spread samples to
+    # -ingester.unregister-on-shutdown=false in order to not spread samples to
     # extra ingesters during rolling restarts with consistent naming.
     # CLI flag: -distributor.extend-writes
     [extend_writes: <boolean> | default = true]
@@ -670,8 +670,8 @@ lifecycler:
   # Unregister from the ring upon clean shutdown. It can be useful to disable
   # for rolling restarts with consistent naming in conjunction with
   # -distributor.extend-writes=false.
-  # CLI flag: -ingester.unregister-from-ring
-  [unregister_from_ring: <boolean> | default = true]
+  # CLI flag: -ingester.unregister-on-shutdown
+  [unregister_on_shutdown: <boolean> | default = true]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by

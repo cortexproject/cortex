@@ -15,10 +15,8 @@ func strptr(s string) *string {
 type resolverTestCase struct {
 	name         string
 	headerValue  *string
-	errUserID    error
 	errTenantID  error
 	errTenantIDs error
-	userID       string
 	tenantID     string
 	tenantIDs    []string
 }
@@ -29,14 +27,6 @@ func (tc *resolverTestCase) test(r Resolver) func(t *testing.T) {
 		ctx := context.Background()
 		if tc.headerValue != nil {
 			ctx = user.InjectOrgID(ctx, *tc.headerValue)
-		}
-
-		userID, err := r.UserID(ctx)
-		if tc.errUserID != nil {
-			assert.Equal(t, tc.errUserID, err)
-		} else {
-			assert.NoError(t, err)
-			assert.Equal(t, tc.userID, userID)
 		}
 
 		tenantID, err := r.TenantID(ctx)
@@ -60,7 +50,6 @@ func (tc *resolverTestCase) test(r Resolver) func(t *testing.T) {
 var commonResolverTestCases = []resolverTestCase{
 	{
 		name:         "no-header",
-		errUserID:    user.ErrNoOrgID,
 		errTenantID:  user.ErrNoOrgID,
 		errTenantIDs: user.ErrNoOrgID,
 	},
@@ -72,7 +61,6 @@ var commonResolverTestCases = []resolverTestCase{
 	{
 		name:        "single-tenant",
 		headerValue: strptr("tenant-a"),
-		userID:      "tenant-a",
 		tenantID:    "tenant-a",
 		tenantIDs:   []string{"tenant-a"},
 	},
@@ -84,7 +72,6 @@ func TestSingleResolver(t *testing.T) {
 		{
 			name:        "multi-tenant",
 			headerValue: strptr("tenant-a|tenant-b"),
-			userID:      "tenant-a|tenant-b",
 			tenantID:    "tenant-a|tenant-b",
 			tenantIDs:   []string{"tenant-a|tenant-b"},
 		},
@@ -99,21 +86,18 @@ func TestMultiResolver(t *testing.T) {
 		{
 			name:        "multi-tenant",
 			headerValue: strptr("tenant-a|tenant-b"),
-			userID:      "tenant-a|tenant-b",
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
 			name:        "multi-tenant-wrong-order",
 			headerValue: strptr("tenant-b|tenant-a"),
-			userID:      "tenant-a|tenant-b",
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
 			name:        "multi-tenant-duplicate-order",
 			headerValue: strptr("tenant-b|tenant-b|tenant-a"),
-			userID:      "tenant-a|tenant-b",
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},

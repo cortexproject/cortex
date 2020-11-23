@@ -17,7 +17,7 @@ type RequestResponse struct {
 
 // DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
 func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
-	userid, err := tenant.UserID(ctx)
+	userid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

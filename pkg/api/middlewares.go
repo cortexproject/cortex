@@ -14,7 +14,7 @@ import (
 func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, err := tenant.UserID(r.Context())
+			userID, err := tenant.TenantID(r.Context())
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return

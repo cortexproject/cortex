@@ -15,13 +15,6 @@ func WithDefaultResolver(r Resolver) {
 	defaultResolver = r
 }
 
-// UserID extracts the user identifier from the context. This should be
-// used to identify a user in log messages, metrics, fairness behaviour and
-// for config overrides.
-func UserID(ctx context.Context) (string, error) {
-	return defaultResolver.UserID(ctx)
-}
-
 // TenantID returns exactly a single tenant ID from the context. It should
 // be used when a certain endpoint should only support exactly a single
 // tenant ID. It fails when there is no tenant ID supplied.
@@ -42,11 +35,6 @@ func TenantIDs(ctx context.Context) ([]string, error) {
 }
 
 type Resolver interface {
-	// UserID extracts the user identifier from the context. This should be
-	// used to identify a user in log messages, metrics, fairness behaviour and
-	// for config overrides.
-	UserID(context.Context) (string, error)
-
 	// TenantID returns exactly a single tenant ID from the context. It should
 	// be used when a certain endpoint should only support exactly a single
 	// tenant ID. It fails when there is no tenant ID supplied.
@@ -65,11 +53,6 @@ func NewSingleResolver() *SingleResolver {
 }
 
 type SingleResolver struct {
-}
-
-func (t *SingleResolver) UserID(ctx context.Context) (string, error) {
-	//lint:ignore faillint wrapper around upstream method
-	return user.ExtractOrgID(ctx)
 }
 
 func (t *SingleResolver) TenantID(ctx context.Context) (string, error) {
@@ -95,15 +78,6 @@ type MultiResolver struct {
 // https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming)
 func NewMultiResolver() *MultiResolver {
 	return &MultiResolver{}
-}
-
-func (t *MultiResolver) UserID(ctx context.Context) (string, error) {
-	orgIDs, err := t.TenantIDs(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.Join(orgIDs, tenantIDsLabelSeparator), nil
 }
 
 func (t *MultiResolver) TenantID(ctx context.Context) (string, error) {

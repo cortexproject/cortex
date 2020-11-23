@@ -84,7 +84,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	lc.Port = cfg.InstancePort
 	lc.ID = cfg.InstanceID
 	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.SkipUnregister = false
+	lc.UnregisterFromRing = true
 	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
 	lc.ObservePeriod = 0
 	lc.JoinAfter = 0

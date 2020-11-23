@@ -620,6 +620,13 @@ lifecycler:
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Try writing to an additional ingester in the presence of an ingester not
+    # in the ACTIVE state. It is useful to disable this along with
+    # -ingester.unregister-from-ring=false in order to not spread samples to
+    # extra ingesters during rolling restarts with consistent naming.
+    # CLI flag: -distributor.extend-writes
+    [extend_writes: <boolean> | default = true]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
@@ -659,6 +666,12 @@ lifecycler:
   # The availability zone where this instance is running.
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
+
+  # Unregister from the ring upon clean shutdown. It can be useful to disable
+  # for rolling restarts with consistent naming in conjunction with
+  # -distributor.extend-writes=false.
+  # CLI flag: -ingester.unregister-from-ring
+  [unregister_from_ring: <boolean> | default = true]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by

@@ -392,11 +392,19 @@ func (i *Ingester) stopping(_ error) error {
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
-	originalState := i.lifecycler.FlushOnShutdown()
+	originalFlush := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
+
+	// In the case of an HTTP shutdown, we want to unregister no matter what.
+	originalUnregister := i.lifecycler.ShouldUnregisterFromRing()
+	i.lifecycler.SetUnregisterFromRing(true)
+
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
-	i.lifecycler.SetFlushOnShutdown(originalState)
+	// Set state back to original.
+	i.lifecycler.SetFlushOnShutdown(originalFlush)
+	i.lifecycler.SetUnregisterFromRing(originalUnregister)
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

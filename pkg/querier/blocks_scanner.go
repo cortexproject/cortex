@@ -219,6 +219,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 	}
 
 	// Push a job for each user whose blocks need to be discovered.
+pushJobsLoop:
 	for _, userID := range userIDs {
 		select {
 		case jobsChan <- userID:
@@ -227,6 +228,7 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 			resMx.Lock()
 			resErrs.Add(ctx.Err())
 			resMx.Unlock()
+			break pushJobsLoop
 		}
 	}
 

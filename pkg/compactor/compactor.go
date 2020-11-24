@@ -138,12 +138,16 @@ type Compactor struct {
 	ringSubservicesWatcher *services.FailureWatcher
 
 	// Metrics.
-	compactionRunsStarted     prometheus.Counter
-	compactionRunsCompleted   prometheus.Counter
-	compactionRunsFailed      prometheus.Counter
-	compactionRunsLastSuccess prometheus.Gauge
-	blocksMarkedForDeletion   prometheus.Counter
-	garbageCollectedBlocks    prometheus.Counter
+	compactionRunsStarted          prometheus.Counter
+	compactionRunsCompleted        prometheus.Counter
+	compactionRunsFailed           prometheus.Counter
+	compactionRunsLastSuccess      prometheus.Gauge
+	compactionRunDiscoveredTenants prometheus.Gauge
+	compactionRunSkippedTenants    prometheus.Gauge
+	compactionRunSucceededTenants  prometheus.Gauge
+	compactionRunFailedTenants     prometheus.Gauge
+	blocksMarkedForDeletion        prometheus.Counter
+	garbageCollectedBlocks         prometheus.Counter
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
@@ -205,6 +209,22 @@ func newCompactor(
 		compactionRunsLastSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_last_successful_run_timestamp_seconds",
 			Help: "Unix timestamp of the last successful compaction run.",
+		}),
+		compactionRunDiscoveredTenants: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_tenants_discovered",
+			Help: "Number of tenants discovered during the current compaction run. Reset to 0 when compactor is idle.",
+		}),
+		compactionRunSkippedTenants: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_tenants_skipped",
+			Help: "Number of tenants skipped during the current compaction run. Reset to 0 when compactor is idle.",
+		}),
+		compactionRunSucceededTenants: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_tenants_processing_succeeded",
+			Help: "Number of tenants successfully processed during the current compaction run. Reset to 0 when compactor is idle.",
+		}),
+		compactionRunFailedTenants: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_tenants_processing_failed",
+			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_blocks_marked_for_deletion_total",
@@ -377,13 +397,23 @@ func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
 }
 
 func (c *Compactor) compactUsers(ctx context.Context) error {
+	// Reset progress metrics once done.
+	defer func() {
+		c.compactionRunDiscoveredTenants.Set(0)
+		c.compactionRunSkippedTenants.Set(0)
+		c.compactionRunSucceededTenants.Set(0)
+		c.compactionRunFailedTenants.Set(0)
+	}()
+
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
 	users, err := c.discoverUsers(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
+
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
+	c.compactionRunDiscoveredTenants.Set(float64(len(users)))
 
 	// When starting multiple compactor replicas nearly at the same time, running in a cluster with
 	// a large number of tenants, we may end up in a situation where the 1st user is compacted by
@@ -403,9 +433,11 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 
 		// Ensure the user ID belongs to our shard.
 		if owned, err := c.ownUser(userID); err != nil {
+			c.compactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 			continue
 		} else if !owned {
+			c.compactionRunSkippedTenants.Inc()
 			level.Debug(c.logger).Log("msg", "skipping user because not owned by this shard", "user", userID)
 			continue
 		}
@@ -413,11 +445,13 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
 		if err = c.compactUser(ctx, userID); err != nil {
+			c.compactionRunFailedTenants.Inc()
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
 			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
 			continue
 		}
 
+		c.compactionRunSucceededTenants.Inc()
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 

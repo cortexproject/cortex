@@ -5,6 +5,7 @@
 * [CHANGE] Querier: deprecated `-store.max-look-back-period`. You should use `-querier.max-query-lookback` instead. #3452
 * [CHANGE] Blocks storage: increased `-blocks-storage.bucket-store.chunks-cache.attributes-ttl` default from `24h` to `168h` (1 week). #3528
 * [FEATURE] Distributor/Ingester: Provide ability to not overflow writes in the presence of a leaving or unhealthy ingester. This allows for more efficient ingester rolling restarts. #3305
+* [ENHANCEMENT] Alertmanager and Ruler API: Add HTTP compression to the API responses. Compression can be enabled via `-api.enable-response-compression`. #3536
 * [ENHANCEMENT] Added zone-awareness support on queries. When zone-awareness is enabled, queries will still succeed if all ingesters in a single zone will fail. #3414
 * [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412
   - `cortex_ingester_tsdb_wal_corruptions_total`

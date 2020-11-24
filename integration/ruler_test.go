@@ -3,6 +3,9 @@
 package integration
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -77,6 +80,23 @@ func TestRulerAPI(t *testing.T) {
 	require.Len(t, retrievedNamespace, 1)
 	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
 
+	// Test compression by inspecting the response Headers
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/rules", ruler.HTTPEndpoint()), nil)
+	require.NoError(t, err)
+
+	req.Header.Set("X-Scope-OrgID", "user-1")
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := http.DefaultClient.Do(req.WithContext(ctx))
+	require.NoError(t, err)
+
+	defer res.Body.Close()
+	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+
 	// Delete the set rule groups
 	require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
 	require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
@@ -90,6 +110,7 @@ func TestRulerAPI(t *testing.T) {
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Ruler, ruler)
+
 }
 
 func TestRulerAPISingleBinary(t *testing.T) {

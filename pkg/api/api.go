@@ -1,6 +1,7 @@
 package api
 
 import (
+	"compress/gzip"
 	"context"
 	"flag"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/handlers"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
@@ -35,6 +37,8 @@ import (
 )
 
 type Config struct {
+	ResponseCompression bool `yaml:"enable_response_compression"`
+
 	AlertmanagerHTTPPrefix string `yaml:"alertmanager_http_prefix"`
 	PrometheusHTTPPrefix   string `yaml:"prometheus_http_prefix"`
 
@@ -46,6 +50,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.ResponseCompression, "api.enable-response-compression", false, "Use compression for the Ruler and Alertmanager configuration API responses. Some endpoints of these components serve large YAML or JSON blobs which can benefit from compression.")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -102,6 +107,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	methods = append([]string{method}, methods...)
 
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
+
 	if auth {
 		handler = a.AuthMiddleware.Wrap(handler)
 	}
@@ -110,6 +116,14 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 		return
 	}
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
+}
+
+func (a *API) RegisterRouteWithCompression(path string, handler http.Handler, auth bool, method string, methods ...string) {
+	if a.cfg.ResponseCompression {
+		handler = handlers.CompressHandlerLevel(handler, gzip.DefaultCompression)
+	}
+
+	a.RegisterRoute(path, handler, auth, method, methods...)
 }
 
 func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth bool, methods ...string) {
@@ -144,9 +158,9 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 
 	// MultiTenant Alertmanager Experimental API routes
 	if apiEnabled {
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+		a.RegisterRouteWithCompression("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
+		a.RegisterRouteWithCompression("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
+		a.RegisterRouteWithCompression("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
 	}
 }
 
@@ -230,28 +244,28 @@ func (a *API) RegisterRuler(r *ruler.Ruler) {
 // RegisterRulerAPI registers routes associated with the Ruler API
 func (a *API) RegisterRulerAPI(r *ruler.API) {
 	// Prometheus Rule API Routes
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.PrometheusHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Ruler API Routes
-	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
+	a.RegisterRouteWithCompression("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRouteWithCompression("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRouteWithCompression("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRouteWithCompression("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRouteWithCompression("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRouteWithCompression("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
 	// Legacy Prometheus Rule API Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/api/v1/rules", http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Legacy Ruler API Routes
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
-	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRouteWithCompression(a.cfg.LegacyHTTPPrefix+"/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.

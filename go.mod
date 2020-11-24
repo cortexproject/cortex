@@ -28,6 +28,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/golang/protobuf v1.4.3
 	github.com/golang/snappy v0.0.2
+	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.7.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/hashicorp/consul/api v1.7.0

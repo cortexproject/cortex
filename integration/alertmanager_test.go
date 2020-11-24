@@ -4,7 +4,10 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -50,6 +53,23 @@ func TestAlertmanager(t *testing.T) {
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, AlertManager, alertmanager)
+
+	// Test compression by inspecting the response Headers
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/v1/alerts", alertmanager.HTTPEndpoint()), nil)
+	require.NoError(t, err)
+
+	req.Header.Set("X-Scope-OrgID", "user-1")
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := http.DefaultClient.Do(req.WithContext(ctx))
+	require.NoError(t, err)
+
+	defer res.Body.Close()
+	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
 }
 
 func TestAlertmanagerStoreAPI(t *testing.T) {

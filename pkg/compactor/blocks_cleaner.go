@@ -36,7 +36,7 @@ type BlocksCleaner struct {
 	cfg          BlocksCleanerConfig
 	logger       log.Logger
 	bucketClient objstore.Bucket
-	usersScanner *UsersScanner
+	usersScanner *cortex_tsdb.UsersScanner
 
 	// Metrics.
 	runsStarted        prometheus.Counter
@@ -47,7 +47,7 @@ type BlocksCleaner struct {
 	blocksFailedTotal  prometheus.Counter
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *UsersScanner, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,

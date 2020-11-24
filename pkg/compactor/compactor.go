@@ -104,7 +104,7 @@ type Compactor struct {
 	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error)
 
 	// Users scanner, used to discover users from the bucket.
-	usersScanner *UsersScanner
+	usersScanner *cortex_tsdb.UsersScanner
 
 	// Blocks cleaner is responsible to hard delete blocks marked for deletion.
 	blocksCleaner *BlocksCleaner
@@ -235,7 +235,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	}
 
 	// Create the users scanner.
-	c.usersScanner = NewUsersScanner(c.bucketClient, c.ownUser, c.parentLogger)
+	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUser, c.parentLogger)
 
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {

@@ -162,7 +162,7 @@ func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T)
 	time.Sleep(time.Second)
 
 	stopTime := time.Now()
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+	_ = services.StopAndAwaitTerminated(context.Background(), s)
 
 	// Expect to stop before having completed the full sync (which is expected to take
 	// 1s for each tenant due to the delay introduced in the mock).
@@ -200,7 +200,7 @@ func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) 
 	time.Sleep(time.Second)
 
 	stopTime := time.Now()
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+	_ = services.StopAndAwaitTerminated(context.Background(), s)
 
 	// Expect to stop before having completed the full sync (which is expected to take
 	// 1s for each block due to the delay introduced in the mock).

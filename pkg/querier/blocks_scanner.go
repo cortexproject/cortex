@@ -47,6 +47,7 @@ type BlocksScanner struct {
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
+	usersScanner    *cortex_tsdb.UsersScanner
 
 	// We reuse the metadata fetcher instance for a given tenant both because of performance
 	// reasons (the fetcher keeps a in-memory cache) and being able to collect and group metrics.
@@ -69,6 +70,7 @@ func NewBlocksScanner(cfg BlocksScannerConfig, bucketClient objstore.Bucket, log
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
+		usersScanner:      cortex_tsdb.NewUsersScanner(bucketClient, cortex_tsdb.AllUsers, logger),
 		userMetas:         make(map[string][]*BlockMeta),
 		userMetasLookup:   make(map[string]map[ulid.ULID]*BlockMeta),
 		userDeletionMarks: map[string]map[ulid.ULID]*metadata.DeletionMark{},
@@ -171,6 +173,12 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 		}
 	}(time.Now())
 
+	// Discover all users first. This helps cacheability of the object store call.
+	userIDs, err := d.usersScanner.ScanUsers(ctx)
+	if err != nil {
+		return err
+	}
+
 	jobsChan := make(chan string)
 	resMx := sync.Mutex{}
 	resMetas := map[string][]*BlockMeta{}
@@ -210,21 +218,18 @@ func (d *BlocksScanner) scanBucket(ctx context.Context) (returnErr error) {
 		}()
 	}
 
-	// Iterate the bucket to discover users.
-	err := d.bucketClient.Iter(ctx, "", func(s string) error {
-		userID := strings.TrimSuffix(s, "/")
+	// Push a job for each user whose blocks need to be discovered.
+pushJobsLoop:
+	for _, userID := range userIDs {
 		select {
 		case jobsChan <- userID:
-			return nil
+		// Nothing to do.
 		case <-ctx.Done():
-			return ctx.Err()
+			resMx.Lock()
+			resErrs.Add(ctx.Err())
+			resMx.Unlock()
+			break pushJobsLoop
 		}
-	})
-
-	if err != nil {
-		resMx.Lock()
-		resErrs.Add(err)
-		resMx.Unlock()
 	}
 
 	// Wait until all workers completed.

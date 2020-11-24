@@ -567,16 +567,6 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		})
 	)
 
-	type valueResult struct {
-		t int64
-		v float64
-	}
-
-	type seriesResult struct {
-		lbls   labels.Labels
-		values []valueResult
-	}
-
 	tests := map[string]struct {
 		finderResult        []*BlockMeta
 		finderErr           error
@@ -611,14 +601,23 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1, series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1, block2),
-					}}: {block1, block2},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1, series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1, block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1, block2),
+						},
+					}: {block1, block2},
 				},
 			},
-			expectedLabelNames: namesFromSeries(series1, series2),
+			expectedLabelNames:  namesFromSeries(series1, series2),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series": {
 			finderResult: []*BlockMeta{
@@ -627,19 +626,36 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1},
-					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block2),
-					}}: {block2},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2},
 				},
 			},
-			expectedLabelNames: namesFromSeries(series1, series2),
+			expectedLabelNames:  namesFromSeries(series1, series2),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: []*BlockMeta{
@@ -648,19 +664,36 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1},
-					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block2),
-					}}: {block2},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2},
 				},
 			},
-			expectedLabelNames: namesFromSeries(series1),
+			expectedLabelNames:  namesFromSeries(series1),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: []*BlockMeta{
@@ -672,24 +705,49 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			// Block3 has only series2
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1, series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1},
-					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block2),
-					}}: {block2},
-					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block3),
-					}}: {block3},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1, series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2},
+					&storeGatewayClientMock{
+						remoteAddr: "3.3.3.3",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block3),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block3),
+						},
+					}: {block3},
 				},
 			},
-			expectedLabelNames: namesFromSeries(series1, series2),
+			expectedLabelNames:  namesFromSeries(series1, series2),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 			expectedMetrics: `
 				# HELP cortex_querier_storegateway_instances_hit_per_query Number of store-gateway instances hit for a single query.
 				# TYPE cortex_querier_storegateway_instances_hit_per_query histogram
@@ -726,11 +784,19 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
 				},
 				// Second attempt returns an error because there are no other store-gateways left.
 				errors.New("no store-gateway remaining after exclude"),
@@ -747,16 +813,32 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1},
-					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block2),
-					}}: {block2},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2},
 				},
 				// Second attempt returns an error because there are no other store-gateways left.
 				errors.New("no store-gateway remaining after exclude"),
@@ -777,35 +859,68 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block1),
-					}}: {block1, block3},
-					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block2),
-					}}: {block2, block4},
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1, block3},
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block2),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block2),
+						},
+					}: {block2, block4},
 				},
 				// Second attempt returns 1 missing block.
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "3.3.3.3", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    namesFromSeries(series1, series2),
-						Warnings: []string{},
-						Hints:    mockNamesHints(block3),
-					}}: {block3, block4},
+					&storeGatewayClientMock{
+						remoteAddr: "3.3.3.3",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1, series2),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block3),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1, series2),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block3),
+						},
+					}: {block3, block4},
 				},
 				// Third attempt returns the last missing block.
 				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{remoteAddr: "4.4.4.4", mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-						Names:    []string{},
-						Warnings: []string{},
-						Hints:    mockNamesHints(block4),
-					}}: {block4},
+					&storeGatewayClientMock{
+						remoteAddr: "4.4.4.4",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    []string{},
+							Warnings: []string{},
+							Hints:    mockNamesHints(block4),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   []string{},
+							Warnings: []string{},
+							Hints:    mockValuesHints(block4),
+						},
+					}: {block4},
 				},
 			},
-			expectedLabelNames: namesFromSeries(series1, series2),
+			expectedLabelNames:  namesFromSeries(series1, series2),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 			expectedMetrics: `
 				# HELP cortex_querier_storegateway_instances_hit_per_query Number of store-gateway instances hit for a single query.
 				# TYPE cortex_querier_storegateway_instances_hit_per_query histogram
@@ -838,39 +953,61 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			ctx := context.Background()
-			reg := prometheus.NewPedanticRegistry()
-			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
-			finder := &blocksFinderMock{}
-			finder.On("GetBlocks", "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*metadata.DeletionMark(nil), testData.finderErr)
+			// Splitting it because we need a new registry for names and values.
+			// And also the initial expectedErr checking needs to be done for both.
+			for _, testFunc := range []string{"LabelNames", "LabelValues"} {
+				ctx := context.Background()
+				reg := prometheus.NewPedanticRegistry()
+				stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
+				finder := &blocksFinderMock{}
+				finder.On("GetBlocks", "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*metadata.DeletionMark(nil), testData.finderErr)
 
-			q := &blocksStoreQuerier{
-				ctx:         ctx,
-				minT:        minT,
-				maxT:        maxT,
-				userID:      "user-1",
-				finder:      finder,
-				stores:      stores,
-				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
-				logger:      log.NewNopLogger(),
-				metrics:     newBlocksStoreQueryableMetrics(reg),
-				limits:      &blocksStoreLimitsMock{},
-			}
+				q := &blocksStoreQuerier{
+					ctx:         ctx,
+					minT:        minT,
+					maxT:        maxT,
+					userID:      "user-1",
+					finder:      finder,
+					stores:      stores,
+					consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+					logger:      log.NewNopLogger(),
+					metrics:     newBlocksStoreQueryableMetrics(reg),
+					limits:      &blocksStoreLimitsMock{},
+				}
 
-			names, warnings, err := q.LabelNames()
-			if testData.expectedErr != "" {
-				require.Equal(t, testData.expectedErr, err.Error())
-				return
-			}
+				if testFunc == "LabelNames" {
+					names, warnings, err := q.LabelNames()
+					if testData.expectedErr != "" {
+						require.Equal(t, testData.expectedErr, err.Error())
+						continue
+					}
 
-			require.NoError(t, err)
-			// TODO: Don't use Len.
-			assert.Len(t, warnings, 0)
-			require.Equal(t, testData.expectedLabelNames, names)
+					require.NoError(t, err)
+					require.Equal(t, 0, len(warnings))
+					require.Equal(t, testData.expectedLabelNames, names)
 
-			// Assert on metrics (optional, only for test cases defining it).
-			if testData.expectedMetrics != "" {
-				assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(testData.expectedMetrics)))
+					// Assert on metrics (optional, only for test cases defining it).
+					if testData.expectedMetrics != "" {
+						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(testData.expectedMetrics)))
+					}
+				}
+
+				if testFunc == "LabelValues" {
+					values, warnings, err := q.LabelValues(labels.MetricName)
+					if testData.expectedErr != "" {
+						require.Equal(t, testData.expectedErr, err.Error())
+						continue
+					}
+
+					require.NoError(t, err)
+					require.Equal(t, 0, len(warnings))
+					require.Equal(t, testData.expectedLabelValues, values)
+
+					// Assert on metrics (optional, only for test cases defining it).
+					if testData.expectedMetrics != "" {
+						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(testData.expectedMetrics)))
+					}
+				}
 			}
 		})
 	}
@@ -1224,6 +1361,20 @@ func mockNamesHints(ids ...ulid.ULID) *types.Any {
 	return any
 }
 
+func mockValuesHints(ids ...ulid.ULID) *types.Any {
+	hints := &hintspb.LabelValuesResponseHints{}
+	for _, id := range ids {
+		hints.AddQueriedBlock(id)
+	}
+
+	any, err := types.MarshalAny(hints)
+	if err != nil {
+		panic(err)
+	}
+
+	return any
+}
+
 func namesFromSeries(series ...labels.Labels) []string {
 	namesMap := map[string]struct{}{}
 	for _, s := range series {
@@ -1239,4 +1390,23 @@ func namesFromSeries(series ...labels.Labels) []string {
 
 	sort.Strings(names)
 	return names
+}
+
+func valuesFromSeries(name string, series ...labels.Labels) []string {
+	valuesMap := map[string]struct{}{}
+	for _, s := range series {
+		for _, l := range s {
+			if l.Name == name {
+				valuesMap[l.Value] = struct{}{}
+			}
+		}
+	}
+
+	values := []string{}
+	for name := range valuesMap {
+		values = append(values, name)
+	}
+
+	sort.Strings(values)
+	return values
 }

@@ -94,7 +94,7 @@ var (
 		return map[string]string{
 			"-alertmanager.configs.poll-interval": "1s",
 			"-alertmanager.web.external-url":      "http://localhost/api/prom",
-			"-api.enable-response-compression":    "true",
+			"-api.response-compression-enabled":   "true",
 		}
 	}
 
@@ -116,7 +116,7 @@ var (
 
 	RulerFlags = func() map[string]string {
 		return map[string]string{
-			"-api.enable-response-compression":   "true",
+			"-api.response-compression-enabled":  "true",
 			"-ruler.enable-sharding":             "false",
 			"-ruler.poll-interval":               "2s",
 			"-experimental.ruler.enable-api":     "true",

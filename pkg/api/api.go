@@ -49,7 +49,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
+	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -110,15 +110,15 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	if auth {
 		handler = a.AuthMiddleware.Wrap(handler)
 	}
-	if len(methods) == 0 {
-		a.server.HTTP.Path(path).Handler(handler)
-		return
-	}
 
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
 	}
 
+	if len(methods) == 0 {
+		a.server.HTTP.Path(path).Handler(handler)
+		return
+	}
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
 }
 
@@ -127,6 +127,11 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 	if auth {
 		handler = a.AuthMiddleware.Wrap(handler)
 	}
+
+	if a.cfg.ResponseCompression {
+		handler = gziphandler.GzipHandler(handler)
+	}
+
 	if len(methods) == 0 {
 		a.server.HTTP.PathPrefix(prefix).Handler(handler)
 		return

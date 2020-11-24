@@ -69,8 +69,8 @@ Where default_value is the value to use if the environment variable is undefined
 [http_prefix: <string> | default = "/api/prom"]
 
 api:
-  # Use compression for API responses. Some endpoints serve large YAML or JSON
-  # blobs which can benefit from compression.
+  # Use GZIP compression for API responses. Some endpoints serve large YAML or
+  # JSON blobs which can benefit from compression.
   # CLI flag: -api.response-compression-enabled
   [response_compression_enabled: <boolean> | default = false]
 

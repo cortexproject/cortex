@@ -69,11 +69,10 @@ Where default_value is the value to use if the environment variable is undefined
 [http_prefix: <string> | default = "/api/prom"]
 
 api:
-  # Use compression for the Ruler and Alertmanager configuration API responses.
-  # Some endpoints of these components serve large YAML or JSON blobs which can
-  # benefit from compression.
-  # CLI flag: -api.enable-response-compression
-  [enable_response_compression: <boolean> | default = false]
+  # Use compression for API responses. Some endpoints serve large YAML or JSON
+  # blobs which can benefit from compression.
+  # CLI flag: -api.response-compression-enabled
+  [response_compression_enabled: <boolean> | default = false]
 
   # HTTP URL path under which the Alertmanager ui and api will be served.
   # CLI flag: -http.alertmanager-http-prefix

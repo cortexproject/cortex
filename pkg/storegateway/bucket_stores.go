@@ -310,7 +310,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// The sharding strategy filter MUST be before the ones we create here (order matters).
 		append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
 			block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
-			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay),
+			block.NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),
 			// The duplicate filter has been intentionally omitted because it could cause troubles with
 			// the consistency check done on the querier. The duplicate filter removes redundant blocks
 			// but if the store-gateway removes redundant blocks before the querier discovers them, the
@@ -344,7 +344,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
-		u.cfg.BucketStore.IndexCache.PostingsCompression,
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,

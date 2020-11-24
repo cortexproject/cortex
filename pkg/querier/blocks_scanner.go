@@ -365,7 +365,7 @@ func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher,
 	// - Deduplicate filter: omitted because it could cause troubles with the consistency check if
 	//   we "hide" source blocks because recently compacted by the compactor before the store-gateway instances
 	//   discover and load the compacted ones.
-	deletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, d.cfg.IgnoreDeletionMarksDelay)
+	deletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, d.cfg.IgnoreDeletionMarksDelay, d.cfg.MetasConcurrency)
 	filters := []block.MetadataFilter{deletionMarkFilter}
 
 	f, err := block.NewMetaFetcher(

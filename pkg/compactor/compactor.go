@@ -438,7 +438,11 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	// While fetching blocks, we filter out blocks that were marked for deletion by using IgnoreDeletionMarkFilter.
 	// The delay of deleteDelay/2 is added to ensure we fetch blocks that are meant to be deleted but do not have a replacement yet.
-	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(ulogger, bucket, time.Duration(c.compactorCfg.DeletionDelay.Seconds()/2)*time.Second)
+	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(
+		ulogger,
+		bucket,
+		time.Duration(c.compactorCfg.DeletionDelay.Seconds()/2)*time.Second,
+		c.compactorCfg.MetaSyncConcurrency)
 
 	fetcher, err := block.NewMetaFetcher(
 		ulogger,

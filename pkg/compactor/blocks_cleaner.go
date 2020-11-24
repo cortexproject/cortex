@@ -130,7 +130,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	userLogger := util.WithUserID(userID, c.logger)
 	userBucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
 
-	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay)
+	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay, c.cfg.MetaSyncConcurrency)
 
 	fetcher, err := block.NewMetaFetcher(
 		userLogger,

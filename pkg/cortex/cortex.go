@@ -323,9 +323,6 @@ func New(cfg Config) (*Cortex, error) {
 		return nil, err
 	}
 
-	// Register custom process metrics.
-	prometheus.MustRegister(process.NewProcessCollector(process.Options{}))
-
 	return cortex, nil
 }
 
@@ -338,6 +335,9 @@ func (t *Cortex) setupThanosTracing() {
 
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
+	// Register custom process metrics.
+	prometheus.MustRegister(process.NewProcessCollector(process.Options{}))
+
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
 			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)

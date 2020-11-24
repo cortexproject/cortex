@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
@@ -36,6 +37,7 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/process"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
@@ -320,6 +322,9 @@ func New(cfg Config) (*Cortex, error) {
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
 	}
+
+	// Register custom process metrics.
+	prometheus.MustRegister(process.NewProcessCollector(process.Options{}))
 
 	return cortex, nil
 }

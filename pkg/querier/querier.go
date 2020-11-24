@@ -385,8 +385,6 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 		return q.queriers[0].LabelValues(name)
 	}
 
-	// Using an errgroup here instead of channels, etc because this
-	// is a better model imo and we should move to this everywhere.
 	var (
 		g, _     = errgroup.WithContext(q.ctx)
 		sets     = [][]string{}
@@ -433,8 +431,6 @@ func (q querier) LabelNames() ([]string, storage.Warnings, error) {
 		return q.queriers[0].LabelNames()
 	}
 
-	// Using an errgroup here instead of channels, etc because this
-	// is a better model imo and we should move to this everywhere.
 	var (
 		g, _     = errgroup.WithContext(q.ctx)
 		sets     = [][]string{}

@@ -732,7 +732,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
 		g, gCtx       = errgroup.WithContext(reqCtx)
 		mtx           = sync.Mutex{}
-		nameSets      = [][]string{}
+		valueSets     = [][]string{}
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
 		spanLog       = spanlogger.FromContext(ctx)
@@ -747,7 +747,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		g.Go(func() error {
 			req, err := createLabelValuesRequest(minT, maxT, name, blockIDs)
 			if err != nil {
-				return errors.Wrapf(err, "failed to create label names request")
+				return errors.Wrapf(err, "failed to create label values request")
 			}
 
 			valuesResp, err := c.LabelValues(gCtx, req)
@@ -759,7 +759,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			if valuesResp.Hints != nil {
 				hints := hintspb.LabelValuesResponseHints{}
 				if err := types.UnmarshalAny(valuesResp.Hints, &hints); err != nil {
-					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c)
+					return errors.Wrapf(err, "failed to unmarshal label values hints from %s", c)
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
@@ -770,9 +770,9 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 				myQueriedBlocks = ids
 			}
 
-			level.Debug(spanLog).Log("msg", "received label names from store-gateway",
+			level.Debug(spanLog).Log("msg", "received label values from store-gateway",
 				"instance", c,
-				"num labels", len(valuesResp.Values),
+				"num values", len(valuesResp.Values),
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
@@ -781,7 +781,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			// Store the result.
 			mtx.Lock()
-			nameSets = append(nameSets, valuesResp.Values)
+			valueSets = append(valueSets, valuesResp.Values)
 			for _, w := range valuesResp.Warnings {
 				warnings = append(warnings, errors.New(w))
 			}
@@ -797,7 +797,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		return nil, nil, nil, err
 	}
 
-	return nameSets, warnings, queriedBlocks, nil
+	return valueSets, warnings, queriedBlocks, nil
 }
 
 func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
@@ -814,7 +814,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skip
 
 	anyHints, err := types.MarshalAny(hints)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to marshal request hints")
+		return nil, errors.Wrapf(err, "failed to marshal series request hints")
 	}
 
 	return &storepb.SeriesRequest{
@@ -850,7 +850,7 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.L
 
 	anyHints, err := types.MarshalAny(hints)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to marshal request hints")
+		return nil, errors.Wrapf(err, "failed to marshal label names request hints")
 	}
 
 	req.Hints = anyHints
@@ -882,7 +882,7 @@ func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.UL
 
 	anyHints, err := types.MarshalAny(hints)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to marshal request hints")
+		return nil, errors.Wrapf(err, "failed to marshal label values request hints")
 	}
 
 	req.Hints = anyHints

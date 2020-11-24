@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -78,6 +78,44 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 	assert.Equal(t, "/tmp", cfg.DataDir)
 	assert.Equal(t, 15*time.Minute, cfg.CompactionInterval)
 	assert.Equal(t, 123, cfg.CompactionRetries)
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		setup    func(cfg *Config)
+		expected string
+	}{
+		"should pass with the default config": {
+			setup:    func(cfg *Config) {},
+			expected: "",
+		},
+		"should pass with only 1 block range period": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{time.Hour}
+			},
+			expected: "",
+		},
+		"should fail with non divisible block range periods": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour, 30 * time.Hour}
+			},
+			expected: errors.Errorf(errInvalidBlockRanges, 30*time.Hour, 24*time.Hour).Error(),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := &Config{}
+			flagext.DefaultValues(cfg)
+			testData.setup(cfg)
+
+			if actualErr := cfg.Validate(); testData.expected != "" {
+				assert.EqualError(t, actualErr, testData.expected)
+			} else {
+				assert.NoError(t, actualErr)
+			}
+		})
+	}
 }
 
 func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {

@@ -29,6 +29,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+var (
+	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+)
+
 // Config holds the Compactor config.
 type Config struct {
 	BlockRanges           cortex_tsdb.DurationList `yaml:"block_ranges"`
@@ -81,6 +85,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
+}
+
+func (cfg *Config) Validate() error {
+	// Each block range period should be divisible by the previous one.
+	for i := 1; i < len(cfg.BlockRanges); i++ {
+		if cfg.BlockRanges[i]%cfg.BlockRanges[i-1] != 0 {
+			return errors.Errorf(errInvalidBlockRanges, cfg.BlockRanges[i].String(), cfg.BlockRanges[i-1].String())
+		}
+	}
+
+	return nil
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.

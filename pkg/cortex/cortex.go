@@ -208,6 +208,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
+	if err := c.Compactor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid compactor config")
+	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
 		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")

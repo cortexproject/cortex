@@ -69,7 +69,9 @@ func TestAlertmanager(t *testing.T) {
 	require.NoError(t, err)
 
 	defer res.Body.Close()
-	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	// We assert on the Vary header as the minimum response size for enabling compression is 1500 bytes.
+	// This is enough to know whenever the handler for compression is enabled or not.
+	require.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
 }
 
 func TestAlertmanagerStoreAPI(t *testing.T) {

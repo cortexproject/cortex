@@ -3634,7 +3634,8 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
-    # Compress postings before storing them to postings cache.
+    # Deprecated: compress postings before storing them to postings cache. This
+    # option is unused and postings compression is always enabled.
     # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
     [postings_compression_enabled: <boolean> | default = false]
 

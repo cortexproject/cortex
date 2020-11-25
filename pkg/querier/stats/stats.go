@@ -66,7 +66,7 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey, stats))
 
 		defer func() {
-			stats.WallTime = time.Now().Sub(start)
+			stats.WallTime = time.Since(start)
 			level.Info(m.logger).Log(
 				"usedID", userID,
 				"time", stats.WallTime,

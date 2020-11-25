@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -77,7 +78,7 @@ func (pc *IndexPageContent) GetContent() map[string]map[string]string {
 	return result
 }
 
-var indexPageTemplate = ` 
+var indexPageTemplate = `
 <!DOCTYPE html>
 <html>
 	<head>
@@ -217,13 +218,15 @@ func NewQuerierHandler(
 	legacyPromRouter := route.New().WithPrefix(legacyPrefix + "/api/v1")
 	api.Register(legacyPromRouter)
 
+	statsMiddleware := stats.NewMiddleware(logger)
+
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
 	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
 	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
+	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(statsMiddleware.Wrap(promRouter))
+	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(statsMiddleware.Wrap(promRouter))
 	router.Path(prefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
 	router.Path(prefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
 	router.Path(prefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
@@ -234,8 +237,8 @@ func NewQuerierHandler(
 	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
 	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
 	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(statsMiddleware.Wrap(legacyPromRouter))
+	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(statsMiddleware.Wrap(legacyPromRouter))
 	router.Path(legacyPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)

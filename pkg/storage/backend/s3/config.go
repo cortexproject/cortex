@@ -32,6 +32,7 @@ type Config struct {
 	SecretAccessKey flagext.Secret `yaml:"secret_access_key"`
 	AccessKeyID     string         `yaml:"access_key_id"`
 	Insecure        bool           `yaml:"insecure"`
+	SignatureV2     bool           `yaml:"signature_v2"`
 
 	HTTP HTTPConfig `yaml:"http"`
 }
@@ -48,5 +49,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "S3 bucket name")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
+	f.BoolVar(&cfg.SignatureV2, prefix+"s3.signature-v2", false, "If enabled, the S3 client uses V2 signatures for authentication instead of V4.")
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }

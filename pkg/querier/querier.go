@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -397,13 +396,11 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
 		querier := querier
 		g.Go(func() error {
+			// NB: Values are sorted in Cortex already.
 			myValues, myWarnings, err := querier.LabelValues(name)
 			if err != nil {
 				return err
 			}
-
-			// We need values to be sorted we can merge them.
-			sort.Strings(myValues)
 
 			resMtx.Lock()
 			sets = append(sets, myValues)
@@ -443,6 +440,7 @@ func (q querier) LabelNames() ([]string, storage.Warnings, error) {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
 		querier := querier
 		g.Go(func() error {
+			// NB: Names are sorted in Cortex already.
 			myNames, myWarnings, err := querier.LabelNames()
 			if err != nil {
 				return err

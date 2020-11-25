@@ -183,8 +183,9 @@ func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*label
 }
 
 func (q *distributorQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	lv, err := q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name))
-	return lv, nil, err
+	lvs, err := q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name))
+
+	return lvs, nil, err
 }
 
 func (q *distributorQuerier) LabelNames() ([]string, storage.Warnings, error) {

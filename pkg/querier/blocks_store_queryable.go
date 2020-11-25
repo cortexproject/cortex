@@ -301,10 +301,9 @@ func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	minT, maxT := q.minT, q.maxT
 
 	var (
+		resMtx      sync.Mutex
 		resNameSets = [][]string{}
 		resWarnings = storage.Warnings(nil)
-
-		resultMtx sync.Mutex
 	)
 
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
@@ -313,10 +312,10 @@ func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 			return nil, err
 		}
 
-		resultMtx.Lock()
+		resMtx.Lock()
 		resNameSets = append(resNameSets, nameSets...)
 		resWarnings = append(resWarnings, warnings...)
-		resultMtx.Unlock()
+		resMtx.Unlock()
 
 		return queriedBlocks, nil
 	}
@@ -566,7 +565,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c)
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			mySeries := []*storepb.Series(nil)
@@ -585,7 +584,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					break
 				}
 				if err != nil {
-					return errors.Wrapf(err, "failed to receive series from %s", c)
+					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
 				// Response may either contain series, warning or hints.
@@ -608,7 +607,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if h := resp.GetHints(); h != nil {
 					hints := hintspb.SeriesResponseHints{}
 					if err := types.UnmarshalAny(h, &hints); err != nil {
-						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c)
+						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress())
 					}
 
 					ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
@@ -621,7 +620,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			}
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
-				"instance", c,
+				"instance", c.RemoteAddress(),
 				"num series", len(mySeries),
 				"bytes series", countSeriesBytes(mySeries),
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
@@ -676,14 +675,14 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c)
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if namesResp.Hints != nil {
 				hints := hintspb.LabelNamesResponseHints{}
 				if err := types.UnmarshalAny(namesResp.Hints, &hints); err != nil {
-					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c)
+					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c.RemoteAddress())
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
@@ -752,14 +751,14 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c)
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if valuesResp.Hints != nil {
 				hints := hintspb.LabelValuesResponseHints{}
 				if err := types.UnmarshalAny(valuesResp.Hints, &hints); err != nil {
-					return errors.Wrapf(err, "failed to unmarshal label values hints from %s", c)
+					return errors.Wrapf(err, "failed to unmarshal label values hints from %s", c.RemoteAddress())
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
@@ -771,7 +770,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			}
 
 			level.Debug(spanLog).Log("msg", "received label values from store-gateway",
-				"instance", c,
+				"instance", c.RemoteAddress(),
 				"num values", len(valuesResp.Values),
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
@@ -833,10 +832,6 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.L
 		End:   maxT,
 	}
 
-	if len(blockIDs) == 0 {
-		return req, nil
-	}
-
 	// Selectively query only specific blocks.
 	hints := &hintspb.LabelNamesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -863,10 +858,6 @@ func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.UL
 		Start: minT,
 		End:   maxT,
 		Label: label,
-	}
-
-	if len(blockIDs) == 0 {
-		return req, nil
 	}
 
 	// Selectively query only specific blocks.

@@ -9,16 +9,16 @@ import (
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/procfs"
 )
 
-type Options struct {
-	Pid            int
-	ProcMountPoint string
-}
+const (
+	// DefaultProcMountPoint is the common mount point of the proc filesystem.
+	DefaultProcMountPoint = "/proc"
+)
 
 type processCollector struct {
-	opts Options
+	pid            int
+	procMountPoint string
 
 	// Metrics.
 	currMaps *prometheus.Desc
@@ -27,17 +27,14 @@ type processCollector struct {
 
 // NewProcessCollector makes a new custom process collector used to collect process metrics the
 // default instrumentation doesn't support.
-func NewProcessCollector(opts Options) prometheus.Collector {
-	// Apply default options.
-	if opts.Pid == 0 {
-		opts.Pid = os.Getpid()
-	}
-	if opts.ProcMountPoint == "" {
-		opts.ProcMountPoint = procfs.DefaultMountPoint
-	}
+func NewProcessCollector() prometheus.Collector {
+	return newProcessCollector(os.Getpid(), DefaultProcMountPoint)
+}
 
+func newProcessCollector(pid int, procMountPoint string) prometheus.Collector {
 	c := &processCollector{
-		opts: opts,
+		pid:            pid,
+		procMountPoint: procMountPoint,
 		currMaps: prometheus.NewDesc(
 			"process_memory_map_areas",
 			"Number of memory map areas allocated by the process.",
@@ -72,7 +69,7 @@ func (c *processCollector) Collect(ch chan<- prometheus.Metric) {
 
 // getMapsCount returns the number of memory map ares the process has allocated.
 func (c *processCollector) getMapsCount() (float64, error) {
-	file, err := os.Open(processMapsPath(c.opts.ProcMountPoint, c.opts.Pid))
+	file, err := os.Open(processMapsPath(c.procMountPoint, c.pid))
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +85,7 @@ func (c *processCollector) getMapsCount() (float64, error) {
 
 // getMapsCountLimit returns the maximum of memory map ares the process can allocate.
 func (c *processCollector) getMapsCountLimit() (float64, error) {
-	file, err := os.Open(vmMapsLimitPath(c.opts.ProcMountPoint))
+	file, err := os.Open(vmMapsLimitPath(c.procMountPoint))
 	if err != nil {
 		return 0, err
 	}

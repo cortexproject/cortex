@@ -37,7 +37,6 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/process"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
@@ -53,6 +52,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
 	"github.com/cortexproject/cortex/pkg/util/modules"
+	"github.com/cortexproject/cortex/pkg/util/process"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -336,7 +336,7 @@ func (t *Cortex) setupThanosTracing() {
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
 	// Register custom process metrics.
-	prometheus.MustRegister(process.NewProcessCollector(process.Options{}))
+	prometheus.MustRegister(process.NewProcessCollector())
 
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {

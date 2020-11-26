@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NYTimes/gziphandler"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -35,6 +36,8 @@ import (
 )
 
 type Config struct {
+	ResponseCompression bool `yaml:"response_compression_enabled"`
+
 	AlertmanagerHTTPPrefix string `yaml:"alertmanager_http_prefix"`
 	PrometheusHTTPPrefix   string `yaml:"prometheus_http_prefix"`
 
@@ -46,6 +49,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -102,9 +106,15 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	methods = append([]string{method}, methods...)
 
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "path", path, "auth", auth)
+
 	if auth {
 		handler = a.AuthMiddleware.Wrap(handler)
 	}
+
+	if a.cfg.ResponseCompression {
+		handler = gziphandler.GzipHandler(handler)
+	}
+
 	if len(methods) == 0 {
 		a.server.HTTP.Path(path).Handler(handler)
 		return
@@ -117,6 +127,11 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 	if auth {
 		handler = a.AuthMiddleware.Wrap(handler)
 	}
+
+	if a.cfg.ResponseCompression {
+		handler = gziphandler.GzipHandler(handler)
+	}
+
 	if len(methods) == 0 {
 		a.server.HTTP.PathPrefix(prefix).Handler(handler)
 		return

@@ -3,6 +3,7 @@ package process
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -16,10 +17,13 @@ const (
 	DefaultProcMountPoint = "/proc"
 )
 
+var (
+	ErrUnsupportedCollector = errors.New("unsupported platform")
+)
+
 type processCollector struct {
 	pid            int
 	procMountPoint string
-	supported      bool
 
 	// Metrics.
 	currMaps *prometheus.Desc
@@ -28,15 +32,19 @@ type processCollector struct {
 
 // NewProcessCollector makes a new custom process collector used to collect process metrics the
 // default instrumentation doesn't support.
-func NewProcessCollector() prometheus.Collector {
+func NewProcessCollector() (prometheus.Collector, error) {
 	return newProcessCollector(os.Getpid(), DefaultProcMountPoint)
 }
 
-func newProcessCollector(pid int, procMountPoint string) prometheus.Collector {
-	c := &processCollector{
+func newProcessCollector(pid int, procMountPoint string) (prometheus.Collector, error) {
+	// Check whether it's supported on this platform.
+	if !isSupported(procMountPoint) {
+		return nil, ErrUnsupportedCollector
+	}
+
+	return &processCollector{
 		pid:            pid,
 		procMountPoint: procMountPoint,
-		supported:      isSupported(procMountPoint),
 		currMaps: prometheus.NewDesc(
 			"process_memory_map_areas",
 			"Number of memory map areas allocated by the process.",
@@ -47,27 +55,17 @@ func newProcessCollector(pid int, procMountPoint string) prometheus.Collector {
 			"Maximum number of memory map ares the process can allocate.",
 			nil, nil,
 		),
-	}
-
-	return c
+	}, nil
 }
 
 // Describe returns all descriptions of the collector.
 func (c *processCollector) Describe(ch chan<- *prometheus.Desc) {
-	if !c.supported {
-		return
-	}
-
 	ch <- c.currMaps
 	ch <- c.maxMaps
 }
 
 // Collect returns the current state of all metrics of the collector.
 func (c *processCollector) Collect(ch chan<- prometheus.Metric) {
-	if !c.supported {
-		return
-	}
-
 	if value, err := c.getMapsCount(); err == nil {
 		ch <- prometheus.MustNewConstMetric(c.currMaps, prometheus.GaugeValue, value)
 	}
@@ -86,11 +84,12 @@ func (c *processCollector) getMapsCount() (float64, error) {
 	defer file.Close()
 
 	count := 0
-	for scan := bufio.NewScanner(file); scan.Scan(); {
+	scan := bufio.NewScanner(file)
+	for scan.Scan() {
 		count++
 	}
 
-	return float64(count), nil
+	return float64(count), scan.Err()
 }
 
 // getMapsCountLimit returns the maximum of memory map ares the process can allocate.

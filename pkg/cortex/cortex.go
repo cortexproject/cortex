@@ -336,7 +336,11 @@ func (t *Cortex) setupThanosTracing() {
 // Run starts Cortex running, and blocks until a Cortex stops.
 func (t *Cortex) Run() error {
 	// Register custom process metrics.
-	prometheus.MustRegister(process.NewProcessCollector())
+	if c, err := process.NewProcessCollector(); err == nil {
+		prometheus.MustRegister(c)
+	} else {
+		level.Warn(util.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
+	}
 
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {

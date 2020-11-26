@@ -33,7 +33,8 @@ func TestProcessCollector(t *testing.T) {
 	require.NoError(t, ioutil.WriteFile(mapsLimitPath, []byte("262144\n"), os.ModePerm))
 
 	// Create a new collector and test metrics.
-	c := newProcessCollector(pid, procDir)
+	c, err := newProcessCollector(pid, procDir)
+	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
 	require.NoError(t, reg.Register(c))
@@ -49,11 +50,6 @@ func TestProcessCollector(t *testing.T) {
 }
 
 func TestProcessCollector_UnsupportedPlatform(t *testing.T) {
-	// Create a new collector and test metrics.
-	c := newProcessCollector(1, "/path/to/invalid/proc")
-
-	reg := prometheus.NewPedanticRegistry()
-	require.NoError(t, reg.Register(c))
-
-	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString("")))
+	_, err := newProcessCollector(1, "/path/to/invalid/proc")
+	require.Equal(t, ErrUnsupportedCollector, err)
 }

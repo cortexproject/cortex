@@ -49,6 +49,9 @@ const (
 	// ShardIDExternalLabel is the external label containing the shard ID
 	// and can be used to shard blocks.
 	ShardIDExternalLabel = "__shard_id__"
+
+	// How often are open TSDBs checked for being idle and closed.
+	DefaultCloseIdleTSDBInterval = 5 * time.Minute
 )
 
 // Validation errors
@@ -180,6 +183,7 @@ type TSDBConfig struct {
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
 	WALSegmentSizeBytes       int           `yaml:"wal_segment_size_bytes"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
+	CloseIdleTSDBTimeout      time.Duration `yaml:"close_idle_tsdb_timeout"`
 
 	// MaxTSDBOpeningConcurrencyOnStartup limits the number of concurrently opening TSDB's during startup.
 	MaxTSDBOpeningConcurrencyOnStartup int `yaml:"max_tsdb_opening_concurrency_on_startup"`
@@ -187,6 +191,9 @@ type TSDBConfig struct {
 	// If true, user TSDBs are not closed on shutdown. Only for testing.
 	// If false (default), user TSDBs are closed to make sure all resources are released and closed properly.
 	KeepUserTSDBOpenOnShutdown bool `yaml:"-"`
+
+	// How often to check for idle TSDBs for closing. DefaultCloseIdleTSDBInterval is not suitable for testing, so tests can override.
+	CloseIdleTSDBInterval time.Duration `yaml:"-"`
 }
 
 // RegisterFlags registers the TSDBConfig flags.
@@ -209,6 +216,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")
 	f.IntVar(&cfg.WALSegmentSizeBytes, "blocks-storage.tsdb.wal-segment-size-bytes", wal.DefaultSegmentSize, "TSDB WAL segments files max size (bytes).")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
+	f.DurationVar(&cfg.CloseIdleTSDBTimeout, "blocks-storage.tsdb.close-idle-tsdb-timeout", 0, "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value should be equal or higher than -querier.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.")
 }
 
 // Validate the config.

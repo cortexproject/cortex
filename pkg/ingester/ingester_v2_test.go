@@ -2210,6 +2210,94 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
 }
 
+func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second // Required to enable shipping.
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 1 * time.Second
+
+	r := prometheus.NewRegistry()
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, r)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	m := mockUserShipper(t, i)
+	m.On("Sync", mock.Anything).Return(0, nil)
+
+	pushSingleSample(t, i)
+
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// Wait until idle TSDB is force-compacted, shipped, and eventually closed and removed.
+	test.Poll(t, 10*time.Second, 0, func() interface{} {
+		db := i.getTSDB(userID)
+		if db != nil {
+			// Simulate shipper updating metadata file.
+			meta := &shipper.Meta{Version: shipper.MetaVersion1}
+
+			blocks := db.Blocks()
+			for _, b := range blocks {
+				meta.Uploaded = append(meta.Uploaded, b.Meta().ULID)
+			}
+
+			require.NoError(t, shipper.WriteMetaFile(util.Logger, db.db.Dir(), meta))
+		}
+
+		i.userStatesMtx.Lock()
+		defer i.userStatesMtx.Unlock()
+		return len(i.TSDBState.dbs)
+	})
+
+	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
+
+	// Verify that user has disappeared from metrics.
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+	// Pushing another sample will recreate TSDB.
+	pushSingleSample(t, i)
+
+	// User is back.
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+}
+
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 	db := i.getTSDB(userID)
 	require.NotNil(t, db)
@@ -2444,10 +2532,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	// We mock a flushing by setting the boolean.
 	db := i.getTSDB(userID)
 	require.NotNil(t, db)
-	db.forcedCompactionInProgressMtx.Lock()
-	require.False(t, db.forcedCompactionInProgress)
-	db.forcedCompactionInProgress = true
-	db.forcedCompactionInProgressMtx.Unlock()
+	require.True(t, db.casState(active, forceCompacting))
 
 	// Ingestion should fail with a 503.
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
@@ -2456,10 +2541,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)
 
 	// Ingestion is successful after a flush.
-	db.forcedCompactionInProgressMtx.Lock()
-	require.True(t, db.forcedCompactionInProgress)
-	db.forcedCompactionInProgress = false
-	db.forcedCompactionInProgressMtx.Unlock()
+	require.True(t, db.casState(forceCompacting, active))
 	pushSingleSample(t, i)
 }
 

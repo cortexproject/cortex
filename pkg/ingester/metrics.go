@@ -412,7 +412,6 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 
 	out <- sm.memSeriesCreatedTotal
 	out <- sm.memSeriesRemovedTotal
-
 }
 
 func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
@@ -454,4 +453,8 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 
 func (sm *tsdbMetrics) setRegistryForUser(userID string, registry *prometheus.Registry) {
 	sm.regs.AddUserRegistry(userID, registry)
+}
+
+func (sm *tsdbMetrics) removeRegistryForUser(userID string) {
+	sm.regs.RemoveUserRegistry(userID, false)
 }

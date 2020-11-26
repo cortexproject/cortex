@@ -2272,7 +2272,6 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		return len(i.TSDBState.dbs)
 	})
 
-	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks), float64(0))
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbCheckResult.WithLabelValues(string(tsdbIdleClosed))), float64(0))
 
 	// Verify that user has disappeared from metrics.

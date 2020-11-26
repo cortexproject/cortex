@@ -311,10 +311,7 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	refCachePurgeDuration  prometheus.Histogram
-
-	// Idle TSDB metrics.
-	idleTsdbChecks      prometheus.Counter
-	idleTsdbCheckResult *prometheus.CounterVec
+	idleTsdbCheckResult    *prometheus.CounterVec
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -370,10 +367,6 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Buckets: prometheus.DefBuckets,
 		}),
 
-		idleTsdbChecks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_idle_tsdb_checks_total",
-			Help: "The total number of checks for idle TSDB.",
-		}),
 		idleTsdbCheckResult: idleTsdbCheckResult,
 	}
 }
@@ -1556,8 +1549,6 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-
-		i.TSDBState.idleTsdbChecks.Inc()
 
 		result := i.closeAndDeleteUserTSDBIfIdle(userID)
 

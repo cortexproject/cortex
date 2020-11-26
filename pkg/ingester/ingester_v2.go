@@ -311,24 +311,24 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	refCachePurgeDuration  prometheus.Histogram
-	idleTsdbCheckResult    *prometheus.CounterVec
+	idleTsdbChecks         *prometheus.CounterVec
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
-	idleTsdbCheckResult := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ingester_idle_tsdb_check_results_total",
+	idleTsdbChecks := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_ingester_idle_tsdb_checks_total",
 		Help: "The total number of various results for idle TSDB checks.",
 	}, []string{"result"})
 
-	idleTsdbCheckResult.WithLabelValues(string(tsdbShippingDisabled))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbNotIdle))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbNotCompacted))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbNotShipped))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbCheckFailed))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbCloseFailed))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbNotActive))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbDataRemovalFailed))
-	idleTsdbCheckResult.WithLabelValues(string(tsdbIdleClosed))
+	idleTsdbChecks.WithLabelValues(string(tsdbShippingDisabled))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotIdle))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotCompacted))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotShipped))
+	idleTsdbChecks.WithLabelValues(string(tsdbCheckFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbCloseFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbNotActive))
+	idleTsdbChecks.WithLabelValues(string(tsdbDataRemovalFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))
 
 	return TSDBState{
 		dbs:                 make(map[string]*userTSDB),
@@ -367,7 +367,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Buckets: prometheus.DefBuckets,
 		}),
 
-		idleTsdbCheckResult: idleTsdbCheckResult,
+		idleTsdbChecks: idleTsdbChecks,
 	}
 }
 
@@ -1552,7 +1552,7 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 
 		result := i.closeAndDeleteUserTSDBIfIdle(userID)
 
-		i.TSDBState.idleTsdbCheckResult.WithLabelValues(string(result)).Inc()
+		i.TSDBState.idleTsdbChecks.WithLabelValues(string(result)).Inc()
 	}
 
 	return nil

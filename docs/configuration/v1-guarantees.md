@@ -60,3 +60,4 @@ Currently experimental features are:
 - Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+- Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)

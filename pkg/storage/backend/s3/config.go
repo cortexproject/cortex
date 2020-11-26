@@ -1,11 +1,25 @@
 package s3
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+)
+
+const (
+	SignatureVersionV4 = "v4"
+	SignatureVersionV2 = "v2"
+)
+
+var (
+	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
@@ -27,11 +41,12 @@ func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Config holds the config options for an S3 backend
 type Config struct {
-	Endpoint        string         `yaml:"endpoint"`
-	BucketName      string         `yaml:"bucket_name"`
-	SecretAccessKey flagext.Secret `yaml:"secret_access_key"`
-	AccessKeyID     string         `yaml:"access_key_id"`
-	Insecure        bool           `yaml:"insecure"`
+	Endpoint         string         `yaml:"endpoint"`
+	BucketName       string         `yaml:"bucket_name"`
+	SecretAccessKey  flagext.Secret `yaml:"secret_access_key"`
+	AccessKeyID      string         `yaml:"access_key_id"`
+	Insecure         bool           `yaml:"insecure"`
+	SignatureVersion string         `yaml:"signature_version"`
 
 	HTTP HTTPConfig `yaml:"http"`
 }
@@ -48,5 +63,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "S3 bucket name")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
+	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// Validate config and returns error on failure
+func (cfg *Config) Validate() error {
+	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
+		return errUnsupportedSignatureVersion
+	}
+	return nil
 }

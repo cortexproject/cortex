@@ -30,5 +30,7 @@ func newS3Config(cfg Config) s3.Config {
 			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
 			Transport:             cfg.HTTP.Transport,
 		},
+		// Enforce signature version 2 if CLI flag is set
+		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,
 	}
 }

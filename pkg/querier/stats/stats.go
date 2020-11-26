@@ -31,6 +31,11 @@ func (s *Stats) AddSeries(series int) {
 	atomic.AddInt32(&s.Series, int32(series))
 }
 
+// AddSamples adds some series to the counter.
+func (s *Stats) AddSamples(samples int64) {
+	atomic.AddInt64(&s.Samples, samples)
+}
+
 // AddWallTime adds some time to the counter.
 func (s *Stats) AddWallTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.WallTime), int64(t))

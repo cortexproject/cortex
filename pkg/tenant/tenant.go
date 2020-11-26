@@ -25,21 +25,24 @@ func (e *errTenantIDUnsupportedCharacter) Error() string {
 
 const tenantIDsLabelSeparator = "|"
 
-// NormalizeTenantIDs is putting the IDs in a normalized form, which is sorts and de-duplicate them
-func NormalizeTenantIDs(ids []string) []string {
-	sort.Strings(ids)
+// NormalizeTenantIDs is creating a normalized form by sortiing and de-duplicating the list of tenantIDs
+func NormalizeTenantIDs(tenantIDs []string) []string {
+	sort.Strings(tenantIDs)
 
-	// de-duplicate orgIDs
-	var result []string
-	for pos := range ids {
-		// skip if we are matching the entry before us
-		if pos > 0 && ids[pos] == ids[pos-1] {
-			continue
-		}
-
-		result = append(result, ids[pos])
+	count := len(tenantIDs)
+	if count <= 1 {
+		return tenantIDs
 	}
-	return result
+
+	posOut := 1
+	for posIn := 1; posIn < count; posIn++ {
+		if tenantIDs[posIn] != tenantIDs[posIn-1] {
+			tenantIDs[posOut] = tenantIDs[posIn]
+			posOut++
+		}
+	}
+
+	return tenantIDs[0:posOut]
 }
 
 // ValidTenantID

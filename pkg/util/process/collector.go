@@ -19,6 +19,7 @@ const (
 type processCollector struct {
 	pid            int
 	procMountPoint string
+	supported      bool
 
 	// Metrics.
 	currMaps *prometheus.Desc
@@ -35,6 +36,7 @@ func newProcessCollector(pid int, procMountPoint string) prometheus.Collector {
 	c := &processCollector{
 		pid:            pid,
 		procMountPoint: procMountPoint,
+		supported:      isSupported(procMountPoint),
 		currMaps: prometheus.NewDesc(
 			"process_memory_map_areas",
 			"Number of memory map areas allocated by the process.",
@@ -52,12 +54,20 @@ func newProcessCollector(pid int, procMountPoint string) prometheus.Collector {
 
 // Describe returns all descriptions of the collector.
 func (c *processCollector) Describe(ch chan<- *prometheus.Desc) {
+	if !c.supported {
+		return
+	}
+
 	ch <- c.currMaps
 	ch <- c.maxMaps
 }
 
 // Collect returns the current state of all metrics of the collector.
 func (c *processCollector) Collect(ch chan<- prometheus.Metric) {
+	if !c.supported {
+		return
+	}
+
 	if value, err := c.getMapsCount(); err == nil {
 		ch <- prometheus.MustNewConstMetric(c.currMaps, prometheus.GaugeValue, value)
 	}
@@ -107,6 +117,11 @@ func (c *processCollector) getMapsCountLimit() (float64, error) {
 	}
 
 	return float64(value), nil
+}
+
+func isSupported(procPath string) bool {
+	_, err := os.Stat(vmMapsLimitPath(procPath))
+	return err == nil
 }
 
 func processMapsPath(procPath string, pid int) string {

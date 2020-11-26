@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/strutil"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -26,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -210,7 +210,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		now := time.Now()
 
-		userID, err := user.ExtractOrgID(ctx)
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +300,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		return q.metadataQuerier.Select(true, sp, matchers...)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

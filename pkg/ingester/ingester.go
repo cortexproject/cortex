@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -440,7 +440,7 @@ func (i *Ingester) Push(ctx context.Context, req *client.WriteRequest) (*client.
 	// retain anything from `req` past the call to ReuseSlice
 	defer client.ReuseSlice(req.Timeseries)
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}
@@ -683,7 +683,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return i.v2Query(ctx, req)
 	}
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -930,7 +930,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.userStatesMtx.RUnlock()
 
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id")
 	}

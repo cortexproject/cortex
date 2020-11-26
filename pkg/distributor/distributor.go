@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -384,7 +385,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
-	userID, err := user.ExtractOrgID(ctx)
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

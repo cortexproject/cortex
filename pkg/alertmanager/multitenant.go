@@ -20,9 +20,9 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -462,7 +462,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	userID, err := user.ExtractOrgID(req.Context())
+	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

@@ -33,6 +33,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -427,7 +428,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					d.HATracker = r
 				}
 
-				userID, err := user.ExtractOrgID(ctx)
+				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
 				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
@@ -1314,7 +1315,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		i.metadata = map[uint32]map[client.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := user.ExtractOrgID(ctx)
+	orgid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}

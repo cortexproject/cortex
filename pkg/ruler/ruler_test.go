@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -162,7 +163,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	// We do expect 1 API call for the user create with the getOrCreateNotifier()
 	wg.Add(1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := user.ExtractOrgIDFromHTTPRequest(r)
+		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
 		wg.Done()

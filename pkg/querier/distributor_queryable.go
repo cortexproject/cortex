@@ -10,11 +10,11 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -129,7 +129,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 }
 
 func (q *distributorQuerier) streamingSelect(minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := user.ExtractOrgID(q.ctx)
+	userID, err := tenant.TenantID(q.ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

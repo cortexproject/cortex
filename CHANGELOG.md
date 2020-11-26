@@ -32,6 +32,9 @@
 * [ENHANCEMENT] Blocks storage: concurrently fetch deletion marks from object storage. #3538
 * [ENHANCEMENT] Blocks storage ingester: ingester can now close idle TSDB and delete local data. #3491
 * [ENHANCEMENT] Blocks storage: add option to use V2 signatures for S3 authentication. #3540
+* [ENHANCEMENT] Exported process metrics to monitor the number of memory map areas allocated. #3537
+  * - `process_memory_map_areas`
+  * - `process_memory_map_areas_limit`
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422
 * [BUGFIX] Querier: fixed `-querier.max-query-into-future` which wasn't correctly enforced on range queries. #3452

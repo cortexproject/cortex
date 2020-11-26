@@ -28,7 +28,6 @@ import (
 	grpc_metadata "google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
-	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -381,7 +380,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		convertedMatchers = convertMatchersToLabelMatcher(matchers)
 		resSeriesSets     = []storage.SeriesSet(nil)
 		resWarnings       = storage.Warnings(nil)
-		stats             = stats.FromContext(q.ctx)
 
 		maxChunksLimit  = q.limits.MaxChunksPerQuery(q.userID)
 		leftChunksLimit = maxChunksLimit
@@ -419,8 +417,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	if len(resSeriesSets) == 0 {
 		storage.EmptySeriesSet()
 	}
-
-	stats.AddSeries(len(resSeriesSets))
 
 	return series.NewSeriesSetWithWarnings(
 		storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge),

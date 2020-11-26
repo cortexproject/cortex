@@ -72,8 +72,8 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 		defer func() {
 			stats.AddWallTime(time.Since(start))
 			level.Info(m.logger).Log(
-				"usedID", userID,
-				"time", stats.WallTime,
+				"user", userID,
+				"wallTime", stats.WallTime,
 				"series", stats.Series,
 				"samples", stats.Samples,
 			)

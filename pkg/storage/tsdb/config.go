@@ -151,6 +151,12 @@ func (cfg *BucketConfig) Validate() error {
 		return errUnsupportedStorageBackend
 	}
 
+	if cfg.Backend == BackendS3 {
+		if err := cfg.S3.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

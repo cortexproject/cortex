@@ -225,10 +225,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # If enabled, the S3 client uses V2 signatures for authentication instead of
-    # V4.
-    # CLI flag: -blocks-storage.s3.signature-v2
-    [signature_v2: <boolean> | default = false]
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -blocks-storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
 
     http:
       # The time an idle connection will remain idle before closing.

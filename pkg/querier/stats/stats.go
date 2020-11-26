@@ -8,12 +8,35 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 )
 
 type contextKey int
 
-var ctxKey = contextKey(0)
+var (
+	ctxKey       = contextKey(0)
+	querySeconds = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_seconds_total",
+		Help: "Total amount of wall clock time spend processing queries.",
+	}, []string{"userid"})
+	querySamples = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_samples_total",
+		Help: "Total number of samples queried.",
+	}, []string{"userid"})
+	querySeries = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_series_total",
+		Help: "Total number of series queried.",
+	}, []string{"userid"})
+)
+
+// AddToContext adds a new Stats to the context.
+func AddToContext(ctx context.Context) (*Stats, context.Context) {
+	stats := &Stats{}
+	ctx = context.WithValue(ctx, ctxKey, stats)
+	return stats, ctx
+}
 
 // FromContext gets the Stats out of the Context.
 func FromContext(ctx context.Context) *Stats {
@@ -48,6 +71,18 @@ func (s *Stats) Merge(other *Stats) {
 	s.Samples += other.Samples
 }
 
+// Record the stats to metrics.
+func (s *Stats) Record(ctx context.Context) {
+	userID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return
+	}
+
+	querySeconds.WithLabelValues(userID).Add(float64(s.WallTime))
+	querySamples.WithLabelValues(userID).Add(float64(s.Samples))
+	querySeries.WithLabelValues(userID).Add(float64(s.Series))
+}
+
 // Middleware initialises the stats in the request context, records wall clock time
 // and logs the results.
 type Middleware struct {
@@ -71,8 +106,7 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 		}
 
 		start := time.Now()
-		stats := &Stats{}
-		r = r.WithContext(context.WithValue(r.Context(), ctxKey, stats))
+		stats := FromContext(r.Context())
 
 		defer func() {
 			stats.AddWallTime(time.Since(start))

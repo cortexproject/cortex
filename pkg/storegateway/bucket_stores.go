@@ -247,6 +247,42 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	})
 }
 
+// LabelNames implements the Storegateway proto service.
+func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
+	defer spanLog.Span.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
+
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelNamesResponse{}, nil
+	}
+
+	return store.LabelNames(ctx, req)
+}
+
+// LabelValues implements the Storegateway proto service.
+func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelValues")
+	defer spanLog.Span.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
+
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelValuesResponse{}, nil
+	}
+
+	return store.LabelValues(ctx, req)
+}
+
 // scanUsers in the bucket and return the list of found users. If an error occurs while
 // iterating the bucket, it may return both an error and a subset of the users in the bucket.
 func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {

@@ -672,6 +672,10 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 	for v := range valueSet {
 		values = append(values, v)
 	}
+
+	// We need the values returned to be sorted.
+	sort.Strings(values)
+
 	return values, nil
 }
 
@@ -704,9 +708,8 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 	for v := range valueSet {
 		values = append(values, v)
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i] < values[j]
-	})
+
+	sort.Strings(values)
 
 	return values, nil
 }

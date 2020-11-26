@@ -3,6 +3,7 @@ package stats
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -25,11 +26,14 @@ func FromContext(ctx context.Context) *Stats {
 	return o.(*Stats)
 }
 
-// Stats for a single query.
-type Stats struct {
-	WallTime time.Duration
-	Series   int
-	Samples  int64
+// AddSeries adds some series to the counter.
+func (s *Stats) AddSeries(series int) {
+	atomic.AddInt32(&s.Series, int32(series))
+}
+
+// AddWallTime adds some time to the counter.
+func (s *Stats) AddWallTime(t time.Duration) {
+	atomic.AddInt64((*int64)(&s.WallTime), int64(t))
 }
 
 // Merge the provide Stats into this one.
@@ -66,7 +70,7 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey, stats))
 
 		defer func() {
-			stats.WallTime = time.Since(start)
+			stats.AddWallTime(time.Since(start))
 			level.Info(m.logger).Log(
 				"usedID", userID,
 				"time", stats.WallTime,

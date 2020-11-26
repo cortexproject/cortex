@@ -420,7 +420,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		storage.EmptySeriesSet()
 	}
 
-	stats.Series += len(resSeriesSets)
+	stats.AddSeries(len(resSeriesSets))
 
 	return series.NewSeriesSetWithWarnings(
 		storage.NewMergeSeriesSet(resSeriesSets, storage.ChainedSeriesMerge),

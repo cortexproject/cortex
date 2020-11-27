@@ -257,7 +257,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 }
 
 func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -265,9 +265,16 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	maxQueriers := f.limits.MaxQueriersPerUser(userID)
+	// figure out the highest max querier per user
+	var maxQueriers int
+	for _, tenantID := range tenantIDs {
+		v := f.limits.MaxQueriersPerUser(tenantID)
+		if v > maxQueriers {
+			maxQueriers = v
+		}
+	}
 
-	err = f.requestQueue.EnqueueRequest(userID, req, maxQueriers, nil)
+	err = f.requestQueue.EnqueueRequest(tenant.JoinTenantIDs(tenantIDs), req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {
 		return errTooManyRequest
 	}

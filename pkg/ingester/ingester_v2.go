@@ -58,21 +58,26 @@ const (
 	closed                           // Used to avoid setting closing back to active in closeAndDeleteIdleUsers method.
 )
 
-// Describes result of TSDB idle check (for closing). String is used as metric label.
-type tsdbIdleCheckResult string
+// Describes result of TSDB-close check. String is used as metric label.
+type tsdbCloseCheckResult string
 
 const (
-	tsdbIdle              tsdbIdleCheckResult = "idle" // Not reported via metrics. Metrics use tsdbIdleClosed on success.
-	tsdbShippingDisabled  tsdbIdleCheckResult = "shipping_disabled"
-	tsdbNotIdle           tsdbIdleCheckResult = "not_idle"
-	tsdbNotCompacted      tsdbIdleCheckResult = "not_compacted"
-	tsdbNotShipped        tsdbIdleCheckResult = "not_shipped"
-	tsdbCheckFailed       tsdbIdleCheckResult = "check_failed"
-	tsdbCloseFailed       tsdbIdleCheckResult = "close_failed"
-	tsdbNotActive         tsdbIdleCheckResult = "not_active"
-	tsdbDataRemovalFailed tsdbIdleCheckResult = "data_removal_failed"
-	tsdbIdleClosed        tsdbIdleCheckResult = "idle_closed" // Success.
+	tsdbIdle                    tsdbCloseCheckResult = "idle" // Not reported via metrics. Metrics use tsdbIdleClosed on success.
+	tsdbShippingDisabled        tsdbCloseCheckResult = "shipping_disabled"
+	tsdbNotIdle                 tsdbCloseCheckResult = "not_idle"
+	tsdbNotCompacted            tsdbCloseCheckResult = "not_compacted"
+	tsdbNotShipped              tsdbCloseCheckResult = "not_shipped"
+	tsdbCheckFailed             tsdbCloseCheckResult = "check_failed"
+	tsdbCloseFailed             tsdbCloseCheckResult = "close_failed"
+	tsdbNotActive               tsdbCloseCheckResult = "not_active"
+	tsdbDataRemovalFailed       tsdbCloseCheckResult = "data_removal_failed"
+	tsdbTenantMarkedForDeletion tsdbCloseCheckResult = "tenant_marked_for_deletion"
+	tsdbIdleClosed              tsdbCloseCheckResult = "idle_closed" // Success.
 )
+
+func (r tsdbCloseCheckResult) shouldClose() bool {
+	return r == tsdbIdle || r == tsdbTenantMarkedForDeletion
+}
 
 type userTSDB struct {
 	db             *tsdb.DB
@@ -91,6 +96,13 @@ type userTSDB struct {
 
 	// Thanos shipper used to ship blocks to the storage.
 	shipper Shipper
+
+	// When deletion marker is found for the tenant (checked before shipping),
+	// shipping stops and TSDB is closed before reaching idle timeout time (if enabled).
+	deletionMarkFound atomic.Bool
+
+	// Unix timestamp of last deletion mark check.
+	lastDeletionMarkCheck atomic.Int64
 
 	// for statistics
 	ingestedAPISamples  *ewmaRate
@@ -259,8 +271,12 @@ func (u *userTSDB) setLastUpdate(t time.Time) {
 	u.lastUpdate.Store(t.Unix())
 }
 
-// Reports tsdbIdle if TSDB can be closed, or some other tsdbIdleCheckResult.
-func (u *userTSDB) canIdleClose(idleTimeout time.Duration) (tsdbIdleCheckResult, error) {
+// Checks if TSDB can be closed.
+func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) (tsdbCloseCheckResult, error) {
+	if u.deletionMarkFound.Load() {
+		return tsdbTenantMarkedForDeletion, nil
+	}
+
 	if !u.isIdle(time.Now(), idleTimeout) {
 		return tsdbNotIdle, nil
 	}
@@ -329,6 +345,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 	idleTsdbChecks.WithLabelValues(string(tsdbCloseFailed))
 	idleTsdbChecks.WithLabelValues(string(tsdbNotActive))
 	idleTsdbChecks.WithLabelValues(string(tsdbDataRemovalFailed))
+	idleTsdbChecks.WithLabelValues(string(tsdbTenantMarkedForDeletion))
 	idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))
 
 	return TSDBState{
@@ -1463,6 +1480,27 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 			return nil
 		}
 
+		if userDB.deletionMarkFound.Load() {
+			return nil
+		}
+
+		if time.Since(time.Unix(userDB.lastDeletionMarkCheck.Load(), 0)) > cortex_tsdb.DeletionMarkCheckInterval {
+			// Even if check fails with error, we don't want to repeat it too often.
+			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
+
+			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			if err != nil {
+				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
+				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
+				level.Warn(util.Logger).Log("msg", "failed to check for tenant deletion mark before shipping blocks", "user", userID, "err", err)
+			} else if deletionMarkExists {
+				userDB.deletionMarkFound.Store(true)
+
+				level.Info(util.Logger).Log("msg", "tenant deletion mark exists, not shipping blocks", "user", userID)
+				return nil
+			}
+		}
+
 		// Run the shipper's Sync() to upload unshipped blocks.
 		if uploaded, err := userDB.shipper.Sync(ctx); err != nil {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
@@ -1567,14 +1605,14 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 	return nil
 }
 
-func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbIdleCheckResult {
+func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckResult {
 	userDB := i.getTSDB(userID)
 	if userDB == nil || userDB.shipper == nil {
 		// We will not delete local data when not using shipping to storage.
 		return tsdbShippingDisabled
 	}
 
-	if result, err := userDB.canIdleClose(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); result != tsdbIdle {
+	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
 		}
@@ -1593,11 +1631,14 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbIdleCheckResu
 	userDB.pushesInFlight.Wait()
 
 	// Verify again, things may have changed during the checks and pushes.
-	if result, err := userDB.canIdleClose(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); result != tsdbIdle {
+	tenantDeleted := false
+	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
 		if err != nil {
 			level.Error(util.Logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
 		}
 		return result
+	} else if result == tsdbTenantMarkedForDeletion {
+		tenantDeleted = true
 	}
 
 	dir := userDB.db.Dir()
@@ -1620,11 +1661,16 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbIdleCheckResu
 
 	// And delete local data.
 	if err := os.RemoveAll(dir); err != nil {
-		level.Error(util.Logger).Log("msg", "failed to delete idle TSDB", "user", userID, "err", err)
+		level.Error(util.Logger).Log("msg", "failed to delete local TSDB", "user", userID, "err", err)
 		return tsdbDataRemovalFailed
 	}
 
-	level.Info(util.Logger).Log("msg", "deleted data for idle TSDB", "user", userID, "dir", dir)
+	if tenantDeleted {
+		level.Info(util.Logger).Log("msg", "deleted local TSDB, user marked for deletion", "user", userID, "dir", dir)
+		return tsdbTenantMarkedForDeletion
+	}
+
+	level.Info(util.Logger).Log("msg", "deleted local TSDB, due to being idle", "user", userID, "dir", dir)
 	return tsdbIdleClosed
 }
 

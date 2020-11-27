@@ -1057,6 +1057,49 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 ruler_client:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Deprecated: Use gzip compression when sending messages.  If true, overrides
+  # grpc-compression flag.
+  # CLI flag: -ruler.client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -ruler.client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -ruler.client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -ruler.client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -ruler.client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -ruler.client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -ruler.client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -ruler.client.backoff-retries
+    [max_retries: <int> | default = 10]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -ruler.client.tls-cert-path

@@ -363,14 +363,14 @@ func fetchAndBuildSingleSeries(ctx context.Context, fetcher *Fetcher, chunksIds 
 
 	m, err := normalizeLabels(cs[0].Metric)
 	if err != nil {
-		return nil, nil, errors.Errorf("chunk has invalid metrics: %v", cs[0].Metric.String())
+		return nil, nil, errors.Wrapf(err, "chunk has invalid metrics: %v", cs[0].Metric.String())
 	}
 
 	// Verify that all chunks belong to the same series.
 	for _, c := range cs {
 		nm, err := normalizeLabels(c.Metric)
 		if err != nil {
-			return nil, nil, errors.Errorf("chunk has invalid metrics: %v", c.Metric.String())
+			return nil, nil, errors.Wrapf(err, "chunk has invalid metrics: %v", c.Metric.String())
 		}
 		if !labels.Equal(m, nm) {
 			return nil, nil, errors.Errorf("chunks for multiple metrics: %v, %v", m.String(), c.Metric.String())

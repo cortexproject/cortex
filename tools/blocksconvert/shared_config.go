@@ -12,20 +12,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/storage/backend"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 type SharedConfig struct {
 	SchemaConfig  chunk.SchemaConfig // Flags registered by main.go
 	StorageConfig storage.Config
 
-	Bucket       tsdb.BucketConfig
+	Bucket       backend.BucketConfig
 	BucketPrefix string
 }
 
 func (cfg *SharedConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(f)
-	cfg.Bucket.RegisterFlags(f)
+	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.StorageConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.BucketPrefix, "blocksconvert.bucket-prefix", "migration", "Prefix in the bucket for storing plan files.")

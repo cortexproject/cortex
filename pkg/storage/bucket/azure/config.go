@@ -15,12 +15,12 @@ type Config struct {
 	MaxRetries         int            `yaml:"max_retries"`
 }
 
-// RegisterFlags registers the flags for TSDB Azure storage
+// RegisterFlags registers the flags for Azure storage
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("blocks-storage.", f)
+	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix registers the flags for TSDB Azure storage
+// RegisterFlagsWithPrefix registers the flags for Azure storage
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.StorageAccountName, prefix+"azure.account-name", "", "Azure storage account name")
 	f.Var(&cfg.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key")

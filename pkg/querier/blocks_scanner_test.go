@@ -23,8 +23,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -86,7 +86,7 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 	defer os.RemoveAll(cacheDir) //nolint: errcheck
 
 	ctx := context.Background()
-	bucket := &cortex_tsdb.BucketClientMock{}
+	bucket := &bucket.ClientMock{}
 	reg := prometheus.NewPedanticRegistry()
 
 	cfg := prepareBlocksScannerConfig()
@@ -139,7 +139,7 @@ func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T)
 	tenantIDs := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
 	// Mock the bucket to introduce a 1s sleep while iterating each tenant in the bucket.
-	bucket := &cortex_tsdb.BucketClientMock{}
+	bucket := &bucket.ClientMock{}
 	bucket.MockIter("", tenantIDs, nil)
 	for _, tenantID := range tenantIDs {
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
@@ -177,7 +177,7 @@ func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) 
 	}
 
 	// Mock the bucket to introduce a 1s sleep while syncing each block in the bucket.
-	bucket := &cortex_tsdb.BucketClientMock{}
+	bucket := &bucket.ClientMock{}
 	bucket.MockIter("", []string{"user-1"}, nil)
 	bucket.MockIter("user-1/", blockPaths, nil)
 	bucket.On("Exists", mock.Anything, mock.Anything).Return(false, nil).Run(func(args mock.Arguments) {

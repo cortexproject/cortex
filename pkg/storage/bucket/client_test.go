@@ -1,4 +1,4 @@
-package tsdb
+package bucket
 
 import (
 	"context"
@@ -47,7 +47,7 @@ backend: unknown
 `
 )
 
-func TestNewBucketClient(t *testing.T) {
+func TestNewClient(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -64,7 +64,7 @@ func TestNewBucketClient(t *testing.T) {
 		},
 		"should return error on unknown backend": {
 			config:      configWithUnknownBackend,
-			expectedErr: errUnsupportedStorageBackend,
+			expectedErr: ErrUnsupportedStorageBackend,
 		},
 	}
 
@@ -73,14 +73,14 @@ func TestNewBucketClient(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			// Load config
-			cfg := BlocksStorageConfig{}
+			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
 			err := yaml.Unmarshal([]byte(testData.config), &cfg)
 			require.NoError(t, err)
 
 			// Instance a new bucket client from the config
-			bucketClient, err := NewBucketClient(context.Background(), cfg.Bucket, "test", util.Logger, nil)
+			bucketClient, err := NewClient(context.Background(), cfg, "test", util.Logger, nil)
 			require.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

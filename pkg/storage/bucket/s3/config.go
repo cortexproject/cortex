@@ -32,7 +32,7 @@ type HTTPConfig struct {
 	Transport http.RoundTripper `yaml:"-"`
 }
 
-// RegisterFlagsWithPrefix registers the flags for TSDB s3 storage with the provided prefix
+// RegisterFlagsWithPrefix registers the flags for s3 storage with the provided prefix
 func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The time an idle connection will remain idle before closing.")
 	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 2*time.Minute, "The amount of time the client will wait for a servers response headers.")
@@ -51,12 +51,12 @@ type Config struct {
 	HTTP HTTPConfig `yaml:"http"`
 }
 
-// RegisterFlags registers the flags for TSDB s3 storage with the provided prefix
+// RegisterFlags registers the flags for s3 storage with the provided prefix
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("blocks-storage.", f)
+	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix registers the flags for TSDB s3 storage with the provided prefix
+// RegisterFlagsWithPrefix registers the flags for s3 storage with the provided prefix
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "S3 access key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "S3 secret access key")

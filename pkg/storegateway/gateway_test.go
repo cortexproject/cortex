@@ -30,7 +30,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -123,7 +124,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			storageCfg, cleanup := mockStorageConfig(t)
 			defer cleanup()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			bucketClient := &cortex_tsdb.BucketClientMock{}
+			bucketClient := &bucket.ClientMock{}
 
 			// Setup the initial instance state in the ring.
 			if testData.initialExists {
@@ -171,7 +172,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	gatewayCfg.ShardingEnabled = false
 	storageCfg, cleanup := mockStorageConfig(t)
 	defer cleanup()
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
@@ -194,7 +195,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	storageCfg, cleanup := mockStorageConfig(t)
 	defer cleanup()
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
@@ -407,7 +408,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 			storageCfg, cleanup := mockStorageConfig(t)
 			defer cleanup()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			bucketClient := &cortex_tsdb.BucketClientMock{}
+			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
@@ -533,7 +534,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 
 			reg := prometheus.NewPedanticRegistry()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			bucketClient := &cortex_tsdb.BucketClientMock{}
+			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
@@ -593,7 +594,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	defer cleanup()
 
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)

@@ -16,6 +16,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -128,7 +129,7 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	userLogger := util.WithUserID(userID, c.logger)
-	userBucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 
 	ignoreDeletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, c.cfg.DeletionDelay, c.cfg.MetaSyncConcurrency)
 
@@ -178,7 +179,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *cortex_tsdb.UserBucketClient, userLogger log.Logger) {
+func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
 		if blockErr != block.ErrorSyncMetaNotFound {

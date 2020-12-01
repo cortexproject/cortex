@@ -23,6 +23,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -156,7 +157,7 @@ type Compactor struct {
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	createDependencies := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error) {
-		bucketClient, err := cortex_tsdb.NewBucketClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
+		bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 		if err != nil {
 			return nil, nil, nil, errors.Wrap(err, "failed to create the bucket client")
 		}
@@ -459,7 +460,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := cortex_tsdb.NewUserBucketClient(userID, c.bucketClient)
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)

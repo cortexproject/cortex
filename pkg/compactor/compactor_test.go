@@ -31,6 +31,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -122,7 +123,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	t.Parallel()
 
 	// No user blocks stored in the bucket.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
 	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
@@ -265,7 +266,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	t.Parallel()
 
 	// Fail to iterate over the bucket while discovering users.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
 	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
@@ -415,7 +416,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	t.Parallel()
 
 	// Mock the bucket to contain two users, each one with one block.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
@@ -521,7 +522,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	cfg.DeletionDelay = 10 * time.Minute // Delete block after 10 minutes
 
 	// Mock the bucket to contain two users, each one with one block.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 
@@ -624,7 +625,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	t.Parallel()
 
 	// Mock the bucket to contain two users, each one with one block.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
@@ -698,7 +699,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 
 	// Mock the bucket to contain all users, each one with one block.
-	bucketClient := &cortex_tsdb.BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", userIDs, nil)
 	for _, userID := range userIDs {
 		bucketClient.MockIter(userID+"/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)

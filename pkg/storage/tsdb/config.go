@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"flag"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,33 +10,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/wal"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
-	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
-	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 const (
-	// BackendS3 is the value for the S3 storage backend
-	BackendS3 = "s3"
-
-	// BackendGCS is the value for the GCS storage backend
-	BackendGCS = "gcs"
-
-	// BackendAzure is the value for the Azure storage backend
-	BackendAzure = "azure"
-
-	// BackendSwift is the value for the Openstack Swift storage backend
-	BackendSwift = "swift"
-
-	// BackendFilesystem is the value for the filesystem storge backend
-	BackendFilesystem = "filesystem"
-
 	// TenantIDExternalLabel is the external label containing the tenant ID,
 	// set when shipping blocks to the storage.
 	TenantIDExternalLabel = "__org_id__"
@@ -56,9 +34,6 @@ const (
 
 // Validation errors
 var (
-	supportedBackends = []string{BackendS3, BackendGCS, BackendAzure, BackendSwift, BackendFilesystem}
-
-	errUnsupportedStorageBackend    = errors.New("unsupported TSDB storage backend")
 	errInvalidShipConcurrency       = errors.New("invalid TSDB ship concurrency")
 	errInvalidOpeningConcurrency    = errors.New("invalid TSDB opening concurrency")
 	errInvalidCompactionInterval    = errors.New("invalid TSDB compaction interval")
@@ -68,25 +43,10 @@ var (
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
 )
 
-// BucketConfig holds configuration for accessing long-term storage.
-type BucketConfig struct {
-	Backend string `yaml:"backend"`
-	// Backends
-	S3         s3.Config         `yaml:"s3"`
-	GCS        gcs.Config        `yaml:"gcs"`
-	Azure      azure.Config      `yaml:"azure"`
-	Swift      swift.Config      `yaml:"swift"`
-	Filesystem filesystem.Config `yaml:"filesystem"`
-
-	// Not used internally, meant to allow callers to wrap Buckets
-	// created using this config
-	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
-}
-
 // BlocksStorageConfig holds the config information for the blocks storage.
 //nolint:golint
 type BlocksStorageConfig struct {
-	Bucket      BucketConfig      `yaml:",inline"`
+	Bucket      bucket.Config     `yaml:",inline"`
 	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
 	TSDB        TSDBConfig        `yaml:"tsdb"`
 }
@@ -128,36 +88,11 @@ func (d *DurationList) ToMilliseconds() []int64 {
 	return values
 }
 
-// RegisterFlags registers the TSDB Backend
-func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.S3.RegisterFlags(f)
-	cfg.GCS.RegisterFlags(f)
-	cfg.Azure.RegisterFlags(f)
-	cfg.Swift.RegisterFlags(f)
-	cfg.Filesystem.RegisterFlags(f)
-
-	f.StringVar(&cfg.Backend, "blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
-}
-
 // RegisterFlags registers the TSDB flags
 func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.Bucket.RegisterFlags(f)
+	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.BucketStore.RegisterFlags(f)
 	cfg.TSDB.RegisterFlags(f)
-}
-
-func (cfg *BucketConfig) Validate() error {
-	if !util.StringsContain(supportedBackends, cfg.Backend) {
-		return errUnsupportedStorageBackend
-	}
-
-	if cfg.Backend == BackendS3 {
-		if err := cfg.S3.Validate(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // Validate the config.

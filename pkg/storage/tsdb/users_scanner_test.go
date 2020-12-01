@@ -8,10 +8,12 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
-	bucketClient := &BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3"}, nil)
 
 	isOwned := func(userID string) (bool, error) {
@@ -28,7 +30,7 @@ func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckFailed(t *testing.T) {
 	expected := []string{"user-1", "user-2"}
 
-	bucketClient := &BucketClientMock{}
+	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", expected, nil)
 
 	isOwned := func(userID string) (bool, error) {

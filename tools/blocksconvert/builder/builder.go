@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -229,7 +230,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	p.builder.blocksSize.Add(float64(blockSize))
 
 	if p.builder.cfg.UploadBlock {
-		userBucket := cortex_tsdb.NewUserBucketClient(p.userID, p.builder.bucketClient)
+		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient)
 
 		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {
@@ -249,7 +250,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	return ulid.String(), nil
 }
 
-func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *cortex_tsdb.UserBucketClient, blockDir string) error {
+func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *bucket.UserBucketClient, blockDir string) error {
 	boff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,

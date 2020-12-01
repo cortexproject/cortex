@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -153,7 +154,7 @@ func NewBlocksStoreQueryable(stores BlocksStoreSet, finder BlocksFinder, consist
 func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegateway.Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits BlocksStoreLimits, logger log.Logger, reg prometheus.Registerer) (*BlocksStoreQueryable, error) {
 	var stores BlocksStoreSet
 
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), storageCfg.Bucket, "querier", logger, reg)
+	bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, "querier", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket client")
 	}

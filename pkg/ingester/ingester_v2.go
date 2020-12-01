@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -373,7 +374,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -426,7 +427,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 // Special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all openened TSDBs when called.
 func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	bucketClient, err := cortex_tsdb.NewBucketClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
+	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", util.Logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
 	}
@@ -1259,7 +1260,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			userLogger,
 			tsdbPromReg,
 			udir,
-			cortex_tsdb.NewUserBucketClient(userID, i.TSDBState.bucket),
+			bucket.NewUserBucketClient(userID, i.TSDBState.bucket),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			false, // No need to upload compacted blocks. Cortex compactor takes care of that.

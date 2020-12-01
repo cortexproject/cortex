@@ -22,12 +22,12 @@ type Config struct {
 	ContainerName     string `yaml:"container_name"`
 }
 
-// RegisterFlags registers the flags for TSDB Swift storage
+// RegisterFlags registers the flags for Swift storage
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("blocks-storage.", f)
+	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-// RegisterFlagsWithPrefix registers the flags for TSDB Swift storage with the provided prefix
+// RegisterFlagsWithPrefix registers the flags for Swift storage with the provided prefix
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AuthURL, prefix+"swift.auth-url", "", "OpenStack Swift authentication URL")
 	f.StringVar(&cfg.Username, prefix+"swift.username", "", "OpenStack Swift username.")

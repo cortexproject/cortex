@@ -1,4 +1,4 @@
-package tsdb
+package bucket
 
 import (
 	"bytes"
@@ -13,42 +13,42 @@ import (
 
 var errObjectDoesNotExist = errors.New("object does not exist")
 
-// BucketClientMock mocks objstore.Bucket
-type BucketClientMock struct {
+// ClientMock mocks objstore.Bucket
+type ClientMock struct {
 	mock.Mock
 }
 
 // Upload mocks objstore.Bucket.Upload()
-func (m *BucketClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
 	args := m.Called(ctx, name, r)
 	return args.Error(0)
 }
 
 // Delete mocks objstore.Bucket.Delete()
-func (m *BucketClientMock) Delete(ctx context.Context, name string) error {
+func (m *ClientMock) Delete(ctx context.Context, name string) error {
 	args := m.Called(ctx, name)
 	return args.Error(0)
 }
 
 // Name mocks objstore.Bucket.Name()
-func (m *BucketClientMock) Name() string {
+func (m *ClientMock) Name() string {
 	return "mock"
 }
 
 // Iter mocks objstore.Bucket.Iter()
-func (m *BucketClientMock) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (m *ClientMock) Iter(ctx context.Context, dir string, f func(string) error) error {
 	args := m.Called(ctx, dir, f)
 	return args.Error(0)
 }
 
 // MockIter is a convenient method to mock Iter()
-func (m *BucketClientMock) MockIter(prefix string, objects []string, err error) {
+func (m *ClientMock) MockIter(prefix string, objects []string, err error) {
 	m.MockIterWithCallback(prefix, objects, err, nil)
 }
 
 // MockIterWithCallback is a convenient method to mock Iter() and get a callback called when the Iter
 // API is called.
-func (m *BucketClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
+func (m *ClientMock) MockIterWithCallback(prefix string, objects []string, err error, cb func()) {
 	m.On("Iter", mock.Anything, prefix, mock.Anything).Return(err).Run(func(args mock.Arguments) {
 		if cb != nil {
 			cb()
@@ -65,7 +65,7 @@ func (m *BucketClientMock) MockIterWithCallback(prefix string, objects []string,
 }
 
 // Get mocks objstore.Bucket.Get()
-func (m *BucketClientMock) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (m *ClientMock) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	args := m.Called(ctx, name)
 	val, err := args.Get(0), args.Error(1)
 	if val == nil {
@@ -75,7 +75,7 @@ func (m *BucketClientMock) Get(ctx context.Context, name string) (io.ReadCloser,
 }
 
 // MockGet is a convenient method to mock Get() and Exists()
-func (m *BucketClientMock) MockGet(name, content string, err error) {
+func (m *ClientMock) MockGet(name, content string, err error) {
 	if content != "" {
 		m.On("Exists", mock.Anything, name).Return(true, err)
 
@@ -92,34 +92,34 @@ func (m *BucketClientMock) MockGet(name, content string, err error) {
 	}
 }
 
-func (m *BucketClientMock) MockDelete(name string, err error) {
+func (m *ClientMock) MockDelete(name string, err error) {
 	m.On("Delete", mock.Anything, name).Return(err)
 }
 
 // GetRange mocks objstore.Bucket.GetRange()
-func (m *BucketClientMock) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+func (m *ClientMock) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	args := m.Called(ctx, name, off, length)
 	return args.Get(0).(io.ReadCloser), args.Error(1)
 }
 
 // Exists mocks objstore.Bucket.Exists()
-func (m *BucketClientMock) Exists(ctx context.Context, name string) (bool, error) {
+func (m *ClientMock) Exists(ctx context.Context, name string) (bool, error) {
 	args := m.Called(ctx, name)
 	return args.Bool(0), args.Error(1)
 }
 
 // IsObjNotFoundErr mocks objstore.Bucket.IsObjNotFoundErr()
-func (m *BucketClientMock) IsObjNotFoundErr(err error) bool {
+func (m *ClientMock) IsObjNotFoundErr(err error) bool {
 	return err == errObjectDoesNotExist
 }
 
 // ObjectSize mocks objstore.Bucket.Attributes()
-func (m *BucketClientMock) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+func (m *ClientMock) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	args := m.Called(ctx, name)
 	return args.Get(0).(objstore.ObjectAttributes), args.Error(1)
 }
 
 // Close mocks objstore.Bucket.Close()
-func (m *BucketClientMock) Close() error {
+func (m *ClientMock) Close() error {
 	return nil
 }

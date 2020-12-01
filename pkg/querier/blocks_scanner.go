@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -361,7 +362,7 @@ func (d *BlocksScanner) getOrCreateMetaFetcher(userID string) (block.MetadataFet
 
 func (d *BlocksScanner) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util.WithUserID(userID, d.logger)
-	userBucket := cortex_tsdb.NewUserBucketClient(userID, d.bucketClient)
+	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient)
 	userReg := prometheus.NewRegistry()
 
 	// The following filters have been intentionally omitted:

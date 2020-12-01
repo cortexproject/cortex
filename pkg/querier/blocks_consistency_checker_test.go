@@ -8,10 +8,9 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -25,78 +24,78 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 	block3 := ulid.MustNew(uint64(util.TimeToMillis(now.Add(-uploadGracePeriod*4))), nil)
 
 	tests := map[string]struct {
-		knownBlocks           []*BlockMeta
-		knownDeletionMarks    map[ulid.ULID]*metadata.DeletionMark
+		knownBlocks           bucketindex.Blocks
+		knownDeletionMarks    map[ulid.ULID]*bucketindex.BlockDeletionMark
 		queriedBlocks         []ulid.ULID
 		expectedMissingBlocks []ulid.ULID
 	}{
 		"no known blocks": {
-			knownBlocks:        []*BlockMeta{},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			knownBlocks:        bucketindex.Blocks{},
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:      []ulid.ULID{},
 		},
 		"all known blocks have been queried from a single store-gateway": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
 		"all known blocks have been queried from multiple store-gateway": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
 		"store-gateway has queried more blocks than expected": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:      []ulid.ULID{block1, block2, block3},
 		},
 		"store-gateway has queried less blocks than expected": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block3, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks:    map[ulid.ULID]*metadata.DeletionMark{},
+			knownDeletionMarks:    map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:         []ulid.ULID{block1, block3},
 			expectedMissingBlocks: []ulid.ULID{block2},
 		},
 		"store-gateway has queried less blocks than expected, but the missing block has been recently uploaded": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-uploadGracePeriod).Add(time.Minute)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block3, UploadedAt: now.Add(-uploadGracePeriod).Add(time.Minute).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 			queriedBlocks:      []ulid.ULID{block1, block2},
 		},
 		"store-gateway has queried less blocks than expected and the missing block has been recently marked for deletion": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block3, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
 				block3: {DeletionTime: now.Add(-deletionGracePeriod / 2).Unix()},
 			},
 			queriedBlocks:         []ulid.ULID{block1, block2},
 			expectedMissingBlocks: []ulid.ULID{block3},
 		},
 		"store-gateway has queried less blocks than expected and the missing block has been marked for deletion long time ago": {
-			knownBlocks: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}, UploadedAt: now.Add(-time.Hour)},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}, UploadedAt: now.Add(-time.Hour)},
+			knownBlocks: bucketindex.Blocks{
+				{ID: block1, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block2, UploadedAt: now.Add(-time.Hour).Unix()},
+				{ID: block3, UploadedAt: now.Add(-time.Hour).Unix()},
 			},
-			knownDeletionMarks: map[ulid.ULID]*metadata.DeletionMark{
+			knownDeletionMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
 				block3: {DeletionTime: now.Add(-deletionGracePeriod * 2).Unix()},
 			},
 			queriedBlocks: []ulid.ULID{block1, block2},

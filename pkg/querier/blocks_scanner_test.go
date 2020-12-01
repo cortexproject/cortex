@@ -25,6 +25,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -36,26 +37,26 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 	user1Block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 	user1Block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 	user2Block1 := mockStorageBlock(t, bucket, "user-2", 10, 20)
-	user2Mark1 := mockStorageDeletionMark(t, bucket, "user-2", user2Block1)
+	user2Mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-2", user2Block1))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, user1Block2.ULID, blocks[0].ULID)
-	assert.Equal(t, user1Block1.ULID, blocks[1].ULID)
-	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
-	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
+	assert.Equal(t, user1Block2.ULID, blocks[0].ID)
+	assert.Equal(t, user1Block1.ULID, blocks[1].ID)
+	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].GetUploadedAt(), 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
-	blocks, deletionMarks, err = s.GetBlocks("user-2", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-2", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
-	assert.Equal(t, user2Block1.ULID, blocks[0].ULID)
-	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
-	assert.Equal(t, map[ulid.ULID]*metadata.DeletionMark{
-		user2Block1.ULID: &user2Mark1,
+	assert.Equal(t, user2Block1.ULID, blocks[0].ID)
+	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
+	assert.Equal(t, map[ulid.ULID]*bucketindex.BlockDeletionMark{
+		user2Block1.ULID: user2Mark1,
 	}, deletionMarks)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -105,7 +106,7 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 	require.NoError(t, s.StartAsync(ctx))
 	require.Error(t, s.AwaitRunning(ctx))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	assert.Equal(t, errBlocksScannerNotRunning, err)
 	assert.Nil(t, blocks)
 	assert.Nil(t, deletionMarks)
@@ -214,27 +215,27 @@ func TestBlocksScanner_PeriodicScanFindsNewUser(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
 
 	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
-	mark2 := mockStorageDeletionMark(t, bucket, "user-1", block2)
+	mark2 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block2))
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
-	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
-	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
-	assert.Equal(t, map[ulid.ULID]*metadata.DeletionMark{
-		block2.ULID: &mark2,
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
+	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].GetUploadedAt(), 5*time.Second)
+	assert.Equal(t, map[ulid.ULID]*bucketindex.BlockDeletionMark{
+		block2.ULID: mark2,
 	}, deletionMarks)
 }
 
@@ -247,11 +248,11 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
-	assert.Equal(t, block1.ULID, blocks[0].ULID)
-	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
+	assert.Equal(t, block1.ULID, blocks[0].ID)
+	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
 	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -259,13 +260,13 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
-	assert.WithinDuration(t, time.Now(), blocks[0].UploadedAt, 5*time.Second)
-	assert.WithinDuration(t, time.Now(), blocks[1].UploadedAt, 5*time.Second)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
+	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
+	assert.WithinDuration(t, time.Now(), blocks[1].GetUploadedAt(), 5*time.Second)
 	assert.Empty(t, deletionMarks)
 }
 
@@ -279,25 +280,25 @@ func TestBlocksScanner_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
 	assert.Empty(t, deletionMarks)
 
-	mark1 := mockStorageDeletionMark(t, bucket, "user-1", block1)
+	mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block1))
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
-	assert.Equal(t, map[ulid.ULID]*metadata.DeletionMark{
-		block1.ULID: &mark1,
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
+	assert.Equal(t, map[ulid.ULID]*bucketindex.BlockDeletionMark{
+		block1.ULID: mark1,
 	}, deletionMarks)
 }
 
@@ -311,11 +312,11 @@ func TestBlocksScanner_PeriodicScanFindsDeletedBlock(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
 	assert.Empty(t, deletionMarks)
 
 	require.NoError(t, bucket.Delete(ctx, fmt.Sprintf("%s/%s", "user-1", block1.ULID.String())))
@@ -323,10 +324,10 @@ func TestBlocksScanner_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
 	assert.Empty(t, deletionMarks)
 }
 
@@ -340,11 +341,11 @@ func TestBlocksScanner_PeriodicScanFindsDeletedUser(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
 	assert.Empty(t, deletionMarks)
 
 	require.NoError(t, bucket.Delete(ctx, "user-1"))
@@ -352,7 +353,7 @@ func TestBlocksScanner_PeriodicScanFindsDeletedUser(t *testing.T) {
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 30)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 30)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
@@ -368,11 +369,11 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	blocks, deletionMarks, err := s.GetBlocks("user-1", 0, 40)
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 40)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(blocks))
-	assert.Equal(t, block2.ULID, blocks[0].ULID)
-	assert.Equal(t, block1.ULID, blocks[1].ULID)
+	assert.Equal(t, block2.ULID, blocks[0].ID)
+	assert.Equal(t, block1.ULID, blocks[1].ID)
 	assert.Empty(t, deletionMarks)
 
 	require.NoError(t, bucket.Delete(ctx, "user-1"))
@@ -380,7 +381,7 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 40)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
@@ -390,10 +391,10 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
 
-	blocks, deletionMarks, err = s.GetBlocks("user-1", 0, 40)
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-1", 0, 40)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blocks))
-	assert.Equal(t, block3.ULID, blocks[0].ULID)
+	assert.Equal(t, block3.ULID, blocks[0].ID)
 	assert.Empty(t, deletionMarks)
 }
 
@@ -406,7 +407,7 @@ func TestBlocksScanner_GetBlocks(t *testing.T) {
 	block2 := mockStorageBlock(t, bucket, "user-1", 12, 20)
 	block3 := mockStorageBlock(t, bucket, "user-1", 20, 30)
 	block4 := mockStorageBlock(t, bucket, "user-1", 30, 40)
-	mark3 := mockStorageDeletionMark(t, bucket, "user-1", block3)
+	mark3 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block3))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -414,73 +415,73 @@ func TestBlocksScanner_GetBlocks(t *testing.T) {
 		minT          int64
 		maxT          int64
 		expectedMetas []tsdb.BlockMeta
-		expectedMarks map[ulid.ULID]*metadata.DeletionMark
+		expectedMarks map[ulid.ULID]*bucketindex.BlockDeletionMark
 	}{
 		"no matching block because the range is too low": {
 			minT:          0,
 			maxT:          5,
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		},
 		"no matching block because the range is too high": {
 			minT:          50,
 			maxT:          60,
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		},
 		"matching all blocks": {
 			minT:          0,
 			maxT:          60,
 			expectedMetas: []tsdb.BlockMeta{block4, block3, block2, block1},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{
-				block3.ULID: &mark3,
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
 			},
 		},
 		"query range starting at a block maxT": {
 			minT:          block3.MaxTime,
 			maxT:          60,
 			expectedMetas: []tsdb.BlockMeta{block4},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		},
 		"query range ending at a block minT": {
 			minT:          block3.MinTime,
 			maxT:          block4.MinTime,
 			expectedMetas: []tsdb.BlockMeta{block4, block3},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{
-				block3.ULID: &mark3,
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
 			},
 		},
 		"query range within a single block": {
 			minT:          block3.MinTime + 2,
 			maxT:          block3.MaxTime - 2,
 			expectedMetas: []tsdb.BlockMeta{block3},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{
-				block3.ULID: &mark3,
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
 			},
 		},
 		"query range within multiple blocks": {
 			minT:          13,
 			maxT:          16,
 			expectedMetas: []tsdb.BlockMeta{block2, block1},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		},
 		"query range matching exactly a single block": {
 			minT:          block3.MinTime,
 			maxT:          block3.MaxTime - 1,
 			expectedMetas: []tsdb.BlockMeta{block3},
-			expectedMarks: map[ulid.ULID]*metadata.DeletionMark{
-				block3.ULID: &mark3,
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
 			},
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			metas, deletionMarks, err := s.GetBlocks("user-1", testData.minT, testData.maxT)
+			metas, deletionMarks, err := s.GetBlocks(ctx, "user-1", testData.minT, testData.maxT)
 			require.NoError(t, err)
 			require.Equal(t, len(testData.expectedMetas), len(metas))
 			require.Equal(t, testData.expectedMarks, deletionMarks)
 
 			for i, expectedBlock := range testData.expectedMetas {
-				assert.Equal(t, expectedBlock.ULID, metas[i].ULID)
+				assert.Equal(t, expectedBlock.ULID, metas[i].ID)
 			}
 		})
 	}
@@ -515,7 +516,6 @@ func prepareBlocksScannerConfig() BlocksScannerConfig {
 		ScanInterval:             time.Minute,
 		TenantsConcurrency:       10,
 		MetasConcurrency:         10,
-		ConsistencyDelay:         0,
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
 }
@@ -548,7 +548,7 @@ func mockStorageBlock(t *testing.T, bucket objstore.Bucket, userID string, minT,
 	return meta
 }
 
-func mockStorageDeletionMark(t *testing.T, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) metadata.DeletionMark {
+func mockStorageDeletionMark(t *testing.T, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *metadata.DeletionMark {
 	mark := metadata.DeletionMark{
 		ID:           meta.ULID,
 		DeletionTime: time.Now().Add(-time.Minute).Unix(),
@@ -564,5 +564,5 @@ func mockStorageDeletionMark(t *testing.T, bucket objstore.Bucket, userID string
 	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), metadata.DeletionMarkFilename)
 	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
 
-	return mark
+	return &mark
 }

@@ -33,7 +33,7 @@
 * [ENHANCEMENT] Blocks storage: enabled caching of `meta.json` attributes, configurable via `-blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl`. #3528
 * [ENHANCEMENT] Compactor: added a config validation check to fail fast if the compactor has been configured invalid block range periods (each period is expected to be a multiple of the previous one). #3534
 * [ENHANCEMENT] Blocks storage: concurrently fetch deletion marks from object storage. #3538
-* [ENHANCEMENT] Blocks storage ingester: ingester can now close idle TSDB and delete local data. #3491
+* [ENHANCEMENT] Blocks storage ingester: ingester can now close idle TSDB and delete local data. #3491 #3552
 * [ENHANCEMENT] Blocks storage: add option to use V2 signatures for S3 authentication. #3540
 * [ENHANCEMENT] Exported process metrics to monitor the number of memory map areas allocated. #3537
   * - `process_memory_map_areas`

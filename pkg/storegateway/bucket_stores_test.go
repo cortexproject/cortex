@@ -27,6 +27,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/backend"
 	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -210,7 +211,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 			cfg.BucketStore.TenantSyncConcurrency = 2
 			defer cleanup()
 
-			bucketClient := &cortex_tsdb.BucketClientMock{}
+			bucketClient := &backend.BucketClientMock{}
 			bucketClient.MockIter("", allUsers, nil)
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)

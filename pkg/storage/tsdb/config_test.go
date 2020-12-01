@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/cortexproject/cortex/pkg/storage/backend"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -33,7 +34,7 @@ func TestConfig_Validate(t *testing.T) {
 			setup: func(cfg *BlocksStorageConfig) {
 				cfg.Bucket.Backend = "unknown"
 			},
-			expectedErr: errUnsupportedStorageBackend,
+			expectedErr: backend.ErrUnsupportedStorageBackend,
 		},
 		"should fail on invalid ship concurrency": {
 			setup: func(cfg *BlocksStorageConfig) {

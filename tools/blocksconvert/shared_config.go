@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/storage/backend"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -35,7 +36,7 @@ func (cfg *SharedConfig) GetBucket(l log.Logger, reg prometheus.Registerer) (obj
 		return nil, errors.Wrap(err, "invalid bucket config")
 	}
 
-	bucket, err := tsdb.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
+	bucket, err := backend.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket")
 	}

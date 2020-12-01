@@ -125,6 +125,14 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Store.RegisterFlags(f)
 }
 
+// Validate config and returns error on failure
+func (cfg *MultitenantAlertmanagerConfig) Validate() error {
+	if err := cfg.Store.Validate(); err != nil {
+		return errors.Wrap(err, "invalid storage config")
+	}
+	return nil
+}
+
 type multitenantAlertmanagerMetrics struct {
 	lastReloadSuccessful          *prometheus.GaugeVec
 	lastReloadSuccessfulTimestamp *prometheus.GaugeVec

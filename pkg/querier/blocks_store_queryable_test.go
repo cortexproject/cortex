@@ -18,18 +18,17 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -63,7 +62,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		finderResult      []*BlockMeta
+		finderResult      bucketindex.Blocks
 		finderErr         error
 		storeSetResponses []interface{}
 		limits            BlocksStoreLimits
@@ -82,9 +81,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			expectedErr: "unable to find blocks",
 		},
 		"error while getting clients to query the store-gateway": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -93,9 +92,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			expectedErr: "no client found",
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -118,9 +117,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -149,9 +148,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series (single returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -177,9 +176,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -206,9 +205,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -274,9 +273,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			`,
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -294,11 +293,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+				{ID: block3},
+				{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -319,11 +318,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
 		},
 		"multiple store-gateway instances have some missing blocks but queried from a replica during subsequent attempts": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+				{ID: block3},
+				{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -397,9 +396,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			`,
 		},
 		"max chunks per query limit greater then the number of chunks fetched": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -422,9 +421,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 		},
 		"max chunks per query limit hit while fetching chunks at first attempt": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -439,11 +438,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			expectedErr: fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1),
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+				{ID: block3},
+				{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -483,7 +482,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 			finder := &blocksFinderMock{}
-			finder.On("GetBlocks", "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*metadata.DeletionMark(nil), testData.finderErr)
+			finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), testData.finderErr)
 
 			q := &blocksStoreQuerier{
 				ctx:         ctx,
@@ -568,7 +567,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	)
 
 	tests := map[string]struct {
-		finderResult        []*BlockMeta
+		finderResult        bucketindex.Blocks
 		finderErr           error
 		storeSetResponses   []interface{}
 		expectedLabelNames  []string
@@ -585,9 +584,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedErr: "unable to find blocks",
 		},
 		"error while getting clients to query the store-gateway": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -595,9 +594,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedErr: "no client found",
 		},
 		"a single store-gateway instance holds the required blocks": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -620,9 +619,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -658,9 +657,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -696,9 +695,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			// Block1 has series1 and series2
 			// Block2 has only series1
@@ -777,9 +776,9 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			`,
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -804,11 +803,11 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+				{ID: block3},
+				{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -850,11 +849,11 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			// Block2 has series2
 			// Block3 has series1 and series2
 			// Block4 has no series (poor lonely block)
-			finderResult: []*BlockMeta{
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block3}}},
-				{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block4}}},
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+				{ID: block3},
+				{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -960,7 +959,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				reg := prometheus.NewPedanticRegistry()
 				stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 				finder := &blocksFinderMock{}
-				finder.On("GetBlocks", "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*metadata.DeletionMark(nil), testData.finderErr)
+				finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), testData.finderErr)
 
 				q := &blocksStoreQuerier{
 					ctx:         ctx,
@@ -1056,7 +1055,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			finder := &blocksFinderMock{}
-			finder.On("GetBlocks", "user-1", mock.Anything, mock.Anything).Return([]*BlockMeta(nil), map[ulid.ULID]*metadata.DeletionMark(nil), error(nil))
+			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 			q := &blocksStoreQuerier{
 				ctx:             context.Background(),
@@ -1084,8 +1083,8 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 				assert.Len(t, finder.Calls, 0)
 			} else {
 				require.Len(t, finder.Calls, 1)
-				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(1))
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(2), float64(5*time.Second.Milliseconds()))
+				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2))
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(5*time.Second.Milliseconds()))
 			}
 		})
 	}
@@ -1119,10 +1118,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	finder := &blocksFinderMock{
 		Service: services.NewIdleService(nil, nil),
 	}
-	finder.On("GetBlocks", "user-1", mock.Anything, mock.Anything).Return([]*BlockMeta{
-		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}}},
-		{Meta: metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}}},
-	}, map[ulid.ULID]*metadata.DeletionMark(nil), error(nil))
+	finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks{
+		{ID: block1},
+		{ID: block2},
+	}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 	// Mock the store to simulate each block is queried from a different store-gateway.
 	gateway1 := &storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
@@ -1243,9 +1242,9 @@ type blocksFinderMock struct {
 	mock.Mock
 }
 
-func (m *blocksFinderMock) GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error) {
-	args := m.Called(userID, minT, maxT)
-	return args.Get(0).([]*BlockMeta), args.Get(1).(map[ulid.ULID]*metadata.DeletionMark), args.Error(2)
+func (m *blocksFinderMock) GetBlocks(ctx context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
+	args := m.Called(ctx, userID, minT, maxT)
+	return args.Get(0).(bucketindex.Blocks), args.Get(1).(map[ulid.ULID]*bucketindex.BlockDeletionMark), args.Error(2)
 }
 
 type storeGatewayClientMock struct {

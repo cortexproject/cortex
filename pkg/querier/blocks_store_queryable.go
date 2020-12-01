@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -32,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -68,7 +68,7 @@ type BlocksFinder interface {
 
 	// GetBlocks returns known blocks for userID containing samples within the range minT
 	// and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-	GetBlocks(userID string, minT, maxT int64) ([]*BlockMeta, map[ulid.ULID]*metadata.DeletionMark, error)
+	GetBlocks(ctx context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error)
 }
 
 // BlocksStoreClient is the interface that should be implemented by any client used
@@ -161,7 +161,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	// Blocks scanner doesn't use chunks, but we pass config for consistency.
 	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
-		return nil, errors.Wrapf(err, "create caching bucket")
+		return nil, errors.Wrap(err, "create caching bucket")
 	}
 	bucketClient = cachingBucket
 
@@ -170,7 +170,6 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
 		MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 		CacheDir:                 storageCfg.BucketStore.SyncDir,
-		ConsistencyDelay:         storageCfg.BucketStore.ConsistencyDelay,
 		IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 	}, bucketClient, logger, reg)
 
@@ -446,22 +445,22 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	}
 
 	// Find the list of blocks we need to query given the time range.
-	knownMetas, knownDeletionMarks, err := q.finder.GetBlocks(q.userID, minT, maxT)
+	knownBlocks, knownDeletionMarks, err := q.finder.GetBlocks(ctx, q.userID, minT, maxT)
 	if err != nil {
 		return err
 	}
 
-	if len(knownMetas) == 0 {
+	if len(knownBlocks) == 0 {
 		q.metrics.storesHit.Observe(0)
 		level.Debug(logger).Log("msg", "no blocks found")
 		return nil
 	}
 
-	level.Debug(logger).Log("msg", "found blocks to query", "expected", BlockMetas(knownMetas).String())
+	level.Debug(logger).Log("msg", "found blocks to query", "expected", knownBlocks.String())
 
 	var (
 		// At the beginning the list of blocks to query are all known blocks.
-		remainingBlocks = getULIDsFromBlockMetas(knownMetas)
+		remainingBlocks = knownBlocks.GetULIDs()
 		attemptedBlocks = map[ulid.ULID][]string{}
 		touchedStores   = map[string]struct{}{}
 
@@ -504,7 +503,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 		}
 
 		// Ensure all expected blocks have been queried (during all tries done so far).
-		missingBlocks := q.consistency.Check(knownMetas, knownDeletionMarks, resQueriedBlocks)
+		missingBlocks := q.consistency.Check(knownBlocks, knownDeletionMarks, resQueriedBlocks)
 		if len(missingBlocks) == 0 {
 			q.metrics.storesHit.Observe(float64(len(touchedStores)))
 			q.metrics.refetches.Observe(float64(attempt - 1))

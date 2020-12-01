@@ -54,6 +54,7 @@
 
 * [ENHANCEMENT] Scheduler: ability to ignore users based on regexp, using `-scheduler.ignore-users-regex` flag. #3477
 * [ENHANCEMENT] Builder: Parallelize reading chunks in the final stage of building block. #3470
+* [ENHANCEMENT] Builder: remove duplicate label names from chunk. #3547
 
 ## 1.5.0 / 2020-11-09
 

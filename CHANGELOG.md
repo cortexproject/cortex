@@ -39,6 +39,11 @@
   * - `process_memory_map_areas`
   * - `process_memory_map_areas_limit`
 * [ENHANCEMENT] Ruler: Expose gRPC client options. #3523
+* [ENHANCEMENT] Compactor: added metrics to track on-going compaction. #3535
+  * `cortex_compactor_tenants_discovered`
+  * `cortex_compactor_tenants_skipped`
+  * `cortex_compactor_tenants_processing_succeeded`
+  * `cortex_compactor_tenants_processing_failed`
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422
 * [BUGFIX] Querier: fixed `-querier.max-query-into-future` which wasn't correctly enforced on range queries. #3452

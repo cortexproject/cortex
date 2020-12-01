@@ -49,6 +49,7 @@
 * [BUGFIX] Querier: fixed `-querier.max-query-into-future` which wasn't correctly enforced on range queries. #3452
 * [BUGFIX] Fixed float64 precision stability when aggregating metrics before exposing them. This could have lead to false counters resets when querying some metrics exposed by Cortex. #3506
 * [BUGFIX] Querier: the meta.json sync concurrency done when running Cortex with the blocks storage is now controlled by `-blocks-storage.bucket-store.meta-sync-concurrency` instead of the incorrect `-blocks-storage.bucket-store.block-sync-concurrency` (default values are the same). #3531
+* [BUGFIX] Querier: fixed initialization order of querier module when using blocks storage. It now (again) waits until blocks have been synchronized. #3551
 
 ## Blocksconvert
 

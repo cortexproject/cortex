@@ -1,4 +1,4 @@
-package backend
+package bucket
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend/azure"
-	"github.com/cortexproject/cortex/pkg/storage/backend/filesystem"
-	"github.com/cortexproject/cortex/pkg/storage/backend/gcs"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
-	"github.com/cortexproject/cortex/pkg/storage/backend/swift"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/azure"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/gcs"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -42,8 +42,8 @@ var (
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
 )
 
-// BucketConfig holds configuration for accessing long-term storage.
-type BucketConfig struct {
+// Config holds configuration for accessing long-term storage.
+type Config struct {
 	Backend string `yaml:"backend"`
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
@@ -58,11 +58,11 @@ type BucketConfig struct {
 }
 
 // RegisterFlags registers the backend storage config.
-func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-func (cfg *BucketConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
@@ -72,7 +72,7 @@ func (cfg *BucketConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	f.StringVar(&cfg.Backend, prefix+"backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 }
 
-func (cfg *BucketConfig) Validate() error {
+func (cfg *Config) Validate() error {
 	if !util.StringsContain(supportedBackends, cfg.Backend) {
 		return ErrUnsupportedStorageBackend
 	}
@@ -86,8 +86,8 @@ func (cfg *BucketConfig) Validate() error {
 	return nil
 }
 
-// NewBucketClient creates a new bucket client based on the configured backend
-func NewBucketClient(ctx context.Context, cfg BucketConfig, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
+// NewClient creates a new bucket client based on the configured backend
+func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
 	switch cfg.Backend {
 	case S3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)

@@ -12,8 +12,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/storage/backend"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -29,8 +29,8 @@ func TestCortex(t *testing.T) {
 		},
 		Ingester: ingester.Config{
 			BlocksStorageConfig: tsdb.BlocksStorageConfig{
-				Bucket: backend.BucketConfig{
-					Backend: backend.S3,
+				Bucket: bucket.Config{
+					Backend: bucket.S3,
 					S3: s3.Config{
 						Endpoint: "localhost",
 					},
@@ -47,8 +47,8 @@ func TestCortex(t *testing.T) {
 			},
 		},
 		BlocksStorage: tsdb.BlocksStorageConfig{
-			Bucket: backend.BucketConfig{
-				Backend: backend.S3,
+			Bucket: bucket.Config{
+				Backend: bucket.S3,
 				S3: s3.Config{
 					Endpoint: "localhost",
 				},

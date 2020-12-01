@@ -11,14 +11,14 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/storage/backend"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 type SharedConfig struct {
 	SchemaConfig  chunk.SchemaConfig // Flags registered by main.go
 	StorageConfig storage.Config
 
-	Bucket       backend.BucketConfig
+	Bucket       bucket.Config
 	BucketPrefix string
 }
 
@@ -35,7 +35,7 @@ func (cfg *SharedConfig) GetBucket(l log.Logger, reg prometheus.Registerer) (obj
 		return nil, errors.Wrap(err, "invalid bucket config")
 	}
 
-	bucket, err := backend.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
+	bucket, err := bucket.NewClient(context.Background(), cfg.Bucket, "bucket", l, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket")
 	}

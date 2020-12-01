@@ -26,7 +26,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -328,7 +328,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 
 	level.Info(userLogger).Log("msg", "creating user bucket store")
 
-	userBkt := backend.NewUserBucketClient(userID, u.bucket)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket)
 
 	// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
 	// belong to the store-gateway shard. We need to run the BucketStore synching anyway

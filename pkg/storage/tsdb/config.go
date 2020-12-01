@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/wal"
 	"github.com/thanos-io/thanos/pkg/store"
 
-	"github.com/cortexproject/cortex/pkg/storage/backend"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 const (
@@ -46,9 +46,9 @@ var (
 // BlocksStorageConfig holds the config information for the blocks storage.
 //nolint:golint
 type BlocksStorageConfig struct {
-	Bucket      backend.BucketConfig `yaml:",inline"`
-	BucketStore BucketStoreConfig    `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
-	TSDB        TSDBConfig           `yaml:"tsdb"`
+	Bucket      bucket.Config     `yaml:",inline"`
+	BucketStore BucketStoreConfig `yaml:"bucket_store" doc:"description=This configures how the store-gateway synchronizes blocks stored in the bucket."`
+	TSDB        TSDBConfig        `yaml:"tsdb"`
 }
 
 // DurationList is the block ranges for a tsdb

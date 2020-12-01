@@ -57,15 +57,19 @@ type BucketConfig struct {
 	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
 }
 
-// RegisterFlags registers the TSDB Backend
+// RegisterFlags registers the backend storage config.
 func (cfg *BucketConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.S3.RegisterFlags(f)
-	cfg.GCS.RegisterFlags(f)
-	cfg.Azure.RegisterFlags(f)
-	cfg.Swift.RegisterFlags(f)
-	cfg.Filesystem.RegisterFlags(f)
+	cfg.RegisterFlagsWithPrefix("", f)
+}
 
-	f.StringVar(&cfg.Backend, "blocks-storage.backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
+func (cfg *BucketConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
+	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
+
+	f.StringVar(&cfg.Backend, prefix+"backend", "s3", fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(supportedBackends, ", ")))
 }
 
 func (cfg *BucketConfig) Validate() error {

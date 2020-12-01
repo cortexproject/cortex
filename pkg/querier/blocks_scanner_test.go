@@ -2,8 +2,6 @@ package querier
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -21,13 +19,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -36,10 +34,10 @@ func TestBlocksScanner_InitialScan(t *testing.T) {
 	s, bucket, _, reg, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	user1Block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	user1Block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
-	user2Block1 := mockStorageBlock(t, bucket, "user-2", 10, 20)
-	user2Mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-2", user2Block1))
+	user1Block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	user1Block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
+	user2Block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-2", 10, 20)
+	user2Mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-2", user2Block1))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -224,9 +222,9 @@ func TestBlocksScanner_PeriodicScanFindsNewUser(t *testing.T) {
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
-	mark2 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block2))
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
+	mark2 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-1", block2))
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
@@ -248,7 +246,7 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -259,7 +257,7 @@ func TestBlocksScanner_PeriodicScanFindsNewBlock(t *testing.T) {
 	assert.WithinDuration(t, time.Now(), blocks[0].GetUploadedAt(), 5*time.Second)
 	assert.Empty(t, deletionMarks)
 
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
@@ -279,8 +277,8 @@ func TestBlocksScanner_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -291,7 +289,7 @@ func TestBlocksScanner_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
 	assert.Equal(t, block1.ULID, blocks[1].ID)
 	assert.Empty(t, deletionMarks)
 
-	mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block1))
+	mark1 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-1", block1))
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
@@ -311,8 +309,8 @@ func TestBlocksScanner_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -340,8 +338,8 @@ func TestBlocksScanner_PeriodicScanFindsDeletedUser(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -368,8 +366,8 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 20)
-	block2 := mockStorageBlock(t, bucket, "user-1", 20, 30)
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -390,7 +388,7 @@ func TestBlocksScanner_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing
 	require.Equal(t, 0, len(blocks))
 	assert.Empty(t, deletionMarks)
 
-	block3 := mockStorageBlock(t, bucket, "user-1", 30, 40)
+	block3 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 30, 40)
 
 	// Trigger a periodic sync
 	require.NoError(t, s.scan(ctx))
@@ -407,11 +405,11 @@ func TestBlocksScanner_GetBlocks(t *testing.T) {
 	s, bucket, _, _, cleanup := prepareBlocksScanner(t, prepareBlocksScannerConfig())
 	defer cleanup()
 
-	block1 := mockStorageBlock(t, bucket, "user-1", 10, 15)
-	block2 := mockStorageBlock(t, bucket, "user-1", 12, 20)
-	block3 := mockStorageBlock(t, bucket, "user-1", 20, 30)
-	block4 := mockStorageBlock(t, bucket, "user-1", 30, 40)
-	mark3 := bucketindex.BlockDeletionMarkFromThanosMarker(mockStorageDeletionMark(t, bucket, "user-1", block3))
+	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 15)
+	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 12, 20)
+	block3 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
+	block4 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 30, 40)
+	mark3 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-1", block3))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -522,51 +520,4 @@ func prepareBlocksScannerConfig() BlocksScannerConfig {
 		MetasConcurrency:         10,
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
-}
-
-func mockStorageBlock(t *testing.T, bucket objstore.Bucket, userID string, minT, maxT int64) tsdb.BlockMeta {
-	// Generate a block ID whose timestamp matches the maxT (for simplicity we assume it
-	// has been compacted and shipped in zero time, even if not realistic).
-	id := ulid.MustNew(uint64(maxT), rand.Reader)
-
-	meta := tsdb.BlockMeta{
-		Version: 1,
-		ULID:    id,
-		MinTime: minT,
-		MaxTime: maxT,
-		Compaction: tsdb.BlockMetaCompaction{
-			Level:   1,
-			Sources: []ulid.ULID{id},
-		},
-	}
-
-	metaContent, err := json.Marshal(meta)
-	if err != nil {
-		panic("failed to marshal mocked block meta")
-	}
-
-	metaContentReader := strings.NewReader(string(metaContent))
-	metaPath := fmt.Sprintf("%s/%s/meta.json", userID, id.String())
-	require.NoError(t, bucket.Upload(context.Background(), metaPath, metaContentReader))
-
-	return meta
-}
-
-func mockStorageDeletionMark(t *testing.T, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *metadata.DeletionMark {
-	mark := metadata.DeletionMark{
-		ID:           meta.ULID,
-		DeletionTime: time.Now().Add(-time.Minute).Unix(),
-		Version:      metadata.DeletionMarkVersion1,
-	}
-
-	markContent, err := json.Marshal(mark)
-	if err != nil {
-		panic("failed to marshal mocked block meta")
-	}
-
-	markContentReader := strings.NewReader(string(markContent))
-	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), metadata.DeletionMarkFilename)
-	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
-
-	return &mark
 }

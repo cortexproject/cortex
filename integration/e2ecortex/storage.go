@@ -11,7 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
-	"github.com/cortexproject/cortex/pkg/storage/backend/s3"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 

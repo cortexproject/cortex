@@ -19,7 +19,10 @@ const (
 	IndexFilename = "bucket-index.json"
 	IndexVersion1 = 1
 
-	SegmentsFormatUnknown       = ""
+	SegmentsFormatUnknown = ""
+
+	// SegmentsFormat1Based6Digits defined segments numbered with 6 digits numbers in a sequence starting from number 1
+	// eg. (000001, 000002, 000003).
 	SegmentsFormat1Based6Digits = "1b6d"
 )
 
@@ -52,8 +55,8 @@ type Block struct {
 	// in the block, if they match a known pattern. We don't store the full segments
 	// files list in order to keep the index small. SegmentsFormat is empty if segments
 	// are unknown or don't match a known format.
-	SegmentsFormat string `json:"segments_format"`
-	SegmentsNum    int    `json:"segments_num"`
+	SegmentsFormat string `json:"segments_format,omitempty"`
+	SegmentsNum    int    `json:"segments_num,omitempty"`
 
 	// UploadedAt is a unix timestamp (seconds precision) of when the block has been completed to be uploaded
 	// to the storage.

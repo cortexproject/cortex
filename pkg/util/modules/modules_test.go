@@ -168,7 +168,7 @@ func TestDependenciesForModule(t *testing.T) {
 	assert.Equal(t, []string{"dep1", "dep2", "dep3"}, deps)
 }
 
-func TestModuleInitOrder(t *testing.T) {
+func TestModuleWaitsForAllDependencies(t *testing.T) {
 	var serviceA services.Service
 
 	initA := func() (services.Service, error) {

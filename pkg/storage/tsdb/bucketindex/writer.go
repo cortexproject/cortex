@@ -22,10 +22,10 @@ import (
 )
 
 var (
-	errBlockMetaNotFound          = errors.New("block meta.json not found")
-	errBlockMetaCorrupted         = errors.New("block meta.json corrupted")
-	errBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
-	errBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
+	ErrBlockMetaNotFound          = block.ErrorSyncMetaNotFound
+	ErrBlockMetaCorrupted         = block.ErrorSyncMetaCorrupted
+	ErrBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
+	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
 )
 
 // Writer is responsible to generate and write a bucket index.
@@ -121,11 +121,11 @@ func (w *Writer) generateBlocksIndex(ctx context.Context, old []*Block) ([]*Bloc
 	// information to store in the bucket index.
 	for id := range discovered {
 		b, err := w.generateBlockIndexEntry(ctx, id)
-		if errors.Is(err, errBlockMetaNotFound) {
+		if errors.Is(err, ErrBlockMetaNotFound) {
 			level.Warn(w.logger).Log("msg", "skipped partial block when generating bucket index", "block", id.String())
 			continue
 		}
-		if errors.Is(err, errBlockMetaCorrupted) {
+		if errors.Is(err, ErrBlockMetaCorrupted) {
 			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when generating bucket index", "block", id.String(), "err", err)
 			continue
 		}
@@ -145,7 +145,7 @@ func (w *Writer) generateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Bl
 	// Get the block's meta.json file.
 	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
-		return nil, errBlockMetaNotFound
+		return nil, ErrBlockMetaNotFound
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "get block meta file: %v", metaFile)
@@ -160,7 +160,7 @@ func (w *Writer) generateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Bl
 	// Unmarshal it.
 	m := metadata.Meta{}
 	if err := json.Unmarshal(metaContent, &m); err != nil {
-		return nil, errors.Wrapf(errBlockMetaCorrupted, "unmarshal block meta file %s: %v", metaFile, err)
+		return nil, errors.Wrapf(ErrBlockMetaCorrupted, "unmarshal block meta file %s: %v", metaFile, err)
 	}
 
 	if m.Version != metadata.TSDBVersion1 {
@@ -209,12 +209,12 @@ func (w *Writer) generateBlockDeletionMarksIndex(ctx context.Context, old []*Blo
 	// Remaining markers are new ones and we have to fetch them.
 	for id := range discovered {
 		m, err := w.generateBlockDeletionMarkIndexEntry(ctx, id)
-		if errors.Is(err, errBlockDeletionMarkNotFound) {
+		if errors.Is(err, ErrBlockDeletionMarkNotFound) {
 			// This could happen if the block is permanently deleted between the "list objects" and now.
 			level.Warn(w.logger).Log("msg", "skipped missing block deletion mark when generating bucket index", "block", id.String())
 			continue
 		}
-		if errors.Is(err, errBlockDeletionMarkCorrupted) {
+		if errors.Is(err, ErrBlockDeletionMarkCorrupted) {
 			level.Error(w.logger).Log("msg", "skipped corrupted block deletion mark when generating bucket index", "block", id.String(), "err", err)
 			continue
 		}
@@ -234,7 +234,7 @@ func (w *Writer) generateBlockDeletionMarkIndexEntry(ctx context.Context, id uli
 	// Get the block's deletion mark file.
 	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, markFile)
 	if w.bkt.IsObjNotFoundErr(err) {
-		return nil, errBlockDeletionMarkNotFound
+		return nil, ErrBlockDeletionMarkNotFound
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "get block deletion mark: %v", markFile)
@@ -249,7 +249,7 @@ func (w *Writer) generateBlockDeletionMarkIndexEntry(ctx context.Context, id uli
 	// Unmarshal it.
 	m := metadata.DeletionMark{}
 	if err := json.Unmarshal(markContent, &m); err != nil {
-		return nil, errors.Wrapf(errBlockDeletionMarkCorrupted, "unmarshal block deletion mark %s: %v", markFile, err)
+		return nil, errors.Wrapf(ErrBlockDeletionMarkCorrupted, "unmarshal block deletion mark %s: %v", markFile, err)
 	}
 
 	if m.Version != metadata.DeletionMarkVersion1 {

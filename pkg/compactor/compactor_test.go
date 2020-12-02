@@ -1,13 +1,13 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -863,7 +863,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 }
 
-func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
+func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
 	// Create a temporary dir for TSDB.
 	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
 	require.NoError(t, err)
@@ -916,24 +916,37 @@ func createTSDBBlock(t *testing.T, dir string, minT, maxT int64, externalLabels 
 	_, err = metadata.InjectThanos(log.NewNopLogger(), filepath.Join(snapshotDir, blockID.String()), meta, nil)
 	require.NoError(t, err)
 
-	// Ensure the output directory exists.
-	require.NoError(t, os.MkdirAll(dir, os.ModePerm))
+	// Copy the block files to the bucket.
+	srcRoot := filepath.Join(snapshotDir, blockID.String())
+	require.NoError(t, filepath.Walk(srcRoot, func(file string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
 
-	// Copy the block files to the storage dir.
-	require.NoError(t, exec.Command("cp", "-r", filepath.Join(snapshotDir, blockID.String()), dir).Run())
+		// Read the file content in memory.
+		content, err := ioutil.ReadFile(file)
+		if err != nil {
+			return err
+		}
+
+		// Upload it to the bucket.
+		relPath, err := filepath.Rel(srcRoot, file)
+		if err != nil {
+			return err
+		}
+
+		return bkt.Upload(context.Background(), path.Join(userID, blockID.String(), relPath), bytes.NewReader(content))
+	}))
 
 	return blockID
 }
 
-func createDeletionMark(t *testing.T, dir string, blockID ulid.ULID, deletionTime time.Time) {
+func createDeletionMark(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID, deletionTime time.Time) {
 	content := mockDeletionMarkJSON(blockID.String(), deletionTime)
-	blockPath := filepath.Join(dir, blockID.String())
-	markPath := filepath.Join(blockPath, metadata.DeletionMarkFilename)
+	blockPath := path.Join(userID, blockID.String())
+	markPath := path.Join(blockPath, metadata.DeletionMarkFilename)
 
-	// Ensure the block directory exists.
-	require.NoError(t, os.MkdirAll(blockPath, os.ModePerm))
-
-	require.NoError(t, ioutil.WriteFile(markPath, []byte(content), os.ModePerm))
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {

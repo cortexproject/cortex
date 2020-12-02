@@ -96,6 +96,10 @@ func (m *ClientMock) MockDelete(name string, err error) {
 	m.On("Delete", mock.Anything, name).Return(err)
 }
 
+func (m *ClientMock) MockExists(name string, exists bool, err error) {
+	m.On("Exists", mock.Anything, name).Return(exists, err)
+}
+
 // GetRange mocks objstore.Bucket.GetRange()
 func (m *ClientMock) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	args := m.Called(ctx, name, off, length)

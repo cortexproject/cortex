@@ -439,7 +439,17 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 			continue
 		} else if !owned {
 			c.compactionRunSkippedTenants.Inc()
-			level.Debug(c.logger).Log("msg", "skipping user because not owned by this shard", "user", userID)
+			level.Debug(c.logger).Log("msg", "skipping user because it is not owned by this shard", "user", userID)
+			continue
+		}
+
+		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
+			c.compactionRunSkippedTenants.Inc()
+			level.Warn(c.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
+			continue
+		} else if markedForDeletion {
+			c.compactionRunSkippedTenants.Inc()
+			level.Debug(c.logger).Log("msg", "skipping user because it is marked for deletion", "user", userID)
 			continue
 		}
 

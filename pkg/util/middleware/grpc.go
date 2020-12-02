@@ -47,7 +47,7 @@ type instrumentedClientStream struct {
 func (s *instrumentedClientStream) SendMsg(m interface{}) error {
 	err := s.ClientStream.SendMsg(m)
 	if err == nil {
-		return err
+		return nil
 	}
 
 	if err == io.EOF {
@@ -62,7 +62,7 @@ func (s *instrumentedClientStream) SendMsg(m interface{}) error {
 func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
 	err := s.ClientStream.RecvMsg(m)
 	if err == nil {
-		return err
+		return nil
 	}
 
 	if err == io.EOF {

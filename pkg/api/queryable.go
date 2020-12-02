@@ -15,7 +15,7 @@ import (
 
 func translateError(err error) error {
 	if err == nil {
-		return err
+		return nil
 	}
 
 	// vendor/github.com/prometheus/prometheus/web/api/v1/api.go, respondError function only accepts

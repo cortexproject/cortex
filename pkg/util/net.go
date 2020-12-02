@@ -27,8 +27,7 @@ func GetFirstAddressOf(names []string) (string, error) {
 		}
 
 		for _, addr := range addrs {
-			switch v := addr.(type) {
-			case *net.IPNet:
+			if v, ok := addr.(*net.IPNet); ok {
 				if ip := v.IP.To4(); ip != nil {
 					return v.IP.String(), nil
 				}

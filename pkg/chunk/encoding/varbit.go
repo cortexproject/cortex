@@ -546,7 +546,6 @@ func (c *varbitChunk) addSecondSample(s model.SamplePair) error {
 func (c *varbitChunk) addLastSample(s model.SamplePair) {
 	c.setLastSample(s)
 	(*c)[varbitFlagOffset] |= 0x80
-	return
 }
 
 // addLaterSample is a helper method only used by c.add(). It adds a third or

@@ -33,7 +33,7 @@ func TestWriter_WriteIndex(t *testing.T) {
 	logger := log.NewNopLogger()
 
 	// Generate the initial index.
-	bkt = BucketWithMarkersIndex(bkt)
+	bkt = BucketWithGlobalMarkers(bkt)
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
@@ -91,7 +91,7 @@ func TestWriter_GenerateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 	logger := log.NewNopLogger()
 
 	// Mock some blocks in the storage.
-	bkt = BucketWithMarkersIndex(bkt)
+	bkt = BucketWithGlobalMarkers(bkt)
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
@@ -118,7 +118,7 @@ func TestWriter_GenerateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 	logger := log.NewNopLogger()
 
 	// Mock some blocks in the storage.
-	bkt = BucketWithMarkersIndex(bkt)
+	bkt = BucketWithGlobalMarkers(bkt)
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)

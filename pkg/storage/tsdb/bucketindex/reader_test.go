@@ -47,7 +47,7 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	defer cleanup()
 
 	// Mock some blocks in the storage.
-	bkt = BucketWithMarkersIndex(bkt)
+	bkt = BucketWithGlobalMarkers(bkt)
 	testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	testutil.MockStorageDeletionMark(t, bkt, userID, testutil.MockStorageBlock(t, bkt, userID, 30, 40))
@@ -77,7 +77,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	defer cleanup()
 
 	// Mock some blocks and deletion marks in the storage.
-	bkt = BucketWithMarkersIndex(bkt)
+	bkt = BucketWithGlobalMarkers(bkt)
 	for i := 0; i < numBlocks; i++ {
 		minT := int64(i * 10)
 		maxT := int64((i + 1) * 10)

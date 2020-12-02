@@ -154,7 +154,7 @@ func TestWriter_GenerateIndex_NoTenantInTheBucket(t *testing.T) {
 	}
 }
 
-func prepareFilesystemBucket(t testing.TB) (objstore.InstrumentedBucket, func()) {
+func prepareFilesystemBucket(t testing.TB) (objstore.Bucket, func()) {
 	storageDir, err := ioutil.TempDir(os.TempDir(), "")
 	require.NoError(t, err)
 

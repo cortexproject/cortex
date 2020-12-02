@@ -15,14 +15,14 @@ import (
 )
 
 type globalMarkersBucket struct {
-	objstore.InstrumentedBucket
+	objstore.Bucket
 }
 
 // BucketWithGlobalMarkers wraps the input bucket into a bucket which also keeps track of markers
 // in the global markers location.
-func BucketWithGlobalMarkers(b objstore.InstrumentedBucket) objstore.InstrumentedBucket {
+func BucketWithGlobalMarkers(b objstore.Bucket) objstore.Bucket {
 	return &globalMarkersBucket{
-		InstrumentedBucket: b,
+		Bucket: b,
 	}
 }
 
@@ -30,7 +30,7 @@ func BucketWithGlobalMarkers(b objstore.InstrumentedBucket) objstore.Instrumente
 func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	blockID, ok := b.isBlockDeletionMark(name)
 	if !ok {
-		return b.InstrumentedBucket.Upload(ctx, name, r)
+		return b.Bucket.Upload(ctx, name, r)
 	}
 
 	// Read the marker.
@@ -40,26 +40,26 @@ func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Read
 	}
 
 	// Upload it to the original location.
-	if err := b.InstrumentedBucket.Upload(ctx, name, bytes.NewReader(body)); err != nil {
+	if err := b.Bucket.Upload(ctx, name, bytes.NewReader(body)); err != nil {
 		return err
 	}
 
 	// Upload it to the global markers location too.
 	globalMarkPath := path.Clean(path.Join(path.Dir(name), "../", BlockDeletionMarkFilepath(blockID)))
-	return b.InstrumentedBucket.Upload(ctx, globalMarkPath, bytes.NewReader(body))
+	return b.Bucket.Upload(ctx, globalMarkPath, bytes.NewReader(body))
 }
 
 // Delete implements objstore.Bucket.
 func (b *globalMarkersBucket) Delete(ctx context.Context, name string) error {
 	// Call the parent.
-	if err := b.InstrumentedBucket.Delete(ctx, name); err != nil {
+	if err := b.Bucket.Delete(ctx, name); err != nil {
 		return err
 	}
 
 	// Delete the marker in the global markers location too.
 	if blockID, ok := b.isBlockDeletionMark(name); ok {
 		globalMarkPath := path.Clean(path.Join(path.Dir(name), "../", BlockDeletionMarkFilepath(blockID)))
-		if err := b.InstrumentedBucket.Delete(ctx, globalMarkPath); err != nil {
+		if err := b.Bucket.Delete(ctx, globalMarkPath); err != nil {
 			if !b.IsObjNotFoundErr(err) {
 				return err
 			}

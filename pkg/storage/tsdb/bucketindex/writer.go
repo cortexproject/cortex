@@ -31,11 +31,11 @@ var (
 
 // Writer is responsible to generate and write a bucket index.
 type Writer struct {
-	bkt    objstore.InstrumentedBucket
+	bkt    objstore.Bucket
 	logger log.Logger
 }
 
-func NewWriter(bkt objstore.InstrumentedBucket, userID string, logger log.Logger) *Writer {
+func NewWriter(bkt objstore.Bucket, userID string, logger log.Logger) *Writer {
 	return &Writer{
 		bkt:    bucket.NewUserBucketClient(userID, bkt),
 		logger: util.WithUserID(userID, logger),
@@ -156,7 +156,7 @@ func (w *Writer) generateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Bl
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
-	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, metaFile)
+	r, err := w.bkt.Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockMetaNotFound
 	}
@@ -245,7 +245,7 @@ func (w *Writer) generateBlockDeletionMarkIndexEntry(ctx context.Context, id uli
 	markFile := path.Join(id.String(), metadata.DeletionMarkFilename)
 
 	// Get the block's deletion mark file.
-	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, markFile)
+	r, err := w.bkt.Get(ctx, markFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockDeletionMarkNotFound
 	}

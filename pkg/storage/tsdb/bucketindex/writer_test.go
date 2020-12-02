@@ -154,7 +154,7 @@ func TestWriter_GenerateIndex_NoTenantInTheBucket(t *testing.T) {
 	}
 }
 
-func prepareFilesystemBucket(t *testing.T) (objstore.InstrumentedBucket, func()) {
+func prepareFilesystemBucket(t testing.TB) (objstore.InstrumentedBucket, func()) {
 	storageDir, err := ioutil.TempDir(os.TempDir(), "")
 	require.NoError(t, err)
 
@@ -168,7 +168,7 @@ func prepareFilesystemBucket(t *testing.T) (objstore.InstrumentedBucket, func())
 	return objstore.BucketWithMetrics("test", bkt, nil), cleanup
 }
 
-func getBlockUploadedAt(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {
+func getBlockUploadedAt(t testing.TB, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {
 	metaFile := path.Join(userID, blockID.String(), block.MetaFilename)
 
 	attrs, err := bkt.Attributes(context.Background(), metaFile)
@@ -177,7 +177,7 @@ func getBlockUploadedAt(t *testing.T, bkt objstore.Bucket, userID string, blockI
 	return attrs.LastModified.Unix()
 }
 
-func assertBucketIndexEqual(t *testing.T, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark) {
+func assertBucketIndexEqual(t testing.TB, idx *Index, bkt objstore.Bucket, userID string, expectedBlocks []tsdb.BlockMeta, expectedDeletionMarks []*metadata.DeletionMark) {
 	assert.Equal(t, IndexVersion1, idx.Version)
 	assert.InDelta(t, time.Now().Unix(), idx.UpdatedAt, 2)
 

@@ -30,7 +30,7 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 	defer cleanup()
 
 	// Write a corrupted index.
-	bkt.Upload(ctx, path.Join(userID, IndexFilename), strings.NewReader("invalid!}"))
+	require.NoError(t, bkt.Upload(ctx, path.Join(userID, IndexCompressedFilename), strings.NewReader("invalid!}")))
 
 	idx, err := ReadIndex(ctx, bkt, userID, log.NewNopLogger())
 	require.Equal(t, ErrIndexCorrupted, err)
@@ -61,4 +61,49 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	actualIdx, err := ReadIndex(ctx, bkt, userID, logger)
 	require.NoError(t, err)
 	assert.Equal(t, expectedIdx, actualIdx)
+}
+
+func BenchmarkReadIndex(b *testing.B) {
+	const (
+		numBlocks             = 1000
+		numBlockDeletionMarks = 100
+		userID                = "user-1"
+	)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	bkt, cleanup := prepareFilesystemBucket(b)
+	defer cleanup()
+
+	// Mock some blocks and deletion marks in the storage.
+	bkt = BucketWithMarkersIndex(bkt)
+	for i := 0; i < numBlocks; i++ {
+		minT := int64(i * 10)
+		maxT := int64((i + 1) * 10)
+
+		block := testutil.MockStorageBlock(b, bkt, userID, minT, maxT)
+
+		if i < numBlockDeletionMarks {
+			testutil.MockStorageDeletionMark(b, bkt, userID, block)
+		}
+	}
+
+	// Write the index.
+	w := NewWriter(bkt, userID, logger)
+	_, err := w.WriteIndex(ctx, nil)
+	require.NoError(b, err)
+
+	// Read it back once just to make sure the index contains the expected data.
+	idx, err := ReadIndex(ctx, bkt, userID, logger)
+	require.NoError(b, err)
+	require.Len(b, idx.Blocks, numBlocks)
+	require.Len(b, idx.BlockDeletionMarks, numBlockDeletionMarks)
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_, err := ReadIndex(ctx, bkt, userID, logger)
+		require.NoError(b, err)
+	}
 }

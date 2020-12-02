@@ -16,7 +16,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
-func MockStorageBlock(t *testing.T, bucket objstore.Bucket, userID string, minT, maxT int64) tsdb.BlockMeta {
+func MockStorageBlock(t testing.TB, bucket objstore.Bucket, userID string, minT, maxT int64) tsdb.BlockMeta {
 	// Generate a block ID whose timestamp matches the maxT (for simplicity we assume it
 	// has been compacted and shipped in zero time, even if not realistic).
 	id := ulid.MustNew(uint64(maxT), rand.Reader)
@@ -44,7 +44,7 @@ func MockStorageBlock(t *testing.T, bucket objstore.Bucket, userID string, minT,
 	return meta
 }
 
-func MockStorageDeletionMark(t *testing.T, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *metadata.DeletionMark {
+func MockStorageDeletionMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *metadata.DeletionMark {
 	mark := metadata.DeletionMark{
 		ID:           meta.ULID,
 		DeletionTime: time.Now().Add(-time.Minute).Unix(),

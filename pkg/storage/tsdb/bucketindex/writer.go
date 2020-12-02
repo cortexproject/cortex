@@ -2,6 +2,7 @@ package bucketindex
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io/ioutil"
 	"path"
@@ -55,8 +56,20 @@ func (w *Writer) WriteIndex(ctx context.Context, old *Index) (*Index, error) {
 		return nil, errors.Wrap(err, "marshal bucket index")
 	}
 
+	// Compress it.
+	var gzipContent bytes.Buffer
+	gzip := gzip.NewWriter(&gzipContent)
+	gzip.Name = IndexFilename
+
+	if _, err := gzip.Write(content); err != nil {
+		return nil, errors.Wrap(err, "gzip bucket index")
+	}
+	if err := gzip.Close(); err != nil {
+		return nil, errors.Wrap(err, "close gzip bucket index")
+	}
+
 	// Upload the index to the storage.
-	if err := w.bkt.Upload(ctx, IndexFilename, bytes.NewReader(content)); err != nil {
+	if err := w.bkt.Upload(ctx, IndexCompressedFilename, &gzipContent); err != nil {
 		return nil, errors.Wrap(err, "upload bucket index")
 	}
 

@@ -71,8 +71,5 @@ func isSignedIntN(i int64, n byte) bool {
 		return false
 	}
 	lower := upper - (1 << n)
-	if i < lower {
-		return false
-	}
-	return true
+	return i >= lower
 }

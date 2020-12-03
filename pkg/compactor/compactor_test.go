@@ -919,6 +919,9 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 	// Copy the block files to the bucket.
 	srcRoot := filepath.Join(snapshotDir, blockID.String())
 	require.NoError(t, filepath.Walk(srcRoot, func(file string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if info.IsDir() {
 			return nil
 		}

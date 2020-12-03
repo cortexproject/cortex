@@ -22,16 +22,16 @@ func TestBlockDeletionMarkFilename(t *testing.T) {
 func TestIsBlockDeletionMarkFilename(t *testing.T) {
 	expected := ulid.MustNew(1, nil)
 
-	actual, ok := IsBlockDeletionMarkFilename("xxx")
+	_, ok := IsBlockDeletionMarkFilename("xxx")
 	assert.False(t, ok)
 
-	actual, ok = IsBlockDeletionMarkFilename("xxx-deletion-mark.json")
+	_, ok = IsBlockDeletionMarkFilename("xxx-deletion-mark.json")
 	assert.False(t, ok)
 
-	actual, ok = IsBlockDeletionMarkFilename("tenant-deletion-mark.json")
+	_, ok = IsBlockDeletionMarkFilename("tenant-deletion-mark.json")
 	assert.False(t, ok)
 
-	actual, ok = IsBlockDeletionMarkFilename(expected.String() + "-deletion-mark.json")
+	actual, ok := IsBlockDeletionMarkFilename(expected.String() + "-deletion-mark.json")
 	assert.True(t, ok)
 	assert.Equal(t, expected, actual)
 }

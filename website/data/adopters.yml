@@ -21,6 +21,9 @@ adopters:
 - name: MayaData
   url: https://mayadata.io/
   logo: mayadata.svg
+- name: Opstrace 
+  url: https://opstrace.com/
+  logo: opstrace.png
 - name: Platform9
   url: https://platform9.com/
   logo: platform9.svg

@@ -62,3 +62,4 @@ Currently experimental features are:
 - Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
 - Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
 - Tenant Deletion in Purger, for blocks storage.
+- Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)

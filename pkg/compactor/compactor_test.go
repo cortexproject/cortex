@@ -538,6 +538,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockIter("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", []string{"user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json"}, nil)
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", nil)
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", nil)
+	bucketClient.MockDelete("user-1/markers/01DTW0ZCPDDNV4BV83Q2SV4QAZ-deletion-mark.json", nil)
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil)
 
 	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)

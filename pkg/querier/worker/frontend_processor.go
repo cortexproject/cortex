@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -25,18 +26,20 @@ var (
 
 func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
 	return &frontendProcessor{
-		log:            log,
-		handler:        handler,
-		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
-		querierID:      cfg.QuerierID,
+		log:               log,
+		handler:           handler,
+		maxMessageSize:    cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		querierID:         cfg.QuerierID,
+		queryStatsEnabled: cfg.QueryStatsEnabled,
 	}
 }
 
 // Handles incoming queries from frontend.
 type frontendProcessor struct {
-	handler        RequestHandler
-	maxMessageSize int
-	querierID      string
+	handler           RequestHandler
+	maxMessageSize    int
+	querierID         string
+	queryStatsEnabled bool
 
 	log log.Logger
 }
@@ -103,7 +106,10 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *stats.Stats) error) {
-	stats, ctx := stats.ContextWithEmptyStats(ctx)
+	var stats *querier_stats.Stats
+	if fp.queryStatsEnabled {
+		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+	}
 
 	response, err := fp.handler.Handle(ctx, request)
 	if err != nil {

@@ -2,6 +2,7 @@ package stats
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -48,6 +49,7 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 		stats, ctx := ContextWithEmptyStats(r.Context())
 		r = r.WithContext(ctx)
 
+		startTime := time.Now()
 		next.ServeHTTP(w, r)
 
 		// Track statistics.
@@ -60,6 +62,7 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 			"user", userID,
 			"method", r.Method,
 			"path", r.URL.Path,
+			"requestTime", time.Since(startTime),
 			"wallTime", stats.WallTime,
 			"samples", stats.Samples,
 		)

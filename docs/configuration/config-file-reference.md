@@ -968,6 +968,12 @@ grpc_client_config:
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
+
+# True to enable query statistics tracking. When enabled, a message with some
+# statistics is logged for every query. This configuration option must be set
+# both on query-frontend and querier.
+# CLI flag: -frontend.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 ```
 
 ### `query_range_config`

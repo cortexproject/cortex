@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/querier/stats"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -32,11 +32,12 @@ import (
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
-		log:            log,
-		handler:        handler,
-		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
-		querierID:      cfg.QuerierID,
-		grpcConfig:     cfg.GRPCClientConfig,
+		log:               log,
+		handler:           handler,
+		maxMessageSize:    cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		querierID:         cfg.QuerierID,
+		grpcConfig:        cfg.GRPCClientConfig,
+		queryStatsEnabled: cfg.QueryStatsEnabled,
 
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_querier_query_frontend_request_duration_seconds",
@@ -62,11 +63,12 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 
 // Handles incoming queries from query-scheduler.
 type schedulerProcessor struct {
-	log            log.Logger
-	handler        RequestHandler
-	grpcConfig     grpcclient.ConfigWithTLS
-	maxMessageSize int
-	querierID      string
+	log               log.Logger
+	handler           RequestHandler
+	grpcConfig        grpcclient.ConfigWithTLS
+	maxMessageSize    int
+	querierID         string
+	queryStatsEnabled bool
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
@@ -141,7 +143,10 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 }
 
 func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, request *httpgrpc.HTTPRequest) {
-	stats, ctx := stats.ContextWithEmptyStats(ctx)
+	var stats *querier_stats.Stats
+	if sp.queryStatsEnabled {
+		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+	}
 
 	response, err := sp.handler.Handle(ctx, request)
 	if err != nil {

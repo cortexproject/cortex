@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync/atomic"
 	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
 )
 
 type contextKey int
@@ -54,4 +56,9 @@ func (s *Stats) Merge(other *Stats) {
 	// TODO when we read, we need to use atomic too.
 	s.AddWallTime(other.WallTime)
 	s.AddSamples(other.Samples)
+}
+
+func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
+	// Do no track statistics for requests failed because of a server error.
+	return r.Code < 500 || r.Code > 599
 }

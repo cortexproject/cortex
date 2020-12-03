@@ -118,6 +118,9 @@ store_gateway:
       consul:
         host: consul:8500
 
+frontend:
+  query_stats_enabled: true
+
 frontend_worker:
   frontend_address: "query-frontend:9007"
   match_max_concurrent: true

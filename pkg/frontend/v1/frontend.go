@@ -222,8 +222,10 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 
 		// Happy path: merge the stats and propagate the response.
 		case resp := <-resps:
-			stats := stats.FromContext(req.originalCtx)
-			stats.Merge(resp.Stats)
+			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+				stats := stats.FromContext(req.originalCtx)
+				stats.Merge(resp.Stats)
+			}
 
 			req.response <- resp.HttpResponse
 		}

@@ -307,6 +307,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
+	t.Cfg.Worker.QueryStatsEnabled = t.Cfg.Frontend.QueryStatsEnabled
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger, prometheus.DefaultRegisterer)
 }
 
@@ -525,9 +526,9 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	if t.Cfg.Frontend.CompressResponses {
 		handler = gziphandler.GzipHandler(handler)
 	}
-
-	// TODO only if enabled
-	handler = stats.NewReportMiddleware(util.Logger, prometheus.DefaultRegisterer).Wrap(handler)
+	if t.Cfg.Frontend.QueryStatsEnabled {
+		handler = stats.NewReportMiddleware(util.Logger, prometheus.DefaultRegisterer).Wrap(handler)
+	}
 
 	t.API.RegisterQueryFrontendHandler(handler)
 

@@ -37,6 +37,7 @@ require (
 	github.com/json-iterator/go v1.1.10
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lib/pq v1.3.0
+	github.com/minio/minio-go/v7 v7.0.2
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.50
 	github.com/oklog/ulid v1.3.1

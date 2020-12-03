@@ -1259,6 +1259,11 @@ storage:
       # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -ruler.storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
+
   swift:
     # Openstack authentication URL.
     # CLI flag: -ruler.storage.swift.auth-url
@@ -1576,6 +1581,11 @@ storage:
       # Set to false to skip verifying the certificate chain and hostname.
       # CLI flag: -alertmanager.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -alertmanager.storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -2053,6 +2063,11 @@ aws:
     # Set to false to skip verifying the certificate chain and hostname.
     # CLI flag: -s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -s3.signature-version
+  [signature_version: <string> | default = "v4"]
 
 azure:
   # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,

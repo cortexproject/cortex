@@ -258,8 +258,12 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			q.queriers = append(q.queriers, cqr)
 		}
 
-		// TODO track stats only if enabled
-		return stats.NewQuerierTracker(q, stats.FromContext(ctx)), nil
+		// Wrap the querier with the stats tracker, if stats are enabled (initialised in the context).
+		if s := stats.FromContext(ctx); s != nil {
+			return stats.NewQuerierTracker(q, s), nil
+		}
+
+		return q, nil
 	})
 }
 

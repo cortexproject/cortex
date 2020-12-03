@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -524,6 +525,9 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	if t.Cfg.Frontend.CompressResponses {
 		handler = gziphandler.GzipHandler(handler)
 	}
+
+	// TODO only if enabled
+	handler = stats.NewMiddleware(util.Logger, prometheus.DefaultRegisterer).Wrap(handler)
 
 	t.API.RegisterQueryFrontendHandler(handler)
 

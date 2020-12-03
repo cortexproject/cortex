@@ -62,12 +62,10 @@ func (m Middleware) Wrap(next http.Handler) http.Handler {
 		stats.AddWallTime(time.Since(start))
 		m.querySeconds.WithLabelValues(userID).Add(float64(stats.WallTime))
 		m.querySamples.WithLabelValues(userID).Add(float64(stats.Samples))
-		m.querySeries.WithLabelValues(userID).Add(float64(stats.Series))
 
 		level.Info(m.logger).Log(
 			"user", userID,
 			"wallTime", stats.WallTime,
-			"series", stats.Series,
 			"samples", stats.Samples,
 		)
 	})

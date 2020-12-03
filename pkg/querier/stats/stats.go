@@ -32,15 +32,6 @@ func FromContext(ctx context.Context) *Stats {
 	return o.(*Stats)
 }
 
-// AddSeries adds some series to the counter.
-func (s *Stats) AddSeries(series int) {
-	if s == nil {
-		return
-	}
-
-	atomic.AddInt32(&s.Series, int32(series))
-}
-
 // AddSamples adds some series to the counter.
 func (s *Stats) AddSamples(samples int64) {
 	if s == nil {
@@ -65,7 +56,7 @@ func (s *Stats) Merge(other *Stats) {
 		return
 	}
 
-	s.WallTime += other.WallTime
-	s.Series += other.Series
-	s.Samples += other.Samples
+	// TODO when we read, we need to use atomic too.
+	s.AddWallTime(other.WallTime)
+	s.AddSamples(other.Samples)
 }

@@ -10,13 +10,8 @@ type contextKey int
 
 var ctxKey = contextKey(0)
 
-// AddToContext adds a new Stats to the context. Returns the original context
-// without overwriting the stats if the stats have already been initialised.
-func AddToContext(ctx context.Context) (*Stats, context.Context) {
-	if stats := FromContext(ctx); stats != nil {
-		return stats, ctx
-	}
-
+// ContextWithEmptyStats returns a context with empty stats.
+func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx

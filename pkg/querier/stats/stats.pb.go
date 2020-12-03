@@ -30,8 +30,10 @@ var _ = time.Kitchen
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Stats struct {
+	// The sum of all wall time spent in the querier to execute the query.
 	WallTime time.Duration `protobuf:"bytes,1,opt,name=wall_time,json=wallTime,proto3,stdduration" json:"wall_time"`
-	Samples  int64         `protobuf:"varint,2,opt,name=samples,proto3" json:"samples,omitempty"`
+	// The sum of all samples processed to execute the query.
+	Samples int64 `protobuf:"varint,2,opt,name=samples,proto3" json:"samples,omitempty"`
 }
 
 func (m *Stats) Reset()      { *m = Stats{} }

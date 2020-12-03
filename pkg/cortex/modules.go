@@ -527,7 +527,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	}
 
 	// TODO only if enabled
-	handler = stats.NewMiddleware(util.Logger, prometheus.DefaultRegisterer).Wrap(handler)
+	handler = stats.NewReportMiddleware(util.Logger, prometheus.DefaultRegisterer).Wrap(handler)
 
 	t.API.RegisterQueryFrontendHandler(handler)
 

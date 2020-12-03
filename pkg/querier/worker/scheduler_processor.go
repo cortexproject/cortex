@@ -141,7 +141,8 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 }
 
 func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, request *httpgrpc.HTTPRequest) {
-	stats, ctx := stats.AddToContext(ctx)
+	stats, ctx := stats.ContextWithEmptyStats(ctx)
+
 	response, err := sp.handler.Handle(ctx, request)
 	if err != nil {
 		var ok bool

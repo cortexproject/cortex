@@ -103,7 +103,8 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *stats.Stats) error) {
-	stats, ctx := stats.AddToContext(ctx)
+	stats, ctx := stats.ContextWithEmptyStats(ctx)
+
 	response, err := fp.handler.Handle(ctx, request)
 	if err != nil {
 		var ok bool

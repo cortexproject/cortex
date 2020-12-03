@@ -56,6 +56,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete series](#delete-series) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
 | [List delete requests](#list-delete-requests) | Purger | `GET <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
 | [Cancel delete request](#cancel-delete-request) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request` |
+| [Tenant delete request](#tenant-delete-request) | Purger | `POST /purger/delete_tenant` |
+| [Tenant delete status](#tenant-delete-status) | Purger | `GET /purger/delete_tenant_status` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway | `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor | `GET /compactor/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) | `GET /api/prom/configs/rules` |
@@ -737,6 +739,26 @@ Cancel a delete request while the request is still in the grace period (before t
 | URL query parameter | Description |
 | ------------------- | ----------- |
 | `request_id` | Deletion request ID to cancel. Can be obtained by the [List delete requests](#list-delete-requests) endpoint. |
+
+_Requires [authentication](#authentication)._
+
+### Tenant Delete Request
+
+```
+POST /purger/delete_tenant
+```
+
+Request deletion of ALL tenant data. Only works with blocks storage. Experimental.
+
+_Requires [authentication](#authentication)._
+
+### Tenant Delete Status
+
+```
+GET /purger/delete_tenant_status
+```
+
+Returns status of tenant deletion. Output format to be defined. Experimental.
 
 _Requires [authentication](#authentication)._
 

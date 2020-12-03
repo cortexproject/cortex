@@ -30,6 +30,9 @@ const (
 
 	// How often are open TSDBs checked for being idle and closed.
 	DefaultCloseIdleTSDBInterval = 5 * time.Minute
+
+	// How often to check for tenant deletion mark.
+	DeletionMarkCheckInterval = 1 * time.Hour
 )
 
 // Validation errors

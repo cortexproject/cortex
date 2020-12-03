@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -36,6 +37,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -1789,6 +1791,52 @@ func TestIngester_shipBlocks(t *testing.T) {
 	for _, m := range mocks {
 		m.AssertNumberOfCalls(t, "Sync", 1)
 	}
+}
+
+func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+
+	// Use in-memory bucket.
+	bucket := objstore.NewInMemBucket()
+
+	i.TSDBState.bucket = bucket
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+	defer cleanup()
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSample(t, i)
+	i.compactBlocks(context.Background(), true)
+	i.shipBlocks(context.Background())
+
+	numObjects := len(bucket.Objects())
+	require.NotZero(t, numObjects)
+
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID))
+	numObjects++ // For deletion marker
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	db.lastDeletionMarkCheck.Store(0)
+
+	// After writing tenant deletion mark,
+	pushSingleSample(t, i)
+	i.compactBlocks(context.Background(), true)
+	i.shipBlocks(context.Background())
+
+	numObjectsAfterMarkingTenantForDeletion := len(bucket.Objects())
+	require.Equal(t, numObjects, numObjectsAfterMarkingTenantForDeletion)
+	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 
 type shipperMock struct {

@@ -215,10 +215,10 @@ func (a *API) RegisterIngester(i Ingester, pushConfig distributor.Config) {
 	a.RegisterRoute("/push", push.Handler(pushConfig, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
 }
 
-// RegisterPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
+// RegisterChunksPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
 // match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
 // component/
-func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPeriod time.Duration) {
+func (a *API) RegisterChunksPurger(store *purger.DeleteStore, deleteRequestCancelPeriod time.Duration) {
 	deleteRequestHandler := purger.NewDeleteRequestHandler(store, deleteRequestCancelPeriod, prometheus.DefaultRegisterer)
 
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
@@ -229,6 +229,11 @@ func (a *API) RegisterPurger(store *purger.DeleteStore, deleteRequestCancelPerio
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/delete_series", http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
 	a.RegisterRoute(a.cfg.LegacyHTTPPrefix+"/api/v1/admin/tsdb/cancel_delete_request", http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
+}
+
+func (a *API) RegisterBlocksPurger(api *purger.BlocksPurgerAPI) {
+	a.RegisterRoute("/purger/delete_tenant", http.HandlerFunc(api.DeleteTenant), true, "POST")
+	a.RegisterRoute("/purger/delete_tenant_status", http.HandlerFunc(api.DeleteTenantStatus), true, "GET")
 }
 
 // RegisterRuler registers routes associated with the Ruler service.

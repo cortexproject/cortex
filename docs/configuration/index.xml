@@ -4747,4 +4747,5 @@ and development.&lt;/p>
 &lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
 &lt;li>Distributor: do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
 &lt;li>Ingester: close idle TSDB and remove them from local disk (&lt;code>-blocks-storage.tsdb.close-idle-tsdb-timeout&lt;/code>)&lt;/li>
+&lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
 &lt;/ul></description></item></channel></rss>

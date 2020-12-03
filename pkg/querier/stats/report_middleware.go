@@ -53,9 +53,8 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 
 		// Track statistics.
-		// TODO we should use atomic to read
-		m.querySeconds.WithLabelValues(userID).Add(float64(stats.WallTime))
-		m.querySamples.WithLabelValues(userID).Add(float64(stats.Samples))
+		m.querySeconds.WithLabelValues(userID).Add(float64(stats.LoadWallTime()))
+		m.querySamples.WithLabelValues(userID).Add(float64(stats.LoadSamples()))
 
 		level.Info(m.logger).Log(
 			"msg", "query stats",
@@ -63,8 +62,8 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"requestTime", time.Since(startTime),
-			"wallTime", stats.WallTime,
-			"samples", stats.Samples,
+			"wallTime", stats.LoadWallTime(),
+			"samples", stats.LoadSamples(),
 		)
 	})
 }

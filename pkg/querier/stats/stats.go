@@ -2,7 +2,7 @@ package stats
 
 import (
 	"context"
-	"sync/atomic"
+	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -38,6 +38,15 @@ func (s *Stats) AddSamples(samples int64) {
 	atomic.AddInt64(&s.Samples, samples)
 }
 
+// LoadSamples returns current samples tracked in the stats.
+func (s *Stats) LoadSamples() int64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadInt64(&s.Samples)
+}
+
 // AddWallTime adds some time to the counter.
 func (s *Stats) AddWallTime(t time.Duration) {
 	if s == nil {
@@ -47,15 +56,23 @@ func (s *Stats) AddWallTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.WallTime), int64(t))
 }
 
+// LoadWallTime returns current samples tracked in the stats.
+func (s *Stats) LoadWallTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return time.Duration(atomic.LoadInt64((*int64)(&s.WallTime)))
+}
+
 // Merge the provide Stats into this one.
 func (s *Stats) Merge(other *Stats) {
 	if s == nil || other == nil {
 		return
 	}
 
-	// TODO when we read, we need to use atomic too.
-	s.AddWallTime(other.WallTime)
-	s.AddSamples(other.Samples)
+	s.AddWallTime(other.LoadWallTime())
+	s.AddSamples(other.LoadSamples())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

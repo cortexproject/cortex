@@ -56,7 +56,10 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 		m.querySamples.WithLabelValues(userID).Add(float64(stats.Samples))
 
 		level.Info(m.logger).Log(
+			"msg", "query stats",
 			"user", userID,
+			"method", r.Method,
+			"path", r.URL.Path,
 			"wallTime", stats.WallTime,
 			"samples", stats.Samples,
 		)

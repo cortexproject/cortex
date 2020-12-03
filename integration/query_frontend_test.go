@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ import (
 type queryFrontendTestConfig struct {
 	testMissingMetricName bool
 	querySchedulerEnabled bool
+	queryStatsEnabled     bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 }
 
@@ -45,10 +47,41 @@ func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendWithBlocksStorageViaFlagsAndQueryStatsEnabled(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		queryStatsEnabled:     true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			flags = BlocksStorageFlags()
+
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			return "", flags
+		},
+	})
+}
+
 func TestQueryFrontendWithBlocksStorageViaFlagsAndWithQueryScheduler(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
 		querySchedulerEnabled: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			flags = BlocksStorageFlags()
+
+			minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			return "", flags
+		},
+	})
+}
+
+func TestQueryFrontendWithBlocksStorageViaFlagsAndWithQuerySchedulerAndQueryStatsEnabled(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		querySchedulerEnabled: true,
+		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			flags = BlocksStorageFlags()
 
@@ -183,6 +216,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 		"-querier.split-queries-by-interval": "24h",
 		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-frontend.query-stats-enabled":      strconv.FormatBool(cfg.queryStatsEnabled),
 	})
 
 	// Start the query-scheduler if enabled.
@@ -305,6 +339,16 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_querier_request_duration_seconds"}, e2e.WithMetricCount))
+
+	// Ensure query stats metrics are tracked only when enabled.
+	if cfg.queryStatsEnabled {
+		require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(
+			e2e.Greater(0),
+			[]string{"cortex_query_seconds_total"},
+			e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
+	} else {
+		require.NoError(t, queryFrontend.WaitRemovedMetric("cortex_query_seconds_total"))
+	}
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)

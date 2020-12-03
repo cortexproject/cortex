@@ -13,7 +13,4 @@ option (gogoproto.unmarshaler_all) = true;
 message Stats {
   // The sum of all wall time spent in the querier to execute the query.
   google.protobuf.Duration wall_time = 1 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
-
-  // The sum of all samples processed to execute the query.
-  int64 samples = 2;
 }

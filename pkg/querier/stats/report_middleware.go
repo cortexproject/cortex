@@ -17,7 +17,6 @@ type ReportMiddleware struct {
 	logger log.Logger
 
 	querySeconds *prometheus.CounterVec
-	querySamples *prometheus.CounterVec
 }
 
 // NewReportMiddleware makes a new ReportMiddleware.
@@ -27,10 +26,6 @@ func NewReportMiddleware(logger log.Logger, reg prometheus.Registerer) ReportMid
 		querySeconds: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
-		}, []string{"user"}),
-		querySamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_samples_total",
-			Help: "Total number of samples queried.",
 		}, []string{"user"}),
 	}
 }
@@ -54,7 +49,6 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 
 		// Track statistics.
 		m.querySeconds.WithLabelValues(userID).Add(float64(stats.LoadWallTime()))
-		m.querySamples.WithLabelValues(userID).Add(float64(stats.LoadSamples()))
 
 		level.Info(m.logger).Log(
 			"msg", "query stats",
@@ -63,7 +57,6 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"requestTime", time.Since(startTime),
 			"wallTime", stats.LoadWallTime(),
-			"samples", stats.LoadSamples(),
 		)
 	})
 }

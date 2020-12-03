@@ -20,7 +20,7 @@ func BenchmarkChunkQueryable(b *testing.B) {
 					var r *promql.Result
 					for n := 0; n < b.N; n++ {
 						queryable := newChunkStoreQueryable(store, testcase.f)
-						r = testQuery(b, queryable, from, query)
+						r = testRangeQuery(b, queryable, from, query)
 					}
 					result = r
 				})

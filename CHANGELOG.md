@@ -11,7 +11,6 @@
 * [FEATURE] Distributor/Ingester: Provide ability to not overflow writes in the presence of a leaving or unhealthy ingester. This allows for more efficient ingester rolling restarts. #3305
 * [FEATURE] Query-frontend: introduced query statistics logged in the query-frontend when enabled via `-frontend.query-stats-enabled=true`. When enabled the following metrics are also tracked: #3539
   - `cortex_query_seconds_total`
-  - `cortex_query_samples_total`
 * [ENHANCEMENT] API: Add GZIP HTTP compression to the API responses. Compression can be enabled via `-api.response-compression-enabled`. #3536
 * [ENHANCEMENT] Added zone-awareness support on queries. When zone-awareness is enabled, queries will still succeed if all ingesters in a single zone will fail. #3414
 * [ENHANCEMENT] Blocks storage ingester: exported more TSDB-related metrics. #3412

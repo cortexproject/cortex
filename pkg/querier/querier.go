@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/series"
-	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -256,11 +255,6 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			}
 
 			q.queriers = append(q.queriers, cqr)
-		}
-
-		// Wrap the querier with the stats tracker, if stats are enabled (initialised in the context).
-		if s := stats.FromContext(ctx); s != nil {
-			return stats.NewQuerierTracker(q, s), nil
 		}
 
 		return q, nil

@@ -29,24 +29,6 @@ func FromContext(ctx context.Context) *Stats {
 	return o.(*Stats)
 }
 
-// AddSamples adds some series to the counter.
-func (s *Stats) AddSamples(samples int64) {
-	if s == nil {
-		return
-	}
-
-	atomic.AddInt64(&s.Samples, samples)
-}
-
-// LoadSamples returns current samples tracked in the stats.
-func (s *Stats) LoadSamples() int64 {
-	if s == nil {
-		return 0
-	}
-
-	return atomic.LoadInt64(&s.Samples)
-}
-
 // AddWallTime adds some time to the counter.
 func (s *Stats) AddWallTime(t time.Duration) {
 	if s == nil {
@@ -56,7 +38,7 @@ func (s *Stats) AddWallTime(t time.Duration) {
 	atomic.AddInt64((*int64)(&s.WallTime), int64(t))
 }
 
-// LoadWallTime returns current samples tracked in the stats.
+// LoadWallTime returns current wall time.
 func (s *Stats) LoadWallTime() time.Duration {
 	if s == nil {
 		return 0
@@ -72,7 +54,6 @@ func (s *Stats) Merge(other *Stats) {
 	}
 
 	s.AddWallTime(other.LoadWallTime())
-	s.AddSamples(other.LoadSamples())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

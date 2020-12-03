@@ -565,11 +565,13 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
       [chunks_list_ttl: <duration> | default = 24h]
 
-      # How long to cache information that block metafile exists.
+      # How long to cache information that block metafile exists. Also used for
+      # user deletion mark file.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
       [metafile_exists_ttl: <duration> | default = 2h]
 
-      # How long to cache information that block metafile doesn't exist.
+      # How long to cache information that block metafile doesn't exist. Also
+      # used for user deletion mark file.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
       [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 

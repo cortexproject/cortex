@@ -130,14 +130,14 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
 	allUsers := append(users, deleted...)
 	return concurrency.ForEachUser(ctx, allUsers, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		if isDeleted[userID] {
-			return errors.Wrapf(c.cleanUserCompletely(ctx, userID), "failed to delete blocks for user marked for deletion: %s", userID)
+			return errors.Wrapf(c.deleteUser(ctx, userID), "failed to delete blocks for user marked for deletion: %s", userID)
 		}
 		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete blocks for user: %s", userID)
 	})
 }
 
 // Remove all blocks for user marked for deletion.
-func (c *BlocksCleaner) cleanUserCompletely(ctx context.Context, userID string) error {
+func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	userLogger := util.WithUserID(userID, c.logger)
 	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 

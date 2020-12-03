@@ -33,10 +33,8 @@ func NewUsersScanner(bucketClient objstore.Bucket, isOwned func(userID string) (
 // and list of users marked for deletion.
 //
 // If sharding is enabled, returned lists contains only the users owned by this instance.
-func (s *UsersScanner) ScanUsers(ctx context.Context) ([]string, []string, error) {
-	var users []string
-
-	err := s.bucketClient.Iter(ctx, "", func(entry string) error {
+func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion []string, err error) {
+	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
 		users = append(users, strings.TrimSuffix(entry, "/"))
 		return nil
 	})
@@ -46,7 +44,6 @@ func (s *UsersScanner) ScanUsers(ctx context.Context) ([]string, []string, error
 
 	// Check users for being owned by instance, and split users into non-deleted and deleted.
 	// We do these checks after listing all users, to improve cacheability of Iter (result is only cached at the end of Iter call).
-	var markedForDeletion []string
 	for ix := 0; ix < len(users); {
 		userID := users[ix]
 
@@ -71,5 +68,5 @@ func (s *UsersScanner) ScanUsers(ctx context.Context) ([]string, []string, error
 		ix++
 	}
 
-	return users, markedForDeletion, err
+	return users, markedForDeletion, nil
 }

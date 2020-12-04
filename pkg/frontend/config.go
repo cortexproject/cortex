@@ -22,7 +22,6 @@ type CombinedFrontendConfig struct {
 
 	CompressResponses bool   `yaml:"compress_responses"`
 	DownstreamURL     string `yaml:"downstream_url"`
-	QueryStatsEnabled bool   `yaml:"query_stats_enabled"`
 }
 
 func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
@@ -32,7 +31,6 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
-	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query. This configuration option must be set both on query-frontend and querier.")
 }
 
 // Initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at

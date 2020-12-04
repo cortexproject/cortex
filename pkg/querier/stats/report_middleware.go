@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ReportMiddleware logs and track metrics with the query statistics.
@@ -50,7 +51,7 @@ func (m ReportMiddleware) Wrap(next http.Handler) http.Handler {
 		// Track statistics.
 		m.querySeconds.WithLabelValues(userID).Add(float64(stats.LoadWallTime()))
 
-		level.Info(m.logger).Log(
+		level.Info(util.WithContext(ctx, m.logger)).Log(
 			"msg", "query stats",
 			"user", userID,
 			"method", r.Method,

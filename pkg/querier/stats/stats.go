@@ -58,5 +58,5 @@ func (s *Stats) Merge(other *Stats) {
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
 	// Do no track statistics for requests failed because of a server error.
-	return r.Code < 500 || r.Code > 599
+	return r.Code < 500
 }

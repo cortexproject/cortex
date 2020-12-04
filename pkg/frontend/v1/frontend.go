@@ -224,7 +224,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		case resp := <-resps:
 			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
 				stats := stats.FromContext(req.originalCtx)
-				stats.Merge(resp.Stats)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
 			}
 
 			req.response <- resp.HttpResponse

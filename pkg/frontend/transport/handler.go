@@ -134,18 +134,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	logMessage := []interface{}{
+	logMessage := append([]interface{}{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
-	}
-
-	// Attempt to iterate through the Form to log any filled in values
-	for k, v := range queryString {
-		logMessage = append(logMessage, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
-	}
+	}, formatQueryString(queryString)...)
 
 	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
@@ -160,15 +155,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.querySeconds.WithLabelValues(userID).Add(float64(stats.LoadWallTime()))
 
 	// Log stats.
-	level.Info(util.WithContext(r.Context(), f.log)).Log(
+	logMessage := append([]interface{}{
 		"msg", "query stats",
-		"user", userID,
 		"method", r.Method,
 		"path", r.URL.Path,
-		"query", queryString.Encode(),
-		"responseTime", queryResponseTime,
-		"queryWallTime", stats.LoadWallTime(),
-	)
+		"response_time", queryResponseTime,
+		"query_wall_time", stats.LoadWallTime(),
+	}, formatQueryString(queryString)...)
+
+	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {
@@ -183,6 +178,13 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	}
 
 	return r.Form
+}
+
+func formatQueryString(queryString url.Values) (fields []interface{}) {
+	for k, v := range queryString {
+		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
+	}
+	return fields
 }
 
 func writeError(w http.ResponseWriter, err error) {

@@ -29,25 +29,44 @@ func NewUsersScanner(bucketClient objstore.Bucket, isOwned func(userID string) (
 	}
 }
 
-// ScanUsers returns a fresh list of users found in the storage. If sharding is enabled,
-// the returned list contains only the users owned by this instance.
-func (s *UsersScanner) ScanUsers(ctx context.Context) ([]string, error) {
-	var users []string
+// ScanUsers returns a fresh list of users found in the storage, that are not marked for deletion,
+// and list of users marked for deletion.
+//
+// If sharding is enabled, returned lists contains only the users owned by this instance.
+func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion []string, err error) {
+	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
+		users = append(users, strings.TrimSuffix(entry, "/"))
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
 
-	err := s.bucketClient.Iter(ctx, "", func(entry string) error {
-		userID := strings.TrimSuffix(entry, "/")
+	// Check users for being owned by instance, and split users into non-deleted and deleted.
+	// We do these checks after listing all users, to improve cacheability of Iter (result is only cached at the end of Iter call).
+	for ix := 0; ix < len(users); {
+		userID := users[ix]
 
 		// Check if it's owned by this instance.
 		owned, err := s.isOwned(userID)
 		if err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 		} else if !owned {
-			return nil
+			users = append(users[:ix], users[ix+1:]...)
+			continue
 		}
 
-		users = append(users, userID)
-		return nil
-	})
+		deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bucketClient, userID)
+		if err != nil {
+			level.Warn(s.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
+		} else if deletionMarkExists {
+			users = append(users[:ix], users[ix+1:]...)
+			markedForDeletion = append(markedForDeletion, userID)
+			continue
+		}
 
-	return users, err
+		ix++
+	}
+
+	return users, markedForDeletion, nil
 }

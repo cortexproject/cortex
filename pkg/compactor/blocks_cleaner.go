@@ -100,31 +100,84 @@ func (c *BlocksCleaner) ticker(ctx context.Context) error {
 }
 
 func (c *BlocksCleaner) runCleanup(ctx context.Context) {
-	level.Info(c.logger).Log("msg", "started hard deletion of blocks marked for deletion")
+	level.Info(c.logger).Log("msg", "started hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion")
 	c.runsStarted.Inc()
 
 	if err := c.cleanUsers(ctx); err == nil {
-		level.Info(c.logger).Log("msg", "successfully completed hard deletion of blocks marked for deletion")
+		level.Info(c.logger).Log("msg", "successfully completed hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion")
 		c.runsCompleted.Inc()
 		c.runsLastSuccess.SetToCurrentTime()
 	} else if errors.Is(err, context.Canceled) {
-		level.Info(c.logger).Log("msg", "canceled hard deletion of blocks marked for deletion", "err", err)
+		level.Info(c.logger).Log("msg", "canceled hard deletion of blocks marked for deletion, and blocks for tenants marked for deletion", "err", err)
 		return
 	} else {
-		level.Error(c.logger).Log("msg", "failed to hard delete blocks marked for deletion", "err", err.Error())
+		level.Error(c.logger).Log("msg", "failed to hard delete blocks marked for deletion, and blocks for tenants marked for deletion", "err", err.Error())
 		c.runsFailed.Inc()
 	}
 }
 
 func (c *BlocksCleaner) cleanUsers(ctx context.Context) error {
-	users, err := c.usersScanner.ScanUsers(ctx)
+	users, deleted, err := c.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to discover users from bucket")
 	}
 
-	return concurrency.ForEachUser(ctx, users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
-		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete user blocks (user: %s)", userID)
+	isDeleted := map[string]bool{}
+	for _, userID := range deleted {
+		isDeleted[userID] = true
+	}
+
+	allUsers := append(users, deleted...)
+	return concurrency.ForEachUser(ctx, allUsers, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
+		if isDeleted[userID] {
+			return errors.Wrapf(c.deleteUser(ctx, userID), "failed to delete blocks for user marked for deletion: %s", userID)
+		}
+		return errors.Wrapf(c.cleanUser(ctx, userID), "failed to delete blocks for user: %s", userID)
 	})
+}
+
+// Remove all blocks for user marked for deletion.
+func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
+	userLogger := util.WithUserID(userID, c.logger)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
+
+	level.Info(userLogger).Log("msg", "deleting blocks for user marked for deletion")
+
+	var deleted, failed int
+	err := userBucket.Iter(ctx, "", func(name string) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		id, ok := block.IsBlockDir(name)
+		if !ok {
+			return nil
+		}
+
+		err := block.Delete(ctx, userLogger, userBucket, id)
+		if err != nil {
+			failed++
+			c.blocksFailedTotal.Inc()
+			level.Warn(userLogger).Log("msg", "failed to delete block", "block", id, "err", err)
+			return nil // Continue with other blocks.
+		}
+
+		deleted++
+		c.blocksCleanedTotal.Inc()
+		level.Info(userLogger).Log("msg", "deleted block", "block", id)
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if failed > 0 {
+		return errors.Errorf("failed to delete %d blocks", failed)
+	}
+
+	level.Info(userLogger).Log("msg", "finished deleting blocks for user marked for deletion", "deletedBlocks", deleted)
+	return nil
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string) error {

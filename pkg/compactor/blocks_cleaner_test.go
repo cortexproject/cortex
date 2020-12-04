@@ -69,6 +69,11 @@ func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	require.NoError(t, bucketClient.Delete(ctx, path.Join("user-1", block6.String(), metadata.MetaFilename)))   // Partial block without deletion mark.
 	createDeletionMark(t, filepath.Join(storageDir, "user-2"), block7, now.Add(-deletionDelay).Add(-time.Hour)) // Block reached the deletion threshold.
 
+	// Blocks for user-3, marked for deletion.
+	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3"))
+	block9 := createTSDBBlock(t, filepath.Join(storageDir, "user-3"), 10, 30, nil)
+	block10 := createTSDBBlock(t, filepath.Join(storageDir, "user-3"), 30, 50, nil)
+
 	cfg := BlocksCleanerConfig{
 		DataDir:             dataDir,
 		MetaSyncConcurrency: 10,
@@ -84,46 +89,39 @@ func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
-	// Check the storage to ensure only the block which has reached the deletion threshold
-	// has been effectively deleted.
-	exists, err := bucketClient.Exists(ctx, path.Join("user-1", block1.String(), metadata.MetaFilename))
-	require.NoError(t, err)
-	assert.True(t, exists)
-
-	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block2.String(), metadata.MetaFilename))
-	require.NoError(t, err)
-	assert.True(t, exists)
-
-	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block3.String(), metadata.MetaFilename))
-	require.NoError(t, err)
-	assert.False(t, exists)
-
-	exists, err = bucketClient.Exists(ctx, path.Join("user-2", block7.String(), metadata.MetaFilename))
-	require.NoError(t, err)
-	assert.False(t, exists)
-
-	exists, err = bucketClient.Exists(ctx, path.Join("user-2", block8.String(), metadata.MetaFilename))
-	require.NoError(t, err)
-	assert.True(t, exists)
-
-	// Should delete a partial block with deletion mark who hasn't reached the deletion threshold yet.
-	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block4.String(), metadata.DeletionMarkFilename))
-	require.NoError(t, err)
-	assert.False(t, exists)
-
-	// Should delete a partial block with deletion mark who has reached the deletion threshold.
-	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block5.String(), metadata.DeletionMarkFilename))
-	require.NoError(t, err)
-	assert.False(t, exists)
-
-	// Should not delete a partial block without deletion mark.
-	exists, err = bucketClient.Exists(ctx, path.Join("user-1", block6.String(), "index"))
-	require.NoError(t, err)
-	assert.True(t, exists)
+	for _, tc := range []struct {
+		path           string
+		expectedExists bool
+	}{
+		// Check the storage to ensure only the block which has reached the deletion threshold
+		// has been effectively deleted.
+		{path: path.Join("user-1", block1.String(), metadata.MetaFilename), expectedExists: true},
+		{path: path.Join("user-1", block2.String(), metadata.MetaFilename), expectedExists: true},
+		{path: path.Join("user-1", block3.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join("user-2", block7.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join("user-2", block8.String(), metadata.MetaFilename), expectedExists: true},
+		// Should delete a partial block with deletion mark who hasn't reached the deletion threshold yet.
+		{path: path.Join("user-1", block4.String(), metadata.DeletionMarkFilename), expectedExists: false},
+		// Should delete a partial block with deletion mark who has reached the deletion threshold.
+		{path: path.Join("user-1", block5.String(), metadata.DeletionMarkFilename), expectedExists: false},
+		// Should not delete a partial block without deletion mark.
+		{path: path.Join("user-1", block6.String(), "index"), expectedExists: true},
+		// Should completely delete blocks for user-3, marked for deletion
+		{path: path.Join("user-3", block9.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
+		{path: path.Join("user-3", block10.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join("user-3", block10.String(), "index"), expectedExists: false},
+		// Tenant deletion mark is not removed.
+		{path: path.Join("user-3", tsdb.TenantDeletionMarkPath), expectedExists: true},
+	} {
+		exists, err := bucketClient.Exists(ctx, tc.path)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedExists, exists, tc.path)
+	}
 
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
-	assert.Equal(t, float64(4), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(6), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -101,6 +103,7 @@ func TestBlocksScanner_InitialScanFailure(t *testing.T) {
 	// Mock the storage to simulate a failure when reading objects.
 	bucket.MockIter("", []string{"user-1"}, nil)
 	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
+	bucket.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucket.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "invalid", errors.New("mocked error"))
 
 	require.NoError(t, s.StartAsync(ctx))
@@ -145,6 +148,7 @@ func TestBlocksScanner_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T)
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
 			time.Sleep(time.Second)
 		})
+		bucket.MockExists(path.Join(tenantID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	}
 
 	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")

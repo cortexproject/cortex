@@ -3,6 +3,9 @@ adopters:
 - name: Aspen Mesh
   url: https://aspenmesh.io/
   logo: aspen-mesh.png
+- name: Buoyant
+  url: https://buoyant.io/
+  logo: buoyant.svg
 - name: DigitalOcean
   url: https://www.digitalocean.com/
   logo: digitalocean.png
@@ -21,7 +24,7 @@ adopters:
 - name: MayaData
   url: https://mayadata.io/
   logo: mayadata.svg
-- name: Opstrace 
+- name: Opstrace
   url: https://opstrace.com/
   logo: opstrace.png
 - name: Platform9

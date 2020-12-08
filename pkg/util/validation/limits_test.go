@@ -113,3 +113,17 @@ metric_relabel_configs:
 
 	assert.Equal(t, []*relabel.Config{&exp}, l.MetricRelabelConfigs)
 }
+func TestMinimumOfNonZeroValues(t *testing.T) {
+	// single tenant
+	for _, tc := range []struct {
+		input    []int
+		expLimit int
+	}{
+		{input: []int{-1, 0, 1}, expLimit: 1},
+		{input: []int{0, 0, 0}, expLimit: 0},
+		{input: []int{0, 5, 10}, expLimit: 5},
+		{input: []int{5}, expLimit: 5},
+	} {
+		assert.Equal(t, tc.expLimit, MinimumOfNonZeroValues(tc.input))
+	}
+}

@@ -23,9 +23,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -259,6 +261,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	userID := msg.GetUserID()
+	userCtx := user.InjectOrgID(context.TODO(), userID)
 
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
@@ -273,7 +276,21 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.enqueueTime = time.Now()
 	req.ctxCancel = cancel
 
-	maxQueriers := s.limits.MaxQueriersPerUser(userID)
+	// aggregate the max queriers limit in the case of a federated tenant query
+	tenantIDs, err := tenant.TenantIDs(userCtx)
+	if err != nil {
+		return err
+	}
+	var maxQueriers int
+	if len(tenantIDs) == 1 {
+		maxQueriers = s.limits.MaxQueriersPerUser(tenantIDs[0])
+	} else {
+		maxQueriersPerTenant := make([]int, len(tenantIDs))
+		for pos := range maxQueriersPerTenant {
+			maxQueriersPerTenant[pos] = s.limits.MaxQueriersPerUser(tenantIDs[pos])
+		}
+		maxQueriers = validation.MinimumOfNonZeroValues(maxQueriersPerTenant)
+	}
 
 	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
 		shouldCancel = false

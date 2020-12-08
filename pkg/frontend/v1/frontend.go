@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -265,13 +266,16 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.enqueueTime = time.Now()
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
-	// figure out the highest max querier per user
+	// aggregate the max queriers limit in the case of a multi tenant query
 	var maxQueriers int
-	for _, tenantID := range tenantIDs {
-		v := f.limits.MaxQueriersPerUser(tenantID)
-		if v > maxQueriers {
-			maxQueriers = v
+	if len(tenantIDs) == 1 {
+		maxQueriers = f.limits.MaxQueriersPerUser(tenantIDs[0])
+	} else {
+		maxQueriersPerTenant := make([]int, len(tenantIDs))
+		for pos := range maxQueriersPerTenant {
+			maxQueriersPerTenant[pos] = f.limits.MaxQueriersPerUser(tenantIDs[pos])
 		}
+		maxQueriers = validation.MinimumOfNonZeroValues(maxQueriersPerTenant)
 	}
 
 	err = f.requestQueue.EnqueueRequest(tenant.JoinTenantIDs(tenantIDs), req, maxQueriers, nil)

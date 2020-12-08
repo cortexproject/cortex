@@ -69,7 +69,7 @@ We can either run it as a separate service or embed it. **I propose we simply em
 
 Under the assumption we implement the options proposed above, our architecture looks like this:
 
-![Scalable Alertmanager Architecture](img/scalable-am.png)
+![Scalable Alertmanager Architecture](docs/proposals/img/scalable-am.png)
 
 **POST /api/v1/alerts (from the ruler) can go to any Alertmanager replica.** The AM distributor uses the ring to write alerts to a quorum of AM managers (reusing the existing code). We continue to use the same in-memory data structure from the upstream Alertmanager to save alerts and notify other pieces
 

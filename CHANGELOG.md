@@ -25,7 +25,15 @@
 * [ENHANCEMENT] Distributor: reduce CPU and memory when an high number of errors are returned by the distributor on the write path. #3990
 * [ENHANCEMENT] Put metric before label value in the "label value too long" error message. #4018
 * [ENHANCEMENT] Allow use of `y|w|d` suffixes for duration related limits and per-tenant limits. #4044
-* [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
+* [ENHANCEMENT] Blocks storage: added Redis support as Cache backend. #3573
+  - The following configure have been added.
+    - `-<prefix>.redis.key-prefix`
+    - `-blocks-storage.bucket-store.index-cache.backend`
+    - `-blocks-storage.bucket-store.index-cache.redis.*`
+    - `-blocks-storage.bucket-store.metadata-cache.backend`
+    - `-blocks-storage.bucket-store.metadata-cache.redis.*`
+    - `-blocks-storage.bucket-store.chunks-cache.backend.backend`
+    - `-blocks-storage.bucket-store.chunks-cache.backend.redis.*`* [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
 * [BUGFIX] Querier: streamline tracing spans. #3924
@@ -33,6 +41,7 @@
 * [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 * [BUGFIX] Query-frontend: Fix issue where cached entry size keeps increasing when making tiny query repeatedly. #3968
 * [BUGFIX] Compactor: `-compactor.blocks-retention-period` now supports weeks (`w`) and years (`y`). #4027
+
 
 ## Blocksconvert
 

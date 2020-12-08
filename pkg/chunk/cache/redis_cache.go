@@ -52,7 +52,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 
 // Store stores the key in the cache.
 func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	err := c.redis.MSet(ctx, keys, bufs)
+	err := c.redis.MSet(ctx, keys, bufs, 0)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)
 	}

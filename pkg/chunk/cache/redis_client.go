@@ -27,6 +27,7 @@ type RedisConfig struct {
 	InsecureSkipVerify bool           `yaml:"tls_insecure_skip_verify"`
 	IdleTimeout        time.Duration  `yaml:"idle_timeout"`
 	MaxConnAge         time.Duration  `yaml:"max_connection_age"`
+	KeyPrefix          string         `yaml:"key_prefix"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -42,12 +43,14 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"redis.tls-insecure-skip-verify", false, description+"Skip validating server certificate.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
+	f.StringVar(&cfg.KeyPrefix, prefix+"redis.key-prefix", "", description+"Adds the given value to the beginning of the key.")
 }
 
 type RedisClient struct {
-	expiration time.Duration
-	timeout    time.Duration
-	rdb        redis.UniversalClient
+	defaultExpiration time.Duration
+	timeout           time.Duration
+	rdb               redis.UniversalClient
+	keyPrefix         string
 }
 
 // NewRedisClient creates Redis client
@@ -65,9 +68,10 @@ func NewRedisClient(cfg *RedisConfig) *RedisClient {
 		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
 	}
 	return &RedisClient{
-		expiration: cfg.Expiration,
-		timeout:    cfg.Timeout,
-		rdb:        redis.NewUniversalClient(opt),
+		defaultExpiration: cfg.Expiration,
+		timeout:           cfg.Timeout,
+		rdb:               redis.NewUniversalClient(opt),
+		keyPrefix:         cfg.KeyPrefix,
 	}
 }
 
@@ -88,16 +92,21 @@ func (c *RedisClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
+// If expiration is zero, use the defaultExpiration set in the client.
+func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte, expiration time.Duration) error {
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
 		defer cancel()
 	}
 
+	if expiration == 0 {
+		expiration = c.defaultExpiration
+	}
+
 	pipe := c.rdb.TxPipeline()
 	for i := range keys {
-		pipe.Set(ctx, keys[i], values[i], c.expiration)
+		pipe.Set(ctx, c.keyPrefix+keys[i], values[i], expiration)
 	}
 	_, err := pipe.Exec(ctx)
 	return err
@@ -110,12 +119,22 @@ func (c *RedisClient) MGet(ctx context.Context, keys []string) ([][]byte, error)
 		defer cancel()
 	}
 
-	cmd := c.rdb.MGet(ctx, keys...)
+	var requestKeys []string
+	if c.keyPrefix == "" {
+		requestKeys = keys
+	} else {
+		requestKeys = make([]string, 0, len(keys))
+		for _, key := range keys {
+			requestKeys = append(requestKeys, c.keyPrefix+key)
+		}
+	}
+
+	cmd := c.rdb.MGet(ctx, requestKeys...)
 	if err := cmd.Err(); err != nil {
 		return nil, err
 	}
 
-	ret := make([][]byte, len(keys))
+	ret := make([][]byte, len(requestKeys))
 	for i, val := range cmd.Val() {
 		if val != nil {
 			ret[i] = StringToBytes(val.(string))

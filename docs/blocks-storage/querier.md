@@ -465,7 +465,8 @@ blocks_storage:
     [consistency_delay: <duration> | default = 0s]
 
     index_cache:
-      # The index cache backend type. Supported values: inmemory, memcached.
+      # The index cache backend type. Supported values: inmemory, memcached,
+      # redis.
       # CLI flag: -blocks-storage.bucket-store.index-cache.backend
       [backend: <string> | default = "inmemory"]
 
@@ -517,13 +518,19 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
+      # The redis_config configures the Redis backend cache.
+      # The CLI flags prefix for this block config is:
+      # blocks-storage.bucket-store.index-cache
+      [redis: <redis_config>]
+
       # Deprecated: compress postings before storing them to postings cache.
       # This option is unused and postings compression is always enabled.
       # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
       [postings_compression_enabled: <boolean> | default = false]
 
     chunks_cache:
-      # Backend for chunks cache, if not empty. Supported values: memcached.
+      # Backend for chunks cache, if not empty. Supported values: memcached,
+      # redis.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
 
@@ -569,6 +576,11 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
+      # The redis_config configures the Redis backend cache.
+      # The CLI flags prefix for this block config is:
+      # blocks-storage.bucket-store.chunks-cache
+      [redis: <redis_config>]
+
       # Size of each subrange that bucket object is split into for better
       # caching.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -589,7 +601,8 @@ blocks_storage:
       [subrange_ttl: <duration> | default = 24h]
 
     metadata_cache:
-      # Backend for metadata cache, if not empty. Supported values: memcached.
+      # Backend for metadata cache, if not empty. Supported values: memcached,
+      # redis.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
       [backend: <string> | default = ""]
 
@@ -634,6 +647,11 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
+
+      # The redis_config configures the Redis backend cache.
+      # The CLI flags prefix for this block config is:
+      # blocks-storage.bucket-store.metadata-cache
+      [redis: <redis_config>]
 
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl

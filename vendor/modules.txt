@@ -790,6 +790,7 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 # golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad => golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
+## explicit
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b

@@ -1,0 +1,5 @@
+*
+!.gitignore
+!cortex-tsdb
+!cortex-alertmanager
+!cortex-ruler

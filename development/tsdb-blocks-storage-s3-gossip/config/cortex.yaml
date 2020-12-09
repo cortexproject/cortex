@@ -1,0 +1,142 @@
+auth_enabled: false
+
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+ingester_client:
+  grpc_client_config:
+    # Configure the client to allow messages up to 100MB.
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: gzip
+
+ingester:
+  lifecycler:
+    # We want to start immediately.
+    join_after: 0
+    final_sleep: 0s
+    num_tokens: 512
+
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+
+memberlist:
+  join_members:
+    - distributor:10001
+    - ingester-1:10002
+    - ingester-2:10003
+    - querier:10004
+    - ruler-1:10021
+    - ruler-2:10022
+    - querier-with-scheduler:10013
+  abort_if_cluster_join_fails: false
+
+querier:
+  query_ingesters_within: 3h
+
+  # Used when the blocks sharding is disabled.
+  store_gateway_addresses: store-gateway-1:9008,store-gateway-2:9009
+
+blocks_storage:
+  backend: s3
+
+  tsdb:
+    dir: /tmp/cortex-tsdb-ingester
+    ship_interval: 1m
+    block_ranges_period: [ 2h ]
+    retention_period: 3h
+
+  bucket_store:
+    sync_dir: /tmp/cortex-tsdb-querier
+    consistency_delay: 5s
+
+    index_cache:
+      backend: memcached
+      memcached:
+        addresses: dns+memcached:11211
+
+    chunks_cache:
+      backend: memcached
+      memcached:
+        addresses: dns+memcached:11211
+
+    metadata_cache:
+      backend: memcached
+      memcached:
+        addresses: dns+memcached:11211
+
+  s3:
+    endpoint:          minio:9000
+    bucket_name:       cortex-tsdb
+    access_key_id:     cortex
+    secret_access_key: supersecret
+    insecure:          true
+
+ruler:
+  enable_api: true
+  storage:
+    type: s3
+    s3:
+      bucketnames: cortex-ruler
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+  enable_sharding: true
+  ring:
+    heartbeat_period:   5s
+    heartbeat_timeout:  15s
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
+
+alertmanager:
+  enable_api: true
+  storage:
+    type: s3
+    s3:
+      bucketnames: cortex-alertmanager
+      s3forcepathstyle: true
+      s3: http://cortex:supersecret@minio.:9000
+
+storage:
+  engine: blocks
+
+compactor:
+  compaction_interval: 30s
+  data_dir:            /tmp/cortex-compactor
+  consistency_delay:   1m
+  sharding_enabled:    true
+  sharding_ring:
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
+
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    replication_factor: 1
+    heartbeat_period:   5s
+    heartbeat_timeout:  15s
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
+
+frontend_worker:
+  frontend_address: "query-frontend:9007"
+  match_max_concurrent: true
+
+  # By setting scheduler_address, querier worker would use scheduler instead of frontend.
+  # scheduler_address: "query-scheduler:9012"
+
+query_range:
+  split_queries_by_interval: 24h
+
+limits:
+  # Limit max query time range to 31d
+  max_query_length: 744h

@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -269,6 +270,9 @@ func (c *Compactor) starting(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize compactor objects")
 	}
+
+	// Wrap the bucket client to write block deletion marks in the global location too.
+	c.bucketClient = bucketindex.BucketWithGlobalMarkers(c.bucketClient)
 
 	// Create the users scanner.
 	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUser, c.parentLogger)

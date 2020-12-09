@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	IndexFilename = "bucket-index.json"
-	IndexVersion1 = 1
+	IndexFilename           = "bucket-index.json"
+	IndexCompressedFilename = IndexFilename + ".gz"
+	IndexVersion1           = 1
 
 	SegmentsFormatUnknown = ""
 

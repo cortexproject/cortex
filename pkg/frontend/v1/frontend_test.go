@@ -217,7 +217,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(transport.NewHandler(handlerCfg, rt, logger)))
+	).Wrap(transport.NewHandler(handlerCfg, rt, logger, nil)))
 
 	httpServer := http.Server{
 		Handler: r,

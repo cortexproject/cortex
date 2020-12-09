@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -87,6 +88,7 @@ func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, quer
 	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 		QueryID:      queryID,
 		HttpResponse: resp,
+		Stats:        &stats.Stats{},
 	})
 }
 

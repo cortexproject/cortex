@@ -161,7 +161,7 @@ func TestQuerier(t *testing.T) {
 
 						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
 						queryable, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
-						testQuery(t, queryable, through, query)
+						testRangeQuery(t, queryable, through, query)
 					})
 				}
 			}
@@ -702,7 +702,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	return result
 }
 
-func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
+func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	dir, err := ioutil.TempDir("", "test_query")
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)

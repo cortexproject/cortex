@@ -81,6 +81,7 @@ pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
 pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
+pkg/querier/stats/stats.pb.go: pkg/querier/stats/stats.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto

@@ -19,12 +19,6 @@ func BlockDeletionMarkFilepath(blockID ulid.ULID) string {
 	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), metadata.DeletionMarkFilename)
 }
 
-// BlockDeletionMarkFilename returns the filename to use when storing a block deletion mark
-// in the bucket markers location.
-func BlockDeletionMarkFilename(blockID ulid.ULID) string {
-	return fmt.Sprintf("%s-%s", blockID.String(), metadata.DeletionMarkFilename)
-}
-
 // IsBlockDeletionMarkFilename returns whether the input filename matches the expected pattern
 // of block deletion markers stored in the markers location.
 func IsBlockDeletionMarkFilename(name string) (ulid.ULID, bool) {

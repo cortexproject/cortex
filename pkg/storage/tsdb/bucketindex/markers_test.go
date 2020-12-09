@@ -13,12 +13,6 @@ func TestBlockDeletionMarkFilepath(t *testing.T) {
 	assert.Equal(t, "markers/"+id.String()+"-deletion-mark.json", BlockDeletionMarkFilepath(id))
 }
 
-func TestBlockDeletionMarkFilename(t *testing.T) {
-	id := ulid.MustNew(1, nil)
-
-	assert.Equal(t, id.String()+"-deletion-mark.json", BlockDeletionMarkFilename(id))
-}
-
 func TestIsBlockDeletionMarkFilename(t *testing.T) {
 	expected := ulid.MustNew(1, nil)
 

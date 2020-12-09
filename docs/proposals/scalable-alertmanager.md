@@ -56,7 +56,7 @@ While I propose the use of gRPC, is good to note that doing nothing is still a s
 
 ### Architecture
 
-To implement the sharding strategy we need a component in charge of handling incoming alerts and API requests, distributing it to the corresponding shard. 
+To implement the sharding strategy we need a component in charge of handling incoming alerts and API requests, distributing it to the corresponding shard.
 
 The idea here is to have an “Alertmanager Distributor” as a first stop in the reception of alerts. Once alerts are received, the component is in charge of validating the alerts against the limits. Validated alerts are then sent to multiple managers in parallel.
 
@@ -69,7 +69,7 @@ We can either run it as a separate service or embed it. **I propose we simply em
 
 Under the assumption we implement the options proposed above, our architecture looks like this:
 
-![Scalable Alertmanager Architecture](docs/proposals/img/scalable-am.png)
+![Scalable Alertmanager Architecture](/images/proposals/scalable-am.png)
 
 **POST /api/v1/alerts (from the ruler) can go to any Alertmanager replica.** The AM distributor uses the ring to write alerts to a quorum of AM managers (reusing the existing code). We continue to use the same in-memory data structure from the upstream Alertmanager to save alerts and notify other pieces
 

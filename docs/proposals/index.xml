@@ -1,4 +1,81 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Proposals</title><link>/docs/proposals/</link><description>Recent content in Proposals on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/proposals/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Blocks storage sharding</title><link>/docs/proposals/blocks-storage-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-sharding/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Proposals</title><link>/docs/proposals/</link><description>Recent content in Proposals on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/proposals/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Blocks storage bucket index</title><link>/docs/proposals/blocks-storage-bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-bucket-index/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/pracucci">Marco Pracucci&lt;/a>&lt;/li>
+&lt;li>Date: November 2020&lt;/li>
+&lt;li>Status: draft&lt;/li>
+&lt;/ul>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>Queriers and store-gateways, at startup and periodically while running, need to scan the entire object store bucket to find tenants and blocks for each tenants.&lt;/p>
+&lt;p>For each discovered block, they need to fetch the &lt;code>meta.json&lt;/code> file and check for the existence of &lt;code>deletion-mark.json&lt;/code> (used to signal a block is &amp;ldquo;marked for deletion&amp;rdquo;). The &lt;code>meta.json&lt;/code> file is immutable and gets cached, but &lt;code>deletion-mark.json&lt;/code> can be created at any time and its non-existence can&amp;rsquo;t be safely cached for long (actually our cache is pretty ineffective regarding this).&lt;/p>
+&lt;p>The number of blocks in the storage linearly increases with the number of tenants, and so does the number of bucket API calls required to scan the bucket.&lt;/p>
+&lt;p>For example, assuming 1 block / day / tenant and a 400d retention, we would have 400 blocks for a single-tenant cluster, but 4M blocks for a 10K tenants cluster (regardless of the number of active series or their QPS).&lt;/p>
+&lt;p>We&amp;rsquo;re currently testing a cluster running with 6K tenants and we have faced the following issues:&lt;/p>
+&lt;ul>
+&lt;li>The cold start of queriers and store-gateways (empty caches) take tens of minutes.&lt;/li>
+&lt;li>If we increase the concurrency of bucket operations run to scan the bucket, we hit into object store rate limits and/or the 5xx error rate increases&lt;/li>
+&lt;li>The need to run &amp;ldquo;list objects&amp;rdquo; API call for queriers and store-gateways to discover blocks and the check for the existence of &lt;code>deletion-mark.json&lt;/code> (which requires a read operation for each block and can&amp;rsquo;t be cached for a long time) represents a significant % of bucket API calls baseline costs, regardless the tenants QPS (costs we have even if the cluster has 0 queries)&lt;/li>
+&lt;/ul>
+&lt;h2 id="goal">Goal&lt;/h2>
+&lt;p>The goal of this proposal is:&lt;/p>
+&lt;ul>
+&lt;li>The querier should be up and running without having to scan the bucket at all (zero startup time)&lt;/li>
+&lt;li>The querier should not run any &amp;ldquo;list objects&amp;rdquo; operation at anytime&lt;/li>
+&lt;li>The querier should require only 1 &amp;ldquo;get object&amp;rdquo; operation to get the entire view of a tenant&amp;rsquo;s blocks&lt;/li>
+&lt;/ul>
+&lt;h2 id="out-of-scope">Out of scope&lt;/h2>
+&lt;p>We believe the same technique described in this proposal could be applied to optimise the store-gateway too (we&amp;rsquo;ve built a &lt;a href="https://github.com/cortexproject/cortex/compare/pracucci:experiment-object-store-based-blocks-index">PoC&lt;/a>), however to keep the design doc easier to discuss we suggest to keep the store-gateway out of scope and address it in a follow-up design doc.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;p>We propose to introduce a per-tenant bucket index. The index is a single JSON file containing two main information: list of all completed (non partial) blocks in the bucket + list of all deletion marks. The bucket index is stored in the bucket within the tenant location (eg. &lt;code>/user-1/bucket-index.json&lt;/code>) and is kept updated by the compactor.&lt;/p>
+&lt;p>The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it&amp;rsquo;s a small file, we expect the lazy download of the bucket index to not significantly impact 1st query performances.&lt;/p>
+&lt;p>While in-memory, a background process will keep it updated at periodic intervals (configurable), so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index.&lt;/p>
+&lt;p>If a bucket index is unused for a long time (configurable), eg. because that querier instance is not receiving any query from the tenant, the querier will offload it, stopping to keep it updated at regular intervals. This is particularly useful when shuffle sharding is enabled, because a querier will only run queries for a subset of tenants and tenants can be re-sharded across queries in the event of a scale up/down or rolling updates.&lt;/p>
+&lt;p>The bucket index will be also cached on memcached for a short period of time, to reduce the number of &amp;ldquo;get object&amp;rdquo; operations in case multiple queriers fetch it in a short period of time (eg. 5 minutes).&lt;/p>
+&lt;h3 id="bucket-index-structure">Bucket index structure&lt;/h3>
+&lt;p>The &lt;code>bucket-index.json&lt;/code> is a single file containing the following information:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>Version&lt;/code>&lt;/li>
+&lt;li>List of blocks
+&lt;ul>
+&lt;li>&lt;code>ID&lt;/code>, &lt;code>MinTime&lt;/code>, &lt;code>MaxTime&lt;/code>, &lt;code>UploadedAt&lt;/code>&lt;/li>
+&lt;li>&lt;code>SegmentsFormat&lt;/code> (eg. &amp;ldquo;1-based-6-digits&amp;rdquo;), &lt;code>SegmentsNum&lt;/code> (these two information will be used by the store-gateway)&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>List of block deletion marks
+&lt;ul>
+&lt;li>&lt;code>ID&lt;/code>, &lt;code>DeletionTime&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Timestamp of when the index has been updated&lt;/li>
+&lt;/ul>
+&lt;p>The bucket index intentionally stores a subset of data for each block&amp;rsquo;s &lt;code>meta.json&lt;/code>, in order to keep the size of the index small. The information in the index is enough to run the querier without having to load the full &lt;code>meta.json&lt;/code> of each block.&lt;/p>
+&lt;p>&lt;strong>Size&lt;/strong>: the expected size of the index is about 150 bytes per block. In the case of a tenant with 400 blocks, its bucket index would be 58KB. The size could be further reduced compressing it: experiments show a compression ratio of about 4x using gzip.&lt;/p>
+&lt;h3 id="why-the-compactor-writes-the-bucket-index">Why the compactor writes the bucket index&lt;/h3>
+&lt;p>There are few reasons why the compactor may be a good candidate to write the bucket index:&lt;/p>
+&lt;ul>
+&lt;li>The compactor already scans the bucket to have a consistent view of the blocks before running a compaction. Writing the bucket index in the compactor would require no additional bucket API calls.&lt;/li>
+&lt;li>Queriers and store-gateways currently read only from the bucket (no writes). We believe that it may be a nice property to preserve.&lt;/li>
+&lt;/ul>
+&lt;h3 id="how-to-reduce-bucket-api-calls-required-to-discover-deletion-marks">How to reduce bucket API calls required to discover deletion marks&lt;/h3>
+&lt;p>The &lt;code>deletion-mark.json&lt;/code> files are stored within each block location. This means that the compactor would still need to run a &amp;ldquo;get object&amp;rdquo; operation for every single block in order to find out which block has it, while updating the bucket index.&lt;/p>
+&lt;p>To reduce the number of operations required, we propose to store block deletion marks for all blocks in a per-tenant location (&lt;code>markers/&lt;/code>). Discovering all blocks marked for deletion for a given tenant would only require a single &amp;ldquo;list objects&amp;rdquo; operation on the &lt;code>/&amp;lt;tenant-id&amp;gt;/markers/&lt;/code> prefix. New markers introduced in the future (eg. tenant deletion mark) could be stored in the same location in order to discover all markers with a single &amp;ldquo;list objects&amp;rdquo; operation.&lt;/p>
+&lt;p>For example:&lt;/p>
+&lt;pre>&lt;code>/user-1/markers/01ER1ZSYHF1FT6RBD8HTVQWX13-deletion-mark.json
+/user-1/markers/01ER1ZGSX1Q4B41MK1QQ7RHD33-deletion-mark.json
+/user-1/markers/01ER1ZGWKVFT60YMXT8D3XJMDB-deletion-mark.json
+&lt;/code>&lt;/pre>&lt;h3 id="what-if-a-bucket-index-gets-stale">What if a bucket index gets stale&lt;/h3>
+&lt;p>Queriers and store-gateways don&amp;rsquo;t need a strongly consistent view over the bucket. Even today, given queriers and store-gateways run a periodic scan of the bucket, their view could be stale up to the &amp;ldquo;scan interval&amp;rdquo; (defaults to 15m).&lt;/p>
+&lt;p>The maximum delay between a change into the bucket is picked up by queriers and store-gateways depends on the configuration and is the minimum time between:&lt;/p>
+&lt;ul>
+&lt;li>New blocks uploaded by ingester:
+&lt;code>min(-querier.query-ingesters-within, -blocks-storage.tsdb.retention-period)&lt;/code> (default: 6h)&lt;/li>
+&lt;li>New blocks uploaded/deleted by compactor:
+&lt;code>-compactor.deletion-delay&lt;/code> (default: 12h)&lt;/li>
+&lt;/ul>
+&lt;p>In order to guarantee consistent query results, we propose to configure the bucket index max stale period in the querier and fail queries if, because of any issue, the bucket index &lt;code>UpdatedAt&lt;/code> age exceeds it.&lt;/p>
+&lt;p>The staleness of each bucket index will be tracked via metrics, in order to be alert on it when it&amp;rsquo;s close to expiration (but before it happens).&lt;/p>
+&lt;h3 id="object-store-eventual-consistency">Object store eventual consistency&lt;/h3>
+&lt;p>Object stores like S3 or GCS do guarantee read-after-create consistency but not read-after-update.&lt;/p>
+&lt;p>However, given the analysis done in &amp;ldquo;&lt;a href="#what-if-a-bucket-index-gets-stale">What if a bucket index gets stale&lt;/a>&amp;rdquo; we expect this not to be a real issue, considering we do expect object store reads to not be out of sync for hours.&lt;/p></description></item><item><title>Docs: Blocks storage sharding</title><link>/docs/proposals/blocks-storage-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/blocks-storage-sharding/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/pracucci">Marco Pracucci&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>

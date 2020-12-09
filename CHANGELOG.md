@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.6.0-rc.0 in progress
+## 1.6.0-rc.0
 
 * [CHANGE] Querier: deprecated `-store.max-look-back-period`. You should use `-querier.max-query-lookback` instead. #3452
 * [CHANGE] Blocks storage: increased `-blocks-storage.bucket-store.chunks-cache.attributes-ttl` default from `24h` to `168h` (1 week). #3528

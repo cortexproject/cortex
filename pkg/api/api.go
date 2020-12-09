@@ -358,3 +358,8 @@ func (a *API) RegisterServiceMapHandler(handler http.Handler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/services", "Service Status")
 	a.RegisterRoute("/services", handler, false, "GET")
 }
+
+func (a *API) RegisterMemberlistKV(handler http.Handler) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/memberlist", "Memberlist Status")
+	a.RegisterRoute("/memberlist", handler, false, "GET")
+}

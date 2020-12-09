@@ -717,6 +717,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util.Logger)
+	t.API.RegisterMemberlistKV(t.MemberlistKV)
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -811,6 +812,7 @@ func (t *Cortex) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		API:                      {Server},
+		MemberlistKV:             {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		Distributor:              {DistributorService, API},

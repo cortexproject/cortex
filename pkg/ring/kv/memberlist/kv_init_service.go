@@ -2,9 +2,12 @@ package memberlist
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -91,6 +94,29 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		store = kv.storeCopy()
 	}
 
+	const (
+		downloadParam = "download"
+		viewParam     = "view"
+		viewFormat    = "format"
+	)
+
+	if err := req.ParseForm(); err == nil {
+		if req.Form[downloadParam] != nil {
+			download(w, store, req.Form[downloadParam][0]) // Use first value, ignore the rest.
+			return
+		}
+
+		if req.Form[viewParam] != nil {
+			format := ""
+			if len(req.Form[viewFormat]) > 0 {
+				format = req.Form[viewFormat][0]
+			}
+
+			view(w, kv, store, req.Form[viewParam][0], format)
+			return
+		}
+	}
+
 	members := ml.Members()
 	sort.Slice(members, func(i, j int) bool {
 		return members[i].Name < members[j].Name
@@ -103,6 +129,62 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		SortedMembers: members,
 		Store:         store,
 	}, pageTemplate, req)
+}
+
+func view(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string, format string) {
+	if kv == nil || store == nil || store[key].value == nil {
+		http.Error(w, "value not found", http.StatusNotFound)
+		return
+	}
+
+	codec := kv.GetCodec(store[key].codecID)
+	if codec == nil {
+		http.Error(w, "codec not found", http.StatusNotFound)
+		return
+	}
+
+	val, err := codec.Decode(store[key].value)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Header().Add("content-type", "text/plain")
+
+	switch format {
+	case "json", "json-pretty":
+		enc := json.NewEncoder(w)
+		if format == "json-pretty" {
+			enc.SetIndent("", "    ")
+		}
+
+		err = enc.Encode(val)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+	default:
+		_, _ = fmt.Fprintf(w, "%#v", val)
+	}
+}
+
+func download(w http.ResponseWriter, store map[string]valueDesc, key string) {
+	if store == nil || store[key].value == nil {
+		http.Error(w, "value not found", http.StatusNotFound)
+		return
+	}
+
+	val := store[key]
+
+	w.WriteHeader(200)
+	w.Header().Add("content-type", "application/binary")
+	// Set content-length so that client knows whether it has received full response or not.
+	w.Header().Add("content-length", strconv.Itoa(len(val.value)))
+	w.Header().Add("content-disposition", fmt.Sprintf("attachment; filename=%d-%s", val.version, key))
+
+	// Ignore errors, we cannot do anything about them.
+	_, _ = w.Write(val.value)
 }
 
 type pageData struct {
@@ -139,6 +221,7 @@ const pageContent = `
 				<tr>
 					<th>Key</th>
 					<th>Value Details</th>
+					<th>Actions</th>
 				</tr>
 			</thead>
 
@@ -147,6 +230,12 @@ const pageContent = `
 				<tr>
 					<td>{{ $k }}</td>
 					<td>{{ $v }}</td>
+					<td>
+						<a href="?view={{ $k }}&format=json">json</a>
+						| <a href="?view={{ $k }}&format=json-pretty">json-pretty</a>
+						| <a href="?view={{ $k }}&format=struct">struct</a>
+						| <a href="?download={{ $k }}">download</a>
+					</td>
 				</tr>
 				{{ end }}
 			</tbody>

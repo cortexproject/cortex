@@ -177,11 +177,11 @@ func download(w http.ResponseWriter, store map[string]valueDesc, key string) {
 
 	val := store[key]
 
-	w.WriteHeader(200)
-	w.Header().Add("content-type", "application/binary")
+	w.Header().Add("content-type", "application/octet-stream")
 	// Set content-length so that client knows whether it has received full response or not.
 	w.Header().Add("content-length", strconv.Itoa(len(val.value)))
 	w.Header().Add("content-disposition", fmt.Sprintf("attachment; filename=%d-%s", val.version, key))
+	w.WriteHeader(200)
 
 	// Ignore errors, we cannot do anything about them.
 	_, _ = w.Write(val.value)

@@ -84,7 +84,7 @@ To publish a release candidate:
 1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
 1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
 1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
-1. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a pre-release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
@@ -100,7 +100,7 @@ To publish a stable release:
    - Kubernetes manifests located at `k8s/`
    - Documentation located at `docs/`
 1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
-1. Wait until CI pipeline succeeded (once a tag is created, the release process through CircleCI will be triggered for this tag)
+1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release

@@ -1,7 +1,7 @@
 package images
 
 // If you change the image tag, remember to update it in the preloading done
-// by CircleCI (see .circleci/config.yml) and GitHub actions (see .github/workflows/*).
+// by GitHub actions (see .github/workflows/*).
 
 // These are variables so that they can be modified.
 

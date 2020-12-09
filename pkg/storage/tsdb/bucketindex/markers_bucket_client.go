@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/ioutil"
 	"path"
-	"strings"
 
 	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -118,10 +117,5 @@ func (b *globalMarkersBucket) isBlockDeletionMark(name string) (ulid.ULID, bool)
 
 	// Parse the block ID in the path. If there's not block ID, then it's not the per-block
 	// deletion mark.
-	parts := strings.Split(name, "/")
-	if len(parts) < 2 {
-		return ulid.ULID{}, false
-	}
-
-	return block.IsBlockDir(parts[len(parts)-2])
+	return block.IsBlockDir(path.Dir(name))
 }

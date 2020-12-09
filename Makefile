@@ -19,10 +19,6 @@ IMAGE_PREFIX ?= quay.io/cortexproject/
 ifneq (,$(findstring refs/tags/, $(GITHUB_REF)))
 	GIT_TAG := $(shell git tag --points-at HEAD)
 endif
-# Keep circle-ci compatability for now.
-ifdef CIRCLE_TAG
-	GIT_TAG := $(CIRCLE_TAG)
-endif
 IMAGE_TAG ?= $(if $(GIT_TAG),$(GIT_TAG),$(shell ./tools/image-tag))
 GIT_REVISION := $(shell git rev-parse --short HEAD)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
@@ -103,10 +99,6 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-# RM is parameterized to allow CircleCI to run builds, as it
-# currently disallows `docker run --rm`. This value is overridden
-# in circle.yml
-RM := --rm
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
 # in any custom cloudbuild.yaml files
@@ -124,7 +116,7 @@ exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-buil
 	@mkdir -p $(shell pwd)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run $(RM) $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
+	@$(SUDO) time docker run --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -132,14 +124,14 @@ configs-integration-test: build-image/$(UPTODATE)
 	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6.16)"; \
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
-	$(SUDO) docker run $(RM) $(TTY) -i $(GOVOLUMES) \
+	$(SUDO) docker run --rm $(TTY) -i $(GOVOLUMES) \
 		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		-e DB_ADDR=configs-db.cortex.local \
 		$(BUILD_IMAGE) $@; \
 	status=$$?; \
-	test -n "$(CIRCLECI)" || docker rm -f "$$DB_CONTAINER"; \
+	docker rm -f "$$DB_CONTAINER"; \
 	exit $$status
 
 else
@@ -298,7 +290,7 @@ packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run $(RM) $(TTY) \
+	@$(SUDO) time docker run --rm $(TTY) \
 		-v  $(shell pwd):/src/github.com/cortexproject/cortex:delegated,z \
 		-i $(PACKAGE_IMAGE) $@;
 

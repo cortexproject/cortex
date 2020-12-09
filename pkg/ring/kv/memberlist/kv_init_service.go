@@ -152,6 +152,8 @@ const pageContent = `
 			</tbody>
 		</table>
 
+		<p>Note that value "version" is node-specific. It starts with 0 (on restart), and increases on each received update. Size is in bytes.</p> 
+
 		<h2>Memberlist Cluster Members</h2>
 
 		<table width="100%" border="1">

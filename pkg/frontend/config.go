@@ -21,7 +21,7 @@ type CombinedFrontendConfig struct {
 	FrontendV2 v2.Config               `yaml:",inline"`
 
 	// Deprecated. Replaced with pkg/api/Config.ResponseCompression field.
-	// TODO: To be removed in Cortex 1.7.
+	// TODO: To be removed in Cortex 1.8.
 	CompressResponses bool `yaml:"compress_responses"`
 
 	DownstreamURL string `yaml:"downstream_url"`

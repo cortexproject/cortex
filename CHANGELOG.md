@@ -2,12 +2,9 @@
 
 ## master / unreleased
 
-<<<<<<< HEAD
 ## 1.6.0-rc.0 in progress
 
-=======
 * [CHANGE] Query Frontend: deprecate `-querier.compress-http-responses` in favour of `-api.response-compression-enabled`. #3544
->>>>>>> 572de8827 ([Querier] Deprecate `-querier.compress-http-responses`)
 * [CHANGE] Querier: deprecated `-store.max-look-back-period`. You should use `-querier.max-query-lookback` instead. #3452
 * [CHANGE] Blocks storage: increased `-blocks-storage.bucket-store.chunks-cache.attributes-ttl` default from `24h` to `168h` (1 week). #3528
 * [CHANGE] Blocks storage: the config option `-blocks-storage.bucket-store.index-cache.postings-compression-enabled` has been deprecated and postings compression is always enabled. #3538

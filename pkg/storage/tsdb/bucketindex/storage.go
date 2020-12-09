@@ -1,6 +1,7 @@
 package bucketindex
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -47,4 +48,41 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger l
 	}
 
 	return index, nil
+}
+
+// WriteIndex generates the bucket index and writes it to the storage. If the old index is not
+// passed in input, then the bucket index will be generated from scratch.
+func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, idx *Index) error {
+	bkt = bucket.NewUserBucketClient(userID, bkt)
+
+	// Marshal the index.
+	content, err := json.Marshal(idx)
+	if err != nil {
+		return errors.Wrap(err, "marshal bucket index")
+	}
+
+	// Compress it.
+	var gzipContent bytes.Buffer
+	gzip := gzip.NewWriter(&gzipContent)
+	gzip.Name = IndexFilename
+
+	if _, err := gzip.Write(content); err != nil {
+		return errors.Wrap(err, "gzip bucket index")
+	}
+	if err := gzip.Close(); err != nil {
+		return errors.Wrap(err, "close gzip bucket index")
+	}
+
+	// Upload the index to the storage.
+	if err := bkt.Upload(ctx, IndexCompressedFilename, &gzipContent); err != nil {
+		return errors.Wrap(err, "upload bucket index")
+	}
+
+	return nil
+}
+
+// DeleteIndex deletes the bucket index from the storage.
+func DeleteIndex(ctx context.Context, bkt objstore.Bucket, userID string) error {
+	bkt = bucket.NewUserBucketClient(userID, bkt)
+	return errors.Wrap(bkt.Delete(ctx, IndexCompressedFilename), "delete bucket index")
 }

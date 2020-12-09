@@ -277,7 +277,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18011 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-scheduler -server.http-listen-port=8011 -server.grpc-listen-port=9011 -store.max-query-length=8760h -log.level=debug"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18011 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-scheduler -server.http-listen-port=8011 -server.grpc-listen-port=9011 -store.max-query-length=8760h"]
     depends_on:
       - consul
       - minio
@@ -299,7 +299,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18012 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8012 -server.grpc-listen-port=9012 -store.max-query-length=8760h -frontend.scheduler-address=query-scheduler:9011 -log.level=debug"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18012 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8012 -server.grpc-listen-port=9012 -store.max-query-length=8760h -frontend.scheduler-address=query-scheduler:9011"]
     depends_on:
       - consul
       - minio
@@ -321,7 +321,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address= -log.level=debug"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address="]
     depends_on:
       - consul
       - minio

@@ -9,6 +9,20 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
+func TestIndex_RemoveBlock(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	block3 := ulid.MustNew(3, nil)
+	idx := &Index{
+		Blocks:             Blocks{{ID: block1}, {ID: block2}, {ID: block3}},
+		BlockDeletionMarks: BlockDeletionMarks{{ID: block2}, {ID: block3}},
+	}
+
+	idx.RemoveBlock(block2)
+	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
+	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
+}
+
 func TestDetectBlockSegmentsFormat(t *testing.T) {
 	tests := map[string]struct {
 		meta           metadata.Meta
@@ -262,4 +276,18 @@ func TestBlock_ThanosMeta(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.block.ThanosMeta(userID))
 		})
 	}
+}
+
+func TestBlockDeletionMarks_Clone(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	orig := BlockDeletionMarks{{ID: block1, DeletionTime: 1}, {ID: block2, DeletionTime: 2}}
+
+	// The clone must be identical.
+	clone := orig.Clone()
+	assert.Equal(t, orig, clone)
+
+	// Changes to the original shouldn't be reflected to the clone.
+	orig[0].DeletionTime = -1
+	assert.Equal(t, int64(1), clone[0].DeletionTime)
 }

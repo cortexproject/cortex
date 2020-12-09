@@ -11,8 +11,7 @@ import (
 )
 
 func TestGlobalMarkersBucket_Delete_ShouldSucceedIfDeletionMarkDoesNotExistInTheBlockButExistInTheGlobalLocation(t *testing.T) {
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	bkt = BucketWithGlobalMarkers(bkt)

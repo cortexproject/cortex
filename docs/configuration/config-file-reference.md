@@ -967,7 +967,8 @@ grpc_client_config:
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# Compress HTTP responses.
+# This flag is about to be deprecated. Please use
+# -api.response-compression-enabled instead.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
 

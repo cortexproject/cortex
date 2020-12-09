@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"io/ioutil"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -40,14 +39,10 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger l
 	}
 	defer runutil.CloseWithLogOnErr(logger, gzipReader, "close bucket index gzip reader")
 
-	content, err := ioutil.ReadAll(gzipReader)
-	if err != nil {
-		return nil, errors.Wrap(err, "read bucket index")
-	}
-
 	// Deserialize it.
 	index := &Index{}
-	if err := json.Unmarshal(content, index); err != nil {
+	d := json.NewDecoder(gzipReader)
+	if err := d.Decode(index); err != nil {
 		return nil, ErrIndexCorrupted
 	}
 

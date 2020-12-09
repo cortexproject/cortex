@@ -135,6 +135,33 @@ func TestWriter_GenerateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 		[]*metadata.DeletionMark{block2Mark})
 }
 
+func TestWriter_GenerateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, cleanup := prepareFilesystemBucket(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
+	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
+
+	// Overwrite a block's deletion-mark.json with invalid data.
+	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block2Mark.ID.String(), metadata.DeletionMarkFilename), bytes.NewReader([]byte("invalid!}"))))
+
+	w := NewWriter(bkt, userID, logger)
+	idx, err := w.GenerateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block2, block3},
+		[]*metadata.DeletionMark{})
+}
+
 func TestWriter_GenerateIndex_NoTenantInTheBucket(t *testing.T) {
 	const userID = "user-1"
 

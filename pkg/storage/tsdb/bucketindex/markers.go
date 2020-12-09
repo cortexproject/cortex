@@ -2,10 +2,10 @@ package bucketindex
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/oklog/ulid"
-	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
@@ -39,5 +39,6 @@ func IsBlockDeletionMarkFilename(name string) (ulid.ULID, bool) {
 	}
 
 	// Ensure the 1st part is a valid block ID.
-	return block.IsBlockDir(parts[0])
+	id, err := ulid.Parse(filepath.Base(parts[0]))
+	return id, err == nil
 }

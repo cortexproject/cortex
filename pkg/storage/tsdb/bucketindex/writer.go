@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io/ioutil"
 	"path"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	json "github.com/json-iterator/go"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -31,7 +31,7 @@ var (
 
 // Writer is responsible to generate and write a bucket index.
 type Writer struct {
-	bkt    objstore.Bucket
+	bkt    objstore.InstrumentedBucket
 	logger log.Logger
 }
 
@@ -242,31 +242,13 @@ func (w *Writer) generateBlockDeletionMarksIndex(ctx context.Context, old []*Blo
 }
 
 func (w *Writer) generateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {
-	markFile := path.Join(id.String(), metadata.DeletionMarkFilename)
-
-	// Get the block's deletion mark file.
-	r, err := w.bkt.Get(ctx, markFile)
-	if w.bkt.IsObjNotFoundErr(err) {
-		return nil, ErrBlockDeletionMarkNotFound
-	}
-	if err != nil {
-		return nil, errors.Wrapf(err, "get block deletion mark: %v", markFile)
-	}
-	defer runutil.CloseWithLogOnErr(w.logger, r, "close get block deletion mark")
-
-	markContent, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, errors.Wrapf(err, "read block deletion mark: %v", markFile)
-	}
-
-	// Unmarshal it.
 	m := metadata.DeletionMark{}
-	if err := json.Unmarshal(markContent, &m); err != nil {
-		return nil, errors.Wrapf(ErrBlockDeletionMarkCorrupted, "unmarshal block deletion mark %s: %v", markFile, err)
-	}
 
-	if m.Version != metadata.DeletionMarkVersion1 {
-		return nil, errors.Errorf("unexpected deletion mark version: %s version: %d", markFile, m.Version)
+	if err := metadata.ReadMarker(ctx, w.logger, w.bkt, id.String(), &m); err != nil {
+		if errors.Is(err, metadata.ErrorUnmarshalMarker) {
+			return nil, errors.Wrap(ErrBlockDeletionMarkCorrupted, err.Error())
+		}
+		return nil, err
 	}
 
 	return BlockDeletionMarkFromThanosMarker(&m), nil

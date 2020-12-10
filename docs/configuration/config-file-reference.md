@@ -2979,6 +2979,11 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
 
+# How much space to use for keeping received and sent messages in memory for
+# troubleshooting (two buffers). 0 to disable.
+# CLI flag: -memberlist.message-history-buffer-bytes
+[message_history_buffer_bytes: <int> | default = 0]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr

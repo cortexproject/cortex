@@ -1015,7 +1015,7 @@ func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuff
 
 func removeIgnoredLogs(input []string) []string {
 	out := make([]string, 0, len(input))
-	durationRe := regexp.MustCompile("\\s?duration=\\S+")
+	durationRe := regexp.MustCompile(`\s?duration=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]

@@ -73,12 +73,12 @@ make web-serve
 &lt;li>Upgrade Golang version in &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
 &lt;li>Build new image &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
 &lt;li>Publish the new image to &lt;code>quay.io&lt;/code> (requires a maintainer)&lt;/li>
-&lt;li>Update the Docker image tag in &lt;code>.circleci/config.yml&lt;/code>&lt;/li>
+&lt;li>Update the Docker image tag in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;li>Upgrade integration tests version
 &lt;ul>
-&lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.circleci/config.yml&lt;/code>&lt;/li>
+&lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ol>
@@ -115,7 +115,6 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Update &lt;code>build-image/Docker&lt;/code>&lt;/li>
 &lt;li>Build the image running &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
 &lt;li>Publish the image to the repository running &lt;code>docker push quay.io/cortexproject/build-image:TAG&lt;/code> (this can only be done by a maintainer)&lt;/li>
-&lt;li>Replace the image tag in &lt;code>.circleci/config.yml&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>

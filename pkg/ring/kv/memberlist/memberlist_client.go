@@ -270,7 +270,7 @@ type KV struct {
 
 // Fields are exported for templating to work.
 type message struct {
-	Id      int       // Unique local ID of the message.
+	ID      int       // Unique local ID of the message.
 	Time    time.Time // Time when message was sent or received.
 	Size    int       // Message size
 	Pair    KeyValuePair
@@ -1237,7 +1237,7 @@ func (m *KV) addReceivedMessage(msg message) {
 	defer m.messagesMu.Unlock()
 
 	m.messageCounter++
-	msg.Id = m.messageCounter
+	msg.ID = m.messageCounter
 
 	m.receivedMessages, m.receivedMessagesSize = addMessageToBuffer(m.receivedMessages, m.receivedMessagesSize, m.cfg.MessageHistoryBufferBytes, msg)
 }
@@ -1251,7 +1251,7 @@ func (m *KV) addSentMessage(msg message) {
 	defer m.messagesMu.Unlock()
 
 	m.messageCounter++
-	msg.Id = m.messageCounter
+	msg.ID = m.messageCounter
 
 	m.sentMessages, m.sentMessagesSize = addMessageToBuffer(m.sentMessages, m.sentMessagesSize, m.cfg.MessageHistoryBufferBytes, msg)
 }

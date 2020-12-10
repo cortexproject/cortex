@@ -24,7 +24,7 @@ func TestPage(t *testing.T) {
 		SortedMembers: ml.Members(),
 		Store:         nil,
 		ReceivedMessages: []message{{
-			Id:   10,
+			ID:   10,
 			Time: time.Now(),
 			Size: 50,
 			Pair: KeyValuePair{
@@ -36,7 +36,7 @@ func TestPage(t *testing.T) {
 		}},
 
 		SentMessages: []message{{
-			Id:   10,
+			ID:   10,
 			Time: time.Now(),
 			Size: 50,
 			Pair: KeyValuePair{

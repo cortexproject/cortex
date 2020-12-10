@@ -119,7 +119,7 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			sent, received := kv.getSentAndReceivedMessages()
 
 			for _, m := range append(sent, received...) {
-				if m.Id == msgID {
+				if m.ID == msgID {
 					viewMessage(w, kv, m, getFormat(req))
 					return
 				}
@@ -324,15 +324,15 @@ const pageContent = `
 			<tbody>
 				{{ range .ReceivedMessages }}
 				<tr>
-					<td>{{ .Id }}</td>
+					<td>{{ .ID }}</td>
 					<td>{{ .Time.Format "15:04:05.000" }}</td>
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
 					<td>
-						<a href="?viewMsg={{ .Id }}&format=json">json</a>
-						| <a href="?viewMsg={{ .Id }}&format=json-pretty">json-pretty</a>
-						| <a href="?viewMsg={{ .Id }}&format=struct">struct</a>
+						<a href="?viewMsg={{ .ID }}&format=json">json</a>
+						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+						| <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
 					</td>
 				</tr>
 				{{ end }}
@@ -356,15 +356,15 @@ const pageContent = `
 			<tbody>
 				{{ range .SentMessages }}
 				<tr>
-					<td>{{ .Id }}</td>
+					<td>{{ .ID }}</td>
 					<td>{{ .Time.Format "15:04:05.000" }}</td>
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
 					<td>
-						<a href="?viewMsg={{ .Id }}&format=json">json</a>
-						| <a href="?viewMsg={{ .Id }}&format=json-pretty">json-pretty</a>
-						| <a href="?viewMsg={{ .Id }}&format=struct">struct</a>
+						<a href="?viewMsg={{ .ID }}&format=json">json</a>
+						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+						| <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
 					</td>
 				</tr>
 				{{ end }}

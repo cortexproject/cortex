@@ -26,7 +26,7 @@ type BlocksCleanerConfig struct {
 	DeletionDelay                      time.Duration
 	CleanupInterval                    time.Duration
 	CleanupConcurrency                 int
-	BlockDeletionMarksMigrationEnabled bool // TODO Remove in Cortex 1.8.0 and document that upgrading to 1.7.0 before 1.8.0 is required.
+	BlockDeletionMarksMigrationEnabled bool // TODO Discuss whether we should remove it in Cortex 1.8.0 and document that upgrading to 1.7.0 before 1.8.0 is required.
 }
 
 type BlocksCleaner struct {

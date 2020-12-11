@@ -78,7 +78,7 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 		// Upload it to the global markers location.
 		uploadErr := userBucket.Upload(ctx, BlockDeletionMarkFilepath(blockID), reader)
 		if closeErr := reader.Close(); closeErr != nil {
-			errs.Add(uploadErr)
+			errs.Add(closeErr)
 		}
 		if uploadErr != nil {
 			errs.Add(uploadErr)

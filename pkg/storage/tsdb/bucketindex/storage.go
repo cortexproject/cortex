@@ -50,8 +50,7 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger l
 	return index, nil
 }
 
-// WriteIndex generates the bucket index and writes it to the storage. If the old index is not
-// passed in input, then the bucket index will be generated from scratch.
+// WriteIndex uploads the provided index to the storage.
 func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, idx *Index) error {
 	bkt = bucket.NewUserBucketClient(userID, bkt)
 

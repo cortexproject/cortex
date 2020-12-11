@@ -4009,8 +4009,7 @@ The `compactor_config` configures the compactor for the blocks storage.
 # blocks will be marked for deletion and compactor component will permanently
 # delete blocks marked for deletion from the bucket. If 0, blocks will be
 # deleted straight away. Note that deleting blocks immediately can cause query
-# failures, if store gateway still has the block loaded, or compactor is
-# ignoring the deletion because it's compacting the block at the same time.
+# failures.
 # CLI flag: -compactor.deletion-delay
 [deletion_delay: <duration> | default = 12h]
 

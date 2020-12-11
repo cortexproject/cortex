@@ -43,7 +43,7 @@ type Index struct {
 	UpdatedAt int64 `json:"updated_at"`
 }
 
-// RemoveBlock from the index.
+// RemoveBlock removes block and its deletion mark (if any) from index.
 func (idx *Index) RemoveBlock(id ulid.ULID) {
 	for i := 0; i < len(idx.Blocks); i++ {
 		if idx.Blocks[i].ID == id {

@@ -29,7 +29,7 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 
 	// We ignore errors here, because we cannot do anything about them.
 	// Write will trigger sending Status code, so we cannot send a different status code afterwards.
-	// Also this isn't internal error, but error commnunicating with client.
+	// Also this isn't internal error, but error communicating with client.
 	_, _ = w.Write(data)
 }
 

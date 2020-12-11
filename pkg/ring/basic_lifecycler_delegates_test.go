@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -51,7 +52,9 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 		},
 	}
 
-	persistencyDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, log.NewNopLogger())
+	logs := &concurrency.SyncBuffer{}
+	logger := log.NewLogfmtLogger(logs)
+	persistencyDelegate := NewTokensPersistencyDelegate(tokensFile.Name(), ACTIVE, testDelegate, logger)
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
@@ -70,6 +73,9 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 	actualTokens, err := LoadTokensFromFile(tokensFile.Name())
 	require.NoError(t, err)
 	assert.Equal(t, Tokens{1, 2, 3, 4, 5}, actualTokens)
+
+	// Ensure no error has been logged.
+	assert.Empty(t, logs.String())
 }
 
 func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testing.T) {

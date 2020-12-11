@@ -10,14 +10,6 @@ import (
 )
 
 func TestPage(t *testing.T) {
-	require.NoError(t, pageTemplate.Execute(&bytes.Buffer{}, pageData{
-		Now:           time.Now(),
-		Initialized:   false,
-		Memberlist:    nil,
-		SortedMembers: nil,
-		Store:         nil,
-	}))
-
 	conf := memberlist.DefaultLANConfig()
 	ml, err := memberlist.Create(conf)
 	require.NoError(t, err)
@@ -28,9 +20,31 @@ func TestPage(t *testing.T) {
 
 	require.NoError(t, pageTemplate.Execute(&bytes.Buffer{}, pageData{
 		Now:           time.Now(),
-		Initialized:   true,
 		Memberlist:    ml,
 		SortedMembers: ml.Members(),
 		Store:         nil,
+		ReceivedMessages: []message{{
+			ID:   10,
+			Time: time.Now(),
+			Size: 50,
+			Pair: KeyValuePair{
+				Key:   "hello",
+				Value: []byte("world"),
+				Codec: "coded",
+			},
+			Version: 20,
+		}},
+
+		SentMessages: []message{{
+			ID:   10,
+			Time: time.Now(),
+			Size: 50,
+			Pair: KeyValuePair{
+				Key:   "hello",
+				Value: []byte("world"),
+				Codec: "coded",
+			},
+			Version: 20,
+		}},
 	}))
 }

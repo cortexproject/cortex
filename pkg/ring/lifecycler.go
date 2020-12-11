@@ -514,8 +514,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 	if i.cfg.TokensFilePath != "" {
 		tokensFromFile, err = LoadTokensFromFile(i.cfg.TokensFilePath)
-		if err != nil {
-			level.Error(util.Logger).Log("msg", "error in getting tokens from file", "err", err)
+		if err != nil && !os.IsNotExist(err) {
+			level.Error(util.Logger).Log("msg", "error loading tokens from file", "err", err)
 		}
 	} else {
 		level.Info(util.Logger).Log("msg", "not loading tokens from file, tokens file path is empty")

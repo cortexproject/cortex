@@ -549,6 +549,8 @@ ring:
 The `ingester_config` configures the Cortex ingester.
 
 ```yaml
+# Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This
+# config is ignored when running the Cortex blocks storage.
 walconfig:
   # Enable writing of ingested data into WAL.
   # CLI flag: -ingester.wal-enabled

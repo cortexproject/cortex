@@ -443,9 +443,9 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", cfg.User, err)
 		}
 
-		// If we went from paused to active, we need to re-add the user-regitry.
+		// If we went from paused to active, we need to re-add an user-regitry.
 		if !activeBefore && existing.IsActive() {
-			am.alertmanagerMetrics.addUserRegistry(cfg.User, existing.registry)
+			am.alertmanagerMetrics.addUserRegistry(cfg.User, prometheus.NewRegistry())
 		}
 	}
 	am.cfgs[cfg.User] = cfg

@@ -1443,7 +1443,7 @@ ring:
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-  # Number of tokens for each ingester.
+  # Number of tokens for each ruler.
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
 

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -228,7 +230,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	p.builder.blocksSize.Add(float64(blockSize))
 
 	if p.builder.cfg.UploadBlock {
-		userBucket := cortex_tsdb.NewUserBucketClient(p.userID, p.builder.bucketClient)
+		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient)
 
 		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {
@@ -248,7 +250,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	return ulid.String(), nil
 }
 
-func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *cortex_tsdb.UserBucketClient, blockDir string) error {
+func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *bucket.UserBucketClient, blockDir string) error {
 	boff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
@@ -360,15 +362,93 @@ func fetchAndBuildSingleSeries(ctx context.Context, fetcher *Fetcher, chunksIds 
 		return nil, nil, nil
 	}
 
-	m := cs[0].Metric
+	m, err := normalizeLabels(cs[0].Metric)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "chunk has invalid metrics: %v", cs[0].Metric.String())
+	}
+
 	// Verify that all chunks belong to the same series.
 	for _, c := range cs {
-		if !labels.Equal(m, c.Metric) {
+		nm, err := normalizeLabels(c.Metric)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "chunk has invalid metrics: %v", c.Metric.String())
+		}
+		if !labels.Equal(m, nm) {
 			return nil, nil, errors.Errorf("chunks for multiple metrics: %v, %v", m.String(), c.Metric.String())
 		}
 	}
 
 	return m, cs, nil
+}
+
+// Labels are already sorted, but there may be duplicate label names.
+// This method verifies sortedness, and removes duplicate label names (if they have the same value).
+func normalizeLabels(lbls labels.Labels) (labels.Labels, error) {
+	err := checkLabels(lbls)
+	if err == errLabelsNotSorted {
+		sort.Sort(lbls)
+		err = checkLabels(lbls)
+	}
+
+	if err == errDuplicateLabelsSameValue {
+		lbls = removeDuplicateLabels(lbls)
+		err = checkLabels(lbls)
+	}
+
+	return lbls, err
+}
+
+var (
+	errLabelsNotSorted               = errors.New("labels not sorted")
+	errDuplicateLabelsSameValue      = errors.New("duplicate labels, same value")
+	errDuplicateLabelsDifferentValue = errors.New("duplicate labels, different values")
+)
+
+// Returns one of errLabelsNotSorted, errDuplicateLabelsSameValue, errDuplicateLabelsDifferentValue,
+// or nil, if labels are fine.
+func checkLabels(lbls labels.Labels) error {
+	prevName, prevValue := "", ""
+
+	uniqueLabels := true
+	for _, l := range lbls {
+		switch {
+		case l.Name < prevName:
+			return errLabelsNotSorted
+		case l.Name == prevName:
+			if l.Value != prevValue {
+				return errDuplicateLabelsDifferentValue
+			}
+
+			uniqueLabels = false
+		}
+
+		prevName = l.Name
+		prevValue = l.Value
+	}
+
+	if !uniqueLabels {
+		return errDuplicateLabelsSameValue
+	}
+
+	return nil
+}
+
+func removeDuplicateLabels(lbls labels.Labels) labels.Labels {
+	prevName, prevValue := "", ""
+
+	for ix := 0; ix < len(lbls); {
+		l := lbls[ix]
+		if l.Name == prevName && l.Value == prevValue {
+			lbls = append(lbls[:ix], lbls[ix+1:]...)
+			continue
+		}
+
+		prevName = l.Name
+		prevValue = l.Value
+		ix++
+	}
+
+	return lbls
 }
 
 // Finds storage configuration for given day, and builds a client.

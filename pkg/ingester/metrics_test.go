@@ -171,6 +171,164 @@ func TestTSDBMetrics(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestTSDBMetricsWithRemoval(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	tsdbMetrics := newTSDBMetrics(mainReg)
+
+	tsdbMetrics.setRegistryForUser("user1", populateTSDBMetrics(12345))
+	tsdbMetrics.setRegistryForUser("user2", populateTSDBMetrics(85787))
+	tsdbMetrics.setRegistryForUser("user3", populateTSDBMetrics(999))
+	tsdbMetrics.removeRegistryForUser("user3")
+
+	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_shipper_dir_syncs_total Total number of TSDB dir syncs
+			# TYPE cortex_ingester_shipper_dir_syncs_total counter
+			# 12345 + 85787 + 999
+			cortex_ingester_shipper_dir_syncs_total 99131
+
+			# HELP cortex_ingester_shipper_dir_sync_failures_total Total number of failed TSDB dir syncs
+			# TYPE cortex_ingester_shipper_dir_sync_failures_total counter
+			# 2*(12345 + 85787 + 999)
+			cortex_ingester_shipper_dir_sync_failures_total 198262
+
+			# HELP cortex_ingester_shipper_uploads_total Total number of uploaded TSDB blocks
+			# TYPE cortex_ingester_shipper_uploads_total counter
+			# 3*(12345 + 85787 + 999)
+			cortex_ingester_shipper_uploads_total 297393
+
+			# HELP cortex_ingester_shipper_upload_failures_total Total number of TSDB block upload failures
+			# TYPE cortex_ingester_shipper_upload_failures_total counter
+			# 4*(12345 + 85787 + 999)
+			cortex_ingester_shipper_upload_failures_total 396524
+
+			# HELP cortex_ingester_tsdb_compactions_total Total number of TSDB compactions that were executed.
+			# TYPE cortex_ingester_tsdb_compactions_total counter
+			cortex_ingester_tsdb_compactions_total 693917
+
+			# HELP cortex_ingester_tsdb_compaction_duration_seconds Duration of TSDB compaction runs.
+			# TYPE cortex_ingester_tsdb_compaction_duration_seconds histogram
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="1"} 0
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="2"} 0
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="4"} 0
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="8"} 0
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="16"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="32"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="64"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="128"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="256"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="512"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_bucket{le="+Inf"} 3
+			cortex_ingester_tsdb_compaction_duration_seconds_sum 27
+			cortex_ingester_tsdb_compaction_duration_seconds_count 3
+
+			# HELP cortex_ingester_tsdb_wal_fsync_duration_seconds Duration of TSDB WAL fsync.
+			# TYPE cortex_ingester_tsdb_wal_fsync_duration_seconds summary
+			cortex_ingester_tsdb_wal_fsync_duration_seconds{quantile="0.5"} 30
+			cortex_ingester_tsdb_wal_fsync_duration_seconds{quantile="0.9"} 30
+			cortex_ingester_tsdb_wal_fsync_duration_seconds{quantile="0.99"} 30
+			cortex_ingester_tsdb_wal_fsync_duration_seconds_sum 30
+			cortex_ingester_tsdb_wal_fsync_duration_seconds_count 3
+
+			# HELP cortex_ingester_tsdb_wal_page_flushes_total Total number of TSDB WAL page flushes.
+			# TYPE cortex_ingester_tsdb_wal_page_flushes_total counter
+			cortex_ingester_tsdb_wal_page_flushes_total 1090441
+
+			# HELP cortex_ingester_tsdb_wal_completed_pages_total Total number of TSDB WAL completed pages.
+			# TYPE cortex_ingester_tsdb_wal_completed_pages_total counter
+			cortex_ingester_tsdb_wal_completed_pages_total 1189572
+
+			# HELP cortex_ingester_tsdb_wal_truncations_failed_total Total number of TSDB WAL truncations that failed.
+			# TYPE cortex_ingester_tsdb_wal_truncations_failed_total counter
+			cortex_ingester_tsdb_wal_truncations_failed_total 1288703
+
+			# HELP cortex_ingester_tsdb_wal_truncations_total Total number of TSDB  WAL truncations attempted.
+			# TYPE cortex_ingester_tsdb_wal_truncations_total counter
+			cortex_ingester_tsdb_wal_truncations_total 1387834
+
+			# HELP cortex_ingester_tsdb_wal_corruptions_total Total number of TSDB WAL corruptions.
+			# TYPE cortex_ingester_tsdb_wal_corruptions_total counter
+			cortex_ingester_tsdb_wal_corruptions_total 2.676537e+06
+
+			# HELP cortex_ingester_tsdb_wal_writes_failed_total Total number of TSDB WAL writes that failed.
+			# TYPE cortex_ingester_tsdb_wal_writes_failed_total counter
+			cortex_ingester_tsdb_wal_writes_failed_total 1486965
+
+			# HELP cortex_ingester_tsdb_head_truncations_failed_total Total number of TSDB head truncations that failed.
+			# TYPE cortex_ingester_tsdb_head_truncations_failed_total counter
+			cortex_ingester_tsdb_head_truncations_failed_total 2.775668e+06
+
+			# HELP cortex_ingester_tsdb_head_truncations_total Total number of TSDB head truncations attempted.
+			# TYPE cortex_ingester_tsdb_head_truncations_total counter
+			cortex_ingester_tsdb_head_truncations_total 2.874799e+06
+
+			# HELP cortex_ingester_tsdb_head_gc_duration_seconds Runtime of garbage collection in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_gc_duration_seconds summary
+			cortex_ingester_tsdb_head_gc_duration_seconds_sum 9
+			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
+
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
+
+			# HELP cortex_ingester_tsdb_checkpoint_deletions_total Total number of TSDB checkpoint deletions attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_deletions_total counter
+			cortex_ingester_tsdb_checkpoint_deletions_total 1685227
+
+			# HELP cortex_ingester_tsdb_checkpoint_creations_failed_total Total number of TSDB checkpoint creations that failed.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_failed_total counter
+			cortex_ingester_tsdb_checkpoint_creations_failed_total 1784358
+
+			# HELP cortex_ingester_tsdb_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
+			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
+			cortex_ingester_tsdb_checkpoint_creations_total 1883489
+
+			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+			# TYPE cortex_ingester_memory_series_created_total counter
+			# 5 * (12345, 85787 and 999 respectively)
+			cortex_ingester_memory_series_created_total{user="user1"} 61725
+			cortex_ingester_memory_series_created_total{user="user2"} 428935
+
+			# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+			# TYPE cortex_ingester_memory_series_removed_total counter
+			# 6 * (12345, 85787 and 999 respectively)
+			cortex_ingester_memory_series_removed_total{user="user1"} 74070
+			cortex_ingester_memory_series_removed_total{user="user2"} 514722
+
+			# HELP cortex_ingester_tsdb_head_active_appenders Number of currently active TSDB appender transactions.
+			# TYPE cortex_ingester_tsdb_head_active_appenders gauge
+			cortex_ingester_tsdb_head_active_appenders 1962640
+
+			# HELP cortex_ingester_tsdb_head_series_not_found_total Total number of TSDB requests for series that were not found.
+			# TYPE cortex_ingester_tsdb_head_series_not_found_total counter
+			cortex_ingester_tsdb_head_series_not_found_total 2081751
+
+			# HELP cortex_ingester_tsdb_head_chunks Total number of chunks in the TSDB head block.
+			# TYPE cortex_ingester_tsdb_head_chunks gauge
+			cortex_ingester_tsdb_head_chunks 2158904
+
+			# HELP cortex_ingester_tsdb_head_chunks_created_total Total number of series created in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_chunks_created_total counter
+			cortex_ingester_tsdb_head_chunks_created_total{user="user1"} 283935
+			cortex_ingester_tsdb_head_chunks_created_total{user="user2"} 1973101
+
+			# HELP cortex_ingester_tsdb_head_chunks_removed_total Total number of series removed in the TSDB head.
+			# TYPE cortex_ingester_tsdb_head_chunks_removed_total counter
+			cortex_ingester_tsdb_head_chunks_removed_total{user="user1"} 296280
+			cortex_ingester_tsdb_head_chunks_removed_total{user="user2"} 2058888
+
+			# HELP cortex_ingester_tsdb_wal_truncate_duration_seconds Duration of TSDB WAL truncation.
+			# TYPE cortex_ingester_tsdb_wal_truncate_duration_seconds summary
+			cortex_ingester_tsdb_wal_truncate_duration_seconds_sum 75
+			cortex_ingester_tsdb_wal_truncate_duration_seconds_count 3
+
+			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
+			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
+			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
+	`))
+	require.NoError(t, err)
+}
+
 func populateTSDBMetrics(base float64) *prometheus.Registry {
 	r := prometheus.NewRegistry()
 

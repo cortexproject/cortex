@@ -53,7 +53,7 @@ done
 
 GO_TEST_ARGS=(-tags "${TAGS[@]}" -cpu 4 -timeout $TIMEOUT $VERBOSE)
 
-if [ -n "$SLOW" ] || [ -n "$CIRCLECI" ] || [ -n "$CI" ]; then
+if [ -n "$SLOW" ] || [ -n "$CI" ]; then
     SLOW=true
 fi
 
@@ -82,13 +82,6 @@ else
     TESTDIRS=($(for d in ${TESTDIRS[*]}; do echo "$d"; done))
 fi
 
-# If running on circle, use the scheduler to work out what tests to run on what shard
-if [ -n "$CIRCLECI" ] && [ -z "$NO_SCHEDULER" ] && [ -x "$DIR/sched" ]; then
-    PREFIX=$(go list -e ./ | sed -e 's/\//-/g')
-    TESTDIRS=($(echo "${TESTDIRS[@]}" | "$DIR/sched" sched "$PREFIX-$CIRCLE_PROJECT_USERNAME-$CIRCLE_PROJECT_REPONAME-$CIRCLE_BUILD_NUM" "$CIRCLE_NODE_TOTAL" "$CIRCLE_NODE_INDEX"))
-    echo "${TESTDIRS[@]}"
-fi
-
 PACKAGE_BASE=$(go list -e ./)
 
 run_test() {
@@ -114,11 +107,6 @@ run_test() {
     local END
     END=$(date +%s)
     local RUNTIME=$((END - START))
-
-    # Report test runtime when running on circle, to help scheduler
-    if [ -n "$CIRCLECI" ] && [ -z "$NO_SCHEDULER" ] && [ -x "$DIR/sched" ]; then
-        "$DIR/sched" time "$dir" "$RUNTIME"
-    fi
 }
 
 for dir in "${TESTDIRS[@]}"; do

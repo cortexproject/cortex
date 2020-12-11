@@ -31,6 +31,9 @@ type Config struct {
 	QuerierID string `yaml:"id"`
 
 	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+
+	// The following config is injected internally.
+	QueryStatsEnabled bool `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

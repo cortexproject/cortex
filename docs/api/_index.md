@@ -56,6 +56,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete series](#delete-series) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
 | [List delete requests](#list-delete-requests) | Purger | `GET <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
 | [Cancel delete request](#cancel-delete-request) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request` |
+| [Tenant delete request](#tenant-delete-request) | Purger | `POST /purger/delete_tenant` |
+| [Tenant delete status](#tenant-delete-status) | Purger | `GET /purger/delete_tenant_status` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway | `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor | `GET /compactor/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) | `GET /api/prom/configs/rules` |
@@ -220,7 +222,7 @@ GET,POST /ingester/shutdown
 GET,POST /shutdown
 ```
 
-Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns. In the meantime, `/ready` will not return 200.
+Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns. In the meantime, `/ready` will not return 200. This endpoint will unregister the ingester from the ring even if `-ingester.unregister-on-shutdown` is disabled.
 
 _This API endpoint is usually used by scale down automations._
 
@@ -294,7 +296,7 @@ GET,POST <prometheus-http-prefix>/api/v1/labels
 GET,POST <legacy-http-prefix>/api/v1/labels
 ```
 
-Get label names of ingested series. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label names from in-memory data stored in the ingesters.
+Get label names of ingested series. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label names from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
 
 _For more information, please check out the Prometheus [get label names](https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names) documentation._
 
@@ -309,7 +311,7 @@ GET <prometheus-http-prefix>/api/v1/label/{name}/values
 GET <legacy-http-prefix>/api/v1/label/{name}/values
 ```
 
-Get label values for a given label name. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label values from in-memory data stored in the ingesters.
+Get label values for a given label name. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the label values from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
 
 _For more information, please check out the Prometheus [get label values](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values) documentation._
 
@@ -737,6 +739,26 @@ Cancel a delete request while the request is still in the grace period (before t
 | URL query parameter | Description |
 | ------------------- | ----------- |
 | `request_id` | Deletion request ID to cancel. Can be obtained by the [List delete requests](#list-delete-requests) endpoint. |
+
+_Requires [authentication](#authentication)._
+
+### Tenant Delete Request
+
+```
+POST /purger/delete_tenant
+```
+
+Request deletion of ALL tenant data. Only works with blocks storage. Experimental.
+
+_Requires [authentication](#authentication)._
+
+### Tenant Delete Status
+
+```
+GET /purger/delete_tenant_status
+```
+
+Returns status of tenant deletion. Output format to be defined. Experimental.
 
 _Requires [authentication](#authentication)._
 

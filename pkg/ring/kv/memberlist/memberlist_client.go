@@ -267,6 +267,10 @@ type valueDesc struct {
 	codecID string
 }
 
+func (v valueDesc) String() string {
+	return fmt.Sprintf("size: %d, version: %d, codec: %s", len(v.value), v.version, v.codecID)
+}
+
 var (
 	// if merge fails because of CAS version mismatch, this error is returned. CAS operation reacts on it
 	errVersionMismatch  = errors.New("version mismatch")
@@ -1150,4 +1154,15 @@ func computeNewValue(incoming Mergeable, stored []byte, c codec.Codec, cas bool)
 	// otherwise we have two mergeables, so merge them
 	change, err := oldVal.Merge(incoming, cas)
 	return oldVal, change, err
+}
+
+func (m *KV) storeCopy() map[string]valueDesc {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	result := make(map[string]valueDesc, len(m.store))
+	for k, v := range m.store {
+		result[k] = v
+	}
+	return result
 }

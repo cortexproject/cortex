@@ -64,7 +64,7 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	startTime := time.Now()
@@ -80,7 +80,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 	const (
 		minStability     = 3 * time.Second
 		addInstanceAfter = 2 * time.Second
-		maxWaiting       = 10 * time.Second
+		maxWaiting       = 15 * time.Second
 	)
 
 	// Init the ring.
@@ -98,7 +98,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Add 1 new instance after some time.
@@ -120,7 +120,8 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 	require.NoError(t, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, minStability+addInstanceAfter, elapsedTime, float64(2*time.Second))
+	assert.GreaterOrEqual(t, elapsedTime.Milliseconds(), (minStability + addInstanceAfter).Milliseconds())
+	assert.LessOrEqual(t, elapsedTime.Milliseconds(), (minStability + addInstanceAfter + 3*time.Second).Milliseconds())
 }
 
 func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
@@ -146,7 +147,7 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 		ringTokens:       ringDesc.getTokens(),
 		ringTokensByZone: ringDesc.getTokensByZone(),
 		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         &DefaultReplicationStrategy{},
+		strategy:         NewDefaultReplicationStrategy(true),
 	}
 
 	// Keep changing the ring.

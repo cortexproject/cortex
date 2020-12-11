@@ -11,20 +11,20 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 type SharedConfig struct {
 	SchemaConfig  chunk.SchemaConfig // Flags registered by main.go
 	StorageConfig storage.Config
 
-	Bucket       tsdb.BucketConfig
+	Bucket       bucket.Config
 	BucketPrefix string
 }
 
 func (cfg *SharedConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.SchemaConfig.RegisterFlags(f)
-	cfg.Bucket.RegisterFlags(f)
+	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.StorageConfig.RegisterFlags(f)
 
 	f.StringVar(&cfg.BucketPrefix, "blocksconvert.bucket-prefix", "migration", "Prefix in the bucket for storing plan files.")
@@ -35,7 +35,7 @@ func (cfg *SharedConfig) GetBucket(l log.Logger, reg prometheus.Registerer) (obj
 		return nil, errors.Wrap(err, "invalid bucket config")
 	}
 
-	bucket, err := tsdb.NewBucketClient(context.Background(), cfg.Bucket, "bucket", l, reg)
+	bucket, err := bucket.NewClient(context.Background(), cfg.Bucket, "bucket", l, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bucket")
 	}

@@ -1,10 +1,9 @@
 <p align="center"><img src="images/logo.png" alt="Cortex Logo"></p>
 
-[![Circle CI](https://circleci.com/gh/cortexproject/cortex/tree/master.svg?style=shield)](https://circleci.com/gh/cortexproject/cortex/tree/master)
+[![CI](https://github.com/cortexproject/cortex/workflows/ci/badge.svg)](https://github.com/cortexproject/cortex/actions)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
 <a href="https://goreportcard.com/report/github.com/cortexproject/cortex"><img src="https://goreportcard.com/badge/github.com/cortexproject/cortex" alt="Go Report Card" /></a>
 <a href="https://cloud-native.slack.com/messages/cortex/"><img src="https://img.shields.io/badge/join%20slack-%23cortex-brightgreen.svg" alt="Slack" /></a>
-[![TODOs](https://badgen.net/https/api.tickgit.com/badgen/github.com/cortexproject/cortex)](https://www.tickgit.com/browse?repo=github.com/cortexproject/cortex)
 
 # Cortex: horizontally scalable, highly available, multi-tenant, long term storage for Prometheus.
 

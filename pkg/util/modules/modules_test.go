@@ -1,9 +1,11 @@
 package modules
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,4 +166,52 @@ func TestDependenciesForModule(t *testing.T) {
 
 	deps := m.DependenciesForModule("test")
 	assert.Equal(t, []string{"dep1", "dep2", "dep3"}, deps)
+}
+
+func TestModuleWaitsForAllDependencies(t *testing.T) {
+	var serviceA services.Service
+
+	initA := func() (services.Service, error) {
+		serviceA = services.NewIdleService(func(serviceContext context.Context) error {
+			// Slow-starting service. Delay is here to verify that service for C is not started before this service
+			// has finished starting.
+			time.Sleep(1 * time.Second)
+			return nil
+		}, nil)
+
+		return serviceA, nil
+	}
+
+	initC := func() (services.Service, error) {
+		return services.NewIdleService(func(serviceContext context.Context) error {
+			// At this point, serviceA should be Running, because "C" depends (indirectly) on "A".
+			if s := serviceA.State(); s != services.Running {
+				return fmt.Errorf("serviceA has invalid state: %v", s)
+			}
+			return nil
+		}, nil), nil
+	}
+
+	m := NewManager()
+	m.RegisterModule("A", initA)
+	m.RegisterModule("B", nil)
+	m.RegisterModule("C", initC)
+
+	// C -> B -> A. Even though B has no service, C must still wait for service A to start, before C can start.
+	require.NoError(t, m.AddDependency("B", "A"))
+	require.NoError(t, m.AddDependency("C", "B"))
+
+	servsMap, err := m.InitModuleServices("C")
+	require.NoError(t, err)
+
+	// Build service manager from services, and start it.
+	servs := []services.Service(nil)
+	for _, s := range servsMap {
+		servs = append(servs, s)
+	}
+
+	servManager, err := services.NewManager(servs...)
+	require.NoError(t, err)
+	assert.NoError(t, services.StartManagerAndAwaitHealthy(context.Background(), servManager))
+	assert.NoError(t, services.StopManagerAndAwaitStopped(context.Background(), servManager))
 }

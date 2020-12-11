@@ -149,7 +149,7 @@ func TestTsdbBuilder(t *testing.T) {
 
 	require.NoError(t, db.Close())
 
-	m, err := metadata.Read(filepath.Join(dir, id.String()))
+	m, err := metadata.ReadFromDir(filepath.Join(dir, id.String()))
 	require.NoError(t, err)
 
 	otherID := ulid.MustNew(ulid.Now(), nil)

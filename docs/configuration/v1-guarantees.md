@@ -57,3 +57,9 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)
+- Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)
+- Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
+- Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
+- Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
+- Tenant Deletion in Purger, for blocks storage.
+- Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)

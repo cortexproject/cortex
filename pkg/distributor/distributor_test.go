@@ -33,6 +33,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -427,7 +428,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					d.HATracker = r
 				}
 
-				userID, err := user.ExtractOrgID(ctx)
+				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
 				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
 				assert.NoError(t, err)
@@ -1105,6 +1106,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		},
 		HeartbeatTimeout:  60 * time.Minute,
 		ReplicationFactor: 3,
+		ExtendWrites:      true,
 	}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
@@ -1196,9 +1198,9 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *client
 
 	for i := 0; i < metadata; i++ {
 		m := &client.MetricMetadata{
-			MetricName: fmt.Sprintf("metric_%d", i),
-			Type:       client.COUNTER,
-			Help:       fmt.Sprintf("a help for metric_%d", i),
+			MetricFamilyName: fmt.Sprintf("metric_%d", i),
+			Type:             client.COUNTER,
+			Help:             fmt.Sprintf("a help for metric_%d", i),
 		}
 		request.Metadata = append(request.Metadata, m)
 	}
@@ -1283,6 +1285,9 @@ func (i *mockIngester) series() map[uint32]*client.PreallocTimeseries {
 }
 
 func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	i.Lock()
+	defer i.Unlock()
+
 	i.trackCall("Check")
 
 	return &grpc_health_v1.HealthCheckResponse{}, nil
@@ -1310,7 +1315,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 		i.metadata = map[uint32]map[client.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := user.ExtractOrgID(ctx)
+	orgid, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1336,7 +1341,7 @@ func (i *mockIngester) Push(ctx context.Context, req *client.WriteRequest, opts 
 	}
 
 	for _, m := range req.Metadata {
-		hash := shardByMetricName(orgid, m.MetricName)
+		hash := shardByMetricName(orgid, m.MetricFamilyName)
 		set, ok := i.metadata[hash]
 		if !ok {
 			set = map[client.MetricMetadata]struct{}{}
@@ -1550,7 +1555,7 @@ func TestDistributorValidation(t *testing.T) {
 	}{
 		// Test validation passes.
 		{
-			metadata: []*client.MetricMetadata{{MetricName: "testmetric", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
+			metadata: []*client.MetricMetadata{{MetricFamilyName: "testmetric", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
 			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
 			samples: []client.Sample{{
 				TimestampMs: int64(now),
@@ -1600,7 +1605,7 @@ func TestDistributorValidation(t *testing.T) {
 		},
 		// Test metadata validation fails
 		{
-			metadata: []*client.MetricMetadata{{MetricName: "", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
+			metadata: []*client.MetricMetadata{{MetricFamilyName: "", Help: "a test metric.", Unit: "", Type: client.COUNTER}},
 			labels:   []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},
 			samples: []client.Sample{{
 				TimestampMs: int64(now),

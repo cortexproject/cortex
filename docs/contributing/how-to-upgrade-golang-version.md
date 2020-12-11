@@ -11,9 +11,9 @@ To upgrade the Golang version:
    - Upgrade Golang version in `build-image/Dockerfile`
    - Build new image `make build-image/.uptodate`
    - Publish the new image to `quay.io` (requires a maintainer)
-   - Update the Docker image tag in `.circleci/config.yml`
+   - Update the Docker image tag in `.github/workflows/*`
 2. Upgrade integration tests version
-   - Update the Golang version installed in the `integration` job in `.circleci/config.yml`
+   - Update the Golang version installed in the `integration` job in `.github/workflows/*`
 
 If the minimum support Golang version should be upgraded as well:
 

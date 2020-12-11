@@ -153,7 +153,6 @@ func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
 }
 
 func (c *Client) query(addr string) (*http.Response, []byte, error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -212,40 +211,6 @@ type ServerStatus struct {
 	Data struct {
 		ConfigYaml string `json:"configYAML"`
 	} `json:"data"`
-}
-
-// GetAlertmanagerConfig gets the status of an alertmanager instance
-func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	var ss *ServerStatus
-	err = json.Unmarshal(body, &ss)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &alertConfig.Config{}
-	err = yaml.Unmarshal([]byte(ss.Data.ConfigYaml), cfg)
-
-	return cfg, err
 }
 
 // GetRuleGroups gets the status of an alertmanager instance
@@ -362,6 +327,40 @@ func (c *Client) DeleteRuleNamespace(namespace string) error {
 type userConfig struct {
 	TemplateFiles      map[string]string `yaml:"template_files"`
 	AlertmanagerConfig string            `yaml:"alertmanager_config"`
+}
+
+// GetAlertmanagerConfig gets the status of an alertmanager instance
+func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
+	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	var ss *ServerStatus
+	err = json.Unmarshal(body, &ss)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &alertConfig.Config{}
+	err = yaml.Unmarshal([]byte(ss.Data.ConfigYaml), cfg)
+
+	return cfg, err
 }
 
 // SetAlertmanagerConfig gets the status of an alertmanager instance

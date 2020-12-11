@@ -10,7 +10,7 @@ The single-binary mode is easier to deploy and is aimed mainly at users wanting 
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
 
 This document will focus on single-process Cortex with the blocks storage.
-See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../blocks-storage/)
+See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../blocks-storage/_index.md)
 for more information about the blocks storage.
 
 Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
@@ -57,7 +57,7 @@ $ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Promrtheus).
+**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
 
 ## Horizontally scale out
 

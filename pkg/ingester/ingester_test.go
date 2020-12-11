@@ -175,7 +175,7 @@ func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetri
 		for i := 0; i < numMetadata; i++ {
 			metricName := fmt.Sprintf("testmetric_%d", i)
 			for j := 0; j < metadataPerMetric; j++ {
-				m := &client.MetricMetadata{MetricName: metricName, Help: fmt.Sprintf("a help for %d", j), Unit: "", Type: client.COUNTER}
+				m := &client.MetricMetadata{MetricFamilyName: metricName, Help: fmt.Sprintf("a help for %d", j), Unit: "", Type: client.COUNTER}
 				metadata = append(metadata, m)
 			}
 		}
@@ -272,9 +272,9 @@ func TestIngesterMetadataAppend(t *testing.T) {
 
 					metricTracker := map[string]bool{}
 					for _, m := range resp.Metadata {
-						_, ok := metricTracker[m.GetMetricName()]
+						_, ok := metricTracker[m.GetMetricFamilyName()]
 						if !ok {
-							metricTracker[m.GetMetricName()] = true
+							metricTracker[m.GetMetricFamilyName()] = true
 						}
 					}
 
@@ -565,8 +565,8 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				Value:       3,
 			}
 			// Metadata
-			metadata1 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
-			metadata2 := &client.MetricMetadata{MetricName: "testmetric2", Help: "a help for testmetric2", Type: client.COUNTER}
+			metadata1 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
+			metadata2 := &client.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: client.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
@@ -686,8 +686,8 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 			}
 
 			// Metadata
-			metadata1 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
-			metadata2 := &client.MetricMetadata{MetricName: "testmetric", Help: "a help for testmetric2", Type: client.COUNTER}
+			metadata1 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
+			metadata2 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric2", Type: client.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)

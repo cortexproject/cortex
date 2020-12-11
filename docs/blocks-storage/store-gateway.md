@@ -275,6 +275,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.insecure
     [insecure: <boolean> | default = false]
 
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -blocks-storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
+
     http:
       # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -480,7 +485,8 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
-      # Compress postings before storing them to postings cache.
+      # Deprecated: compress postings before storing them to postings cache.
+      # This option is unused and postings compression is always enabled.
       # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
       [postings_compression_enabled: <boolean> | default = false]
 
@@ -544,7 +550,7 @@ blocks_storage:
 
       # TTL for caching object attributes for chunks.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.attributes-ttl
-      [attributes_ttl: <duration> | default = 24h]
+      [attributes_ttl: <duration> | default = 168h]
 
       # TTL for caching individual chunks subranges.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-ttl
@@ -609,11 +615,13 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
       [chunks_list_ttl: <duration> | default = 24h]
 
-      # How long to cache information that block metafile exists.
+      # How long to cache information that block metafile exists. Also used for
+      # user deletion mark file.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
       [metafile_exists_ttl: <duration> | default = 2h]
 
-      # How long to cache information that block metafile doesn't exist.
+      # How long to cache information that block metafile doesn't exist. Also
+      # used for user deletion mark file.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
       [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 
@@ -624,6 +632,10 @@ blocks_storage:
       # Maximum size of metafile content to cache in bytes.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
       [metafile_max_size_bytes: <int> | default = 1048576]
+
+      # How long to cache attributes of the block metafile.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
+      [metafile_attributes_ttl: <duration> | default = 168h]
 
     # Duration after which the blocks marked for deletion will be filtered out
     # while fetching blocks. The idea of ignore-deletion-marks-delay is to
@@ -673,6 +685,12 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
     [head_compaction_idle_timeout: <duration> | default = 1h]
 
+    # The write buffer size used by the head chunks mapper. Lower values reduce
+    # memory utilisation on clusters with a large number of tenants at the cost
+    # of increased disk I/O operations.
+    # CLI flag: -blocks-storage.tsdb.head-chunks-write-buffer-size-bytes
+    [head_chunks_write_buffer_size_bytes: <int> | default = 4194304]
+
     # The number of shards of series to use in TSDB (must be a power of 2).
     # Reducing this will decrease memory footprint, but can negatively impact
     # performance.
@@ -691,6 +709,15 @@ blocks_storage:
     # will be reused after restart.
     # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
     [flush_blocks_on_shutdown: <boolean> | default = false]
+
+    # If TSDB has not received any data for this duration, and all blocks from
+    # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
+    # to positive value, this value should be equal or higher than
+    # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+    # prematurely, which could cause partial query results. 0 or negative value
+    # disables closing of idle TSDB.
+    # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
+    [close_idle_tsdb_timeout: <duration> | default = 0s]
 
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup

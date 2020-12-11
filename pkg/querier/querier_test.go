@@ -13,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -160,7 +161,7 @@ func TestQuerier(t *testing.T) {
 
 						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
 						queryable, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
-						testQuery(t, queryable, through, query)
+						testRangeQuery(t, queryable, through, query)
 					})
 				}
 			}
@@ -181,7 +182,7 @@ func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time
 	opts.NoLockfile = true
 
 	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
-	head, err := tsdb.NewHead(nil, nil, nil, tsdb.ExponentialBlockRanges(opts.MinBlockDuration, 10, 3)[0], dir, chunkenc.NewPool(), opts.StripeSize, opts.SeriesLifecycleCallback)
+	head, err := tsdb.NewHead(nil, nil, nil, tsdb.ExponentialBlockRanges(opts.MinBlockDuration, 10, 3)[0], dir, chunkenc.NewPool(), chunks.DefaultWriteBufferSize, opts.StripeSize, opts.SeriesLifecycleCallback)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = head.Close()
@@ -701,7 +702,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	return result
 }
 
-func testQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
+func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
 	dir, err := ioutil.TempDir("", "test_query")
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)

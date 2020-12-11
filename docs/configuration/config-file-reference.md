@@ -69,6 +69,11 @@ Where default_value is the value to use if the environment variable is undefined
 [http_prefix: <string> | default = "/api/prom"]
 
 api:
+  # Use GZIP compression for API responses. Some endpoints serve large YAML or
+  # JSON blobs which can benefit from compression.
+  # CLI flag: -api.response-compression-enabled
+  [response_compression_enabled: <boolean> | default = false]
+
   # HTTP URL path under which the Alertmanager ui and api will be served.
   # CLI flag: -http.alertmanager-http-prefix
   [alertmanager_http_prefix: <string> | default = "/alertmanager"]
@@ -352,6 +357,18 @@ grpc_tls_config:
 # CLI flag: -server.grpc.keepalive.timeout
 [grpc_server_keepalive_timeout: <duration> | default = 20s]
 
+# Minimum amount of time a client should wait before sending a keepalive ping.
+# If client sends keepalive ping more often, server will send GOAWAY and close
+# the connection.
+# CLI flag: -server.grpc.keepalive.min-time-between-pings
+[grpc_server_min_time_between_pings: <duration> | default = 5m]
+
+# If true, server allows keepalive pings even when there are no active
+# streams(RPCs). If false, and client sends ping when there are no active
+# streams, server will send GOAWAY and close the connection.
+# CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
+[grpc_server_ping_without_stream_allowed: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -608,6 +625,13 @@ lifecycler:
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Try writing to an additional ingester in the presence of an ingester not
+    # in the ACTIVE state. It is useful to disable this along with
+    # -ingester.unregister-on-shutdown=false in order to not spread samples to
+    # extra ingesters during rolling restarts with consistent naming.
+    # CLI flag: -distributor.extend-writes
+    [extend_writes: <boolean> | default = true]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
@@ -647,6 +671,12 @@ lifecycler:
   # The availability zone where this instance is running.
   # CLI flag: -ingester.availability-zone
   [availability_zone: <string> | default = ""]
+
+  # Unregister from the ring upon clean shutdown. It can be useful to disable
+  # for rolling restarts with consistent naming in conjunction with
+  # -distributor.extend-writes=false.
+  # CLI flag: -ingester.unregister-on-shutdown
+  [unregister_on_shutdown: <boolean> | default = true]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by
@@ -844,6 +874,12 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -frontend.max-body-size
 [max_body_size: <int> | default = 10485760]
 
+# True to enable query statistics tracking. When enabled, a message with some
+# statistics is logged for every query. This configuration option must be set
+# both on query-frontend and querier.
+# CLI flag: -frontend.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
+
 # Maximum number of outstanding requests per tenant per frontend; requests
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
@@ -931,7 +967,8 @@ grpc_client_config:
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# Compress HTTP responses.
+# This flag is about to be deprecated. Please use
+# -api.response-compression-enabled instead.
 # CLI flag: -querier.compress-http-responses
 [compress_responses: <boolean> | default = false]
 
@@ -1027,6 +1064,49 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 ruler_client:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -ruler.client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Deprecated: Use gzip compression when sending messages.  If true, overrides
+  # grpc-compression flag.
+  # CLI flag: -ruler.client.grpc-use-gzip-compression
+  [use_gzip_compression: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -ruler.client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -ruler.client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -ruler.client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -ruler.client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -ruler.client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -ruler.client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -ruler.client.backoff-retries
+    [max_retries: <int> | default = 10]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -ruler.client.tls-cert-path
@@ -1185,6 +1265,11 @@ storage:
       # Set to false to skip verifying the certificate chain and hostname.
       # CLI flag: -ruler.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -ruler.storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
 
   swift:
     # Openstack authentication URL.
@@ -1503,6 +1588,11 @@ storage:
       # Set to false to skip verifying the certificate chain and hostname.
       # CLI flag: -alertmanager.storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4, v2.
+    # CLI flag: -alertmanager.storage.s3.signature-version
+    [signature_version: <string> | default = "v4"]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -1980,6 +2070,11 @@ aws:
     # Set to false to skip verifying the certificate chain and hostname.
     # CLI flag: -s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -s3.signature-version
+  [signature_version: <string> | default = "v4"]
 
 azure:
   # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
@@ -3404,6 +3499,11 @@ s3:
   # CLI flag: -blocks-storage.s3.insecure
   [insecure: <boolean> | default = false]
 
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -blocks-storage.s3.signature-version
+  [signature_version: <string> | default = "v4"]
+
   http:
     # The time an idle connection will remain idle before closing.
     # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -3609,7 +3709,8 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
-    # Compress postings before storing them to postings cache.
+    # Deprecated: compress postings before storing them to postings cache. This
+    # option is unused and postings compression is always enabled.
     # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
     [postings_compression_enabled: <boolean> | default = false]
 
@@ -3672,7 +3773,7 @@ bucket_store:
 
     # TTL for caching object attributes for chunks.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.attributes-ttl
-    [attributes_ttl: <duration> | default = 24h]
+    [attributes_ttl: <duration> | default = 168h]
 
     # TTL for caching individual chunks subranges.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-ttl
@@ -3737,11 +3838,13 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
     [chunks_list_ttl: <duration> | default = 24h]
 
-    # How long to cache information that block metafile exists.
+    # How long to cache information that block metafile exists. Also used for
+    # user deletion mark file.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
     [metafile_exists_ttl: <duration> | default = 2h]
 
-    # How long to cache information that block metafile doesn't exist.
+    # How long to cache information that block metafile doesn't exist. Also used
+    # for user deletion mark file.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
     [metafile_doesnt_exist_ttl: <duration> | default = 5m]
 
@@ -3752,6 +3855,10 @@ bucket_store:
     # Maximum size of metafile content to cache in bytes.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
     [metafile_max_size_bytes: <int> | default = 1048576]
+
+    # How long to cache attributes of the block metafile.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
+    [metafile_attributes_ttl: <duration> | default = 168h]
 
   # Duration after which the blocks marked for deletion will be filtered out
   # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
@@ -3800,6 +3907,12 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
   [head_compaction_idle_timeout: <duration> | default = 1h]
 
+  # The write buffer size used by the head chunks mapper. Lower values reduce
+  # memory utilisation on clusters with a large number of tenants at the cost of
+  # increased disk I/O operations.
+  # CLI flag: -blocks-storage.tsdb.head-chunks-write-buffer-size-bytes
+  [head_chunks_write_buffer_size_bytes: <int> | default = 4194304]
+
   # The number of shards of series to use in TSDB (must be a power of 2).
   # Reducing this will decrease memory footprint, but can negatively impact
   # performance.
@@ -3818,6 +3931,15 @@ tsdb:
   # will be reused after restart.
   # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
   [flush_blocks_on_shutdown: <boolean> | default = false]
+
+  # If TSDB has not received any data for this duration, and all blocks from
+  # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
+  # to positive value, this value should be equal or higher than
+  # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+  # prematurely, which could cause partial query results. 0 or negative value
+  # disables closing of idle TSDB.
+  # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
+  [close_idle_tsdb_timeout: <duration> | default = 0s]
 
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup

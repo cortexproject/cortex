@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -1029,4 +1030,21 @@ func TestRejoin(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
 
 	test.Poll(t, 5*time.Second, 2, membersFunc)
+}
+
+func TestMessageBuffer(t *testing.T) {
+	buf := []message(nil)
+	size := 0
+
+	buf, size = addMessageToBuffer(buf, size, 100, message{Size: 50})
+	assert.Len(t, buf, 1)
+	assert.Equal(t, size, 50)
+
+	buf, size = addMessageToBuffer(buf, size, 100, message{Size: 50})
+	assert.Len(t, buf, 2)
+	assert.Equal(t, size, 100)
+
+	buf, size = addMessageToBuffer(buf, size, 100, message{Size: 25})
+	assert.Len(t, buf, 2)
+	assert.Equal(t, size, 75)
 }

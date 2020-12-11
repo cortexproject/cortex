@@ -19,16 +19,26 @@ import (
 
 // WriteJSONResponse writes some JSON as a HTTP response.
 func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+
 	data, err := json.Marshal(v)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if _, err = w.Write(data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
+
+	// We ignore errors here, because we cannot do anything about them.
+	// Write will trigger sending Status code, so we cannot send a different status code afterwards.
+	// Also this isn't internal error, but error communicating with client.
+	_, _ = w.Write(data)
+}
+
+// Sends message as text/plain response with 200 status code.
+func WriteTextResponse(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	// Ignore inactionable errors.
+	_, _ = w.Write([]byte(message))
 }
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template

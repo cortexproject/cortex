@@ -385,21 +385,6 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
    Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
    Make sure you configure ingesters with a different cache to queriers, which need the whole value.
 
-#### WAL
-
-- `-ingester.wal-dir`
-   Directory where the WAL data should be stored and/or recovered from.
-
-- `-ingester.wal-enabled`
-
-   Setting this to `true` enables writing to WAL during ingestion.
-
-- `-ingester.checkpoint-duration`
-   This is the interval at which checkpoints should be created.
-
-- `-ingester.recover-from-wal`
-   Set this to `true` to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to `true`. The WAL dir needs to be set for this.
-
 #### Flusher
 
 - `-flusher.wal-dir`

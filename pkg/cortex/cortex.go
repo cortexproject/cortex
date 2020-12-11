@@ -465,6 +465,6 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 			}
 		}
 
-		http.Error(w, "ready", http.StatusOK)
+		util.WriteTextResponse(w, "ready")
 	}
 }

@@ -88,7 +88,7 @@ func (kvs *KVInitService) stopping(_ error) error {
 func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	kv := kvs.getKV()
 	if kv == nil {
-		http.Error(w, "This Cortex instance doesn't use memberlist.", http.StatusOK)
+		util.WriteTextResponse(w, "This Cortex instance doesn't use memberlist.")
 		return
 	}
 

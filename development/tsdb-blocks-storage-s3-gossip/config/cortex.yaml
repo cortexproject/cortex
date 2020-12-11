@@ -25,11 +25,15 @@ ingester:
       replication_factor: 1
 
 memberlist:
+  message_history_buffer_bytes: 1048576
   join_members:
     - distributor:10001
     - ingester-1:10002
     - ingester-2:10003
     - querier:10004
+    - compactor:10006
+    - store-gateway-1:10008
+    - store-gateway-2:10009
     - ruler-1:10021
     - ruler-2:10022
     - querier-with-scheduler:10013
@@ -89,9 +93,7 @@ ruler:
     heartbeat_period:   5s
     heartbeat_timeout:  15s
     kvstore:
-      store: consul
-      consul:
-        host: consul:8500
+      store: memberlist
 
 alertmanager:
   enable_api: true
@@ -112,9 +114,7 @@ compactor:
   sharding_enabled:    true
   sharding_ring:
     kvstore:
-      store: consul
-      consul:
-        host: consul:8500
+      store: memberlist
 
 store_gateway:
   sharding_enabled: true
@@ -123,9 +123,7 @@ store_gateway:
     heartbeat_period:   5s
     heartbeat_timeout:  15s
     kvstore:
-      store: consul
-      consul:
-        host: consul:8500
+      store: memberlist
 
 frontend_worker:
   frontend_address: "query-frontend:9007"

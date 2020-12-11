@@ -50,7 +50,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001 -memberlist.bind-port=10001"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001 -memberlist.nodename=distributor -memberlist.bind-port=10001 -log.level=debug"]
     depends_on:
       - consul
       - minio
@@ -71,7 +71,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002 -memberlist.bind-port=10002"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002 -memberlist.nodename=ingester-1 -memberlist.bind-port=10002"]
     depends_on:
       - consul
       - minio
@@ -93,7 +93,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003 -memberlist.bind-port=10003"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003 -memberlist.nodename=ingester-2 -memberlist.bind-port=10003"]
     depends_on:
       - consul
       - minio
@@ -115,7 +115,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -memberlist.bind-port=10004"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 -memberlist.nodename=querier -memberlist.bind-port=10004"]
     depends_on:
       - consul
       - minio
@@ -136,7 +136,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008 -memberlist.nodename=store-gateway-1 -memberlist.bind-port=10008"]
     depends_on:
       - consul
       - minio
@@ -157,7 +157,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8009 -server.grpc-listen-port=9009"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8009 -server.grpc-listen-port=9009 -memberlist.nodename=store-gateway-2 -memberlist.bind-port=10009"]
     depends_on:
       - consul
       - minio
@@ -178,7 +178,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006  -memberlist.nodename=compactor -memberlist.bind-port=10006"]
     depends_on:
       - consul
       - minio
@@ -235,7 +235,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18021 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8021 -server.grpc-listen-port=9021 -memberlist.bind-port=10021"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18021 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8021 -server.grpc-listen-port=9021 -memberlist.nodename=ruler-1 -memberlist.bind-port=10021"]
     depends_on:
       - consul
       - minio
@@ -256,7 +256,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18022 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8022 -server.grpc-listen-port=9022 -memberlist.bind-port=10022"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18022 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8022 -server.grpc-listen-port=9022 -memberlist.nodename=ruler-2 -memberlist.bind-port=10022"]
     depends_on:
       - consul
       - minio
@@ -321,7 +321,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address= -log.level=debug -memberlist.bind-port=10013"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address= -log.level=debug -memberlist.nodename=querier-with-scheduler -memberlist.bind-port=10013"]
     depends_on:
       - consul
       - minio

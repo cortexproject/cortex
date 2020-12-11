@@ -306,7 +306,6 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
-	t.Cfg.Worker.QueryStatsEnabled = t.Cfg.Frontend.Handler.QueryStatsEnabled
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util.Logger, prometheus.DefaultRegisterer)
 }
 

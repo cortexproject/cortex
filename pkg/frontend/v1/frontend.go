@@ -190,8 +190,9 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		errs := make(chan error, 1)
 		go func() {
 			err = server.Send(&frontendv1pb.FrontendToClient{
-				Type:        frontendv1pb.HTTP_REQUEST,
-				HttpRequest: req.request,
+				Type:         frontendv1pb.HTTP_REQUEST,
+				HttpRequest:  req.request,
+				StatsEnabled: stats.IsEnabled(req.originalCtx),
 			})
 			if err != nil {
 				errs <- err

@@ -877,8 +877,7 @@ The `query_frontend_config` configures the Cortex query-frontend.
 [max_body_size: <int> | default = 10485760]
 
 # True to enable query statistics tracking. When enabled, a message with some
-# statistics is logged for every query. This configuration option must be set
-# both on query-frontend and querier.
+# statistics is logged for every query.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 

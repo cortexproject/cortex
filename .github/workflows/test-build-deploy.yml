@@ -147,9 +147,18 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/...
+          go get -u github.com/jstemmer/go-junit-report@v0.9.1
+          go test -tags=requires_docker -timeout 1800s -v -count=1 ./integration/... 2>&1 | tee >(go-junit-report > test_integration.xml)
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v1.6
+        if: always()
+        with:
+          check_name: Integration Test Results
+          report_individual_runs: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          files: 'test_*.xml'
 
   integration-configs-db:
     needs: build

@@ -3,7 +3,7 @@
 ## master / unreleased
 
 * [ENHANCEMENT] Memberlist: add status page with available details about memberlist-based KV store and memberlist cluster. It's also possible to view KV values in Go struct or JSON format, or download for inspection. #3575
-* [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds.
+* [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
 
 ## 1.6.0-rc.0 in progress
 

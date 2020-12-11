@@ -763,7 +763,9 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[instance_interface_names&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;list&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>of&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>eth0&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>en0&lt;span style="color:#000;font-weight:bold">]]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="ingester_config">&lt;code>ingester_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>ingester_config&lt;/code> configures the Cortex ingester.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">walconfig&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># config is ignored when running the Cortex blocks storage.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">walconfig&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable writing of ingested data into WAL.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ingester.wal-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[wal_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -6013,25 +6015,6 @@ Defaults to &lt;code>Bigchunk&lt;/code> starting version 0.7.0.&lt;/p>
 &lt;p>&lt;code>-store.chunk-cache.cache-stubs&lt;/code>&lt;/p>
 &lt;p>Where you don&amp;rsquo;t want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
 Make sure you configure ingesters with a different cache to queriers, which need the whole value.&lt;/p>
-&lt;/li>
-&lt;/ul>
-&lt;h4 id="wal">WAL&lt;/h4>
-&lt;ul>
-&lt;li>
-&lt;p>&lt;code>-ingester.wal-dir&lt;/code>
-Directory where the WAL data should be stored and/or recovered from.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>-ingester.wal-enabled&lt;/code>&lt;/p>
-&lt;p>Setting this to &lt;code>true&lt;/code> enables writing to WAL during ingestion.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>-ingester.checkpoint-duration&lt;/code>
-This is the interval at which checkpoints should be created.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>-ingester.recover-from-wal&lt;/code>
-Set this to &lt;code>true&lt;/code> to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to &lt;code>true&lt;/code>. The WAL dir needs to be set for this.&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h4 id="flusher">Flusher&lt;/h4>

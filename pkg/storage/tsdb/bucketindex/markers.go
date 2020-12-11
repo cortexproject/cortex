@@ -82,7 +82,6 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 		}
 		if uploadErr != nil {
 			errs.Add(uploadErr)
-			continue
 		}
 	}
 

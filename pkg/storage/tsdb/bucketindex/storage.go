@@ -80,8 +80,13 @@ func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, idx *In
 	return nil
 }
 
-// DeleteIndex deletes the bucket index from the storage.
+// DeleteIndex deletes the bucket index from the storage. No error is returned if the index
+// does not exist.
 func DeleteIndex(ctx context.Context, bkt objstore.Bucket, userID string) error {
 	bkt = bucket.NewUserBucketClient(userID, bkt)
-	return errors.Wrap(bkt.Delete(ctx, IndexCompressedFilename), "delete bucket index")
+	err := errors.Wrap(bkt.Delete(ctx, IndexCompressedFilename), "delete bucket index")
+	if err != nil && !bkt.IsObjNotFoundErr(err) {
+		return err
+	}
+	return nil
 }

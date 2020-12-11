@@ -105,3 +105,10 @@ func BenchmarkReadIndex(b *testing.B) {
 		require.NoError(b, err)
 	}
 }
+
+func TestDeleteIndex_ShouldNotReturnErrorIfIndexDoesNotExist(t *testing.T) {
+	ctx := context.Background()
+	bkt := prepareFilesystemBucket(t)
+
+	assert.NoError(t, DeleteIndex(ctx, bkt, "user-1"))
+}

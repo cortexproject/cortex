@@ -14,8 +14,7 @@ import (
 )
 
 func TestReadIndex_ShouldReturnErrorIfIndexDoesNotExist(t *testing.T) {
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	idx, err := ReadIndex(context.Background(), bkt, "user-1", log.NewNopLogger())
 	require.Equal(t, ErrIndexNotFound, err)
@@ -26,8 +25,7 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	// Write a corrupted index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, IndexCompressedFilename), strings.NewReader("invalid!}")))
@@ -43,8 +41,7 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	// Mock some blocks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
@@ -53,9 +50,10 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	testutil.MockStorageDeletionMark(t, bkt, userID, testutil.MockStorageBlock(t, bkt, userID, 30, 40))
 
 	// Write the index.
-	w := NewWriter(bkt, userID, logger)
-	expectedIdx, err := w.WriteIndex(ctx, nil)
+	u := NewUpdater(bkt, userID, logger)
+	expectedIdx, _, err := u.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
+	require.NoError(t, WriteIndex(ctx, bkt, userID, expectedIdx))
 
 	// Read it back and compare.
 	actualIdx, err := ReadIndex(ctx, bkt, userID, logger)
@@ -73,8 +71,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt, cleanup := prepareFilesystemBucket(b)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(b)
 
 	// Mock some blocks and deletion marks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
@@ -90,12 +87,13 @@ func BenchmarkReadIndex(b *testing.B) {
 	}
 
 	// Write the index.
-	w := NewWriter(bkt, userID, logger)
-	_, err := w.WriteIndex(ctx, nil)
+	u := NewUpdater(bkt, userID, logger)
+	idx, _, err := u.UpdateIndex(ctx, nil)
 	require.NoError(b, err)
+	require.NoError(b, WriteIndex(ctx, bkt, userID, idx))
 
 	// Read it back once just to make sure the index contains the expected data.
-	idx, err := ReadIndex(ctx, bkt, userID, logger)
+	idx, err = ReadIndex(ctx, bkt, userID, logger)
 	require.NoError(b, err)
 	require.Len(b, idx.Blocks, numBlocks)
 	require.Len(b, idx.BlockDeletionMarks, numBlockDeletionMarks)
@@ -106,4 +104,11 @@ func BenchmarkReadIndex(b *testing.B) {
 		_, err := ReadIndex(ctx, bkt, userID, logger)
 		require.NoError(b, err)
 	}
+}
+
+func TestDeleteIndex_ShouldNotReturnErrorIfIndexDoesNotExist(t *testing.T) {
+	ctx := context.Background()
+	bkt := prepareFilesystemBucket(t)
+
+	assert.NoError(t, DeleteIndex(ctx, bkt, "user-1"))
 }

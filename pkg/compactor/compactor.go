@@ -45,8 +45,12 @@ type Config struct {
 	CompactionInterval    time.Duration            `yaml:"compaction_interval"`
 	CompactionRetries     int                      `yaml:"compaction_retries"`
 	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
+	CleanupInterval       time.Duration            `yaml:"cleanup_interval"`
 	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
+
+	// Whether the migration of block deletion marks to the global markers location is enabled.
+	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
@@ -78,12 +82,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
-	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks should be cleaned up concurrently (deletion of blocks previously marked for deletion).")
+	f.DurationVar(&cfg.CleanupInterval, "compactor.cleanup-interval", 15*time.Minute, "How frequently compactor should run blocks cleanup and maintenance, as well as update the bucket index.")
+	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
 	f.BoolVar(&cfg.ShardingEnabled, "compactor.sharding-enabled", false, "Shard tenants across multiple compactor instances. Sharding is required if you run multiple compactor instances, in order to coordinate compactions and avoid race conditions leading to the same tenant blocks simultaneously compacted by different instances.")
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
-		"If not 0, blocks will be marked for deletion and compactor component will delete blocks marked for deletion from the bucket. "+
-		"If delete-delay is 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures, "+
-		"if store gateway still has the block loaded, or compactor is ignoring the deletion because it's compacting the block at the same time.")
+		"If not 0, blocks will be marked for deletion and compactor component will permanently delete blocks marked for deletion from the bucket. "+
+		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
+	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", true, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
@@ -332,11 +337,10 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Create the blocks cleaner (service).
 	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
-		DataDir:             c.compactorCfg.DataDir,
-		MetaSyncConcurrency: c.compactorCfg.MetaSyncConcurrency,
-		DeletionDelay:       c.compactorCfg.DeletionDelay,
-		CleanupInterval:     util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.1),
-		CleanupConcurrency:  c.compactorCfg.CleanupConcurrency,
+		DeletionDelay:                      c.compactorCfg.DeletionDelay,
+		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
+		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
+		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
 	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.

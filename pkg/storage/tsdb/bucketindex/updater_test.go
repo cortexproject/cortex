@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,11 +24,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
-func TestWriter_WriteIndex(t *testing.T) {
+func TestUpdater_UpdateIndex(t *testing.T) {
 	const userID = "user-1"
 
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -38,54 +38,38 @@ func TestWriter_WriteIndex(t *testing.T) {
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
 
-	w := NewWriter(bkt, userID, logger)
-	returnedIdx, err := w.WriteIndex(ctx, nil)
+	w := NewUpdater(bkt, userID, logger)
+	returnedIdx, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
-	writtenIdx, err := ReadIndex(ctx, bkt, userID, logger)
-	require.NoError(t, err)
+	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block2},
+		[]*metadata.DeletionMark{block2Mark})
 
-	for _, idx := range []*Index{returnedIdx, writtenIdx} {
-		assertBucketIndexEqual(t, idx, bkt, userID,
-			[]tsdb.BlockMeta{block1, block2},
-			[]*metadata.DeletionMark{block2Mark})
-	}
-
-	// Create new blocks, and generate a new index.
+	// Create new blocks, and update the index.
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
 	block4 := testutil.MockStorageBlock(t, bkt, userID, 40, 50)
 	block4Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block4)
 
-	returnedIdx, err = w.WriteIndex(ctx, returnedIdx)
+	returnedIdx, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
-	writtenIdx, err = ReadIndex(ctx, bkt, userID, logger)
-	require.NoError(t, err)
+	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block2, block3, block4},
+		[]*metadata.DeletionMark{block2Mark, block4Mark})
 
-	for _, idx := range []*Index{returnedIdx, writtenIdx} {
-		assertBucketIndexEqual(t, idx, bkt, userID,
-			[]tsdb.BlockMeta{block1, block2, block3, block4},
-			[]*metadata.DeletionMark{block2Mark, block4Mark})
-	}
-
-	// Hard delete a block and generate a new index.
+	// Hard delete a block and update the index.
 	require.NoError(t, block.Delete(ctx, log.NewNopLogger(), bucket.NewUserBucketClient(userID, bkt), block2.ULID))
 
-	returnedIdx, err = w.WriteIndex(ctx, returnedIdx)
+	returnedIdx, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
-	writtenIdx, err = ReadIndex(ctx, bkt, userID, logger)
-	require.NoError(t, err)
-
-	for _, idx := range []*Index{returnedIdx, writtenIdx} {
-		assertBucketIndexEqual(t, idx, bkt, userID,
-			[]tsdb.BlockMeta{block1, block3, block4},
-			[]*metadata.DeletionMark{block4Mark})
-	}
+	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block3, block4},
+		[]*metadata.DeletionMark{block4Mark})
 }
 
-func TestWriter_GenerateIndex_ShouldSkipPartialBlocks(t *testing.T) {
+func TestUpdater_UpdateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 	const userID = "user-1"
 
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -100,19 +84,21 @@ func TestWriter_GenerateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 	// Delete a block's meta.json to simulate a partial block.
 	require.NoError(t, bkt.Delete(ctx, path.Join(userID, block3.ULID.String(), metadata.MetaFilename)))
 
-	w := NewWriter(bkt, userID, logger)
-	idx, err := w.GenerateIndex(ctx, nil)
+	w := NewUpdater(bkt, userID, logger)
+	idx, partials, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
 		[]*metadata.DeletionMark{block2Mark})
+
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaNotFound))
 }
 
-func TestWriter_GenerateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
+func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 	const userID = "user-1"
 
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -127,19 +113,21 @@ func TestWriter_GenerateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 	// Overwrite a block's meta.json with invalid data.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block3.ULID.String(), metadata.MetaFilename), bytes.NewReader([]byte("invalid!}"))))
 
-	w := NewWriter(bkt, userID, logger)
-	idx, err := w.GenerateIndex(ctx, nil)
+	w := NewUpdater(bkt, userID, logger)
+	idx, partials, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
 		[]*metadata.DeletionMark{block2Mark})
+
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaCorrupted))
 }
 
-func TestWriter_GenerateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
+func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 	const userID = "user-1"
 
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -154,45 +142,46 @@ func TestWriter_GenerateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 	// Overwrite a block's deletion-mark.json with invalid data.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block2Mark.ID.String(), metadata.DeletionMarkFilename), bytes.NewReader([]byte("invalid!}"))))
 
-	w := NewWriter(bkt, userID, logger)
-	idx, err := w.GenerateIndex(ctx, nil)
+	w := NewUpdater(bkt, userID, logger)
+	idx, partials, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2, block3},
 		[]*metadata.DeletionMark{})
+	assert.Empty(t, partials)
 }
 
-func TestWriter_GenerateIndex_NoTenantInTheBucket(t *testing.T) {
+func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, cleanup := prepareFilesystemBucket(t)
-	defer cleanup()
+	bkt := prepareFilesystemBucket(t)
 
 	for _, oldIdx := range []*Index{nil, {}} {
-		w := NewWriter(bkt, userID, log.NewNopLogger())
-		idx, err := w.GenerateIndex(ctx, oldIdx)
+		w := NewUpdater(bkt, userID, log.NewNopLogger())
+		idx, partials, err := w.UpdateIndex(ctx, oldIdx)
 
 		require.NoError(t, err)
 		assert.Equal(t, IndexVersion1, idx.Version)
 		assert.InDelta(t, time.Now().Unix(), idx.UpdatedAt, 2)
 		assert.Len(t, idx.Blocks, 0)
 		assert.Len(t, idx.BlockDeletionMarks, 0)
+		assert.Empty(t, partials)
 	}
 }
 
-func prepareFilesystemBucket(t testing.TB) (objstore.Bucket, func()) {
+func prepareFilesystemBucket(t testing.TB) objstore.Bucket {
 	storageDir, err := ioutil.TempDir(os.TempDir(), "")
 	require.NoError(t, err)
 
 	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	cleanup := func() {
+	t.Cleanup(func() {
 		require.NoError(t, os.RemoveAll(storageDir))
-	}
+	})
 
-	return objstore.BucketWithMetrics("test", bkt, nil), cleanup
+	return objstore.BucketWithMetrics("test", bkt, nil)
 }
 
 func getBlockUploadedAt(t testing.TB, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {

@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.6.0-rc.1
+
+* [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
+
 ## 1.6.0-rc.0
 
 * [CHANGE] Query Frontend: deprecate `-querier.compress-http-responses` in favour of `-api.response-compression-enabled`. #3544

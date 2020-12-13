@@ -152,7 +152,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	}
 
 	// Track stats.
-	f.querySeconds.WithLabelValues(userID).Add(float64(stats.LoadWallTime()))
+	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
 
 	// Log stats.
 	logMessage := append([]interface{}{

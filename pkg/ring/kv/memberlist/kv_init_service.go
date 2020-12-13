@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -86,64 +87,103 @@ func (kvs *KVInitService) stopping(_ error) error {
 
 func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	kv := kvs.getKV()
-	var ml *memberlist.Memberlist
-	var store map[string]valueDesc
-
-	if kv != nil {
-		ml = kv.memberlist
-		store = kv.storeCopy()
+	if kv == nil {
+		util.WriteTextResponse(w, "This Cortex instance doesn't use memberlist.")
+		return
 	}
 
 	const (
-		downloadParam = "download"
-		viewParam     = "view"
-		viewFormat    = "format"
+		downloadKeyParam = "downloadKey"
+		viewKeyParam     = "viewKey"
+		viewMsgParam     = "viewMsg"
 	)
 
 	if err := req.ParseForm(); err == nil {
-		if req.Form[downloadParam] != nil {
-			download(w, store, req.Form[downloadParam][0]) // Use first value, ignore the rest.
+		if req.Form[downloadKeyParam] != nil {
+			downloadKey(w, kv.storeCopy(), req.Form[downloadKeyParam][0]) // Use first value, ignore the rest.
 			return
 		}
 
-		if req.Form[viewParam] != nil {
-			format := ""
-			if len(req.Form[viewFormat]) > 0 {
-				format = req.Form[viewFormat][0]
+		if req.Form[viewKeyParam] != nil {
+			viewKey(w, kv, kv.storeCopy(), req.Form[viewKeyParam][0], getFormat(req))
+			return
+		}
+
+		if req.Form[viewMsgParam] != nil {
+			msgID, err := strconv.Atoi(req.Form[viewMsgParam][0])
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
 			}
 
-			view(w, kv, store, req.Form[viewParam][0], format)
+			sent, received := kv.getSentAndReceivedMessages()
+
+			for _, m := range append(sent, received...) {
+				if m.ID == msgID {
+					viewMessage(w, kv, m, getFormat(req))
+					return
+				}
+			}
+
+			http.Error(w, "message not found", http.StatusNotFound)
 			return
 		}
 	}
 
-	members := ml.Members()
+	members := kv.memberlist.Members()
 	sort.Slice(members, func(i, j int) bool {
 		return members[i].Name < members[j].Name
 	})
 
+	sent, received := kv.getSentAndReceivedMessages()
+
 	util.RenderHTTPResponse(w, pageData{
-		Now:           time.Now(),
-		Initialized:   kv != nil,
-		Memberlist:    ml,
-		SortedMembers: members,
-		Store:         store,
+		Now:              time.Now(),
+		Memberlist:       kv.memberlist,
+		SortedMembers:    members,
+		Store:            kv.storeCopy(),
+		SentMessages:     sent,
+		ReceivedMessages: received,
 	}, pageTemplate, req)
 }
 
-func view(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string, format string) {
-	if kv == nil || store == nil || store[key].value == nil {
-		http.Error(w, "value not found", http.StatusNotFound)
-		return
-	}
+func getFormat(req *http.Request) string {
+	const viewFormat = "format"
 
-	codec := kv.GetCodec(store[key].codecID)
-	if codec == nil {
+	format := ""
+	if len(req.Form[viewFormat]) > 0 {
+		format = req.Form[viewFormat][0]
+	}
+	return format
+}
+
+func viewMessage(w http.ResponseWriter, kv *KV, msg message, format string) {
+	c := kv.GetCodec(msg.Pair.Codec)
+	if c == nil {
 		http.Error(w, "codec not found", http.StatusNotFound)
 		return
 	}
 
-	val, err := codec.Decode(store[key].value)
+	formatValue(w, c, msg.Pair.Value, format)
+}
+
+func viewKey(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string, format string) {
+	if store[key].value == nil {
+		http.Error(w, "value not found", http.StatusNotFound)
+		return
+	}
+
+	c := kv.GetCodec(store[key].codecID)
+	if c == nil {
+		http.Error(w, "codec not found", http.StatusNotFound)
+		return
+	}
+
+	formatValue(w, c, store[key].value, format)
+}
+
+func formatValue(w http.ResponseWriter, codec codec.Codec, value []byte, format string) {
+	val, err := codec.Decode(value)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusInternalServerError)
 		return
@@ -169,8 +209,8 @@ func view(w http.ResponseWriter, kv *KV, store map[string]valueDesc, key string,
 	}
 }
 
-func download(w http.ResponseWriter, store map[string]valueDesc, key string) {
-	if store == nil || store[key].value == nil {
+func downloadKey(w http.ResponseWriter, store map[string]valueDesc, key string) {
+	if store[key].value == nil {
 		http.Error(w, "value not found", http.StatusNotFound)
 		return
 	}
@@ -188,11 +228,12 @@ func download(w http.ResponseWriter, store map[string]valueDesc, key string) {
 }
 
 type pageData struct {
-	Now           time.Time
-	Initialized   bool
-	Memberlist    *memberlist.Memberlist
-	SortedMembers []*memberlist.Node
-	Store         map[string]valueDesc
+	Now              time.Time
+	Memberlist       *memberlist.Memberlist
+	SortedMembers    []*memberlist.Node
+	Store            map[string]valueDesc
+	SentMessages     []message
+	ReceivedMessages []message
 }
 
 var pageTemplate = template.Must(template.New("webpage").Parse(pageContent))
@@ -208,7 +249,6 @@ const pageContent = `
 		<h1>Cortex Memberlist Status</h1>
 		<p>Current time: {{ .Now }}</p>
 
-		{{ if .Initialized }}
 		<ul>
 		<li>Health Score: {{ .Memberlist.GetHealthScore }} (lower = better, 0 = healthy)</li>
 		<li>Members: {{ .Memberlist.NumMembers }}</li>
@@ -231,10 +271,10 @@ const pageContent = `
 					<td>{{ $k }}</td>
 					<td>{{ $v }}</td>
 					<td>
-						<a href="?view={{ $k }}&format=json">json</a>
-						| <a href="?view={{ $k }}&format=json-pretty">json-pretty</a>
-						| <a href="?view={{ $k }}&format=struct">struct</a>
-						| <a href="?download={{ $k }}">download</a>
+						<a href="?viewKey={{ $k }}&format=json">json</a>
+						| <a href="?viewKey={{ $k }}&format=json-pretty">json-pretty</a>
+						| <a href="?viewKey={{ $k }}&format=struct">struct</a>
+						| <a href="?downloadKey={{ $k }}">download</a>
 					</td>
 				</tr>
 				{{ end }}
@@ -267,8 +307,68 @@ const pageContent = `
 
 		<p>State: 0 = Alive, 1 = Suspect, 2 = Dead, 3 = Left</p>
 
-		{{ else }}
-		<p>This Cortex instance doesn't use memberlist.</p>
-		{{ end }}
+		<h2>Received Messages</h2>
+
+		<table width="100%" border="1">
+			<thead>
+				<tr>
+					<th>ID</th>
+					<th>Time</th>
+					<th>Key</th>
+					<th>Value in the Message</th>
+					<th>Version After Update (0 = no change)</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+
+			<tbody>
+				{{ range .ReceivedMessages }}
+				<tr>
+					<td>{{ .ID }}</td>
+					<td>{{ .Time.Format "15:04:05.000" }}</td>
+					<td>{{ .Pair.Key }}</td>
+					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
+					<td>{{ .Version }}</td>
+					<td>
+						<a href="?viewMsg={{ .ID }}&format=json">json</a>
+						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+						| <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
+					</td>
+				</tr>
+				{{ end }}
+			</tbody>
+		</table>
+
+		<h2>Sent Messages</h2>
+
+		<table width="100%" border="1">
+			<thead>
+				<tr>
+					<th>ID</th>
+					<th>Time</th>
+					<th>Key</th>
+					<th>Value</th>
+					<th>Version</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+
+			<tbody>
+				{{ range .SentMessages }}
+				<tr>
+					<td>{{ .ID }}</td>
+					<td>{{ .Time.Format "15:04:05.000" }}</td>
+					<td>{{ .Pair.Key }}</td>
+					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
+					<td>{{ .Version }}</td>
+					<td>
+						<a href="?viewMsg={{ .ID }}&format=json">json</a>
+						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
+						| <a href="?viewMsg={{ .ID }}&format=struct">struct</a>
+					</td>
+				</tr>
+				{{ end }}
+			</tbody>
+		</table>
 	</body>
 </html>`

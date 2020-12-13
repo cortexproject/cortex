@@ -549,6 +549,8 @@ ring:
 The `ingester_config` configures the Cortex ingester.
 
 ```yaml
+# Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This
+# config is ignored when running the Cortex blocks storage.
 walconfig:
   # Enable writing of ingested data into WAL.
   # CLI flag: -ingester.wal-enabled
@@ -1441,7 +1443,7 @@ ring:
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-  # Number of tokens for each ingester.
+  # Number of tokens for each ruler.
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
 
@@ -2979,6 +2981,11 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
 
+# How much space to use for keeping received and sent messages in memory for
+# troubleshooting (two buffers). 0 to disable.
+# CLI flag: -memberlist.message-history-buffer-bytes
+[message_history_buffer_bytes: <int> | default = 0]
+
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -3988,19 +3995,30 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.compaction-concurrency
 [compaction_concurrency: <int> | default = 1]
 
-# Max number of tenants for which blocks should be cleaned up concurrently
-# (deletion of blocks previously marked for deletion).
+# How frequently compactor should run blocks cleanup and maintenance, as well as
+# update the bucket index.
+# CLI flag: -compactor.cleanup-interval
+[cleanup_interval: <duration> | default = 15m]
+
+# Max number of tenants for which blocks cleanup and maintenance should run
+# concurrently.
 # CLI flag: -compactor.cleanup-concurrency
 [cleanup_concurrency: <int> | default = 20]
 
 # Time before a block marked for deletion is deleted from bucket. If not 0,
-# blocks will be marked for deletion and compactor component will delete blocks
-# marked for deletion from the bucket. If delete-delay is 0, blocks will be
+# blocks will be marked for deletion and compactor component will permanently
+# delete blocks marked for deletion from the bucket. If 0, blocks will be
 # deleted straight away. Note that deleting blocks immediately can cause query
-# failures, if store gateway still has the block loaded, or compactor is
-# ignoring the deletion because it's compacting the block at the same time.
+# failures.
 # CLI flag: -compactor.deletion-delay
 [deletion_delay: <duration> | default = 12h]
+
+# When enabled, at compactor startup the bucket will be scanned and all found
+# deletion marks inside the block location will be copied to the markers global
+# location too. This option can (and should) be safely disabled as soon as the
+# compactor has successfully run at least once.
+# CLI flag: -compactor.block-deletion-marks-migration-enabled
+[block_deletion_marks_migration_enabled: <boolean> | default = true]
 
 # Comma separated list of tenants that can be compacted. If specified, only
 # these tenants will be compacted by compactor, otherwise all tenants can be

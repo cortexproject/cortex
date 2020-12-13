@@ -26,6 +26,14 @@ func TestManagerMetrics(t *testing.T) {
 
 	//noinspection ALL
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+# HELP cortex_prometheus_last_evaluation_samples The number of samples returned during the last rule group evaluation.
+# TYPE cortex_prometheus_last_evaluation_samples gauge
+cortex_prometheus_last_evaluation_samples{rule_group="group_one",user="user1"} 1000
+cortex_prometheus_last_evaluation_samples{rule_group="group_one",user="user2"} 10000
+cortex_prometheus_last_evaluation_samples{rule_group="group_one",user="user3"} 100000
+cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user1"} 1000
+cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user2"} 10000
+cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user3"} 100000
 # HELP cortex_prometheus_rule_evaluation_duration_seconds The duration for a rule to execute.
 # TYPE cortex_prometheus_rule_evaluation_duration_seconds summary
 cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.5"} 1
@@ -143,21 +151,26 @@ func populateManager(base float64) *prometheus.Registry {
 
 	metrics.groupRules.WithLabelValues("group_one").Add(base * 1000)
 	metrics.groupRules.WithLabelValues("group_two").Add(base * 1000)
+
+	metrics.groupLastEvalSamples.WithLabelValues("group_one").Add(base * 1000)
+	metrics.groupLastEvalSamples.WithLabelValues("group_two").Add(base * 1000)
+
 	return r
 }
 
 // Copied from github.com/prometheus/rules/manager.go
 type groupMetrics struct {
-	evalDuration        prometheus.Summary
-	iterationDuration   prometheus.Summary
-	iterationsMissed    prometheus.Counter
-	iterationsScheduled prometheus.Counter
-	evalTotal           *prometheus.CounterVec
-	evalFailures        *prometheus.CounterVec
-	groupInterval       *prometheus.GaugeVec
-	groupLastEvalTime   *prometheus.GaugeVec
-	groupLastDuration   *prometheus.GaugeVec
-	groupRules          *prometheus.GaugeVec
+	evalDuration         prometheus.Summary
+	iterationDuration    prometheus.Summary
+	iterationsMissed     prometheus.Counter
+	iterationsScheduled  prometheus.Counter
+	evalTotal            *prometheus.CounterVec
+	evalFailures         *prometheus.CounterVec
+	groupInterval        *prometheus.GaugeVec
+	groupLastEvalTime    *prometheus.GaugeVec
+	groupLastDuration    *prometheus.GaugeVec
+	groupRules           *prometheus.GaugeVec
+	groupLastEvalSamples *prometheus.GaugeVec
 }
 
 func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
@@ -220,6 +233,13 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 			prometheus.GaugeOpts{
 				Name: "prometheus_rule_group_rules",
 				Help: "The number of rules.",
+			},
+			[]string{"rule_group"},
+		),
+		groupLastEvalSamples: promauto.With(r).NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "prometheus_rule_group_last_evaluation_samples",
+				Help: "The number of samples returned during the last rule group evaluation.",
 			},
 			[]string{"rule_group"},
 		),

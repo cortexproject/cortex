@@ -41,6 +41,10 @@ func MockStorageBlock(t testing.TB, bucket objstore.Bucket, userID string, minT,
 	metaPath := fmt.Sprintf("%s/%s/meta.json", userID, id.String())
 	require.NoError(t, bucket.Upload(context.Background(), metaPath, metaContentReader))
 
+	// Upload an empty index, just to make sure the meta.json is not the only object in the block location.
+	indexPath := fmt.Sprintf("%s/%s/index", userID, id.String())
+	require.NoError(t, bucket.Upload(context.Background(), indexPath, strings.NewReader("")))
+
 	return meta
 }
 

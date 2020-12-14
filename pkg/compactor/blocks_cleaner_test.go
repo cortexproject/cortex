@@ -3,53 +3,67 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestBlocksCleaner(t *testing.T) {
-	for _, concurrency := range []int{1, 2, 10} {
-		concurrency := concurrency
+	for _, options := range []testBlocksCleanerOptions{
+		{concurrency: 1},
+		{concurrency: 2},
+		{concurrency: 10},
+		{concurrency: 1, markersMigrationEnabled: true},
+	} {
+		options := options
 
-		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+		t.Run(options.String(), func(t *testing.T) {
 			t.Parallel()
-
-			testBlocksCleanerWithConcurrency(t, concurrency)
+			testBlocksCleanerWithOptions(t, options)
 		})
 	}
 }
 
-func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
-	// Create a temporary directory for local storage.
-	storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
-	require.NoError(t, err)
-	defer os.RemoveAll(storageDir) //nolint:errcheck
+type testBlocksCleanerOptions struct {
+	concurrency             int
+	markersMigrationEnabled bool
+}
 
-	// Create a temporary directory for cleaner.
-	dataDir, err := ioutil.TempDir(os.TempDir(), "data")
-	require.NoError(t, err)
-	defer os.RemoveAll(dataDir) //nolint:errcheck
+func (o testBlocksCleanerOptions) String() string {
+	return fmt.Sprintf("concurrency=%d markers migration enabled=%v",
+		o.concurrency, o.markersMigrationEnabled)
+}
 
-	// Create a bucket client on the local storage.
-	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
-	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
+	bucketClient := prepareFilesystemBucket(t)
+
+	// If the markers migration is enabled, then we create the fixture blocks without
+	// writing the deletion marks in the global location, because they will be migrated
+	// at statup.
+	if !options.markersMigrationEnabled {
+		bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+	}
 
 	// Create blocks.
 	ctx := context.Background()
@@ -75,18 +89,24 @@ func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
 
-	cfg := BlocksCleanerConfig{
-		DataDir:             dataDir,
-		MetaSyncConcurrency: 10,
-		DeletionDelay:       deletionDelay,
-		CleanupInterval:     time.Minute,
-		CleanupConcurrency:  concurrency,
+	// The fixtures have been created. If the bucket client wasn't wrapped to write
+	// deletion marks to the global location too, then this is the right time to do it.
+	if options.markersMigrationEnabled {
+		bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 	}
 
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:                      deletionDelay,
+		CleanupInterval:                    time.Minute,
+		CleanupConcurrency:                 options.concurrency,
+		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
+	}
+
+	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -129,4 +149,260 @@ func testBlocksCleanerWithConcurrency(t *testing.T, concurrency int) {
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
 	assert.Equal(t, float64(6), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+
+	// Check the updated bucket index.
+	for _, tc := range []struct {
+		userID         string
+		expectedIndex  bool
+		expectedBlocks []ulid.ULID
+		expectedMarks  []ulid.ULID
+	}{
+		{
+			userID:         "user-1",
+			expectedIndex:  true,
+			expectedBlocks: []ulid.ULID{block1, block2 /* deleted: block3, block4, block5, partial: block6 */},
+			expectedMarks:  []ulid.ULID{block2},
+		}, {
+			userID:         "user-2",
+			expectedIndex:  true,
+			expectedBlocks: []ulid.ULID{block8},
+			expectedMarks:  []ulid.ULID{},
+		}, {
+			userID:        "user-3",
+			expectedIndex: false,
+		},
+	} {
+		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, logger)
+		if !tc.expectedIndex {
+			assert.Equal(t, bucketindex.ErrIndexNotFound, err)
+			continue
+		}
+
+		require.NoError(t, err)
+		assert.ElementsMatch(t, tc.expectedBlocks, idx.Blocks.GetULIDs())
+		assert.ElementsMatch(t, tc.expectedMarks, idx.BlockDeletionMarks.GetULIDs())
+	}
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# TYPE cortex_bucket_blocks_count gauge
+		cortex_bucket_blocks_count{user="user-1"} 2
+		cortex_bucket_blocks_count{user="user-2"} 1
+		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+	`),
+		"cortex_bucket_blocks_count",
+		"cortex_bucket_blocks_marked_for_deletion_count",
+	))
+}
+
+func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
+	const userID = "user-1"
+
+	bucketClient := prepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	// Create blocks.
+	ctx := context.Background()
+	now := time.Now()
+	deletionDelay := 12 * time.Hour
+	block1 := createTSDBBlock(t, bucketClient, userID, 10, 20, nil)
+	block2 := createTSDBBlock(t, bucketClient, userID, 20, 30, nil)
+	block3 := createTSDBBlock(t, bucketClient, userID, 30, 40, nil)
+	block4 := createTSDBBlock(t, bucketClient, userID, 40, 50, nil)
+	createDeletionMark(t, bucketClient, userID, block2, now.Add(-deletionDelay).Add(-time.Hour))
+	createDeletionMark(t, bucketClient, userID, block3, now.Add(-deletionDelay).Add(-time.Hour))
+	createDeletionMark(t, bucketClient, userID, block4, now.Add(-deletionDelay).Add(-time.Hour))
+
+	// To emulate a failure deleting a block, we wrap the bucket client in a mocked one.
+	bucketClient = &mockBucketFailure{
+		Bucket:         bucketClient,
+		DeleteFailures: []string{path.Join(userID, block3.String(), metadata.MetaFilename)},
+	}
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      deletionDelay,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	logger := log.NewNopLogger()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
+	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
+
+	for _, tc := range []struct {
+		path           string
+		expectedExists bool
+	}{
+		{path: path.Join(userID, block1.String(), metadata.MetaFilename), expectedExists: true},
+		{path: path.Join(userID, block2.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join(userID, block3.String(), metadata.MetaFilename), expectedExists: true},
+		{path: path.Join(userID, block4.String(), metadata.MetaFilename), expectedExists: false},
+	} {
+		exists, err := bucketClient.Exists(ctx, tc.path)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedExists, exists, tc.path)
+	}
+
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
+
+	// Check the updated bucket index.
+	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, logger)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
+	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
+}
+
+func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
+	const userID = "user-1"
+
+	bucketClient := prepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	// Create blocks.
+	ctx := context.Background()
+	now := time.Now()
+	deletionDelay := 12 * time.Hour
+	block1 := createTSDBBlock(t, bucketClient, userID, 10, 20, nil)
+	block2 := createTSDBBlock(t, bucketClient, userID, 20, 30, nil)
+	block3 := createTSDBBlock(t, bucketClient, userID, 30, 40, nil)
+	createDeletionMark(t, bucketClient, userID, block2, now.Add(-deletionDelay).Add(-time.Hour))
+	createDeletionMark(t, bucketClient, userID, block3, now.Add(-deletionDelay).Add(time.Hour))
+
+	// Write a corrupted bucket index.
+	require.NoError(t, bucketClient.Upload(ctx, path.Join(userID, bucketindex.IndexCompressedFilename), strings.NewReader("invalid!}")))
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      deletionDelay,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	logger := log.NewNopLogger()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
+	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
+
+	for _, tc := range []struct {
+		path           string
+		expectedExists bool
+	}{
+		{path: path.Join(userID, block1.String(), metadata.MetaFilename), expectedExists: true},
+		{path: path.Join(userID, block2.String(), metadata.MetaFilename), expectedExists: false},
+		{path: path.Join(userID, block3.String(), metadata.MetaFilename), expectedExists: true},
+	} {
+		exists, err := bucketClient.Exists(ctx, tc.path)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedExists, exists, tc.path)
+	}
+
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
+	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+
+	// Check the updated bucket index.
+	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, logger)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
+	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
+}
+
+func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShard(t *testing.T) {
+	bucketClient := prepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	// Create blocks.
+	createTSDBBlock(t, bucketClient, "user-1", 10, 20, nil)
+	createTSDBBlock(t, bucketClient, "user-1", 20, 30, nil)
+	createTSDBBlock(t, bucketClient, "user-2", 30, 40, nil)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, reg)
+	require.NoError(t, cleaner.cleanUsers(ctx, true))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# TYPE cortex_bucket_blocks_count gauge
+		cortex_bucket_blocks_count{user="user-1"} 2
+		cortex_bucket_blocks_count{user="user-2"} 1
+		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+	`),
+		"cortex_bucket_blocks_count",
+		"cortex_bucket_blocks_marked_for_deletion_count",
+	))
+
+	// Override the users scanner to reconfigure it to only return a subset of users.
+	cleaner.usersScanner = tsdb.NewUsersScanner(bucketClient, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
+
+	// Create new blocks, to double check expected metrics have changed.
+	createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
+	createTSDBBlock(t, bucketClient, "user-2", 50, 60, nil)
+
+	require.NoError(t, cleaner.cleanUsers(ctx, false))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# TYPE cortex_bucket_blocks_count gauge
+		cortex_bucket_blocks_count{user="user-1"} 3
+		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+	`),
+		"cortex_bucket_blocks_count",
+		"cortex_bucket_blocks_marked_for_deletion_count",
+	))
+}
+
+type mockBucketFailure struct {
+	objstore.Bucket
+
+	DeleteFailures []string
+}
+
+func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
+	if util.StringsContain(m.DeleteFailures, name) {
+		return errors.New("mocked delete failure")
+	}
+	return m.Bucket.Delete(ctx, name)
+}
+
+func prepareFilesystemBucket(t *testing.T) objstore.Bucket {
+	// Create a temporary directory for local storage.
+	storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(storageDir))
+	})
+
+	// Create a bucket client on the local storage.
+	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	return bucketClient
 }

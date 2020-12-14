@@ -63,3 +63,5 @@ Currently experimental features are:
 - Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
+- Blocks storage bucket index
+  - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions

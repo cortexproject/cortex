@@ -1,10 +1,15 @@
 package bucketindex
 
 import (
+	"context"
+	"path"
+	"strings"
 	"testing"
 
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
 func TestBlockDeletionMarkFilepath(t *testing.T) {
@@ -28,4 +33,32 @@ func TestIsBlockDeletionMarkFilename(t *testing.T) {
 	actual, ok := IsBlockDeletionMarkFilename(expected.String() + "-deletion-mark.json")
 	assert.True(t, ok)
 	assert.Equal(t, expected, actual)
+}
+
+func TestMigrateBlockDeletionMarksToGlobalLocation(t *testing.T) {
+	bkt := prepareFilesystemBucket(t)
+	ctx := context.Background()
+
+	// Create some fixtures.
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	block3 := ulid.MustNew(3, nil)
+	require.NoError(t, bkt.Upload(ctx, path.Join("user-1", block1.String(), metadata.DeletionMarkFilename), strings.NewReader("{}")))
+	require.NoError(t, bkt.Upload(ctx, path.Join("user-1", block3.String(), metadata.DeletionMarkFilename), strings.NewReader("{}")))
+
+	require.NoError(t, MigrateBlockDeletionMarksToGlobalLocation(ctx, bkt, "user-1"))
+
+	// Ensure deletion marks have been copied.
+	for _, tc := range []struct {
+		blockID        ulid.ULID
+		expectedExists bool
+	}{
+		{block1, true},
+		{block2, false},
+		{block3, true},
+	} {
+		ok, err := bkt.Exists(ctx, path.Join("user-1", BlockDeletionMarkFilepath(tc.blockID)))
+		require.NoError(t, err)
+		require.Equal(t, tc.expectedExists, ok)
+	}
 }

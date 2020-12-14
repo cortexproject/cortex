@@ -12,8 +12,10 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -364,6 +366,40 @@ rules:
 			require.Equal(t, tt.output, w.Body.String())
 		})
 	}
+}
+
+func TestRuler_ListAllRules(t *testing.T) {
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	defer cleanup()
+
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store)
+
+	router := mux.NewRouter()
+	router.Path("/ruler/rules").Methods(http.MethodGet).HandlerFunc(a.ListAllRules)
+
+	// Verify namespace1 rules are there.
+	req := requestFor(t, http.MethodGet, "https://localhost:8080/ruler/rules", nil, "")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Check status code and header
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
+
+	// Testing the running rules for user1 in the mock store
+	gs := make(map[string]map[string][]rulefmt.RuleGroup) // user:namespace:[]rulefmt.RuleGroup
+	for userID := range mockRules {
+		gs[userID] = mockRules[userID].Formatted()
+	}
+	expectedResponse, _ := yaml.Marshal(gs)
+	require.Equal(t, string(expectedResponse), string(body))
 }
 
 func requestFor(t *testing.T, method string, url string, body io.Reader, userID string) *http.Request {

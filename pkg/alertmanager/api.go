@@ -182,3 +182,38 @@ func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
 
 	return nil
 }
+
+func (am *MultitenantAlertmanager) ListUserConfig(w http.ResponseWriter, r *http.Request) {
+	logger := util.WithContext(r.Context(), am.logger)
+
+	cfgMap, err := am.store.ListAlertConfigs(r.Context())
+	if err != nil {
+		if err == alerts.ErrNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	userConfigMap := make(map[string]*UserConfig, len(cfgMap))
+	for userID, cfg := range cfgMap {
+		userConfigMap[userID] = &UserConfig{
+			TemplateFiles:      alerts.ParseTemplates(cfg),
+			AlertmanagerConfig: cfg.RawConfig,
+		}
+	}
+
+	d, err := yaml.Marshal(userConfigMap)
+
+	if err != nil {
+		level.Error(logger).Log("msg", errMarshallingYAML, "err", err)
+		http.Error(w, fmt.Sprintf("%s: %s", errMarshallingYAML, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/yaml")
+	if _, err := w.Write(d); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}

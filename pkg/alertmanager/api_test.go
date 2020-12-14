@@ -7,10 +7,17 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+
+	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -164,4 +171,98 @@ func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfig
 }
 func (noopAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
 	return nil
+}
+
+func TestAMConfigListUserConfig(t *testing.T) {
+	testCases := map[string]*UserConfig{
+		"user1": {
+			AlertmanagerConfig: `
+global:
+  resolve_timeout: 5m
+route:
+  receiver: route1
+  group_by:
+  - '...'
+  continue: false
+receivers:
+- name: route1
+  webhook_configs:
+  - send_resolved: true
+    http_config: {}
+    url: http://alertmanager/api/notifications?orgId=1&rrid=7
+    max_alerts: 0
+`,
+		},
+		"user2": {
+			AlertmanagerConfig: `
+global:
+  resolve_timeout: 5m
+route:
+  receiver: route1
+  group_by:
+  - '...'
+  continue: false
+receivers:
+- name: route1
+  webhook_configs:
+  - send_resolved: true
+    http_config: {}
+    url: http://alertmanager/api/notifications?orgId=2&rrid=7
+    max_alerts: 0
+`,
+		},
+	}
+
+	mockStore := &mockAlertStore{
+		configs: map[string]alerts.AlertConfigDesc{},
+	}
+
+	for u, cfg := range testCases {
+		err := mockStore.SetAlertConfig(context.Background(), alerts.AlertConfigDesc{
+			User:      u,
+			RawConfig: cfg.AlertmanagerConfig,
+		})
+		require.NoError(t, err)
+	}
+
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
+
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create the Multitenant Alertmanager.
+	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
+		ExternalURL: externalURL,
+		DataDir:     tempDir,
+	}, nil, nil, mockStore, log.NewNopLogger(), nil)
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
+
+	err = am.updateConfigs()
+	require.NoError(t, err)
+
+	router := mux.NewRouter()
+	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListUserConfig)
+	// Request when no user configuration is present.
+	req := httptest.NewRequest("GET", "https://localhost:8080/multitenant_alertmanager/configs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
+	body, _ := ioutil.ReadAll(resp.Body)
+	old, _ := yaml.Marshal(testCases)
+	require.Equal(t, string(old), string(body))
+
+	// It succeeds and the Alertmanager is started
+	require.Len(t, am.alertmanagers, 2)
+	require.True(t, am.alertmanagers["user1"].IsActive())
+	require.True(t, am.alertmanagers["user2"].IsActive())
+
+	// Pause the alertmanager
+	am.alertmanagers["user1"].Stop()
+	am.alertmanagers["user2"].Stop()
 }

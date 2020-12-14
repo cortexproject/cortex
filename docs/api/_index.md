@@ -40,6 +40,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier | `GET /api/v1/user_stats` |
 | [Get tenant chunks](#get-tenant-chunks) | Querier | `GET /api/v1/chunks` |
 | [Ruler ring status](#ruler-ring-status) | Ruler | `GET /ruler/ring` |
+| [Ruler rules ](#ruler-rules) | Ruler | `GET /ruler/rules` |
 | [List rules](#list-rules) | Ruler | `GET <prometheus-http-prefix>/api/v1/rules` |
 | [List alerts](#list-alerts) | Ruler | `GET <prometheus-http-prefix>/api/v1/alerts` |
 | [List rule groups](#list-rule-groups) | Ruler | `GET /api/v1/rules` |
@@ -49,6 +50,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete rule group](#delete-rule-group) | Ruler | `DELETE /api/v1/rules/{namespace}/{groupName}` |
 | [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
+| [Alertmanager configs](#alertmanager-configs) | Alertmanager | `GET /multitenant_alertmanager/configs` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
@@ -397,6 +399,14 @@ GET /ruler_ring
 
 Displays a web page with the ruler hash ring status, including the state, healthy and last heartbeat time of each ruler.
 
+### Ruler rules
+
+```
+GET /ruler/rules
+```
+
+List all tenant rules that are currently loaded. This endpoint returns a YAML dictionary with all the rule groups for each tenant and `200` status code on success.
+
 ### List rules
 
 ```
@@ -616,6 +626,14 @@ GET /status
 ```
 
 Displays a web page with the current status of the Alertmanager, including the Alertmanager cluster members.
+
+### Alertmanager configs
+
+```
+GET /multitenant_alertmanager/configs
+```
+
+List all Alertmanager configurations that are currently loaded. This endpoint returns a YAML dictionary with all the Alertmanager configurations and `200` status code on success.
 
 ### Alertmanager UI
 

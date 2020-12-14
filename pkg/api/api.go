@@ -145,6 +145,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
 	// Ensure this route is registered before the prefixed AM route
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false, "GET")
+	a.RegisterRoute("/multitenant_alertmanager/configs", http.HandlerFunc(am.ListUserConfig), false, "GET")
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
 	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
@@ -254,6 +255,7 @@ func (a *API) RegisterRulerAPI(r *ruler.API) {
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Ruler API Routes
+	a.RegisterRoute("/ruler/rules", http.HandlerFunc(r.ListAllRules), false, "GET")
 	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
 	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
 	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")

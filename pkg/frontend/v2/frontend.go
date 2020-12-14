@@ -73,9 +73,10 @@ type Frontend struct {
 }
 
 type frontendRequest struct {
-	queryID uint64
-	request *httpgrpc.HTTPRequest
-	userID  string
+	queryID      uint64
+	request      *httpgrpc.HTTPRequest
+	userID       string
+	statsEnabled bool
 
 	cancel context.CancelFunc
 
@@ -170,9 +171,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	defer cancel()
 
 	freq := &frontendRequest{
-		queryID: f.lastQueryID.Inc(),
-		request: req,
-		userID:  userID,
+		queryID:      f.lastQueryID.Inc(),
+		request:      req,
+		userID:       userID,
+		statsEnabled: stats.IsEnabled(ctx),
 
 		cancel: cancel,
 

@@ -126,6 +126,7 @@ type schedulerRequest struct {
 	userID          string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
+	statsEnabled    bool
 
 	enqueueTime time.Time
 
@@ -264,6 +265,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		userID:          msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
+		statsEnabled:    msg.StatsEnabled,
 	}
 
 	req.parentSpanContext = parentSpanContext
@@ -371,6 +373,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			QueryID:         req.queryID,
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
+			StatsEnabled:    req.statsEnabled,
 		})
 		if err != nil {
 			errCh <- err

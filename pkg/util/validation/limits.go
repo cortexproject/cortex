@@ -5,9 +5,10 @@ import (
 	"flag"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (

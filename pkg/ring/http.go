@@ -132,12 +132,12 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	sort.Strings(ingesterIDs)
 
 	ingesters := []interface{}{}
-	_, owned := countTokens(r.ringDesc, r.ringTokens)
+	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(&ing, Reporting) {
+		if !r.IsHealthy(&ing, Reporting, time.Now()) {
 			state = unhealthy
 		}
 

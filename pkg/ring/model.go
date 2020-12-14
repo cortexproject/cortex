@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"container/heap"
 	"fmt"
 	"sort"
 	"time"
@@ -10,13 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
-
-// ByToken is a sortable list of TokenDescs
-type ByToken []TokenDesc
-
-func (ts ByToken) Len() int           { return len(ts) }
-func (ts ByToken) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
-func (ts ByToken) Less(i, j int) bool { return ts[i].Token < ts[j].Token }
 
 // ByAddr is a sortable list of IngesterDesc.
 type ByAddr []IngesterDesc
@@ -124,13 +118,33 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 // TokensFor partitions the tokens into those for the given ID, and those for others.
 func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	takenTokens, myTokens := Tokens{}, Tokens{}
-	for _, token := range d.getTokens() {
-		takenTokens = append(takenTokens, token.Token)
-		if token.Ingester == id {
-			myTokens = append(myTokens, token.Token)
+	for instanceID, instance := range d.Ingesters {
+		takenTokens = append(takenTokens, instance.Tokens...)
+		if instanceID == id {
+			myTokens = instance.Tokens
 		}
 	}
+
+	// Ensure returned tokens are sorted. The tokens for the requested instance
+	// are already sorted.
+	sort.Slice(takenTokens, func(i, j int) bool {
+		return takenTokens[i] < takenTokens[j]
+	})
+
 	return myTokens, takenTokens
+}
+
+// GetTokenDesc returns a list of TokenDesc sorted by Token.
+func (i *IngesterDesc) GetTokenDescs(instanceID string) []TokenDesc {
+	tokens := make([]TokenDesc, 0, len(i.Tokens))
+
+	// The ring lifecycler implementation guarantees that IngesterDesc.Tokens are sorted
+	// so there's no need to sort them again.
+	for _, token := range i.Tokens {
+		tokens = append(tokens, TokenDesc{Token: token, Ingester: instanceID, Zone: i.GetZone()})
+	}
+
+	return tokens
 }
 
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
@@ -144,7 +158,7 @@ func (i *IngesterDesc) GetRegisteredAt() time.Time {
 }
 
 // IsHealthy checks whether the ingester appears to be alive and heartbeating
-func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) bool {
+func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
 	healthy := false
 
 	switch op {
@@ -170,7 +184,7 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 		healthy = i.State == ACTIVE
 	}
 
-	return healthy && time.Since(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
@@ -419,46 +433,49 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 	}
 }
 
-type TokenDesc struct {
-	Token    uint32
-	Ingester string
-	Zone     string
-}
+func (d *Desc) getTokensInfo() map[uint32]InstanceInfo {
+	out := map[uint32]InstanceInfo{}
 
-// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
-func (d *Desc) getTokens() []TokenDesc {
-	numTokens := 0
-	for _, ing := range d.Ingesters {
-		numTokens += len(ing.Tokens)
-	}
-	tokens := make([]TokenDesc, 0, numTokens)
-	for key, ing := range d.Ingesters {
-		for _, token := range ing.Tokens {
-			tokens = append(tokens, TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
+	for instanceID, instance := range d.Ingesters {
+		info := InstanceInfo{
+			InstanceID: instanceID,
+			Zone:       instance.Zone,
+		}
+
+		for _, token := range instance.Tokens {
+			out[token] = info
 		}
 	}
 
-	sort.Sort(ByToken(tokens))
-	return tokens
+	return out
+}
+
+// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
+func (d *Desc) getTokens() []uint32 {
+	instances := make([][]uint32, 0, len(d.Ingesters))
+	for _, instance := range d.Ingesters {
+		instances = append(instances, instance.Tokens)
+	}
+
+	return MergeTokenDesc(instances)
 }
 
 // getTokensByZone returns instances tokens grouped by zone. Tokens within each zone
 // are guaranteed to be sorted.
-func (d *Desc) getTokensByZone() map[string][]TokenDesc {
-	zones := map[string][]TokenDesc{}
-
-	for key, ing := range d.Ingesters {
-		for _, token := range ing.Tokens {
-			zones[ing.Zone] = append(zones[ing.Zone], TokenDesc{Token: token, Ingester: key, Zone: ing.GetZone()})
-		}
+func (d *Desc) getTokensByZone() map[string][]uint32 {
+	zones := map[string][][]uint32{}
+	for _, instance := range d.Ingesters {
+		zones[instance.Zone] = append(zones[instance.Zone], instance.Tokens)
 	}
 
-	// Ensure tokens are sorted within each zone.
-	for zone := range zones {
-		sort.Sort(ByToken(zones[zone]))
+	// Merge tokens per zone.
+	out := make(map[string][]uint32, len(zones))
+	for zone, tokens := range zones {
+		out[zone] = MergeTokenDesc(tokens)
 	}
 
-	return zones
+	return out
+
 }
 
 type CompareResult int
@@ -538,4 +555,93 @@ func GetOrCreateRingDesc(d interface{}) *Desc {
 		return NewDesc()
 	}
 	return d.(*Desc)
+}
+
+// TokenDesc contains a information about a single token within the ring. This struct,
+// once created, is expected to be immutable.
+type TokenDesc struct {
+	Token    uint32
+	Ingester string
+	Zone     string
+}
+
+// TokenHeap is an heap data structure used to merge multiple lists
+// of sorted TokenDesc into a single one.
+type TokenHeap [][]uint32
+
+func (h TokenHeap) Len() int {
+	return len(h)
+}
+
+func (h TokenHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+}
+
+func (h TokenHeap) Less(i, j int) bool {
+	return h[i][0] < h[j][0]
+}
+
+func (h *TokenHeap) Push(x interface{}) {
+	*h = append(*h, x.([]uint32))
+}
+
+func (h *TokenHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
+}
+
+// MergeTokenDesc takes in input multiple lists of TokenDesc and returns a single list
+// containing all TokenDesc merged and sorted by Token. Each input single list is required
+// to have tokens already sorted.
+func MergeTokenDesc(instances [][]uint32) []uint32 {
+	numTokens := 0
+
+	// Build the heap.
+	h := make(TokenHeap, 0, len(instances))
+	for _, tokens := range instances {
+		if len(tokens) == 0 {
+			continue
+		}
+
+		// We can safely append the input slice because elements inside are never shuffled.
+		h = append(h, tokens)
+		numTokens += len(tokens)
+	}
+	heap.Init(&h)
+
+	out := make([]uint32, 0, numTokens)
+
+	for h.Len() > 0 {
+		// The minimum element in the tree is the root, at index 0.
+		lowest := h[0]
+		out = append(out, lowest[0])
+
+		if len(lowest) > 1 {
+			// Remove the first token from the lowest because we popped it
+			// and then fix the heap to keep it sorted.
+			h[0] = h[0][1:]
+			heap.Fix(&h, 0)
+		} else {
+			heap.Remove(&h, 0)
+		}
+	}
+
+	return out
+}
+
+// MergeTokenDescByZone is like MergeTokenDesc but does it for each input zone.
+func MergeTokenDescByZone(zones map[string][][]uint32) map[string][]uint32 {
+	out := make(map[string][]uint32, len(zones))
+	for zone, tokens := range zones {
+		out[zone] = MergeTokenDesc(tokens)
+	}
+	return out
+}
+
+type InstanceInfo struct {
+	InstanceID string
+	Zone       string
 }

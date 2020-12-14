@@ -329,7 +329,7 @@ __replica__: replica2
 &lt;p>The minimal configuration requires:&lt;/p>
 &lt;ul>
 &lt;li>Enabling the HA tracker via &lt;code>-distributor.ha-tracker.enable=true&lt;/code> CLI flag (or its YAML config option)&lt;/li>
-&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi shoud be used for migration purposes only.&lt;/li>
+&lt;li>Configuring the KV store for the ring (See: &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>). Only Consul and etcd are currently supported. Multi should be used for migration purposes only.&lt;/li>
 &lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
 &lt;/ul>
 &lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>

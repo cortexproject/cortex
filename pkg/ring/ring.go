@@ -113,6 +113,10 @@ type Config struct {
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 	ExtendWrites         bool          `yaml:"extend_writes"`
+
+	// Whether the shuffle-sharding subring cache is disabled. This option is set
+	// internally and never exposed to the user.
+	SubringCacheDisabled bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -707,6 +711,10 @@ func (r *Ring) HasInstance(instanceID string) bool {
 }
 
 func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
+	if r.cfg.SubringCacheDisabled {
+		return nil
+	}
+
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
@@ -731,7 +739,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 }
 
 func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
-	if subring == nil {
+	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
 

@@ -41,6 +41,8 @@ type RingConfig struct {
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	TokensFilePath       string        `yaml:"tokens_file_path"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+	UnregisterOnShutdown bool          `yaml:"unregister_on_shutdown"`
+	ExtendWrites         bool          `yaml:"extend_writes"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -71,6 +73,8 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, ringFlagsPrefix+"replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.TokensFilePath, ringFlagsPrefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, ringFlagsPrefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
+	f.BoolVar(&cfg.UnregisterOnShutdown, ringFlagsPrefix+"unregister-on-shutdown", true, "Unregister from the ring upon clean shutdown. It can be useful to disable for rolling restarts with consistent naming.")
+	f.BoolVar(&cfg.ExtendWrites, ringFlagsPrefix+"extend-writes", true, "Try writing to an additional store-gateway in the presence of an store-gateway not in the ACTIVE state. It is useful to disable this along with -store-gateway.sharding-ring.unregister-on-shutdown=false in order to not spread blocks to extra gateways rolling restarts with consistent naming.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -105,11 +109,12 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
 	return ring.BasicLifecyclerConfig{
-		ID:                  cfg.InstanceID,
-		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
-		Zone:                cfg.InstanceZone,
-		HeartbeatPeriod:     cfg.HeartbeatPeriod,
-		TokensObservePeriod: 0,
-		NumTokens:           RingNumTokens,
+		ID:                   cfg.InstanceID,
+		Addr:                 fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		Zone:                 cfg.InstanceZone,
+		HeartbeatPeriod:      cfg.HeartbeatPeriod,
+		TokensObservePeriod:  0,
+		NumTokens:            RingNumTokens,
+		UnregisterOnShutdown: cfg.UnregisterOnShutdown,
 	}, nil
 }

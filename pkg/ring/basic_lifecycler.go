@@ -48,9 +48,10 @@ type BasicLifecyclerConfig struct {
 	// if zone awareness is unused.
 	Zone string
 
-	HeartbeatPeriod     time.Duration
-	TokensObservePeriod time.Duration
-	NumTokens           int
+	HeartbeatPeriod      time.Duration
+	TokensObservePeriod  time.Duration
+	NumTokens            int
+	UnregisterOnShutdown bool
 }
 
 // BasicLifecycler is a basic ring lifecycler which allows to hook custom
@@ -62,11 +63,12 @@ type BasicLifecyclerConfig struct {
 type BasicLifecycler struct {
 	*services.BasicService
 
-	cfg      BasicLifecyclerConfig
-	logger   log.Logger
-	store    kv.Client
-	delegate BasicLifecyclerDelegate
-	metrics  *BasicLifecyclerMetrics
+	cfg                  BasicLifecyclerConfig
+	logger               log.Logger
+	store                kv.Client
+	delegate             BasicLifecyclerDelegate
+	metrics              *BasicLifecyclerMetrics
+	unregisterOnShutdown bool
 
 	// Channel used to execute logic within the lifecycler loop.
 	actorChan chan func()
@@ -83,14 +85,15 @@ type BasicLifecycler struct {
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
 	l := &BasicLifecycler{
-		cfg:       cfg,
-		ringName:  ringName,
-		ringKey:   ringKey,
-		logger:    logger,
-		store:     store,
-		delegate:  delegate,
-		metrics:   NewBasicLifecyclerMetrics(ringName, reg),
-		actorChan: make(chan func()),
+		cfg:                  cfg,
+		ringName:             ringName,
+		ringKey:              ringKey,
+		logger:               logger,
+		store:                store,
+		delegate:             delegate,
+		metrics:              NewBasicLifecyclerMetrics(ringName, reg),
+		actorChan:            make(chan func()),
+		unregisterOnShutdown: cfg.UnregisterOnShutdown,
 	}
 
 	l.metrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -228,10 +231,12 @@ heartbeatLoop:
 	}
 
 	// Remove the instance from the ring.
-	if err := l.unregisterInstance(context.Background()); err != nil {
-		return errors.Wrapf(err, "failed to unregister instance from the ring (ring: %s)", l.ringName)
+	if l.unregisterOnShutdown {
+		if err := l.unregisterInstance(context.Background()); err != nil {
+			return errors.Wrapf(err, "failed to unregister instance from the ring (ring: %s)", l.ringName)
+		}
+		level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 	}
-	level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 
 	return nil
 }

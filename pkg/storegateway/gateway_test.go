@@ -192,6 +192,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = true
+	gatewayCfg.ShardingRing.UnregisterOnShutdown = true
 	storageCfg, cleanup := mockStorageConfig(t)
 	defer cleanup()
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
@@ -209,6 +210,30 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 
 	// We expect a clean shutdown, including unregistering the instance from the ring.
 	assert.False(t, g.ringLifecycler.IsRegistered())
+}
+
+func TestStoreGateway_UnregisterOnShutdown(t *testing.T) {
+	ctx := context.Background()
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = true
+	gatewayCfg.ShardingRing.UnregisterOnShutdown = false
+	storageCfg, cleanup := mockStorageConfig(t)
+	defer cleanup()
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	bucketClient := &bucket.ClientMock{}
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	bucketClient.MockIter("", []string{}, errors.New("network error"))
+
+	require.NoError(t, g.StartAsync(ctx))
+	err = g.AwaitRunning(ctx)
+	assert.Error(t, err)
+	assert.Equal(t, services.Failed, g.State())
+
+	// We expect the instance to still be registered when unregister-on-shutdown is set to false
+	assert.True(t, g.ringLifecycler.IsRegistered())
 }
 
 func TestStoreGateway_BlocksSharding(t *testing.T) {

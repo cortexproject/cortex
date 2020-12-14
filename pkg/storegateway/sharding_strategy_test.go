@@ -41,6 +41,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		zoneAwarenessEnabled bool
 		setupRing            func(*ring.Desc)
 		expectedBlocks       map[string][]ulid.ULID
+		noExtendWrites       bool
 	}{
 		"one ACTIVE instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
@@ -219,6 +220,34 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				"127.0.0.3": {block4},
 			},
 		},
+		"LEAVING instance in the ring with extend writes false should not replicate its shard blocks": {
+			replicationFactor: 1,
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING, registeredAt)
+			},
+			expectedBlocks: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block3},
+				"127.0.0.2": {block2},
+				"127.0.0.3": {block4},
+			},
+			noExtendWrites: true,
+		},
+		"LEAVING instance with extend writes false and replication factor = 2 should not replicate its shard blocks": {
+			replicationFactor: 2,
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING, registeredAt)
+			},
+			expectedBlocks: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block3 /* replicated: */, block2, block4},
+				"127.0.0.2": {block2 /* replicated: */, block1},
+				"127.0.0.3": {block4 /* replicated: */, block3},
+			},
+			noExtendWrites: true,
+		},
 		"JOINING instance in the ring should get its shard blocks but they should also be replicated to another instance": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
@@ -257,7 +286,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{
+				ExtendWrites: !testData.noExtendWrites,
+			})
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -330,6 +361,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 		setupRing         func(*ring.Desc)
 		expectedUsers     []usersExpectation
 		expectedBlocks    []blocksExpectation
+		noExtendWrites    bool
 	}{
 		"one ACTIVE instance in the ring with RF = 1 and SS = 1": {
 			replicationFactor: 1,
@@ -554,6 +586,26 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				{instanceID: "instance-3", instanceAddr: "127.0.0.3", blocks: []ulid.ULID{block4}},
 			},
 		},
+		"LEAVING instance in the ring with extend writes false should not replicate shard blocks to another instance": {
+			replicationFactor: 1,
+			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.LEAVING, registeredAt)
+			},
+			expectedUsers: []usersExpectation{
+				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: []string{userID}},
+				{instanceID: "instance-2", instanceAddr: "127.0.0.2", users: nil},
+				{instanceID: "instance-3", instanceAddr: "127.0.0.3", users: []string{userID}},
+			},
+			expectedBlocks: []blocksExpectation{
+				{instanceID: "instance-1", instanceAddr: "127.0.0.1", blocks: []ulid.ULID{block1, block2, block3}},
+				{instanceID: "instance-2", instanceAddr: "127.0.0.2", blocks: []ulid.ULID{ /* no blocks because not belonging to the shard */ }},
+				{instanceID: "instance-3", instanceAddr: "127.0.0.3", blocks: []ulid.ULID{block4}},
+			},
+			noExtendWrites: true,
+		},
 		"JOINING instance in the ring should get its shard blocks but they should also be replicated to another instance": {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
@@ -613,7 +665,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				HeartbeatTimeout:  time.Minute,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{
+				ExtendWrites: !testData.noExtendWrites,
+			})
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck

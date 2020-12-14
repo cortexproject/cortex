@@ -4165,6 +4165,18 @@ sharding_ring:
   # CLI flag: -store-gateway.sharding-ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
+  # Unregister from the ring upon clean shutdown. It can be useful to disable
+  # for rolling restarts with consistent naming
+  # CLI flag: -store-gateway.sharding-ring.unregister-on-shutdown
+  [unregister_on_shutdown: <boolean> | default = true]
+
+  # Try writing to an additional store gateway in the presence of a gateway not
+  # in the ACTIVE state. It is useful to disable this along with
+  # -store-gateway.sharding-ring.unregister-on-shutdown=false in order to not
+  # spread blocks to extra gateways during rolling restarts with consistent naming.
+  # CLI flag: -store-gateway.sharding-ring.extend-writes
+  [extend_writes: <boolean> | default = true]
+
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -store-gateway.sharding-strategy
 [sharding_strategy: <string> | default = "default"]

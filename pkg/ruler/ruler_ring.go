@@ -77,11 +77,12 @@ func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) 
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
 	return ring.BasicLifecyclerConfig{
-		ID:                  cfg.InstanceID,
-		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
-		HeartbeatPeriod:     cfg.HeartbeatPeriod,
-		TokensObservePeriod: 0,
-		NumTokens:           cfg.NumTokens,
+		ID:                   cfg.InstanceID,
+		Addr:                 fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		HeartbeatPeriod:      cfg.HeartbeatPeriod,
+		TokensObservePeriod:  0,
+		NumTokens:            cfg.NumTokens,
+		UnregisterOnShutdown: true,
 	}, nil
 }
 

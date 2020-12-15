@@ -12,6 +12,9 @@ adopters:
 - name: Electronic Arts
   url: https://www.ea.com/
   logo: ea.png
+- name: Etsy
+  url: https://www.etsy.com/
+  logo: etsy.svg
 - name: EverQuote
   url: https://www.everquote.com/
   logo: everquote.png

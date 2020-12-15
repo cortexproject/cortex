@@ -256,6 +256,46 @@ func TestDesc_getTokensByZone(t *testing.T) {
 	}
 }
 
+func TestDesc_TokensFor(t *testing.T) {
+	tests := map[string]struct {
+		desc         *Desc
+		expectedMine Tokens
+		expectedAll  Tokens
+	}{
+		"empty ring": {
+			desc:         &Desc{Ingesters: map[string]IngesterDesc{}},
+			expectedMine: Tokens(nil),
+			expectedAll:  Tokens{},
+		},
+		"single zone": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: ""},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: ""},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: ""},
+			}},
+			expectedMine: Tokens{1, 5},
+			expectedAll:  Tokens{1, 2, 3, 4, 5, 6},
+		},
+		"multiple zones": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: "zone-1"},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: "zone-1"},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: "zone-2"},
+			}},
+			expectedMine: Tokens{1, 5},
+			expectedAll:  Tokens{1, 2, 3, 4, 5, 6},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actualMine, actualAll := testData.desc.TokensFor("instance-1")
+			assert.Equal(t, testData.expectedMine, actualMine)
+			assert.Equal(t, testData.expectedAll, actualAll)
+		})
+	}
+}
+
 func TestDesc_RingsCompare(t *testing.T) {
 	tests := map[string]struct {
 		r1, r2   *Desc

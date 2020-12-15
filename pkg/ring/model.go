@@ -115,23 +115,12 @@ func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 	return nil
 }
 
-// TokensFor partitions the tokens into those for the given ID, and those for others.
-func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
-	takenTokens, myTokens := Tokens{}, Tokens{}
-	for instanceID, instance := range d.Ingesters {
-		takenTokens = append(takenTokens, instance.Tokens...)
-		if instanceID == id {
-			myTokens = instance.Tokens
-		}
-	}
-
-	// Ensure returned tokens are sorted. The tokens for the requested instance
-	// are already sorted.
-	sort.Slice(takenTokens, func(i, j int) bool {
-		return takenTokens[i] < takenTokens[j]
-	})
-
-	return myTokens, takenTokens
+// TokensFor return all ring tokens and tokens for the input provided ID.
+// Returned tokens are guaranteed to be sorted.
+func (d *Desc) TokensFor(id string) (myTokens, allTokens Tokens) {
+	allTokens = d.GetTokens()
+	myTokens = d.Ingesters[id].Tokens
+	return
 }
 
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
@@ -437,8 +426,8 @@ func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 	return out
 }
 
-// getTokens returns sorted list of tokens owned by all instances within the ring.
-func (d *Desc) getTokens() []uint32 {
+// GetTokens returns sorted list of tokens owned by all instances within the ring.
+func (d *Desc) GetTokens() []uint32 {
 	instances := make([][]uint32, 0, len(d.Ingesters))
 	for _, instance := range d.Ingesters {
 		instances = append(instances, instance.Tokens)

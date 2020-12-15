@@ -61,7 +61,7 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 	ring := &Ring{
 		cfg:                 Config{HeartbeatTimeout: time.Minute},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -96,7 +96,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 	ring := &Ring{
 		cfg:                 Config{HeartbeatTimeout: time.Minute},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -113,7 +113,7 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 		instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
 		ringDesc.Ingesters[instanceID] = IngesterDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
 		ring.ringDesc = ringDesc
-		ring.ringTokens = ringDesc.getTokens()
+		ring.ringTokens = ringDesc.GetTokens()
 		ring.ringTokensByZone = ringDesc.getTokensByZone()
 		ring.ringInstanceByToken = ringDesc.getTokensInfo()
 		ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -147,7 +147,7 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 	ring := &Ring{
 		cfg:                 Config{HeartbeatTimeout: time.Minute},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -168,7 +168,7 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 				instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
 				ringDesc.Ingesters[instanceID] = IngesterDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
 				ring.ringDesc = ringDesc
-				ring.ringTokens = ringDesc.getTokens()
+				ring.ringTokens = ringDesc.GetTokens()
 				ring.ringTokensByZone = ringDesc.getTokensByZone()
 				ring.ringInstanceByToken = ringDesc.getTokensInfo()
 				ring.ringZones = getZones(ringDesc.getTokensByZone())

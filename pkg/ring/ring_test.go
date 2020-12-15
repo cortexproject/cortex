@@ -196,7 +196,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 				},
 				ringDesc:            r,
-				ringTokens:          r.getTokens(),
+				ringTokens:          r.GetTokens(),
 				ringTokensByZone:    r.getTokensByZone(),
 				ringInstanceByToken: r.getTokensInfo(),
 				ringZones:           getZones(r.getTokensByZone()),
@@ -290,7 +290,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 			ring := Ring{
 				cfg:                 Config{HeartbeatTimeout: heartbeatTimeout},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -401,7 +401,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 					ReplicationFactor: testData.ringReplicationFactor,
 				},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -719,7 +719,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 					ReplicationFactor:    testData.replicationFactor,
 				},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -855,7 +855,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 				},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -907,7 +907,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 			ZoneAwarenessEnabled: true,
 		},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -975,7 +975,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 			ZoneAwarenessEnabled: true,
 		},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1074,7 +1074,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 					ZoneAwarenessEnabled: true,
 				},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1102,7 +1102,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				}
 			}
 
-			ring.ringTokens = ringDesc.getTokens()
+			ring.ringTokens = ringDesc.GetTokens()
 			ring.ringTokensByZone = ringDesc.getTokensByZone()
 			ring.ringInstanceByToken = ringDesc.getTokensInfo()
 			ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -1138,7 +1138,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 			ZoneAwarenessEnabled: true,
 		},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1215,7 +1215,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 			ZoneAwarenessEnabled: true,
 		},
 		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.getTokens(),
+		ringTokens:          ringDesc.GetTokens(),
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1247,7 +1247,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	}
 
 	ring.ringDesc.Ingesters = ringInstances
-	ring.ringTokens = ringDesc.getTokens()
+	ring.ringTokens = ringDesc.GetTokens()
 	ring.ringTokensByZone = ringDesc.getTokensByZone()
 	ring.ringInstanceByToken = ringDesc.getTokensInfo()
 	ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -1474,7 +1474,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 					ZoneAwarenessEnabled: true,
 				},
 				ringDesc:            ringDesc,
-				ringTokens:          ringDesc.getTokens(),
+				ringTokens:          ringDesc.GetTokens(),
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1487,14 +1487,14 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				case add:
 					ringDesc.Ingesters[event.instanceID] = event.instanceDesc
 
-					ring.ringTokens = ringDesc.getTokens()
+					ring.ringTokens = ringDesc.GetTokens()
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
 					ring.ringInstanceByToken = ringDesc.getTokensInfo()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
 				case remove:
 					delete(ringDesc.Ingesters, event.instanceID)
 
-					ring.ringTokens = ringDesc.getTokens()
+					ring.ringTokens = ringDesc.GetTokens()
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
 					ring.ringInstanceByToken = ringDesc.getTokensInfo()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -1539,7 +1539,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						ReplicationFactor:    3,
 					},
 					ringDesc:            ringDesc,
-					ringTokens:          ringDesc.getTokens(),
+					ringTokens:          ringDesc.GetTokens(),
 					ringTokensByZone:    ringDesc.getTokensByZone(),
 					ringInstanceByToken: ringDesc.getTokensInfo(),
 					ringZones:           getZones(ringDesc.getTokensByZone()),
@@ -1578,7 +1578,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 
 						ringDesc.Ingesters[instanceID] = generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(128, nil), currTime)
 
-						ring.ringTokens = ringDesc.getTokens()
+						ring.ringTokens = ringDesc.GetTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
 						ring.ringInstanceByToken = ringDesc.getTokensInfo()
 						ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -1596,7 +1596,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						idToRemove := ingesterIDs[idxToRemove]
 						delete(ringDesc.Ingesters, idToRemove)
 
-						ring.ringTokens = ringDesc.getTokens()
+						ring.ringTokens = ringDesc.GetTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
 						ring.ringInstanceByToken = ringDesc.getTokensInfo()
 						ring.ringZones = getZones(ringDesc.getTokensByZone())
@@ -1691,7 +1691,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 	ring := Ring{
 		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: !cache},
 		ringDesc:             ringDesc,
-		ringTokens:           ringDesc.getTokens(),
+		ringTokens:           ringDesc.GetTokens(),
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
@@ -1719,7 +1719,7 @@ func BenchmarkRing_Get(b *testing.B) {
 	ring := Ring{
 		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: true, ReplicationFactor: replicationFactor},
 		ringDesc:             ringDesc,
-		ringTokens:           ringDesc.getTokens(),
+		ringTokens:           ringDesc.GetTokens(),
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),

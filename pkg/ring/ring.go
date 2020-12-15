@@ -278,7 +278,7 @@ func (r *Ring) loop(ctx context.Context) error {
 		}
 
 		now := time.Now()
-		ringTokens := ringDesc.getTokens()
+		ringTokens := ringDesc.GetTokens()
 		ringTokensByZone := ringDesc.getTokensByZone()
 		ringInstanceByToken := ringDesc.getTokensInfo()
 		ringZones := getZones(ringTokensByZone)
@@ -721,7 +721,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		cfg:              r.cfg,
 		strategy:         r.strategy,
 		ringDesc:         shardDesc,
-		ringTokens:       shardDesc.getTokens(),
+		ringTokens:       shardDesc.GetTokens(),
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
 

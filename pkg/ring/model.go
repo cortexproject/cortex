@@ -134,19 +134,6 @@ func (d *Desc) TokensFor(id string) (tokens, other Tokens) {
 	return myTokens, takenTokens
 }
 
-// GetTokenDesc returns a list of TokenDesc sorted by Token.
-func (i *IngesterDesc) GetTokenDescs(instanceID string) []TokenDesc {
-	tokens := make([]TokenDesc, 0, len(i.Tokens))
-
-	// The ring lifecycler implementation guarantees that IngesterDesc.Tokens are sorted
-	// so there's no need to sort them again.
-	for _, token := range i.Tokens {
-		tokens = append(tokens, TokenDesc{Token: token, Ingester: instanceID, Zone: i.GetZone()})
-	}
-
-	return tokens
-}
-
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
 // or a zero value if unknown.
 func (i *IngesterDesc) GetRegisteredAt() time.Time {
@@ -433,11 +420,11 @@ func (d *Desc) RemoveTombstones(limit time.Time) {
 	}
 }
 
-func (d *Desc) getTokensInfo() map[uint32]InstanceInfo {
-	out := map[uint32]InstanceInfo{}
+func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
+	out := map[uint32]instanceInfo{}
 
 	for instanceID, instance := range d.Ingesters {
-		info := InstanceInfo{
+		info := instanceInfo{
 			InstanceID: instanceID,
 			Zone:       instance.Zone,
 		}
@@ -457,7 +444,7 @@ func (d *Desc) getTokens() []uint32 {
 		instances = append(instances, instance.Tokens)
 	}
 
-	return MergeTokenDesc(instances)
+	return MergeTokens(instances)
 }
 
 // getTokensByZone returns instances tokens grouped by zone. Tokens within each zone
@@ -471,7 +458,7 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 	// Merge tokens per zone.
 	out := make(map[string][]uint32, len(zones))
 	for zone, tokens := range zones {
-		out[zone] = MergeTokenDesc(tokens)
+		out[zone] = MergeTokens(tokens)
 	}
 
 	return out
@@ -557,35 +544,27 @@ func GetOrCreateRingDesc(d interface{}) *Desc {
 	return d.(*Desc)
 }
 
-// TokenDesc contains a information about a single token within the ring. This struct,
-// once created, is expected to be immutable.
-type TokenDesc struct {
-	Token    uint32
-	Ingester string
-	Zone     string
-}
+// TokensHeap is an heap data structure used to merge multiple lists
+// of sorted tokens into a single one.
+type TokensHeap [][]uint32
 
-// TokenHeap is an heap data structure used to merge multiple lists
-// of sorted TokenDesc into a single one.
-type TokenHeap [][]uint32
-
-func (h TokenHeap) Len() int {
+func (h TokensHeap) Len() int {
 	return len(h)
 }
 
-func (h TokenHeap) Swap(i, j int) {
+func (h TokensHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
 }
 
-func (h TokenHeap) Less(i, j int) bool {
+func (h TokensHeap) Less(i, j int) bool {
 	return h[i][0] < h[j][0]
 }
 
-func (h *TokenHeap) Push(x interface{}) {
+func (h *TokensHeap) Push(x interface{}) {
 	*h = append(*h, x.([]uint32))
 }
 
-func (h *TokenHeap) Pop() interface{} {
+func (h *TokensHeap) Pop() interface{} {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -593,14 +572,14 @@ func (h *TokenHeap) Pop() interface{} {
 	return x
 }
 
-// MergeTokenDesc takes in input multiple lists of TokenDesc and returns a single list
-// containing all TokenDesc merged and sorted by Token. Each input single list is required
+// MergeTokens takes in input multiple lists of tokens and returns a single list
+// containing all tokens merged and sorted. Each input single list is required
 // to have tokens already sorted.
-func MergeTokenDesc(instances [][]uint32) []uint32 {
+func MergeTokens(instances [][]uint32) []uint32 {
 	numTokens := 0
 
 	// Build the heap.
-	h := make(TokenHeap, 0, len(instances))
+	h := make(TokensHeap, 0, len(instances))
 	for _, tokens := range instances {
 		if len(tokens) == 0 {
 			continue
@@ -632,16 +611,11 @@ func MergeTokenDesc(instances [][]uint32) []uint32 {
 	return out
 }
 
-// MergeTokenDescByZone is like MergeTokenDesc but does it for each input zone.
-func MergeTokenDescByZone(zones map[string][][]uint32) map[string][]uint32 {
+// MergeTokensByZone is like MergeTokens but does it for each input zone.
+func MergeTokensByZone(zones map[string][][]uint32) map[string][]uint32 {
 	out := make(map[string][]uint32, len(zones))
 	for zone, tokens := range zones {
-		out[zone] = MergeTokenDesc(tokens)
+		out[zone] = MergeTokens(tokens)
 	}
 	return out
-}
-
-type InstanceInfo struct {
-	InstanceID string
-	Zone       string
 }

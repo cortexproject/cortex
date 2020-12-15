@@ -142,6 +142,11 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.ExtendWrites, prefix+"distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 }
 
+type instanceInfo struct {
+	InstanceID string
+	Zone       string
+}
+
 // Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
 	services.Service
@@ -159,7 +164,7 @@ type Ring struct {
 	// Maps a token with the information of the instance holding it. This map is immutable and
 	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
-	ringInstanceByToken map[uint32]InstanceInfo
+	ringInstanceByToken map[uint32]instanceInfo
 
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
@@ -687,8 +692,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 					continue
 				}
 
-				instance := r.ringDesc.Ingesters[info.InstanceID]
 				instanceID := info.InstanceID
+				instance := r.ringDesc.Ingesters[instanceID]
 
 				shard[instanceID] = instance
 				shardTokens = append(shardTokens, instance.Tokens)
@@ -714,13 +719,13 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	}
 
 	// Build a read-only ring for the shard.
-	mergedTokensByZone := MergeTokenDescByZone(shardTokensByZone)
+	mergedTokensByZone := MergeTokensByZone(shardTokensByZone)
 
 	return &Ring{
 		cfg:              r.cfg,
 		strategy:         r.strategy,
 		ringDesc:         &Desc{Ingesters: shard},
-		ringTokens:       MergeTokenDesc(shardTokens),
+		ringTokens:       MergeTokens(shardTokens),
 		ringTokensByZone: mergedTokensByZone,
 		ringZones:        getZones(mergedTokensByZone),
 

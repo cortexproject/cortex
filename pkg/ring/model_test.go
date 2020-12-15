@@ -336,7 +336,7 @@ func TestDesc_RingsCompare(t *testing.T) {
 	}
 }
 
-func TestMergeTokenDesc(t *testing.T) {
+func TestMergeTokens(t *testing.T) {
 	tests := map[string]struct {
 		input    [][]uint32
 		expected []uint32
@@ -373,12 +373,12 @@ func TestMergeTokenDesc(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, MergeTokenDesc(testData.input))
+			assert.Equal(t, testData.expected, MergeTokens(testData.input))
 		})
 	}
 }
 
-func TestMergeTokenDescByZone(t *testing.T) {
+func TestMergeTokensByZone(t *testing.T) {
 	tests := map[string]struct {
 		input    map[string][][]uint32
 		expected map[string][]uint32
@@ -418,7 +418,7 @@ func TestMergeTokenDescByZone(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, MergeTokenDescByZone(testData.input))
+			assert.Equal(t, testData.expected, MergeTokensByZone(testData.input))
 		})
 	}
 }

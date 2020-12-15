@@ -122,11 +122,11 @@ func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string,
 }
 
 func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, logger log.Logger) {
-	buf, bufHosts, bufZones := ring.MakeBuffersForGet()
+	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	for blockID := range metas {
 		key := cortex_tsdb.HashBlockID(blockID)
-		set, err := r.Get(key, ring.BlocksSync, buf, bufHosts, bufZones)
+		set, err := r.Get(key, ring.BlocksSync, bufDescs, bufHosts, bufZones)
 
 		// If there are no healthy instances in the replication set or
 		// the replication set for this block doesn't include this instance

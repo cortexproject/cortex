@@ -751,9 +751,10 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	healthyInstancesCount := 0
 	zones := map[string]struct{}{}
-	now := time.Now()
 
 	if ringDesc != nil {
+		now := time.Now()
+
 		for _, ingester := range ringDesc.Ingesters {
 			zones[ingester.Zone] = struct{}{}
 

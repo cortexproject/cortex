@@ -646,8 +646,6 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	}
 
 	shard := make(map[string]IngesterDesc, size)
-	shardTokens := make([][]uint32, 0, size)
-	shardTokensByZone := make(map[string][][]uint32, len(actualZones))
 
 	// We need to iterate zones always in the same order to guarantee stability.
 	for _, zone := range actualZones {
@@ -694,10 +692,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 				instanceID := info.InstanceID
 				instance := r.ringDesc.Ingesters[instanceID]
-
 				shard[instanceID] = instance
-				shardTokens = append(shardTokens, instance.Tokens)
-				shardTokensByZone[zone] = append(shardTokensByZone[zone], instance.Tokens)
 
 				// If the lookback is enabled and this instance has been registered within the lookback period
 				// then we should include it in the subring but continuing selecting instances.
@@ -719,15 +714,16 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	}
 
 	// Build a read-only ring for the shard.
-	mergedTokensByZone := MergeTokensByZone(shardTokensByZone)
+	shardDesc := &Desc{Ingesters: shard}
+	shardTokensByZone := shardDesc.getTokensByZone()
 
 	return &Ring{
 		cfg:              r.cfg,
 		strategy:         r.strategy,
-		ringDesc:         &Desc{Ingesters: shard},
-		ringTokens:       MergeTokens(shardTokens),
-		ringTokensByZone: mergedTokensByZone,
-		ringZones:        getZones(mergedTokensByZone),
+		ringDesc:         shardDesc,
+		ringTokens:       shardDesc.getTokens(),
+		ringTokensByZone: shardTokensByZone,
+		ringZones:        getZones(shardTokensByZone),
 
 		// We reference the original map as is in order to avoid copying. It's safe to do
 		// because this map is immutable by design and it's a superset of the actual instances

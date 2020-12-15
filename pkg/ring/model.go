@@ -437,7 +437,7 @@ func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 	return out
 }
 
-// getTokens returns sorted list of tokens with ingester IDs, owned by each ingester in the ring.
+// getTokens returns sorted list of tokens owned by all instances within the ring.
 func (d *Desc) getTokens() []uint32 {
 	instances := make([][]uint32, 0, len(d.Ingesters))
 	for _, instance := range d.Ingesters {
@@ -456,13 +456,7 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 	}
 
 	// Merge tokens per zone.
-	out := make(map[string][]uint32, len(zones))
-	for zone, tokens := range zones {
-		out[zone] = MergeTokens(tokens)
-	}
-
-	return out
-
+	return MergeTokensByZone(zones)
 }
 
 type CompareResult int

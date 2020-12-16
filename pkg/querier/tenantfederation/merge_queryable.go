@@ -222,11 +222,11 @@ func filterValuesByMatchers(labelName string, labelValues []string, matchers ...
 		if m.Name != labelName {
 			// check if has the retained label name
 			if m.Name == originalDefaultTenantLabel {
-				unrelatedMatchers = append(unrelatedMatchers, &labels.Matcher{
-					Name:  labelName,
-					Type:  m.Type,
-					Value: m.Value,
-				})
+				// rewrite label to the original name, by copying matcher and
+				// replacing the label name
+				rewrittenM := *m
+				rewrittenM.Name = labelName
+				unrelatedMatchers = append(unrelatedMatchers, &rewrittenM)
 			} else {
 				unrelatedMatchers = append(unrelatedMatchers, m)
 			}

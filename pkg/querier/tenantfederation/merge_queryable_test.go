@@ -240,6 +240,13 @@ func TestMergeQueryable(t *testing.T) {
 					seriesCount: 6,
 				},
 				{
+					name: "selector-regex-tenant-label-with-original-value",
+					selector: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchRegexp, originalDefaultTenantLabel, "original-value"),
+					},
+					seriesCount: 6,
+				},
+				{
 					name:        "selector-tenant-label-without-original-value",
 					selector:    []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchNotEqual}},
 					seriesCount: 0,

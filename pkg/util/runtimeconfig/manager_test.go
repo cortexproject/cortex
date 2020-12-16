@@ -54,6 +54,27 @@ func testLoadOverrides(r io.Reader) (interface{}, error) {
 }
 
 func newTestOverridesManagerConfig(t *testing.T, i int32) (*atomic.Int32, ManagerConfig) {
+	config, tempFile, loader := newConfig(t, i)
+
+	// testing NewRuntimeConfigManager with overrides reload config set
+	return config, ManagerConfig{
+		ReloadPeriod: 5 * time.Second,
+		LoadPath:     tempFile,
+		Loader:       loader,
+	}
+}
+
+func newTestExtensionConfig(t *testing.T, configName string, i int32) (*atomic.Int32, ExtensionConfig) {
+	config, tempFile, loader := newConfig(t, i)
+
+	return config, ExtensionConfig{
+		Name:     configName,
+		LoadPath: tempFile,
+		Loader:   loader,
+	}
+}
+
+func newConfig(t *testing.T, i int32) (*atomic.Int32, string, Loader) {
 	var config = atomic.NewInt32(i)
 
 	// create empty file
@@ -65,14 +86,9 @@ func newTestOverridesManagerConfig(t *testing.T, i int32) (*atomic.Int32, Manage
 		os.Remove(tempFile.Name())
 	})
 
-	// testing NewRuntimeConfigManager with overrides reload config set
-	return config, ManagerConfig{
-		ReloadPeriod: 5 * time.Second,
-		LoadPath:     tempFile.Name(),
-		Loader: func(_ io.Reader) (i interface{}, err error) {
-			val := int(config.Load())
-			return val, nil
-		},
+	return config, tempFile.Name(), func(_ io.Reader) (i interface{}, err error) {
+		val := int(config.Load())
+		return val, nil
 	}
 }
 
@@ -252,5 +268,91 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 		require.False(t, ok)
 	case <-time.After(time.Second):
 		t.Fatal("channel not closed")
+	}
+}
+
+func TestOverridesManager_LoadExtensionConfig(t *testing.T) {
+	myExtensionName1 := "testExtension1"
+	myExtensionName2 := "testExtension2"
+
+	_, overridesManagerConfig := newTestOverridesManagerConfig(t, 111)
+	_, extensionConfig1 := newTestExtensionConfig(t, myExtensionName1, 3)
+	_, extensionConfig2 := newTestExtensionConfig(t, myExtensionName2, 42)
+
+	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
+
+	overridesManager.AddExtension(extensionConfig1)
+	overridesManager.AddExtension(extensionConfig2)
+
+	mainCh := overridesManager.CreateListenerChannel(1)
+	extensionCh1 := overridesManager.CreateListenerChannel(1, myExtensionName1)
+	extensionCh2 := overridesManager.CreateListenerChannel(1, myExtensionName2)
+	mixedCh1 := overridesManager.CreateListenerChannel(2, DefaultConfigName, myExtensionName1)
+	mixedCh2 := overridesManager.CreateListenerChannel(2, myExtensionName1, myExtensionName2)
+
+	err = overridesManager.loadConfig()
+	require.NoError(t, err)
+
+	expectingMsgsOnMainCh := map[int]struct{}{
+		111: struct{}{},
+	}
+	expectingMsgsOnExtensionCh1 := map[int]struct{}{
+		3: struct{}{},
+	}
+	expectingMsgsOnExtensionCh2 := map[int]struct{}{
+		42: struct{}{},
+	}
+	expectingMsgsOnMixedCh1 := map[int]struct{}{
+		111: struct{}{},
+		3:   struct{}{},
+	}
+	expectingMsgsOnMixedCh2 := map[int]struct{}{
+		3:  struct{}{},
+		42: struct{}{},
+	}
+
+	timeoutCh := time.After(time.Second)
+	for len(expectingMsgsOnMainCh)+len(expectingMsgsOnExtensionCh1)+len(expectingMsgsOnExtensionCh2)+len(expectingMsgsOnMixedCh1)+len(expectingMsgsOnMixedCh2) > 0 {
+		select {
+		case msgUntyped := <-mainCh:
+			msg := msgUntyped.(int)
+			if _, ok := expectingMsgsOnMainCh[msg]; ok {
+				delete(expectingMsgsOnMainCh, msg)
+			} else {
+				t.Fatalf("Received unexpected msg %d on main chan", msg)
+			}
+		case msgUntyped := <-extensionCh1:
+			msg := msgUntyped.(int)
+			if _, ok := expectingMsgsOnExtensionCh1[msg]; ok {
+				delete(expectingMsgsOnExtensionCh1, msg)
+			} else {
+				t.Fatalf("Received unexpected msg %d on main chan", msg)
+			}
+		case msgUntyped := <-extensionCh2:
+			msg := msgUntyped.(int)
+			if _, ok := expectingMsgsOnExtensionCh2[msg]; ok {
+				delete(expectingMsgsOnExtensionCh2, msg)
+			} else {
+				t.Fatalf("Received unexpected msg %d on main chan", msg)
+			}
+		case msgUntyped := <-mixedCh1:
+			msg := msgUntyped.(int)
+			if _, ok := expectingMsgsOnMixedCh1[msg]; ok {
+				delete(expectingMsgsOnMixedCh1, msg)
+			} else {
+				t.Fatalf("Received unexpected msg %d on main chan", msg)
+			}
+		case msgUntyped := <-mixedCh2:
+			msg := msgUntyped.(int)
+			if _, ok := expectingMsgsOnMixedCh2[msg]; ok {
+				delete(expectingMsgsOnMixedCh2, msg)
+			} else {
+				t.Fatalf("Received unexpected msg %d on main chan", msg)
+			}
+		case <-timeoutCh:
+			t.Fatalf("Timed out waiting for messages")
+		}
 	}
 }

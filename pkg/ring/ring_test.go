@@ -1741,6 +1741,34 @@ func BenchmarkRing_Get(b *testing.B) {
 	}
 }
 
+func TestRing_Get_NoMemoryAllocations(t *testing.T) {
+	// Initialise the ring.
+	ringDesc := &Desc{Ingesters: generateRingInstances(3, 3, 128)}
+	ring := Ring{
+		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: true, ReplicationFactor: 3},
+		ringDesc:             ringDesc,
+		ringTokens:           ringDesc.GetTokens(),
+		ringTokensByZone:     ringDesc.getTokensByZone(),
+		ringInstanceByToken:  ringDesc.getTokensInfo(),
+		ringZones:            getZones(ringDesc.getTokensByZone()),
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		strategy:             NewDefaultReplicationStrategy(true),
+		lastTopologyChange:   time.Now(),
+	}
+
+	buf, bufHosts, bufZones := MakeBuffersForGet()
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	numAllocs := testing.AllocsPerRun(10, func() {
+		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
+		if err != nil || len(set.Ingesters) != 3 {
+			t.Fail()
+		}
+	})
+
+	assert.Equal(t, float64(0), numAllocs)
+}
+
 // generateTokensLinear returns tokens with a linear distribution.
 func generateTokensLinear(instanceID, numInstances, numTokens int) []uint32 {
 	tokens := make([]uint32, 0, numTokens)

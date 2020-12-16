@@ -1,359 +1,379 @@
-version: '3.4'
-services:
-
-  consul:
-    image: consul
-    command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
-    ports:
-      - 8500:8500
-
-  minio:
-    image: minio/minio
-    command: [ "server", "/data" ]
-    environment:
-      - MINIO_ACCESS_KEY=cortex
-      - MINIO_SECRET_KEY=supersecret
-    ports:
-      - 9000:9000
-    volumes:
-      - .data-minio:/data:delegated
-
-  memcached:
-    image: memcached:1.6
-
-  prometheus:
-    image: prom/prometheus:v2.16.0
-    command: ["--config.file=/etc/prometheus/prometheus.yaml"]
-    volumes:
-      - ./config:/etc/prometheus
-    ports:
-      - 9090:9090
-
-  jaeger:
-    image: jaegertracing/all-in-one
-    ports:
-      - 16686:16686
+"services":
+  "alertmanager":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8010 -server.grpc-listen-port=9010 -alertmanager.web.external-url=localhost:8010"
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=alertmanager"
+    "image": "cortex"
+    "ports":
+      - "8010:8010"
+    "volumes":
+      - "./config:/cortex/config"
+  "compactor":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=compactor"
+    "image": "cortex"
+    "ports":
+      - "8006:8006"
+    "volumes":
+      - "./config:/cortex/config"
+  "consul":
+    "command":
+      - "agent"
+      - "-dev"
+      - "-client=0.0.0.0"
+      - "-log-level=info"
+    "image": "consul"
+    "ports":
+      - "8500:8500"
+  "distributor":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=distributor"
+    "image": "cortex"
+    "ports":
+      - "8001:8001"
+    "volumes":
+      - "./config:/cortex/config"
+  "grafana-agent":
+    "command":
+      - "-config.file=/etc/agent-config/grafana-agent.yaml"
+      - "-prometheus.wal-directory=/tmp"
+    "image": "grafana/agent:v0.2.0"
+    "ports":
+      - "9091:9091"
+    "volumes":
+      - "./config:/etc/agent-config"
+  "ingester-1":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=ingester-1"
+    "image": "cortex"
+    "ports":
+      - "8002:8002"
+    "volumes":
+      - "./config:/cortex/config"
+      - ".data-ingester-1:/tmp/cortex-tsdb-ingester:delegated"
+  "ingester-2":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=ingester-2"
+    "image": "cortex"
+    "ports":
+      - "8003:8003"
+    "volumes":
+      - "./config:/cortex/config"
+      - ".data-ingester-2:/tmp/cortex-tsdb-ingester:delegated"
+  "jaeger":
+    "image": "jaegertracing/all-in-one"
+    "ports":
+      - "16686:16686"
       - "14268"
-
-  # Scrape the metrics also with the Grafana agent (useful to test metadata ingestion
-  # until metadata remote write is not supported by Prometheus).
-  grafana-agent:
-    image: grafana/agent:v0.2.0
-    command: ["-config.file=/etc/agent-config/grafana-agent.yaml", "-prometheus.wal-directory=/tmp"]
-    volumes:
-      - ./config:/etc/agent-config
-    ports:
-      - 9091:9091
-
-  distributor:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18001 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=distributor -server.http-listen-port=8001 -server.grpc-listen-port=9001"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=distributor
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8001:8001
-      - 18001:18001
-    volumes:
-      - ./config:/cortex/config
-
-  ingester-1:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18002 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8002 -server.grpc-listen-port=9002"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ingester-1
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8002:8002
-      - 18002:18002
-    volumes:
-      - ./config:/cortex/config
-      - .data-ingester-1:/tmp/cortex-tsdb-ingester:delegated
-
-  ingester-2:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18003 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ingester -server.http-listen-port=8003 -server.grpc-listen-port=9003"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ingester-2
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8003:8003
-      - 18003:18003
-    volumes:
-      - ./config:/cortex/config
-      - .data-ingester-2:/tmp/cortex-tsdb-ingester:delegated
-    
-  querier:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18004 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=querier
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8004:8004
-      - 18004:18004
-    volumes:
-      - ./config:/cortex/config
-
-  store-gateway-1:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18008 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=store-gateway-1
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8008:8008
-      - 18008:18008
-    volumes:
-      - ./config:/cortex/config
-
-  store-gateway-2:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18009 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8009 -server.grpc-listen-port=9009"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=store-gateway-2
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8009:8009
-      - 18009:18009
-    volumes:
-      - ./config:/cortex/config
-
-  compactor:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18006 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=compactor -server.http-listen-port=8006 -server.grpc-listen-port=9006"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=compactor
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8006:8006
-      - 18006:18006
-    volumes:
-      - ./config:/cortex/config
-
-  query-frontend:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18007 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -store.max-query-length=8760h"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=query-frontend
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8007:8007
-      - 18007:18007
-    volumes:
-      - ./config:/cortex/config
-
-  alertmanager:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18010 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8010 -server.grpc-listen-port=9010 -alertmanager.web.external-url=localhost:8010"]
-    depends_on:
-      - consul
-      - minio
-    ports:
-      - 8010:8010
-      - 18010:18010
-    volumes:
-      - ./config:/cortex/config
-
-  ruler-1:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18021 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8021 -server.grpc-listen-port=9021"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ruler-1
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8021:8021
-      - 18021:18021
-    volumes:
-      - ./config:/cortex/config
-
-  ruler-2:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18022 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8022 -server.grpc-listen-port=9022"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=ruler-2
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8022:8022
-      - 18022:18022
-    volumes:
-      - ./config:/cortex/config
-
-  query-scheduler:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18011 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-scheduler -server.http-listen-port=8011 -server.grpc-listen-port=9011 -store.max-query-length=8760h"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=query-scheduler
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8011:8011
-      - 18011:18011
-    volumes:
-      - ./config:/cortex/config
-
-  # This frontend uses query-scheduler, activated by `-frontend.scheduler-address` option.
-  query-frontend-with-scheduler:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18012 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8012 -server.grpc-listen-port=9012 -store.max-query-length=8760h -frontend.scheduler-address=query-scheduler:9011"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=query-frontend2
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8012:8012
-      - 18012:18012
-    volumes:
-      - ./config:/cortex/config
-
-  # This querier is connecting to query-scheduler, instead of query-frontend. This is achieved by setting -querier.scheduler-address="..."
-  querier-with-scheduler:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18013 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address="]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=querier-scheduler
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8013:8013
-      - 18013:18013
-    volumes:
-      - ./config:/cortex/config
-
-  purger:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18014 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=purger -server.http-listen-port=8014 -server.grpc-listen-port=9014"]
-    depends_on:
-      - consul
-      - minio
-    environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831
-      - JAEGER_TAGS=app=querier-scheduler
-      - JAEGER_SAMPLER_TYPE=const
-      - JAEGER_SAMPLER_PARAM=1
-    ports:
-      - 8014:8014
-      - 18014:18014
-    volumes:
-      - ./config:/cortex/config
+  "memcached":
+    "image": "memcached:1.6"
+  "minio":
+    "command":
+      - "server"
+      - "/data"
+    "environment":
+      - "MINIO_ACCESS_KEY=cortex"
+      - "MINIO_SECRET_KEY=supersecret"
+    "image": "minio/minio"
+    "ports":
+      - "9000:9000"
+    "volumes":
+      - ".data-minio:/data:delegated"
+  "prometheus":
+    "command":
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+    "image": "prom/prometheus:v2.16.0"
+    "ports":
+      - "9090:9090"
+    "volumes":
+      - "./config:/etc/prometheus"
+  "purger":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=purger -server.http-listen-port=8014 -server.grpc-listen-port=9014 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=purger"
+    "image": "cortex"
+    "ports":
+      - "8014:8014"
+    "volumes":
+      - "./config:/cortex/config"
+  "querier":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8004 -server.grpc-listen-port=9004 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=querier"
+    "image": "cortex"
+    "ports":
+      - "8004:8004"
+    "volumes":
+      - "./config:/cortex/config"
+  "querier-with-scheduler":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=querier -server.http-listen-port=8013 -server.grpc-listen-port=9013 -querier.scheduler-address=query-scheduler:9011 -querier.frontend-address="
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=querier-with-scheduler"
+    "image": "cortex"
+    "ports":
+      - "8013:8013"
+    "volumes":
+      - "./config:/cortex/config"
+  "query-frontend":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8007 -server.grpc-listen-port=9007 -store.max-query-length=8760h"
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=query-frontend"
+    "image": "cortex"
+    "ports":
+      - "8007:8007"
+    "volumes":
+      - "./config:/cortex/config"
+  "query-frontend-with-scheduler":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=query-frontend -server.http-listen-port=8012 -server.grpc-listen-port=9012 -store.max-query-length=8760h -frontend.scheduler-address=query-scheduler:9011"
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=query-frontend-with-scheduler"
+    "image": "cortex"
+    "ports":
+      - "8012:8012"
+    "volumes":
+      - "./config:/cortex/config"
+  "query-scheduler":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=query-scheduler -server.http-listen-port=8011 -server.grpc-listen-port=9011 -store.max-query-length=8760h"
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=query-scheduler"
+    "image": "cortex"
+    "ports":
+      - "8011:8011"
+    "volumes":
+      - "./config:/cortex/config"
+  "ruler-1":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8021 -server.grpc-listen-port=9021 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=ruler-1"
+    "image": "cortex"
+    "ports":
+      - "8021:8021"
+    "volumes":
+      - "./config:/cortex/config"
+  "ruler-2":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=ruler -server.http-listen-port=8022 -server.grpc-listen-port=9022 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=ruler-2"
+    "image": "cortex"
+    "ports":
+      - "8022:8022"
+    "volumes":
+      - "./config:/cortex/config"
+  "store-gateway-1":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8008 -server.grpc-listen-port=9008 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=store-gateway-1"
+    "image": "cortex"
+    "ports":
+      - "8008:8008"
+    "volumes":
+      - "./config:/cortex/config"
+  "store-gateway-2":
+    "build":
+      "context": "."
+      "dockerfile": "dev.dockerfile"
+    "command":
+      - "sh"
+      - "-c"
+      - "sleep 3 && exec ./cortex -config.file=./config/cortex.yaml -target=store-gateway -server.http-listen-port=8009 -server.grpc-listen-port=9009 "
+    "depends_on":
+      - "consul"
+      - "minio"
+    "environment":
+      - "JAEGER_AGENT_HOST=jaeger"
+      - "JAEGER_AGENT_PORT=6831"
+      - "JAEGER_SAMPLER_PARAM=1"
+      - "JAEGER_SAMPLER_TYPE=const"
+      - "JAEGER_TAGS=app=store-gateway-2"
+    "image": "cortex"
+    "ports":
+      - "8009:8009"
+    "volumes":
+      - "./config:/cortex/config"
+"version": "3.4"

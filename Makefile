@@ -265,6 +265,9 @@ clean-white-noise:
 check-white-noise: clean-white-noise
 	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)
 
+check-tsdb-blocks-storage-s3-docker-compose-yaml:
+	cd development/tsdb-blocks-storage-s3 && make check
+
 web-serve:
 	cd website && hugo --config config.toml --minify -v server
 

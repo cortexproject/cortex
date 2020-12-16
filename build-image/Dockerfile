@@ -49,6 +49,10 @@ ENV EMBEDMD_VERSION=1.0.0
 RUN GO111MODULE=on go get github.com/campoy/embedmd@v${EMBEDMD_VERSION} && \
     rm -rf /go/pkg /go/src
 
+ENV JSONNET_VERSION=0.17.0
+RUN GO111MODULE=on go get github.com/google/go-jsonnet/cmd/jsonnet@v${JSONNET_VERSION} && \
+    rm -rf /go/pkg /go/src
+
 ARG revision
 LABEL org.opencontainers.image.title="build-image" \
       org.opencontainers.image.source="https://github.com/cortexproject/cortex/tree/master/build-image" \

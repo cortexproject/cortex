@@ -2,7 +2,7 @@
 
 set -e
 
-SCRIPT_DIR=$(cd `dirname $0` && pwd)
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 # -gcflags "all=-N -l" disables optimizations that allow for better run with combination with Delve debugger.
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -gcflags "all=-N -l" -o ${SCRIPT_DIR}/cortex ${SCRIPT_DIR}/../../cmd/cortex

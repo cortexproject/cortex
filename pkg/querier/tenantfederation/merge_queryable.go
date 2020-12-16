@@ -161,7 +161,7 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 		}
 	}
 
-	var result []string
+	var result = make([]string, 0, len(resultMap))
 	for e := range resultMap {
 		result = append(result, e)
 	}
@@ -180,7 +180,8 @@ func (m *mergeQuerier) Close() error {
 
 // Select returns a set of series that matches the given label matchers. If the
 // tenantLabelName is matched on it only considers those queriers matching. The
-// forwaded labelSelector is not containing those that operate on tenantLabelName.
+// forwarded labelSelector is not containing those that operate on
+// tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	matchedTenants, filteredMatchers := filterValuesByMatchers(string(defaultTenantLabel), m.tenantIDs, matchers...)
 	var seriesSets = make([]storage.SeriesSet, 0, len(matchedTenants))
@@ -291,21 +292,17 @@ func (a *addLabelsSeries) Iterator() chunkenc.Iterator {
 
 // this sets a label and preserves an existing value a new label prefixed with
 // original_. It doesn't do this recursively.
-func setLabelRetainExisting(ls labels.Labels, lb *labels.Builder, additional labels.Label) {
-	if oldValue := ls.Get(additional.Name); oldValue != "" {
-		lb.Set(
-			retainExistingPrefix+additional.Name,
-			oldValue,
-		)
-	}
-	lb.Set(additional.Name, additional.Value)
-}
-
 func setLabelsRetainExisting(src labels.Labels, additionalLabels ...labels.Label) labels.Labels {
 	lb := labels.NewBuilder(src)
 
 	for _, additionalL := range additionalLabels {
-		setLabelRetainExisting(src, lb, additionalL)
+		if oldValue := src.Get(additionalL.Name); oldValue != "" {
+			lb.Set(
+				retainExistingPrefix+additionalL.Name,
+				oldValue,
+			)
+		}
+		lb.Set(additionalL.Name, additionalL.Value)
 	}
 
 	return lb.Labels()

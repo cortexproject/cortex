@@ -166,7 +166,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	}
 	bucketClient = cachingBucket
 
-	scanner := NewBlocksScanner(BlocksScannerConfig{
+	scanner := NewBlocksFinderBucketScan(BlocksFinderBucketScanConfig{
 		ScanInterval:             storageCfg.BucketStore.SyncInterval,
 		TenantsConcurrency:       storageCfg.BucketStore.TenantSyncConcurrency,
 		MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,

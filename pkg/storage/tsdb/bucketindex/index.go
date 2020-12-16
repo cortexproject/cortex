@@ -81,6 +81,13 @@ type Block struct {
 	UploadedAt int64 `json:"uploaded_at"`
 }
 
+// Within returns whether the block contains samples within the provided range.
+// Input minT and maxT are both inclusive.
+func (m *Block) Within(minT, maxT int64) bool {
+	// NOTE: Block intervals are half-open: [MinTime, MaxTime).
+	return m.MinTime <= maxT && minT < m.MaxTime
+}
+
 func (m *Block) GetUploadedAt() time.Time {
 	return time.Unix(m.UploadedAt, 0)
 }

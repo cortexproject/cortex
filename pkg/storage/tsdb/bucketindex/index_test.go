@@ -210,6 +210,51 @@ func TestBlockFromThanosMeta(t *testing.T) {
 	}
 }
 
+func TestBlock_Within(t *testing.T) {
+	tests := []struct {
+		block    *Block
+		minT     int64
+		maxT     int64
+		expected bool
+	}{
+		{
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     5,
+			maxT:     9,
+			expected: false,
+		}, {
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     5,
+			maxT:     10,
+			expected: true,
+		}, {
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     5,
+			maxT:     10,
+			expected: true,
+		}, {
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     11,
+			maxT:     13,
+			expected: true,
+		}, {
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     19,
+			maxT:     21,
+			expected: true,
+		}, {
+			block:    &Block{MinTime: 10, MaxTime: 20},
+			minT:     20,
+			maxT:     21,
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		assert.Equal(t, tc.expected, tc.block.Within(tc.minT, tc.maxT))
+	}
+}
+
 func TestBlock_ThanosMeta(t *testing.T) {
 	blockID := ulid.MustNew(1, nil)
 	userID := "user-1"

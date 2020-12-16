@@ -267,16 +267,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	var maxQueriers int
-	if len(tenantIDs) == 1 {
-		maxQueriers = f.limits.MaxQueriersPerUser(tenantIDs[0])
-	} else {
-		maxQueriersPerTenant := make([]int, len(tenantIDs))
-		for pos := range maxQueriersPerTenant {
-			maxQueriersPerTenant[pos] = f.limits.MaxQueriersPerUser(tenantIDs[pos])
-		}
-		maxQueriers = validation.MinimumOfNonZeroValues(maxQueriersPerTenant)
-	}
+	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
 	err = f.requestQueue.EnqueueRequest(tenant.JoinTenantIDs(tenantIDs), req, maxQueriers, nil)
 	if err == queue.ErrTooManyRequests {

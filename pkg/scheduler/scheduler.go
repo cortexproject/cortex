@@ -261,7 +261,6 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	}
 
 	userID := msg.GetUserID()
-	userCtx := user.InjectOrgID(context.TODO(), userID)
 
 	req := &schedulerRequest{
 		frontendAddress: frontendAddr,
@@ -276,21 +275,12 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.enqueueTime = time.Now()
 	req.ctxCancel = cancel
 
-	// aggregate the max queriers limit in the case of a federated tenant query
-	tenantIDs, err := tenant.TenantIDs(userCtx)
+	// aggregate the max queriers limit in the case of a multi tenant query
+	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
 	if err != nil {
 		return err
 	}
-	var maxQueriers int
-	if len(tenantIDs) == 1 {
-		maxQueriers = s.limits.MaxQueriersPerUser(tenantIDs[0])
-	} else {
-		maxQueriersPerTenant := make([]int, len(tenantIDs))
-		for pos := range maxQueriersPerTenant {
-			maxQueriersPerTenant[pos] = s.limits.MaxQueriersPerUser(tenantIDs[pos])
-		}
-		maxQueriers = validation.MinimumOfNonZeroValues(maxQueriersPerTenant)
-	}
+	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, s.limits.MaxQueriersPerUser)
 
 	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
 		shouldCancel = false

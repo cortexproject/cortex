@@ -113,17 +113,37 @@ metric_relabel_configs:
 
 	assert.Equal(t, []*relabel.Config{&exp}, l.MetricRelabelConfigs)
 }
-func TestMinimumOfNonZeroValues(t *testing.T) {
-	// single tenant
+
+func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			MaxQueriersPerTenant: 5,
+		},
+		"tenant-b": {
+			MaxQueriersPerTenant: 10,
+		},
+	}
+
+	defaults := Limits{
+		MaxQueriersPerTenant: 0,
+	}
+	ov, err := NewOverrides(defaults, func(userID string) *Limits {
+		return tenantLimits[userID]
+	})
+	require.NoError(t, err)
+
 	for _, tc := range []struct {
-		input    []int
-		expLimit int
+		tenantIDs []string
+		expLimit  int
 	}{
-		{input: []int{-1, 0, 1}, expLimit: 1},
-		{input: []int{0, 0, 0}, expLimit: 0},
-		{input: []int{0, 5, 10}, expLimit: 5},
-		{input: []int{5}, expLimit: 5},
+		{tenantIDs: []string{}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-b"}, expLimit: 10},
+		{tenantIDs: []string{"tenant-c"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: 5},
 	} {
-		assert.Equal(t, tc.expLimit, MinimumOfNonZeroValues(tc.input))
+		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroIntPerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
 	}
 }

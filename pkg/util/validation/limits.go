@@ -423,15 +423,20 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	return o.defaultLimits
 }
 
-// MinimumOfNonZeroValues is returning the minimal value of the input values.
-// In many limits a value of 0 means unlimted so the method will return 0 if
-// all inputs have a limit of 0. Otherwise it is the minimum of > 0 values.
-func MinimumOfNonZeroValues(inputs []int) int {
-	var result int = 0
-	for _, v := range inputs {
-		if v > 0 && (result == 0 || v < result) {
-			result = v
+// SmallestPositiveNonZeroIntPerTenant is returning the minimal positive and
+// non-zero value of the supplied limit function for all given tenants. In many
+// limits a value of 0 means unlimted so the method will return 0 only if all
+// inputs have a limit of 0.
+func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
+	var result *int
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > 0 && (result == nil || v < *result) {
+			result = &v
 		}
 	}
-	return result
+	if result == nil {
+		return 0
+	}
+	return *result
 }

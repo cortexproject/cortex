@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -15,7 +14,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
-const defaultTenantLabel = "__tenant_id__"
+const (
+	defaultTenantLabel         = "__tenant_id__"
+	retainExistingPrefix       = "original_"
+	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
+)
 
 // NewQueryable returns a queryable that iterates through all the tenant IDs
 // that are part of the request and aggregates the results from each tenant's
@@ -61,13 +64,10 @@ func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (s
 	}
 
 	return &mergeQuerier{
-		queriers:        queriers,
-		tenantIDs:       tenantIDs,
-		tenantLabelName: defaultTenantLabel,
+		queriers:  queriers,
+		tenantIDs: tenantIDs,
 	}, nil
 }
-
-const retainExistingPrefix = "original_"
 
 // mergeQuerier aggregates the results from underlying queriers and adds a
 // label tenantLabelName to identify the tenant ID that the metric resulted
@@ -76,9 +76,8 @@ const retainExistingPrefix = "original_"
 // overwritten by the tenant ID and the previous value is exposed through a new
 // label prefixed with "original_". This behaviour is not implemented recursively
 type mergeQuerier struct {
-	queriers        []storage.Querier
-	tenantIDs       []string
-	tenantLabelName model.LabelName
+	queriers  []storage.Querier
+	tenantIDs []string
 }
 
 // LabelValues returns all potential values for a label name.
@@ -87,14 +86,14 @@ type mergeQuerier struct {
 // For the label "original_" + tenantLabelName it will return all the values
 // of the underlying queriers for tenantLabelName.
 func (m *mergeQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
-	if name == string(m.tenantLabelName) {
+	if name == defaultTenantLabel {
 		return m.tenantIDs, nil, nil
 	}
 
 	// ensure the name of a retained tenant id label gets handled under the
-	// origignal label name
-	if name == retainExistingPrefix+string(m.tenantLabelName) {
-		name = string(m.tenantLabelName)
+	// original label name
+	if name == originalDefaultTenantLabel {
+		name = defaultTenantLabel
 	}
 
 	return m.mergeDistinctStringSlice(func(q storage.Querier) ([]string, storage.Warnings, error) {
@@ -103,8 +102,8 @@ func (m *mergeQuerier) LabelValues(name string) ([]string, storage.Warnings, err
 }
 
 // LabelNames returns all the unique label names present in the underlying
-// queriers. It also add the tenantLabelName and if present in the original
-// results the "original_" tenantLabelName.
+// queriers. It also adds the defaultTenantLabel and if present in the original
+// results the originalDefaultTenantLabel
 func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	labelNames, warnings, err := m.mergeDistinctStringSlice(func(q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelNames()
@@ -115,30 +114,34 @@ func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
 
 	// check if the tenant label exists in the original result
 	var tenantLabelExists bool
-	for _, labelName := range labelNames {
-		if labelName == string(m.tenantLabelName) {
-			tenantLabelExists = true
-			break
-		}
+	labelPos := sort.SearchStrings(labelNames, defaultTenantLabel)
+	if labelPos < len(labelNames) && labelNames[labelPos] == defaultTenantLabel {
+		tenantLabelExists = true
 	}
 
+	labelToAdd := defaultTenantLabel
+
+	// if defaultTenantLabel already exists, we need to add the
+	// originalDefaultTenantLabel
 	if tenantLabelExists {
-		// the tenant label exists in the original result, so it had been retained
-		labelNames = append(labelNames, retainExistingPrefix+string(m.tenantLabelName))
-	} else {
-		// the tenant label was not existing, so it need to get added
-		labelNames = append(labelNames, string(m.tenantLabelName))
+		labelToAdd = originalDefaultTenantLabel
+		labelPos = sort.SearchStrings(labelNames, labelToAdd)
 	}
-	sort.Strings(labelNames)
+
+	// insert label at the correct position
+	labelNames = append(labelNames, "")
+	copy(labelNames[labelPos+1:], labelNames[labelPos:])
+	labelNames[labelPos] = labelToAdd
 
 	return labelNames, warnings, nil
-
 }
 
 type stringSliceFunc func(storage.Querier) ([]string, storage.Warnings, error)
 
 // mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
-// on a querier. It removes duplicates and sorts the result.
+// on a querier. It removes duplicates and sorts the result. It doesn't require
+// the output of the stringSliceFunc to be sorted, as results of LabelValues
+// are not sorted.
 //
 // TODO: Consider running stringSliceFunc calls concurrently
 func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
@@ -180,7 +183,7 @@ func (m *mergeQuerier) Close() error {
 // tenantLabelName is matched on it only considers those queriers matching. The
 // forwaded labelSelector is not containing those that operate on tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	tenantIDsPos, filteredMatchers := filterValuesByMatchers(string(m.tenantLabelName), m.tenantIDs, matchers...)
+	tenantIDsPos, filteredMatchers := filterValuesByMatchers(string(defaultTenantLabel), m.tenantIDs, matchers...)
 	var seriesSets = make([]storage.SeriesSet, len(tenantIDsPos))
 	for pos, posTenant := range tenantIDsPos {
 		tenantID := m.tenantIDs[posTenant]
@@ -189,7 +192,7 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 			upstream: m.queriers[posTenant].Select(sortSeries, hints, filteredMatchers...),
 			labels: labels.Labels{
 				{
-					Name:  string(m.tenantLabelName),
+					Name:  defaultTenantLabel,
 					Value: tenantID,
 				},
 			},
@@ -219,7 +222,7 @@ func filterValuesByMatchers(labelName string, labelValues []string, matchers ...
 	for _, m := range matchers {
 		if m.Name != labelName {
 			// check if has the retained label name
-			if m.Name == retainExistingPrefix+labelName {
+			if m.Name == originalDefaultTenantLabel {
 				unrelatedMatchers = append(unrelatedMatchers, &labels.Matcher{
 					Name:  labelName,
 					Type:  m.Type,

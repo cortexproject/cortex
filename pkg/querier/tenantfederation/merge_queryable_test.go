@@ -212,12 +212,12 @@ func TestMergeQueryable(t *testing.T) {
 		{
 			name:        "three tenants and a __tenant_id__ label set",
 			tenants:     []string{"team-a", "team-b", "team-c"},
-			labelNames:  []string{defaultTenantLabel, "instance", retainExistingPrefix + defaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+			labelNames:  []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
 			extraLabels: []string{"__tenant_id__", "original-value"},
 			expectedLabelValues: map[string][]string{
-				"instance":         {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
-				defaultTenantLabel: {"team-a", "team-b", "team-c"},
-				retainExistingPrefix + defaultTenantLabel: {"original-value"},
+				"instance":                 {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+				defaultTenantLabel:         {"team-a", "team-b", "team-c"},
+				originalDefaultTenantLabel: {"original-value"},
 			},
 			selectorCases: []selectorTestCase{
 				{
@@ -236,12 +236,12 @@ func TestMergeQueryable(t *testing.T) {
 				},
 				{
 					name:        "selector-tenant-label-with-original-value",
-					selector:    []*labels.Matcher{{Name: retainExistingPrefix + defaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
+					selector:    []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
 					seriesCount: 6,
 				},
 				{
 					name:        "selector-tenant-label-without-original-value",
-					selector:    []*labels.Matcher{{Name: retainExistingPrefix + defaultTenantLabel, Value: "original-value", Type: labels.MatchNotEqual}},
+					selector:    []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchNotEqual}},
 					seriesCount: 0,
 				},
 			},

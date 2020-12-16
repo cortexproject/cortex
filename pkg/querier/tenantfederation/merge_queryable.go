@@ -182,40 +182,42 @@ func (m *mergeQuerier) Close() error {
 // tenantLabelName is matched on it only considers those queriers matching. The
 // forwaded labelSelector is not containing those that operate on tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	tenantIDsPos, filteredMatchers := filterValuesByMatchers(string(defaultTenantLabel), m.tenantIDs, matchers...)
-	var seriesSets = make([]storage.SeriesSet, len(tenantIDsPos))
-	for pos, posTenant := range tenantIDsPos {
-		tenantID := m.tenantIDs[posTenant]
-		seriesSets[pos] = &addLabelsSeriesSet{
+	matchedTenants, filteredMatchers := filterValuesByMatchers(string(defaultTenantLabel), m.tenantIDs, matchers...)
+	var seriesSets = make([]storage.SeriesSet, 0, len(matchedTenants))
+	for pos, tenantID := range m.tenantIDs {
+		if _, matched := matchedTenants[tenantID]; !matched {
+			continue
+		}
+		seriesSets = append(seriesSets, &addLabelsSeriesSet{
 			// TODO: Consider running Select calls concurrently
-			upstream: m.queriers[posTenant].Select(sortSeries, hints, filteredMatchers...),
+			upstream: m.queriers[pos].Select(sortSeries, hints, filteredMatchers...),
 			labels: labels.Labels{
 				{
 					Name:  defaultTenantLabel,
 					Value: tenantID,
 				},
 			},
-		}
+		})
 	}
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
 }
 
-// filterValuesByMatchers applies matchers to inputed labelName and labelValue.
-// The index of matched values is returned and also all label matcher not
-// matching the labelName.
-// In case a label matcher is set on a label confliciting with tenantLabelName,
-// we need to rename this labelMatcher to it's original name.
-// This is used to as part of Select in the mergeQueryable, to ensure only
-// relevant queries are considered and the forwarded matchers do not contain
-// matchers on the tenantLabelName.
-func filterValuesByMatchers(labelName string, labelValues []string, matchers ...*labels.Matcher) ([]int, []*labels.Matcher) {
+// filterValuesByMatchers applies matchers to inputed labelName and
+// labelValues. A map of matched values is returned and also all label matchers
+// not matching the labelName.
+// In case a label matcher is set on a label conflicting with tenantLabelName,
+// we need to rename this labelMatcher's name to its original name. This is
+// used to as part of Select in the mergeQueryable, to ensure only relevant
+// queries are considered and the forwarded matchers do not contain matchers on
+// the tenantLabelName.
+func filterValuesByMatchers(labelName string, labelValues []string, matchers ...*labels.Matcher) (matchedValues map[string]struct{}, unrelatedMatchers []*labels.Matcher) {
 	// this contains the matchers which are not related to labelName
-	var unrelatedMatchers []*labels.Matcher
+	unrelatedMatchers = make([]*labels.Matcher, 0, len(matchers))
 
-	// this contains the pos of labelValues that are matched by the matchers
-	var matchedValuesPos = make([]int, len(labelValues))
-	for pos := range labelValues {
-		matchedValuesPos[pos] = pos
+	// build map of values to consider for the matchers
+	matchedValues = make(map[string]struct{}, len(labelValues))
+	for _, value := range labelValues {
+		matchedValues[value] = struct{}{}
 	}
 
 	for _, m := range matchers {
@@ -233,15 +235,14 @@ func filterValuesByMatchers(labelName string, labelValues []string, matchers ...
 			continue
 		}
 
-		var matchedValuesPosThisMatcher []int
-		for _, v := range matchedValuesPos {
-			if m.Matches(labelValues[v]) {
-				matchedValuesPosThisMatcher = append(matchedValuesPosThisMatcher, v)
+		for value := range matchedValues {
+			if !m.Matches(value) {
+				delete(matchedValues, value)
 			}
 		}
-		matchedValuesPos = matchedValuesPosThisMatcher
 	}
-	return matchedValuesPos, unrelatedMatchers
+
+	return matchedValues, unrelatedMatchers
 }
 
 type addLabelsSeriesSet struct {

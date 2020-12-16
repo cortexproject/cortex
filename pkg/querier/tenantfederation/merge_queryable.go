@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -170,13 +171,11 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 
 // Close releases the resources of the Querier.
 func (m *mergeQuerier) Close() error {
-	var errs prometheus.MultiError
+	errs := tsdb_errors.NewMulti()
 	for pos, tenantID := range m.tenantIDs {
-		if err := m.queriers[pos].Close(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to close querier for tenant id %s: %w", tenantID, err))
-		}
+		errs.Add(errors.Wrapf(m.queriers[pos].Close(), "failed to close querier for tenant id %s", tenantID))
 	}
-	return errs.MaybeUnwrap()
+	return errs.Err()
 }
 
 // Select returns a set of series that matches the given label matchers. If the

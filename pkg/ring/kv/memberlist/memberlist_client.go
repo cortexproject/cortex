@@ -268,13 +268,17 @@ type KV struct {
 	maxCasRetries int
 }
 
+// Message describes incoming or outgoing message, and local state after applying incoming message, or state when sending message.
 // Fields are exported for templating to work.
 type message struct {
-	ID      int       // Unique local ID of the message.
-	Time    time.Time // Time when message was sent or received.
-	Size    int       // Message size
-	Pair    KeyValuePair
-	Version uint // For sent message, which version the message reflects. For received message, version after applying the message.
+	ID   int       // Unique local ID of the message.
+	Time time.Time // Time when message was sent or received.
+	Size int       // Message size
+	Pair KeyValuePair
+
+	// Following values are computed on the receiving node, based on local state.
+	Version uint     // For sent message, which version the message reflects. For received message, version after applying the message.
+	Changes []string // List of changes in this message (as computed by *this* node).
 }
 
 type valueDesc struct {
@@ -904,6 +908,7 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		Size:    len(pairData),
 		Pair:    kvPair,
 		Version: version,
+		Changes: change.MergeContent(),
 	})
 
 	m.queueBroadcast(key, change.MergeContent(), version, pairData)
@@ -948,11 +953,17 @@ func (m *KV) NotifyMsg(msg []byte) {
 	// we have a ring update! Let's merge it with our version of the ring for given key
 	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 
+	changes := []string(nil)
+	if mod != nil {
+		changes = mod.MergeContent()
+	}
+
 	m.addReceivedMessage(message{
 		Time:    time.Now(),
 		Size:    len(msg),
 		Pair:    kvPair,
 		Version: version,
+		Changes: changes,
 	})
 
 	if err != nil {
@@ -965,6 +976,7 @@ func (m *KV) NotifyMsg(msg []byte) {
 			Size:    len(msg),
 			Pair:    kvPair,
 			Version: version,
+			Changes: changes,
 		})
 
 		// Forward this message
@@ -1112,11 +1124,17 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 		// we have both key and value, try to merge it with our state
 		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
 
+		changes := []string(nil)
+		if change != nil {
+			changes = change.MergeContent()
+		}
+
 		m.addReceivedMessage(message{
 			Time:    received,
 			Size:    int(kvPairLength),
 			Pair:    kvPair, // Makes a copy of kvPair.
 			Version: newver,
+			Changes: changes,
 		})
 
 		if err != nil {
@@ -1262,6 +1280,16 @@ func (m *KV) getSentAndReceivedMessages() (sent, received []message) {
 
 	// Make copy of both slices.
 	return append([]message(nil), m.sentMessages...), append([]message(nil), m.receivedMessages...)
+}
+
+func (m *KV) deleteSentReceivedMessages() {
+	m.messagesMu.Lock()
+	defer m.messagesMu.Unlock()
+
+	m.sentMessages = nil
+	m.sentMessagesSize = 0
+	m.receivedMessages = nil
+	m.receivedMessagesSize = 0
 }
 
 func addMessageToBuffer(msgs []message, size int, limit int, msg message) ([]message, int) {

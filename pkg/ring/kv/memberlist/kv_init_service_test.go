@@ -30,9 +30,10 @@ func TestPage(t *testing.T) {
 			Pair: KeyValuePair{
 				Key:   "hello",
 				Value: []byte("world"),
-				Codec: "coded",
+				Codec: "codec",
 			},
 			Version: 20,
+			Changes: []string{"A", "B", "C"},
 		}},
 
 		SentMessages: []message{{
@@ -42,9 +43,10 @@ func TestPage(t *testing.T) {
 			Pair: KeyValuePair{
 				Key:   "hello",
 				Value: []byte("world"),
-				Codec: "coded",
+				Codec: "codec",
 			},
 			Version: 20,
+			Changes: []string{"A", "B", "C"},
 		}},
 	}))
 }

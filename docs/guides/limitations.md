@@ -43,3 +43,7 @@ The Cortex chunks storage doesn't support queries without a metric name, like `c
 ## Query series and labels
 
 When running queries to the `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` endpoints, query's time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
+
+## Tenant federation
+
+When using tenant federation on a Cortex cluster with chunk storage, cache invalidation is not fully supported. Metrics that have been deleted via `/api/v1/admin/tsdb/delete_series` API endpoint can still appear in cached query results.

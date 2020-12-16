@@ -106,11 +106,13 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 		if _, exists := ruleGroups[userID]; !exists {
 			go mngr.Stop()
 			delete(r.userManagers, userID)
+
+			r.mapper.cleanupUser(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
-			level.Info(r.logger).Log("msg", "deleting rule manager", "user", userID)
+			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
 

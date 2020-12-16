@@ -24,7 +24,10 @@ var (
 // To make sure that rules within each group are loaded, client must use LoadRuleGroups method.
 type RuleStore interface {
 	ListAllUsers(ctx context.Context) ([]string, error)
+
+	// Returns all rule groups for all users.
 	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
+
 	// ListRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
 	// If namespace is empty, groups from all namespaces are returned.
 	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (RuleGroupList, error)
@@ -36,7 +39,12 @@ type RuleStore interface {
 
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
+
+	// Deletes single rule group.
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
+
+	// Lists rule groups for given user and namespace, and deletes all rule groups.
+	// If namespace is empty, deletes all rule groups for user.
 	DeleteNamespace(ctx context.Context, userID, namespace string) error
 }
 

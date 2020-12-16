@@ -451,6 +451,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
+	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 

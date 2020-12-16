@@ -780,7 +780,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, nil
 	}
 
-	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer)
+	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -864,7 +864,7 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
-		BlocksPurger:             {Store, API},
+		BlocksPurger:             {Store, API, RulerStorage},
 		Purger:                   {ChunksPurger, BlocksPurger},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},

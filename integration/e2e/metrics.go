@@ -107,6 +107,16 @@ func Greater(value float64) func(sums ...float64) bool {
 	}
 }
 
+// GreaterOrEqual is an isExpected function for WaitSumMetrics that returns true if given single sum is greater or equal than given value.
+func GreaterOrEqual(value float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("greater: expected one value")
+		}
+		return sums[0] >= value
+	}
+}
+
 // Less is an isExpected function for WaitSumMetrics that returns true if given single sum is less than given value.
 func Less(value float64) func(sums ...float64) bool {
 	return func(sums ...float64) bool {

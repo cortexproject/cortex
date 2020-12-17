@@ -401,13 +401,13 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 			}
 
-			// Wait until the store-gateway has synched the new uploaded blocks.
+			// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
+			// may be greater than expected if the compactor is running (there may have been compacted).
 			const shippedBlocks = 2
-
 			if testCfg.blocksShardingEnabled {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
+				require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
 			} else {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
+				require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 			}
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).

@@ -43,8 +43,8 @@ type Index struct {
 	UpdatedAt int64 `json:"updated_at"`
 }
 
-func (i *Index) GetUpdatedAt() time.Time {
-	return time.Unix(i.UpdatedAt, 0)
+func (idx *Index) GetUpdatedAt() time.Time {
+	return time.Unix(idx.UpdatedAt, 0)
 }
 
 // RemoveBlock removes block and its deletion mark (if any) from index.

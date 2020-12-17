@@ -48,6 +48,7 @@ type Config struct {
 	CleanupInterval       time.Duration            `yaml:"cleanup_interval"`
 	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
+	TenantCleanupDelay    time.Duration            `yaml:"tenant_cleanup_delay"`
 
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
@@ -88,6 +89,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will permanently delete blocks marked for deletion from the bucket. "+
 		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
+	f.DurationVar(&cfg.TenantCleanupDelay, "compactor.tenant-cleanup-delay", 6*time.Hour, "For tenants marked for deletion, this is time between deleting of last block, and doing final cleanup (marker files, debug files) of the tenant.")
 	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", true, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
@@ -341,6 +343,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
+		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
 	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.

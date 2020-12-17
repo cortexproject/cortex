@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -26,7 +27,8 @@ type BlocksCleanerConfig struct {
 	DeletionDelay                      time.Duration
 	CleanupInterval                    time.Duration
 	CleanupConcurrency                 int
-	BlockDeletionMarksMigrationEnabled bool // TODO Discuss whether we should remove it in Cortex 1.8.0 and document that upgrading to 1.7.0 before 1.8.0 is required.
+	BlockDeletionMarksMigrationEnabled bool          // TODO Discuss whether we should remove it in Cortex 1.8.0 and document that upgrading to 1.7.0 before 1.8.0 is required.
+	TenantCleanupDelay                 time.Duration // Delay before removing tenant deletion mark and "debug".
 }
 
 type BlocksCleaner struct {
@@ -223,8 +225,65 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	c.tenantBlocks.DeleteLabelValues(userID)
 	c.tenantMarkedBlocks.DeleteLabelValues(userID)
 
-	level.Info(userLogger).Log("msg", "finished deleting blocks for user marked for deletion", "deletedBlocks", deleted)
+	if deleted > 0 {
+		level.Info(userLogger).Log("msg", "deleted blocks for user marked for deletion", "deletedBlocks", deleted)
+	}
+
+	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
+	if err != nil {
+		return errors.Wrap(err, "failed to read tenant deletion mark")
+	}
+	if mark == nil {
+		return errors.Wrap(err, "cannot find tenant deletion mark anymore")
+	}
+
+	// If we have just deleted some blocks, update "finished" time. Also update "finished" time if it wasn't set yet, but there are no blocks.
+	// Note: this UPDATES the tenant deletion mark. Components that use caching bucket will NOT SEE this update,
+	// but that is fine -- they only check whether tenant deletion marker exists or not.
+	if deleted > 0 || mark.FinishedTime == 0 {
+		mark.FinishedTime = time.Now().Unix()
+		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
+	}
+
+	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
+		return nil
+	}
+
+	// Let's do final cleanup of tenant.
+	if deleted, err := deletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete debug/metas for user marked for deletion")
+	} else if deleted > 0 {
+		level.Info(userLogger).Log("msg", "deleted debug/metas files", "count", deleted)
+	}
+
+	// Tenant deletion mark file is inside Markers as well.
+	if deleted, err := deletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete marker files for user marked for deletion")
+	} else if deleted > 0 {
+		level.Info(userLogger).Log("msg", "deleted marker files", "count", deleted)
+	}
+
 	return nil
+}
+
+func deletePrefix(ctx context.Context, bkt objstore.Bucket, prefix string, logger log.Logger) (int, error) {
+	result := 0
+	err := bkt.Iter(ctx, prefix, func(name string) error {
+		if strings.HasSuffix(name, objstore.DirDelim) {
+			deleted, err := deletePrefix(ctx, bkt, name, logger)
+			result += deleted
+			return err
+		}
+
+		if err := bkt.Delete(ctx, name); err != nil {
+			return err
+		}
+		result++
+		level.Debug(logger).Log("msg", "deleted file", "file", name)
+		return nil
+	})
+
+	return result, err
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun bool) (returnErr error) {

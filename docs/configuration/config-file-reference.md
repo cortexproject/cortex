@@ -4113,6 +4113,11 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.deletion-delay
 [deletion_delay: <duration> | default = 12h]
 
+# For tenants marked for deletion, this is time between deleting of last block,
+# and doing final cleanup (marker files, debug files) of the tenant.
+# CLI flag: -compactor.tenant-cleanup-delay
+[tenant_cleanup_delay: <duration> | default = 6h]
+
 # When enabled, at compactor startup the bucket will be scanned and all found
 # deletion marks inside the block location will be copied to the markers global
 # location too. This option can (and should) be safely disabled as soon as the

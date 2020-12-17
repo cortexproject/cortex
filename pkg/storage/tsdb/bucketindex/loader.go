@@ -23,15 +23,6 @@ const (
 	readIndexTimeout = 15 * time.Second
 )
 
-var (
-	DefaultLoaderConfig = LoaderConfig{
-		CheckInterval:         time.Minute,
-		UpdateOnStaleInterval: 15 * time.Minute,
-		UpdateOnErrorInterval: time.Minute,
-		IdleTimeout:           time.Hour,
-	}
-)
-
 type LoaderConfig struct {
 	CheckInterval         time.Duration
 	UpdateOnStaleInterval time.Duration

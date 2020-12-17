@@ -36,7 +36,7 @@ func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
 
 	// Create the loader.
-	loader := NewLoader(DefaultLoaderConfig, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -90,7 +90,7 @@ func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 	bkt := prepareFilesystemBucket(t)
 
 	// Create the loader.
-	loader := NewLoader(DefaultLoaderConfig, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -414,4 +414,13 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 	`),
 		"cortex_bucket_index_loads_total",
 	))
+}
+
+func prepareLoaderConfig() LoaderConfig {
+	return LoaderConfig{
+		CheckInterval:         time.Minute,
+		UpdateOnStaleInterval: 15 * time.Minute,
+		UpdateOnErrorInterval: time.Minute,
+		IdleTimeout:           time.Hour,
+	}
 }

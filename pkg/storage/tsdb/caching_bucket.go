@@ -77,6 +77,8 @@ type MetadataCacheConfig struct {
 	MetafileContentTTL     time.Duration `yaml:"metafile_content_ttl"`
 	MetafileMaxSize        int           `yaml:"metafile_max_size_bytes"`
 	MetafileAttributesTTL  time.Duration `yaml:"metafile_attributes_ttl"`
+	BucketIndexContentTTL  time.Duration `yaml:"bucket_index_content_ttl"`
+	BucketIndexMaxSize     int           `yaml:"bucket_index_max_size_bytes"`
 }
 
 func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -92,6 +94,8 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 	f.DurationVar(&cfg.MetafileContentTTL, prefix+"metafile-content-ttl", 24*time.Hour, "How long to cache content of the metafile.")
 	f.IntVar(&cfg.MetafileMaxSize, prefix+"metafile-max-size-bytes", 1*1024*1024, "Maximum size of metafile content to cache in bytes.")
 	f.DurationVar(&cfg.MetafileAttributesTTL, prefix+"metafile-attributes-ttl", 168*time.Hour, "How long to cache attributes of the block metafile.")
+	f.DurationVar(&cfg.BucketIndexContentTTL, prefix+"bucket-index-content-ttl", 5*time.Minute, "How long to cache content of the metafile.")
+	f.IntVar(&cfg.BucketIndexMaxSize, prefix+"bucket-index-max-size-bytes", 1*1024*1024, "Maximum size of bucket index content to cache in bytes.")
 }
 
 func (cfg *MetadataCacheConfig) Validate() error {
@@ -123,6 +127,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cfg.CacheExists("metafile", metadataCache, isMetaFile, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 		cfg.CacheGet("metafile", metadataCache, isMetaFile, metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
 		cfg.CacheAttributes("metafile", metadataCache, isMetaFile, metadataConfig.MetafileAttributesTTL)
+		cfg.CacheGet("bucket-index", metadataCache, isBucketIndexFile, metadataConfig.BucketIndexMaxSize, metadataConfig.BucketIndexContentTTL /* do not cache exist / not exist: */, 0, 0)
 
 		codec := snappyIterCodec{storecache.JSONIterCodec{}}
 		cfg.CacheIter("tenants-iter", metadataCache, isTenantsDir, metadataConfig.TenantsListTTL, codec)
@@ -163,6 +168,11 @@ func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) 
 
 func isMetaFile(name string) bool {
 	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkPath)
+}
+
+func isBucketIndexFile(name string) bool {
+	// TODO can't reference bucketindex because of a circular dependency. To be fixed.
+	return strings.HasSuffix(name, "/bucket-index.json.gz")
 }
 
 func isTenantsDir(name string) bool {

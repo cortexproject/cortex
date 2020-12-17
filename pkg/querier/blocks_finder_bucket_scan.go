@@ -29,11 +29,11 @@ import (
 )
 
 var (
-	errBlocksFinderBucketScanNotRunning = errors.New("blocks finder bucket scanner is not running")
+	errBucketScanBlocksFinderNotRunning = errors.New("bucket scan blocks finder is not running")
 	errInvalidBlocksRange               = errors.New("invalid blocks time range")
 )
 
-type BlocksFinderBucketScanConfig struct {
+type BucketScanBlocksFinderConfig struct {
 	ScanInterval             time.Duration
 	TenantsConcurrency       int
 	MetasConcurrency         int
@@ -42,10 +42,10 @@ type BlocksFinderBucketScanConfig struct {
 	IgnoreDeletionMarksDelay time.Duration
 }
 
-type BlocksFinderBucketScan struct {
+type BucketScanBlocksFinder struct {
 	services.Service
 
-	cfg             BlocksFinderBucketScanConfig
+	cfg             BucketScanBlocksFinderConfig
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
@@ -66,8 +66,8 @@ type BlocksFinderBucketScan struct {
 	scanLastSuccess prometheus.Gauge
 }
 
-func NewBlocksFinderBucketScan(cfg BlocksFinderBucketScanConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BlocksFinderBucketScan {
-	d := &BlocksFinderBucketScan{
+func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
+	d := &BucketScanBlocksFinder{
 		cfg:               cfg,
 		logger:            logger,
 		bucketClient:      bucketClient,
@@ -102,10 +102,10 @@ func NewBlocksFinderBucketScan(cfg BlocksFinderBucketScanConfig, bucketClient ob
 
 // GetBlocks returns known blocks for userID containing samples within the range minT
 // and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-func (d *BlocksFinderBucketScan) GetBlocks(_ context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
+func (d *BucketScanBlocksFinder) GetBlocks(_ context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
 	// We need to ensure the initial full bucket scan succeeded.
 	if d.State() != services.Running {
-		return nil, nil, errBlocksFinderBucketScanNotRunning
+		return nil, nil, errBucketScanBlocksFinderNotRunning
 	}
 	if maxT < minT {
 		return nil, nil, errInvalidBlocksRange
@@ -146,7 +146,7 @@ func (d *BlocksFinderBucketScan) GetBlocks(_ context.Context, userID string, min
 	return matchingMetas, matchingDeletionMarks, nil
 }
 
-func (d *BlocksFinderBucketScan) starting(ctx context.Context) error {
+func (d *BucketScanBlocksFinder) starting(ctx context.Context) error {
 	// Before the service is in the running state it must have successfully
 	// complete the initial scan.
 	if err := d.scanBucket(ctx); err != nil {
@@ -157,7 +157,7 @@ func (d *BlocksFinderBucketScan) starting(ctx context.Context) error {
 	return nil
 }
 
-func (d *BlocksFinderBucketScan) scan(ctx context.Context) error {
+func (d *BucketScanBlocksFinder) scan(ctx context.Context) error {
 	if err := d.scanBucket(ctx); err != nil {
 		level.Error(d.logger).Log("msg", "failed to scan bucket storage to find blocks", "err", err)
 	}
@@ -166,7 +166,7 @@ func (d *BlocksFinderBucketScan) scan(ctx context.Context) error {
 	return nil
 }
 
-func (d *BlocksFinderBucketScan) scanBucket(ctx context.Context) (returnErr error) {
+func (d *BucketScanBlocksFinder) scanBucket(ctx context.Context) (returnErr error) {
 	defer func(start time.Time) {
 		d.scanDuration.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
@@ -265,7 +265,7 @@ pushJobsLoop:
 
 // scanUserBlocksWithRetries runs scanUserBlocks() retrying multiple times
 // in case of error.
-func (d *BlocksFinderBucketScan) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas bucketindex.Blocks, deletionMarks map[ulid.ULID]*bucketindex.BlockDeletionMark, err error) {
+func (d *BucketScanBlocksFinder) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas bucketindex.Blocks, deletionMarks map[ulid.ULID]*bucketindex.BlockDeletionMark, err error) {
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: time.Second,
 		MaxBackoff: 30 * time.Second,
@@ -284,7 +284,7 @@ func (d *BlocksFinderBucketScan) scanUserBlocksWithRetries(ctx context.Context, 
 	return
 }
 
-func (d *BlocksFinderBucketScan) scanUserBlocks(ctx context.Context, userID string) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
+func (d *BucketScanBlocksFinder) scanUserBlocks(ctx context.Context, userID string) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
 	fetcher, userBucket, deletionMarkFilter, err := d.getOrCreateMetaFetcher(userID)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "create meta fetcher for user %s", userID)
@@ -337,7 +337,7 @@ func (d *BlocksFinderBucketScan) scanUserBlocks(ctx context.Context, userID stri
 	return res, marks, nil
 }
 
-func (d *BlocksFinderBucketScan) getOrCreateMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
+func (d *BucketScanBlocksFinder) getOrCreateMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	d.fetchersMx.Lock()
 	defer d.fetchersMx.Unlock()
 
@@ -359,7 +359,7 @@ func (d *BlocksFinderBucketScan) getOrCreateMetaFetcher(userID string) (block.Me
 	return fetcher, userBucket, deletionMarkFilter, nil
 }
 
-func (d *BlocksFinderBucketScan) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
+func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util.WithUserID(userID, d.logger)
 	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient)
 	userReg := prometheus.NewRegistry()
@@ -391,7 +391,7 @@ func (d *BlocksFinderBucketScan) createMetaFetcher(userID string) (block.Metadat
 	return f, userBucket, deletionMarkFilter, nil
 }
 
-func (d *BlocksFinderBucketScan) getBlockMeta(userID string, blockID ulid.ULID) *bucketindex.Block {
+func (d *BucketScanBlocksFinder) getBlockMeta(userID string, blockID ulid.ULID) *bucketindex.Block {
 	d.userMx.RLock()
 	defer d.userMx.RUnlock()
 

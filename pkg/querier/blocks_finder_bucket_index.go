@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
@@ -18,8 +19,7 @@ var (
 )
 
 type BucketIndexBlocksFinderConfig struct {
-	IndexUpdateInterval      time.Duration
-	IndexIdleTimeout         time.Duration
+	IndexLoader              bucketindex.LoaderConfig
 	IgnoreDeletionMarksDelay time.Duration
 }
 
@@ -28,22 +28,22 @@ type BucketIndexBlocksFinderConfig struct {
 type BucketIndexBlocksFinder struct {
 	services.Service
 
-	cfg     BucketIndexBlocksFinderConfig
-	manager *bucketindex.ReaderManager
+	cfg    BucketIndexBlocksFinderConfig
+	loader *bucketindex.Loader
 
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, logger log.Logger) (*BucketIndexBlocksFinder, error) {
+func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) (*BucketIndexBlocksFinder, error) {
 	f := &BucketIndexBlocksFinder{
-		cfg:     cfg,
-		manager: bucketindex.NewReaderManager(bkt, logger, cfg.IndexUpdateInterval, cfg.IndexIdleTimeout),
+		cfg:    cfg,
+		loader: bucketindex.NewLoader(cfg.IndexLoader, bkt, logger, reg),
 	}
 
 	var err error
-	f.subservices, err = services.NewManager(f.manager)
+	f.subservices, err = services.NewManager(f.loader)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (f *BucketIndexBlocksFinder) GetBlocks(ctx context.Context, userID string, 
 	}
 
 	// Get the bucket index for this user.
-	idx, err := f.manager.GetIndex(ctx, userID)
+	idx, err := f.loader.GetIndex(ctx, userID)
 	if errors.Is(err, bucketindex.ErrIndexNotFound) {
 		// This is a legit edge case, happening when a new tenant has not shipped blocks to the storage yet
 		// so the bucket index hasn't been created yet.

@@ -29,9 +29,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func TestBlocksFinderBucketScan_InitialScan(t *testing.T) {
+func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, reg := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, reg := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	user1Block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 	user1Block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -79,7 +79,7 @@ func TestBlocksFinderBucketScan_InitialScan(t *testing.T) {
 	assert.Greater(t, testutil.ToFloat64(s.scanLastSuccess), float64(0))
 }
 
-func TestBlocksFinderBucketScan_InitialScanFailure(t *testing.T) {
+func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
 	require.NoError(t, err)
 	defer os.RemoveAll(cacheDir) //nolint: errcheck
@@ -88,10 +88,10 @@ func TestBlocksFinderBucketScan_InitialScanFailure(t *testing.T) {
 	bucket := &bucket.ClientMock{}
 	reg := prometheus.NewPedanticRegistry()
 
-	cfg := prepareBlocksFinderBucketScanConfig()
+	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = cacheDir
 
-	s := NewBlocksFinderBucketScan(cfg, bucket, log.NewNopLogger(), reg)
+	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewNopLogger(), reg)
 	defer func() {
 		s.StopAsync()
 		s.AwaitTerminated(context.Background()) //nolint: errcheck
@@ -107,7 +107,7 @@ func TestBlocksFinderBucketScan_InitialScanFailure(t *testing.T) {
 	require.Error(t, s.AwaitRunning(ctx))
 
 	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30)
-	assert.Equal(t, errBlocksFinderBucketScanNotRunning, err)
+	assert.Equal(t, errBucketScanBlocksFinderNotRunning, err)
 	assert.Nil(t, blocks)
 	assert.Nil(t, deletionMarks)
 
@@ -135,7 +135,7 @@ func TestBlocksFinderBucketScan_InitialScanFailure(t *testing.T) {
 	))
 }
 
-func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T) {
+func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T) {
 	tenantIDs := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
 	// Mock the bucket to introduce a 1s sleep while iterating each tenant in the bucket.
@@ -152,12 +152,12 @@ func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	require.NoError(t, err)
 	defer os.RemoveAll(cacheDir)
 
-	cfg := prepareBlocksFinderBucketScanConfig()
+	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = cacheDir
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBlocksFinderBucketScan(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -171,7 +171,7 @@ func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	assert.Less(t, time.Since(stopTime).Nanoseconds(), (3 * time.Second).Nanoseconds())
 }
 
-func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) {
+func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) {
 	var blockPaths []string
 	for i := 1; i <= 10; i++ {
 		blockPaths = append(blockPaths, "user-1/"+ulid.MustNew(uint64(i), nil).String())
@@ -190,12 +190,12 @@ func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	require.NoError(t, err)
 	defer os.RemoveAll(cacheDir)
 
-	cfg := prepareBlocksFinderBucketScanConfig()
+	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = cacheDir
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBlocksFinderBucketScan(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -209,9 +209,9 @@ func TestBlocksFinderBucketScan_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	assert.Less(t, time.Since(stopTime).Nanoseconds(), (3 * time.Second).Nanoseconds())
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsNewUser(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsNewUser(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -239,9 +239,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsNewUser(t *testing.T) {
 	}, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsNewBlock(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsNewBlock(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 
@@ -269,9 +269,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsNewBlock(t *testing.T) {
 	assert.Empty(t, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -300,9 +300,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsBlockMarkedForDeletion(t *testi
 	}, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsDeletedBlock(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -328,9 +328,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsDeletedBlock(t *testing.T) {
 	assert.Empty(t, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsDeletedUser(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedUser(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -355,9 +355,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsDeletedUser(t *testing.T) {
 	assert.Empty(t, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
@@ -393,9 +393,9 @@ func TestBlocksFinderBucketScan_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t
 	assert.Empty(t, deletionMarks)
 }
 
-func TestBlocksFinderBucketScan_GetBlocks(t *testing.T) {
+func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBlocksFinderBucketScan(t, prepareBlocksFinderBucketScanConfig())
+	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 15)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 12, 20)
@@ -481,7 +481,7 @@ func TestBlocksFinderBucketScan_GetBlocks(t *testing.T) {
 	}
 }
 
-func prepareBlocksFinderBucketScan(t *testing.T, cfg BlocksFinderBucketScanConfig) (*BlocksFinderBucketScan, objstore.Bucket, string, *prometheus.Registry) {
+func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfig) (*BucketScanBlocksFinder, objstore.Bucket, string, *prometheus.Registry) {
 	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -492,7 +492,7 @@ func prepareBlocksFinderBucketScan(t *testing.T, cfg BlocksFinderBucketScanConfi
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg.CacheDir = cacheDir
-	s := NewBlocksFinderBucketScan(cfg, bkt, log.NewNopLogger(), reg)
+	s := NewBucketScanBlocksFinder(cfg, bkt, log.NewNopLogger(), reg)
 
 	t.Cleanup(func() {
 		s.StopAsync()
@@ -502,8 +502,8 @@ func prepareBlocksFinderBucketScan(t *testing.T, cfg BlocksFinderBucketScanConfi
 	return s, bkt, storageDir, reg
 }
 
-func prepareBlocksFinderBucketScanConfig() BlocksFinderBucketScanConfig {
-	return BlocksFinderBucketScanConfig{
+func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
+	return BucketScanBlocksFinderConfig{
 		ScanInterval:             time.Minute,
 		TenantsConcurrency:       10,
 		MetasConcurrency:         10,

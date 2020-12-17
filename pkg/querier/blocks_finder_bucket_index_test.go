@@ -180,12 +180,15 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIndexBlocksFinder {
 	ctx := context.Background()
 	cfg := BucketIndexBlocksFinderConfig{
-		IndexUpdateInterval:      time.Minute,
-		IndexIdleTimeout:         time.Minute,
+		IndexLoader: bucketindex.LoaderConfig{
+			UpdateOnStaleInterval: time.Minute,
+			UpdateOnErrorInterval: time.Minute,
+			IdleTimeout:           time.Minute,
+		},
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
 
-	finder, err := NewBucketIndexBlocksFinder(cfg, bkt, log.NewNopLogger())
+	finder, err := NewBucketIndexBlocksFinder(cfg, bkt, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, finder))
 	t.Cleanup(func() {

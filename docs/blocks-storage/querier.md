@@ -624,6 +624,13 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
       [idle_timeout: <duration> | default = 1h]
 
+      # The maximum allowed age of a bucket index (last updated) before queries
+      # start failing because the bucket index is too old. The bucket index is
+      # periodically updated by the compactor, while this check is enforced in
+      # the querier (at query time).
+      # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
+      [max_stale_period: <duration> | default = 1h]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir

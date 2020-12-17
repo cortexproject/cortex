@@ -176,6 +176,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 				UpdateOnErrorInterval: storageCfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
 				IdleTimeout:           storageCfg.BucketStore.BucketIndex.IdleTimeout,
 			},
+			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 		}, bucketClient, logger, reg)
 		if err != nil {

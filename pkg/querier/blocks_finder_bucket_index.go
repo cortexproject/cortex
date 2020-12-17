@@ -16,10 +16,12 @@ import (
 
 var (
 	errBucketIndexBlocksFinderNotRunning = errors.New("bucket index blocks finder is not running")
+	errBucketIndexTooOld                 = errors.New("bucket index is too old and the last time it was updated exceeds the allowed max staleness")
 )
 
 type BucketIndexBlocksFinderConfig struct {
 	IndexLoader              bucketindex.LoaderConfig
+	MaxStalePeriod           time.Duration
 	IgnoreDeletionMarksDelay time.Duration
 }
 
@@ -96,6 +98,11 @@ func (f *BucketIndexBlocksFinder) GetBlocks(ctx context.Context, userID string, 
 	}
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Ensure the bucket index is not too old.
+	if time.Since(idx.GetUpdatedAt()) > f.cfg.MaxStalePeriod {
+		return nil, nil, errBucketIndexTooOld
 	}
 
 	var (

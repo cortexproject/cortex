@@ -177,6 +177,24 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 	require.Equal(t, bucketindex.ErrIndexCorrupted, err)
 }
 
+func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	bkt, _ := prepareFilesystemBucket(t)
+	finder := prepareBucketIndexBlocksFinder(t, bkt)
+
+	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, &bucketindex.Index{
+		Version:            bucketindex.IndexVersion1,
+		Blocks:             bucketindex.Blocks{},
+		BlockDeletionMarks: bucketindex.BlockDeletionMarks{},
+		UpdatedAt:          time.Now().Add(-2 * time.Hour).Unix(),
+	}))
+
+	_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
+	require.Equal(t, errBucketIndexTooOld, err)
+}
+
 func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIndexBlocksFinder {
 	ctx := context.Background()
 	cfg := BucketIndexBlocksFinderConfig{
@@ -186,6 +204,7 @@ func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIn
 			UpdateOnErrorInterval: time.Minute,
 			IdleTimeout:           time.Minute,
 		},
+		MaxStalePeriod:           time.Hour,
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
 

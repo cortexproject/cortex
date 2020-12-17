@@ -125,6 +125,7 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 - List of blocks per tenant
 - Block's `meta.json` content
 - Block's `deletion-mark.json` existence and content
+- Tenant's `bucket-index.json.gz` content
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 

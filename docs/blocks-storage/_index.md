@@ -29,7 +29,7 @@ When running the Cortex blocks storage, the Cortex architecture doesn't signific
 
 The **[store-gateway](./store-gateway.md)** is responsible to query blocks and is used by the [querier](./querier.md) at query time. The store-gateway is required when running the blocks storage.
 
-The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. It also keeps the bucket index updated and, for this reason, it's a required component.
+The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. It also keeps the [bucket index](./bucket-index.md) updated and, for this reason, it's a required component.
 
 Finally, the [**table-manager**](../chunks-storage/table-manager.md) and the [**schema config**](../chunks-storage/schema-config.md) are **not used** by the blocks storage.
 

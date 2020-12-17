@@ -227,6 +227,8 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 
 	if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted blocks for user marked for deletion", "deletedBlocks", deleted)
+	} else {
+		level.Info(userLogger).Log("msg", "no blocks found")
 	}
 
 	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
@@ -241,6 +243,7 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	// Note: this UPDATES the tenant deletion mark. Components that use caching bucket will NOT SEE this update,
 	// but that is fine -- they only check whether tenant deletion marker exists or not.
 	if deleted > 0 || mark.FinishedTime == 0 {
+		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
 		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
 	}
@@ -248,6 +251,8 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
 		return nil
 	}
+
+	level.Info(userLogger).Log("msg", "cleaning up remaining tenant data")
 
 	// Let's do final cleanup of tenant.
 	if deleted, err := deletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {

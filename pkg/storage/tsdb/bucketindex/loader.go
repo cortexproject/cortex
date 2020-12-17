@@ -141,23 +141,20 @@ func (l *Loader) cacheIndex(userID string, idx *Index, err error) {
 // 2. Update indexes which have been updated last time since >= update timeout
 func (l *Loader) checkCachedIndexes(ctx context.Context) error {
 	var (
-		toUpdate              []string
-		toDelete              []string
-		now                   = time.Now().Unix()
-		idleTimeout           = int64(l.cfg.IdleTimeout.Seconds())
-		updateOnErrorInterval = int64(l.cfg.UpdateOnErrorInterval.Seconds())
-		updateOnStaleInterval = int64(l.cfg.UpdateOnStaleInterval.Seconds())
+		toUpdate []string
+		toDelete []string
+		now      = time.Now()
 	)
 
 	// Build a list of users for which we should update or delete the index.
 	l.indexesMx.RLock()
 	for userID, entry := range l.indexes {
 		switch {
-		case now-entry.getRequestedAt() >= idleTimeout:
+		case now.Sub(entry.getRequestedAt()) >= l.cfg.IdleTimeout:
 			toDelete = append(toDelete, userID)
-		case entry.err != nil && now-entry.getUpdatedAt() >= updateOnErrorInterval:
+		case entry.err != nil && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnErrorInterval:
 			toUpdate = append(toUpdate, userID)
-		case entry.err == nil && now-entry.getUpdatedAt() >= updateOnStaleInterval:
+		case entry.err == nil && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnStaleInterval:
 			toUpdate = append(toUpdate, userID)
 		}
 	}
@@ -166,7 +163,7 @@ func (l *Loader) checkCachedIndexes(ctx context.Context) error {
 	// Delete unused indexes, if confirmed they're still unused.
 	l.indexesMx.Lock()
 	for _, userID := range toDelete {
-		if idx := l.indexes[userID]; now-idx.getRequestedAt() >= idleTimeout {
+		if idx := l.indexes[userID]; now.Sub(idx.getRequestedAt()) >= l.cfg.IdleTimeout {
 			delete(l.indexes, userID)
 			level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "idle")
 		}
@@ -259,14 +256,14 @@ func (i *cachedIndex) setUpdatedAt(ts time.Time) {
 	i.updatedAt.Store(ts.Unix())
 }
 
-func (i *cachedIndex) getUpdatedAt() int64 {
-	return i.updatedAt.Load()
+func (i *cachedIndex) getUpdatedAt() time.Time {
+	return time.Unix(i.updatedAt.Load(), 0)
 }
 
 func (i *cachedIndex) setRequestedAt(ts time.Time) {
 	i.requestedAt.Store(ts.Unix())
 }
 
-func (i *cachedIndex) getRequestedAt() int64 {
-	return i.requestedAt.Load()
+func (i *cachedIndex) getRequestedAt() time.Time {
+	return time.Unix(i.requestedAt.Load(), 0)
 }

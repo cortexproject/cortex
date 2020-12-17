@@ -181,6 +181,7 @@ func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIn
 	ctx := context.Background()
 	cfg := BucketIndexBlocksFinderConfig{
 		IndexLoader: bucketindex.LoaderConfig{
+			CheckInterval:         time.Minute,
 			UpdateOnStaleInterval: time.Minute,
 			UpdateOnErrorInterval: time.Minute,
 			IdleTimeout:           time.Minute,

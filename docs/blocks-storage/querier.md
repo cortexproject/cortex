@@ -28,7 +28,7 @@ Queriers use the metadata to compute the list of blocks that need to be queried 
 
 ### Bucket index enabled
 
-When [bucket index](./bucket-index.md) is enabled, queriers lazily download the bucket index upon the 1st query received for a given tenant, cache it in memory and periodically keep it update. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.
+When [bucket index](./bucket-index.md) is enabled, queriers lazily download the bucket index upon the first query received for a given tenant, cache it in memory and periodically keep it update. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.
 
 Given the bucket index removes the need to scan the bucket, it brings few benefits:
 

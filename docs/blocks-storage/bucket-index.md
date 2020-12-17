@@ -28,7 +28,7 @@ The bucket index is built and updated by the compactor even if `-blocks-storage.
 
 ## How it's used by the querier
 
-The [querier](./querier.md), at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier downloads it from the storage and cache it in memory. Given it's a small file, lazy downloading it doesn't significantly impact on 1st query performances, but allows to get a querier up and running without pre-downloading every tenant's bucket index.
+The [querier](./querier.md), at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier downloads it from the storage and cache it in memory. Given it's a small file, lazy downloading it doesn't significantly impact on first query performances, but allows to get a querier up and running without pre-downloading every tenant's bucket index.
 
 While in-memory, a background process will keep it **updated at periodic intervals**, so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index. There are two config options involved:
 

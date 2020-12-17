@@ -169,7 +169,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	// Create the blocks finder.
 	var finder BlocksFinder
 	if storageCfg.BucketStore.BucketIndex.Enabled {
-		finder, err = NewBucketIndexBlocksFinder(BucketIndexBlocksFinderConfig{
+		finder = NewBucketIndexBlocksFinder(BucketIndexBlocksFinderConfig{
 			IndexLoader: bucketindex.LoaderConfig{
 				CheckInterval:         time.Minute,
 				UpdateOnStaleInterval: storageCfg.BucketStore.BucketIndex.UpdateOnStaleInterval,
@@ -179,9 +179,6 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 		}, bucketClient, logger, reg)
-		if err != nil {
-			return nil, errors.Wrap(err, "create bucket index blocks finder")
-		}
 	} else {
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
 			ScanInterval:             storageCfg.BucketStore.SyncInterval,

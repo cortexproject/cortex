@@ -42,6 +42,7 @@ type BucketScanBlocksFinderConfig struct {
 	IgnoreDeletionMarksDelay time.Duration
 }
 
+// BucketScanBlocksFinder is a BlocksFinder implementation periodically scanning the bucket to discover blocks.
 type BucketScanBlocksFinder struct {
 	services.Service
 

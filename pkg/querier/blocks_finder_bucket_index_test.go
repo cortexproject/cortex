@@ -142,6 +142,8 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 	require.NoError(b, bucketindex.WriteIndex(ctx, bkt, userID, idx))
 	finder := prepareBucketIndexBlocksFinder(b, bkt)
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		blocks, marks, err := finder.GetBlocks(ctx, userID, 100, 200)
 		if err != nil || len(blocks) != 11 || len(marks) != 11 {
@@ -208,8 +210,7 @@ func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIn
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
 
-	finder, err := NewBucketIndexBlocksFinder(cfg, bkt, log.NewNopLogger(), nil)
-	require.NoError(t, err)
+	finder := NewBucketIndexBlocksFinder(cfg, bkt, log.NewNopLogger(), nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, finder))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, finder))

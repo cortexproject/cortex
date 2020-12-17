@@ -81,7 +81,7 @@ func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, logger log.Logger
 	// Apply a jitter to the sync frequency in order to increase the probability
 	// of hitting the shared cache (if any).
 	checkInterval := util.DurationWithJitter(cfg.CheckInterval, 0.2)
-	l.Service = services.NewTimerService(checkInterval, nil, l.updateCachedIndexes, nil)
+	l.Service = services.NewTimerService(checkInterval, nil, l.checkCachedIndexes, nil)
 
 	return l
 }
@@ -136,23 +136,28 @@ func (l *Loader) cacheIndex(userID string, idx *Index, err error) {
 	l.indexes[userID] = newCachedIndex(idx, err)
 }
 
-// updateCachedIndexes checks all cached indexes and, for each of them, does two things:
+// checkCachedIndexes checks all cached indexes and, for each of them, does two things:
 // 1. Offload indexes not requested since >= idle timeout
 // 2. Update indexes which have been updated last time since >= update timeout
-func (l *Loader) updateCachedIndexes(ctx context.Context) error {
+func (l *Loader) checkCachedIndexes(ctx context.Context) error {
 	var (
-		toUpdate []string
-		toDelete []string
+		toUpdate              []string
+		toDelete              []string
+		now                   = time.Now().Unix()
+		idleTimeout           = int64(l.cfg.IdleTimeout.Seconds())
+		updateOnErrorInterval = int64(l.cfg.UpdateOnErrorInterval.Seconds())
+		updateOnStaleInterval = int64(l.cfg.UpdateOnStaleInterval.Seconds())
 	)
 
 	// Build a list of users for which we should update or delete the index.
 	l.indexesMx.RLock()
 	for userID, entry := range l.indexes {
-		if time.Since(entry.getRequestedAt()) >= l.cfg.IdleTimeout {
+		switch {
+		case now-entry.getRequestedAt() >= idleTimeout:
 			toDelete = append(toDelete, userID)
-		} else if entry.err != nil && time.Since(entry.getUpdatedAt()) >= l.cfg.UpdateOnErrorInterval {
+		case entry.err != nil && now-entry.getUpdatedAt() >= updateOnErrorInterval:
 			toUpdate = append(toUpdate, userID)
-		} else if entry.err == nil && time.Since(entry.getUpdatedAt()) >= l.cfg.UpdateOnStaleInterval {
+		case entry.err == nil && now-entry.getUpdatedAt() >= updateOnStaleInterval:
 			toUpdate = append(toUpdate, userID)
 		}
 	}
@@ -161,7 +166,7 @@ func (l *Loader) updateCachedIndexes(ctx context.Context) error {
 	// Delete unused indexes, if confirmed they're still unused.
 	l.indexesMx.Lock()
 	for _, userID := range toDelete {
-		if idx := l.indexes[userID]; time.Since(idx.getRequestedAt()) >= l.cfg.IdleTimeout {
+		if idx := l.indexes[userID]; now-idx.getRequestedAt() >= idleTimeout {
 			delete(l.indexes, userID)
 			level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "idle")
 		}
@@ -170,41 +175,45 @@ func (l *Loader) updateCachedIndexes(ctx context.Context) error {
 
 	// Update actively used indexes.
 	for _, userID := range toUpdate {
-		readCtx, cancel := context.WithTimeout(ctx, readIndexTimeout)
-		defer cancel()
-
-		l.loadAttempts.Inc()
-		startTime := time.Now()
-		idx, err := ReadIndex(readCtx, l.bkt, userID, l.logger)
-
-		if errors.Is(err, ErrIndexNotFound) {
-			level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "not found during periodic check")
-
-			// Remove from cache.
-			l.indexesMx.Lock()
-			delete(l.indexes, userID)
-			l.indexesMx.Unlock()
-
-			continue
-		}
-		if err != nil {
-			l.loadFailures.Inc()
-			level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
-			continue
-		}
-
-		l.loadDuration.Observe(time.Since(startTime).Seconds())
-
-		// Cache it.
-		l.indexesMx.Lock()
-		l.indexes[userID].index = idx
-		l.indexes[userID].err = nil
-		l.indexes[userID].updatedAt.Store(startTime.Unix())
-		l.indexesMx.Unlock()
+		l.updateCachedIndex(ctx, userID)
 	}
 
 	// Never return error, otherwise the service terminates.
 	return nil
+}
+
+func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
+	readCtx, cancel := context.WithTimeout(ctx, readIndexTimeout)
+	defer cancel()
+
+	l.loadAttempts.Inc()
+	startTime := time.Now()
+	idx, err := ReadIndex(readCtx, l.bkt, userID, l.logger)
+
+	if errors.Is(err, ErrIndexNotFound) {
+		level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "not found during periodic check")
+
+		// Remove from cache.
+		l.indexesMx.Lock()
+		delete(l.indexes, userID)
+		l.indexesMx.Unlock()
+
+		return
+	}
+	if err != nil {
+		l.loadFailures.Inc()
+		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
+		return
+	}
+
+	l.loadDuration.Observe(time.Since(startTime).Seconds())
+
+	// Cache it.
+	l.indexesMx.Lock()
+	l.indexes[userID].index = idx
+	l.indexes[userID].err = nil
+	l.indexes[userID].setUpdatedAt(startTime)
+	l.indexesMx.Unlock()
 }
 
 func (l *Loader) countLoadedIndexesMetric() float64 {
@@ -227,27 +236,37 @@ type cachedIndex struct {
 	err   error
 
 	// Unix timestamp (seconds) of when the index has been updated from the storage the last time.
-	updatedAt *atomic.Int64
+	updatedAt atomic.Int64
 
 	// Unix timestamp (seconds) of when the index has been requested the last time.
-	requestedAt *atomic.Int64
+	requestedAt atomic.Int64
 }
 
 func newCachedIndex(idx *Index, err error) *cachedIndex {
-	now := time.Now()
-
-	return &cachedIndex{
-		index:       idx,
-		err:         err,
-		updatedAt:   atomic.NewInt64(now.Unix()),
-		requestedAt: atomic.NewInt64(now.Unix()),
+	entry := &cachedIndex{
+		index: idx,
+		err:   err,
 	}
+
+	now := time.Now()
+	entry.setUpdatedAt(now)
+	entry.setRequestedAt(now)
+
+	return entry
 }
 
-func (i *cachedIndex) getUpdatedAt() time.Time {
-	return time.Unix(i.updatedAt.Load(), 0)
+func (i *cachedIndex) setUpdatedAt(ts time.Time) {
+	i.updatedAt.Store(ts.Unix())
 }
 
-func (i *cachedIndex) getRequestedAt() time.Time {
-	return time.Unix(i.requestedAt.Load(), 0)
+func (i *cachedIndex) getUpdatedAt() int64 {
+	return i.updatedAt.Load()
+}
+
+func (i *cachedIndex) setRequestedAt(ts time.Time) {
+	i.requestedAt.Store(ts.Unix())
+}
+
+func (i *cachedIndex) getRequestedAt() int64 {
+	return i.requestedAt.Load()
 }

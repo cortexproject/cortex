@@ -32,52 +32,16 @@ type BucketIndexBlocksFinder struct {
 
 	cfg    BucketIndexBlocksFinderConfig
 	loader *bucketindex.Loader
-
-	// Subservices manager.
-	subservices        *services.Manager
-	subservicesWatcher *services.FailureWatcher
 }
 
-func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) (*BucketIndexBlocksFinder, error) {
-	f := &BucketIndexBlocksFinder{
-		cfg:    cfg,
-		loader: bucketindex.NewLoader(cfg.IndexLoader, bkt, logger, reg),
+func NewBucketIndexBlocksFinder(cfg BucketIndexBlocksFinderConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BucketIndexBlocksFinder {
+	loader := bucketindex.NewLoader(cfg.IndexLoader, bkt, logger, reg)
+
+	return &BucketIndexBlocksFinder{
+		cfg:     cfg,
+		loader:  loader,
+		Service: loader,
 	}
-
-	var err error
-	f.subservices, err = services.NewManager(f.loader)
-	if err != nil {
-		return nil, err
-	}
-
-	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
-
-	return f, nil
-}
-
-func (f *BucketIndexBlocksFinder) starting(ctx context.Context) error {
-	f.subservicesWatcher.WatchManager(f.subservices)
-
-	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
-		return errors.Wrap(err, "unable to start blocks index querier subservices")
-	}
-
-	return nil
-}
-
-func (f *BucketIndexBlocksFinder) running(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case err := <-f.subservicesWatcher.Chan():
-			return errors.Wrap(err, "blocks undex querier set subservice failed")
-		}
-	}
-}
-
-func (f *BucketIndexBlocksFinder) stopping(_ error) error {
-	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
 // GetBlocks implements BlocksFinder.

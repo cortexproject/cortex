@@ -140,14 +140,29 @@ func (l *Loader) cacheIndex(userID string, idx *Index, err error) {
 // 1. Offload indexes not requested since >= idle timeout
 // 2. Update indexes which have been updated last time since >= update timeout
 func (l *Loader) checkCachedIndexes(ctx context.Context) error {
-	var (
-		toUpdate []string
-		toDelete []string
-		now      = time.Now()
-	)
-
 	// Build a list of users for which we should update or delete the index.
+	toUpdate, toDelete := l.checkCachedIndexesToUpdateAndDelete()
+
+	// Delete unused indexes.
+	for _, userID := range toDelete {
+		l.deleteCachedIndex(userID)
+	}
+
+	// Update actively used indexes.
+	for _, userID := range toUpdate {
+		l.updateCachedIndex(ctx, userID)
+	}
+
+	// Never return error, otherwise the service terminates.
+	return nil
+}
+
+func (l *Loader) checkCachedIndexesToUpdateAndDelete() (toUpdate, toDelete []string) {
+	now := time.Now()
+
 	l.indexesMx.RLock()
+	defer l.indexesMx.RUnlock()
+
 	for userID, entry := range l.indexes {
 		switch {
 		case now.Sub(entry.getRequestedAt()) >= l.cfg.IdleTimeout:
@@ -158,25 +173,8 @@ func (l *Loader) checkCachedIndexes(ctx context.Context) error {
 			toUpdate = append(toUpdate, userID)
 		}
 	}
-	l.indexesMx.RUnlock()
 
-	// Delete unused indexes, if confirmed they're still unused.
-	l.indexesMx.Lock()
-	for _, userID := range toDelete {
-		if idx := l.indexes[userID]; now.Sub(idx.getRequestedAt()) >= l.cfg.IdleTimeout {
-			delete(l.indexes, userID)
-			level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "idle")
-		}
-	}
-	l.indexesMx.Unlock()
-
-	// Update actively used indexes.
-	for _, userID := range toUpdate {
-		l.updateCachedIndex(ctx, userID)
-	}
-
-	// Never return error, otherwise the service terminates.
-	return nil
+	return
 }
 
 func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
@@ -211,6 +209,14 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 	l.indexes[userID].err = nil
 	l.indexes[userID].setUpdatedAt(startTime)
 	l.indexesMx.Unlock()
+}
+
+func (l *Loader) deleteCachedIndex(userID string) {
+	l.indexesMx.Lock()
+	delete(l.indexes, userID)
+	l.indexesMx.Unlock()
+
+	level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "idle")
 }
 
 func (l *Loader) countLoadedIndexesMetric() float64 {

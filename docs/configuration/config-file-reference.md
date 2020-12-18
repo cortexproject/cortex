@@ -3858,7 +3858,11 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl
     [metafile_content_ttl: <duration> | default = 24h]
 
-    # Maximum size of metafile content to cache in bytes.
+    # Maximum size of metafile content to cache in bytes. Caching will be
+    # skipped if the content exceeds this size. This is useful to avoid network
+    # round trip for large content if the configured caching backend has an hard
+    # limit on cached items size (in this case, you should set this limit to the
+    # same limit in the caching backend).
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
     [metafile_max_size_bytes: <int> | default = 1048576]
 
@@ -3870,7 +3874,11 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
     [bucket_index_content_ttl: <duration> | default = 5m]
 
-    # Maximum size of bucket index content to cache in bytes.
+    # Maximum size of bucket index content to cache in bytes. Caching will be
+    # skipped if the content exceeds this size. This is useful to avoid network
+    # round trip for large content if the configured caching backend has an hard
+    # limit on cached items size (in this case, you should set this limit to the
+    # same limit in the caching backend).
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
     [bucket_index_max_size_bytes: <int> | default = 1048576]
 

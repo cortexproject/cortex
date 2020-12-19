@@ -40,7 +40,7 @@ Despite using the bucket index is optional, the index itself is built and update
 
 The [querier](./querier.md), at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier downloads it from the storage and cache it in memory.
 
-_Given it's a small file, lazy downloading it doesn't significantly impact on first query performances, but allows to get a querier up and running without pre-downloading every tenant's bucket index. Moreover, if the [metadata cache](./querier.md#metadata-cache) is enabled, the bucket index will be cached for a short time, reducing the actual latency and number of API calls done on the object storage in case multiple queriers will fetch the same tenant's bucket index in a short time._
+_Given it's a small file, lazy downloading it doesn't significantly impact on first query performances, but allows to get a querier up and running without pre-downloading every tenant's bucket index. Moreover, if the [metadata cache](./querier.md#metadata-cache) is enabled, the bucket index will be cached for a short time in a shared cache, reducing the actual latency and number of API calls to the object storage in case multiple queriers will fetch the same tenant's bucket index in a short time._
 
 ![Querier - Bucket index](/images/blocks-storage/bucket-index-querier-logic.png)
 <!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->

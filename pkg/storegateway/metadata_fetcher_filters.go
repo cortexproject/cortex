@@ -36,7 +36,7 @@ func NewIgnoreDeletionMarkFilter(logger log.Logger, bkt objstore.InstrumentedBuc
 	}
 }
 
-// DeletionMarkBlocks returns block ids that were marked for deletion.
+// DeletionMarkBlocks returns blocks that were marked for deletion.
 func (f *IgnoreDeletionMarkFilter) DeletionMarkBlocks() map[ulid.ULID]*metadata.DeletionMark {
 	// If the cached deletion marks exist it means the filter function was called with the bucket
 	// index, so it's safe to return it.
@@ -47,7 +47,7 @@ func (f *IgnoreDeletionMarkFilter) DeletionMarkBlocks() map[ulid.ULID]*metadata.
 	return f.upstream.DeletionMarkBlocks()
 }
 
-// Filter filters out blocks that are marked for deletion after a given delay.
+// Filter implements block.MetadataFilter.
 func (f *IgnoreDeletionMarkFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
 	return f.upstream.Filter(ctx, metas, synced)
 }

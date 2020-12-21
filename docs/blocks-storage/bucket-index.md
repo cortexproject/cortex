@@ -13,7 +13,7 @@ The bucket index usage is **optional** and can be enabled via `-blocks-storage.b
 
 The [querier](./querier.md) and [store-gateway](./store-gateway.md) need to have an almost up-to-date view over the entire storage bucket, in order to find the right blocks to lookup at query time (querier) and load block's [index-header](./binary-index-header.md) (store-gateway). Because of this, they need to periodically scan the bucket to look for new blocks uploaded by ingester or compactor, and blocks deleted (or marked for deletion) by compactor.
 
-When the bucket index is enabled, the querier periodically look up the per-tenant bucket index instead of scanning the bucket via "list objects" operations. This brings few benefits:
+When the bucket index is enabled, the querier and store-gateway periodically look up the per-tenant bucket index instead of scanning the bucket via "list objects" operations. This brings few benefits:
 
 1. Reduced number of API calls to the object storage by querier and store-gateway
 2. No "list objects" storage API calls done by querier and store-gateway

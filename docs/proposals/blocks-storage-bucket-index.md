@@ -41,7 +41,7 @@ We believe the same technique described in this proposal could be applied to opt
 
 We propose to introduce a per-tenant bucket index. The index is a single JSON file containing two main information: list of all completed (non partial) blocks in the bucket + list of all deletion marks. The bucket index is stored in the bucket within the tenant location (eg. `/user-1/bucket-index.json`) and is kept updated by the compactor.
 
-The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it's a small file, we expect the lazy download of the bucket index to not significantly impact 1st query performances.
+The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it's a small file, we expect the lazy download of the bucket index to not significantly impact first query performances.
 
 While in-memory, a background process will keep it updated at periodic intervals (configurable), so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index.
 

@@ -50,3 +50,9 @@ func TestPage(t *testing.T) {
 		}},
 	}))
 }
+
+func TestStop(t *testing.T) {
+	var cfg KVConfig
+	kvinit := NewKVInitService(&cfg, nil)
+	require.NoError(t, kvinit.stopping(nil))
+}

@@ -64,7 +64,11 @@ func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
 
 // Returns KV if it was initialized, or nil.
 func (kvs *KVInitService) getKV() *KV {
-	return kvs.kv.Load().(*KV)
+	kv := kvs.kv.Load()
+	if kv == nil {
+		return nil
+	}
+	return kv.(*KV)
 }
 
 func (kvs *KVInitService) running(ctx context.Context) error {

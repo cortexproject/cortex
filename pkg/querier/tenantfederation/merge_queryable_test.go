@@ -28,11 +28,11 @@ type mockTenantQueryableWithFilter struct {
 }
 
 func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64) (storage.Querier, error) {
-	tenantID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return mockTenantQuerier{tenant: tenantID, extraLabels: m.extraLabels}, nil
+	return mockTenantQuerier{tenant: tenantIDs[0], extraLabels: m.extraLabels}, nil
 }
 
 func (m *mockTenantQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {

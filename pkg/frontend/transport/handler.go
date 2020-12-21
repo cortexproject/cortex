@@ -146,10 +146,11 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 }
 
 func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())

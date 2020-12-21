@@ -159,7 +159,7 @@ lint:
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
 		github.com/prometheus/client_golang/prometheus.{MultiError}=github.com/prometheus/prometheus/tsdb/errors.{NewMulti},\
-		github.com/weaveworks/common/user.{ExtractOrgID}=github.com/cortexproject/cortex/pkg/tenant.{TenantID},\
+		github.com/weaveworks/common/user.{ExtractOrgID}=github.com/cortexproject/cortex/pkg/tenant.{TenantID,TenantIDs},\
 		github.com/weaveworks/common/user.{ExtractOrgIDFromHTTPRequest}=github.com/cortexproject/cortex/pkg/tenant.{ExtractTenantIDFromHTTPRequest}" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Ensure clean pkg structure.
@@ -172,6 +172,14 @@ lint:
 		./pkg/querier/...
 	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
 	faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
+
+	# Ensure the query path is supporting multiple tenants
+	faillint -paths "\
+		github.com/cortexproject/cortex/pkg/tenant.{TenantID}=github.com/cortexproject/cortex/pkg/tenant.{TenantIDs}" \
+		./pkg/scheduler/... \
+		./pkg/frontend/... \
+		./pkg/querier/tenantfederation/... \
+		./pkg/querier/queryrange/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev

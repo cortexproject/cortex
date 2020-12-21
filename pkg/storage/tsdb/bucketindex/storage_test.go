@@ -72,7 +72,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt := prepareFilesystemBucket(b)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(b)
 
 	// Mock some blocks and deletion marks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)

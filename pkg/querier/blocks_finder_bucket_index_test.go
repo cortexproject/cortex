@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -21,7 +22,7 @@ func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, _ := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Mock a bucket index.
 	block1 := &bucketindex.Block{ID: ulid.MustNew(1, nil), MinTime: 10, MaxTime: 15}
@@ -121,7 +122,7 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 	)
 
 	ctx := context.Background()
-	bkt, _ := prepareFilesystemBucket(b)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(b)
 
 	// Mock a bucket index.
 	idx := &bucketindex.Index{
@@ -156,7 +157,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T)
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, _ := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	finder := prepareBucketIndexBlocksFinder(t, bkt)
 
 	blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, 10, 20)
@@ -169,7 +170,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, _ := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	finder := prepareBucketIndexBlocksFinder(t, bkt)
 
 	// Upload a corrupted bucket index.
@@ -183,7 +184,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, _ := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	finder := prepareBucketIndexBlocksFinder(t, bkt)
 
 	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, &bucketindex.Index{

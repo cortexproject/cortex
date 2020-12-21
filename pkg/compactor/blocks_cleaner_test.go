@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path"
 	"strings"
 	"testing"
@@ -23,9 +21,9 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -60,7 +58,7 @@ func (o testBlocksCleanerOptions) String() string {
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// If the markers migration is enabled, then we create the fixture blocks without
 	// writing the deletion marks in the global location, because they will be migrated
@@ -216,7 +214,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	const userID = "user-1"
 
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -280,7 +278,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	const userID = "user-1"
 
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -336,7 +334,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 }
 
 func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShard(t *testing.T) {
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -405,19 +403,4 @@ func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
 		return errors.New("mocked delete failure")
 	}
 	return m.Bucket.Delete(ctx, name)
-}
-
-func prepareFilesystemBucket(t *testing.T) objstore.Bucket {
-	// Create a temporary directory for local storage.
-	storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(storageDir))
-	})
-
-	// Create a bucket client on the local storage.
-	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
-
-	return bucketClient
 }

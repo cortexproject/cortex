@@ -323,6 +323,17 @@ func TestBlock_ThanosMeta(t *testing.T) {
 	}
 }
 
+func TestBlockDeletionMark_ThanosDeletionMark(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	mark := &BlockDeletionMark{ID: block1, DeletionTime: 1}
+
+	assert.Equal(t, &metadata.DeletionMark{
+		ID:           block1,
+		Version:      metadata.DeletionMarkVersion1,
+		DeletionTime: 1,
+	}, mark.ThanosDeletionMark())
+}
+
 func TestBlockDeletionMarks_Clone(t *testing.T) {
 	block1 := ulid.MustNew(1, nil)
 	block2 := ulid.MustNew(2, nil)

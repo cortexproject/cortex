@@ -283,8 +283,8 @@ func TestOverridesManager_LoadExtensionConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
-	overridesManager.AddExtension(extensionConfig1)
-	overridesManager.AddExtension(extensionConfig2)
+	_ = overridesManager.AddExtension(extensionConfig1)
+	_ = overridesManager.AddExtension(extensionConfig2)
 
 	mainCh := overridesManager.CreateListenerChannel(1)
 	extensionCh1 := overridesManager.CreateListenerChannel(1, myExtensionName1)
@@ -296,21 +296,21 @@ func TestOverridesManager_LoadExtensionConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expectingMsgsOnMainCh := map[int]struct{}{
-		111: struct{}{},
+		111: {},
 	}
 	expectingMsgsOnExtensionCh1 := map[int]struct{}{
-		3: struct{}{},
+		3: {},
 	}
 	expectingMsgsOnExtensionCh2 := map[int]struct{}{
-		42: struct{}{},
+		42: {},
 	}
 	expectingMsgsOnMixedCh1 := map[int]struct{}{
-		111: struct{}{},
-		3:   struct{}{},
+		111: {},
+		3:   {},
 	}
 	expectingMsgsOnMixedCh2 := map[int]struct{}{
-		3:  struct{}{},
-		42: struct{}{},
+		3:  {},
+		42: {},
 	}
 
 	timeoutCh := time.After(time.Second)

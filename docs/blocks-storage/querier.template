@@ -13,11 +13,27 @@ The querier is **stateless**.
 
 ## How it works
 
-At startup **queriers** iterate over the entire storage bucket to discover all tenants blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+The querier needs to have an almost up-to-date view over the entire storage bucket, in order to find the right blocks to lookup at query time. The querier can keep the bucket view updated in to two different ways:
+
+1. Periodically scanning the bucket (default)
+2. Periodically downloading the [bucket index](./bucket-index.md)
+
+### Bucket index disabled (default)
+
+At startup, **queriers** iterate over the entire storage bucket to discover all tenants blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
 While running, queriers periodically iterate over the storage bucket to discover new tenants and recently uploaded blocks. Queriers do **not** download any content from blocks except a small `meta.json` file containing the block's metadata (including the minimum and maximum timestamp of samples within the block).
 
 Queriers use the metadata to compute the list of blocks that need to be queried at query time and fetch matching series from the [store-gateway](./store-gateway.md) instances holding the required blocks.
+
+### Bucket index enabled
+
+When [bucket index](./bucket-index.md) is enabled, queriers lazily download the bucket index upon the first query received for a given tenant, cache it in memory and periodically keep it update. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.
+
+Given the bucket index removes the need to scan the bucket, it brings few benefits:
+
+1. The querier is expected to be ready shortly after startup.
+2. Lower volume of API calls to object storage.
 
 ### Anatomy of a query request
 
@@ -60,6 +76,7 @@ Caching is optional, but **highly recommended** in a production environment. Ple
 - List of blocks per tenant
 - Block's `meta.json` content
 - Block's `deletion-mark.json` existence and content
+- Tenant's `bucket-index.json.gz` content
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 

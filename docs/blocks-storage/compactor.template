@@ -10,7 +10,7 @@ slug: compactor
 The **compactor** is an service which is responsible to:
 
 - Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).
-- Keep the per-tenant bucket index updated. The bucket index is used by [queriers](./querier.md) and [store-gateways](./store-gateway.md) to discover new blocks in the storage.
+- Keep the per-tenant bucket index updated. The [bucket index](./bucket-index.md) is used by [queriers](./querier.md) to discover new blocks in the storage.
 
 The compactor is **stateless**.
 

@@ -3682,8 +3682,9 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-dir
   [sync_dir: <string> | default = "tsdb-sync"]
 
-  # How frequently scan the bucket to look for changes (new blocks shipped by
-  # ingesters and blocks removed by retention or compaction). 0 disables it.
+  # How frequently scan the bucket - or fetch the bucket index (if enabled) - to
+  # look for changes (new blocks shipped by ingesters and blocks removed by
+  # retention or compaction). 0 disables it.
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 5m]
 
@@ -3950,22 +3951,24 @@ bucket_store:
   [ignore_deletion_mark_delay: <duration> | default = 6h]
 
   bucket_index:
-    # True to enable querier to discover blocks in the storage via bucket index
-    # instead of bucket scanning.
+    # True to enable querier and store-gateway to discover blocks in the storage
+    # via bucket index instead of bucket scanning.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
     [enabled: <boolean> | default = false]
 
-    # How frequently a cached bucket index should be refreshed.
+    # How frequently a cached bucket index should be refreshed. This option is
+    # used only by querier.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
     [update_on_stale_interval: <duration> | default = 15m]
 
     # How frequently a bucket index, which previously failed to load, should be
-    # tried to load again.
+    # tried to load again. This option is used only by querier.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
     [update_on_error_interval: <duration> | default = 1m]
 
     # How long a unused bucket index should be cached. Once this timeout
-    # expires, the unused bucket index is removed from the in-memory cache.
+    # expires, the unused bucket index is removed from the in-memory cache. This
+    # option is used only by querier.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
     [idle_timeout: <duration> | default = 1h]
 

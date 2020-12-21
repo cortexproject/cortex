@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 )
 
+// BucketIndexMetadataFetcher is a Thanos MetadataFetcher implementation leveraging on the Cortex bucket index.
 type BucketIndexMetadataFetcher struct {
 	userID    string
 	bkt       objstore.Bucket
@@ -50,11 +51,15 @@ func NewBucketIndexMetadataFetcher(
 
 // Fetch implements metadata.MetadataFetcher.
 func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.ULID]*metadata.Meta, partial map[ulid.ULID]error, err error) {
+	f.metrics.resetTx()
+
 	// Check whether the user belongs to the shard.
 	if len(f.strategy.FilterUsers(ctx, []string{f.userID})) != 1 {
+		f.metrics.submit()
 		return nil, nil, nil
 	}
 
+	// Track duration and sync counters only if wasn't filtered out by the sharding strategy.
 	start := time.Now()
 	defer func() {
 		f.metrics.syncDuration.Observe(time.Since(start).Seconds())
@@ -63,15 +68,13 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 		}
 	}()
 	f.metrics.syncs.Inc()
-	f.metrics.resetTx()
 
 	// Fetch the bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, f.bkt, f.userID, f.logger)
 	if errors.Is(err, bucketindex.ErrIndexNotFound) {
 		// This is a legit case happening when the first blocks of a tenant have recently been uploaded by ingesters
 		// and their bucket index has not been created yet.
-		// TODO test me
-		f.metrics.synced.WithLabelValues(noMeta).Set(1)
+		f.metrics.synced.WithLabelValues(noBucketIndex).Set(1)
 		f.metrics.submit()
 
 		return nil, nil, nil
@@ -80,9 +83,8 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 		// In case a single tenant bucket index is corrupted, we don't want the store-gateway to fail at startup
 		// because unable to fetch blocks metadata. We'll act as if the tenant has no bucket index, but the query
 		// will fail anyway in the querier (the querier fails in the querier if bucket index is corrupted).
-		// TODO test me: this is important because if a tenant doesn't have the bucketindex, we don't want the entire store-gateway to fail at startup
 		level.Error(f.logger).Log("msg", "corrupted bucket index found", "user", f.userID, "err", err)
-		f.metrics.synced.WithLabelValues(corruptedMeta).Set(1)
+		f.metrics.synced.WithLabelValues(corruptedBucketIndex).Set(1)
 		f.metrics.submit()
 
 		return nil, nil, nil
@@ -97,8 +99,7 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 	// Build block metas out of the index.
 	metas = make(map[ulid.ULID]*metadata.Meta, len(idx.Blocks))
 	for _, b := range idx.Blocks {
-		m := b.ThanosMeta(f.userID)
-		metas[b.ID] = &m
+		metas[b.ID] = b.ThanosMeta(f.userID)
 	}
 
 	for _, filter := range f.filters {
@@ -137,10 +138,12 @@ func (f *BucketIndexMetadataFetcher) UpdateOnChange(callback func([]metadata.Met
 const (
 	fetcherSubSys = "blocks_meta"
 
-	corruptedMeta = "corrupted-meta-json"
-	noMeta        = "no-meta-json"
-	loadedMeta    = "loaded"
-	failedMeta    = "failed"
+	corruptedMeta        = "corrupted-meta-json"
+	noMeta               = "no-meta-json"
+	loadedMeta           = "loaded"
+	failedMeta           = "failed"
+	corruptedBucketIndex = "corrupted-bucket-index"
+	noBucketIndex        = "no-bucket-index"
 
 	// Synced label values.
 	labelExcludedMeta = "label-excluded"
@@ -197,7 +200,9 @@ func newFetcherMetrics(reg prometheus.Registerer) *fetcherMetrics {
 		},
 		[]string{"state"},
 		[]string{corruptedMeta},
+		[]string{corruptedBucketIndex},
 		[]string{noMeta},
+		[]string{noBucketIndex},
 		[]string{loadedMeta},
 		[]string{tooFreshMeta},
 		[]string{failedMeta},

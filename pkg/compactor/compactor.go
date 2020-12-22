@@ -367,7 +367,7 @@ func (c *Compactor) stopping(_ error) error {
 
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
-	c.compactUsers(ctx)
+	_ = c.compactUsers(ctx)
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
@@ -375,7 +375,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			c.compactUsers(ctx)
+			_ = c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():

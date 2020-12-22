@@ -5,6 +5,7 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -66,13 +67,13 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery    int           `yaml:"max_chunks_per_query"`
-	MaxQueryLookback     time.Duration `yaml:"max_query_lookback"`
-	MaxQueryLength       time.Duration `yaml:"max_query_length"`
-	MaxQueryParallelism  int           `yaml:"max_query_parallelism"`
-	CardinalityLimit     int           `yaml:"cardinality_limit"`
-	MaxCacheFreshness    time.Duration `yaml:"max_cache_freshness"`
-	MaxQueriersPerTenant int           `yaml:"max_queriers_per_tenant"`
+	MaxChunksPerQuery    int            `yaml:"max_chunks_per_query"`
+	MaxQueryLookback     model.Duration `yaml:"max_query_lookback"`
+	MaxQueryLength       time.Duration  `yaml:"max_query_length"`
+	MaxQueryParallelism  int            `yaml:"max_query_parallelism"`
+	CardinalityLimit     int            `yaml:"cardinality_limit"`
+	MaxCacheFreshness    time.Duration  `yaml:"max_cache_freshness"`
+	MaxQueriersPerTenant int            `yaml:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        time.Duration `yaml:"ruler_evaluation_delay_duration"`
@@ -123,7 +124,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage. When running the Cortex chunks storage, this limit is enforced in the querier, while when running the Cortex blocks storage this limit is both enforced in the querier and store-gateway. 0 to disable.")
 	f.DurationVar(&l.MaxQueryLength, "store.max-query-length", 0, "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
-	f.DurationVar(&l.MaxQueryLookback, "querier.max-query-lookback", 0, "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
+	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	f.DurationVar(&l.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -312,7 +313,7 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
-	return o.getOverridesForUser(userID).MaxQueryLookback
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.

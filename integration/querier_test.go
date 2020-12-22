@@ -30,6 +30,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 		tenantShardSize          int
 		ingesterStreamingEnabled bool
 		indexCacheBackend        string
+		bucketIndexEnabled       bool
 	}{
 		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
 			blocksShardingStrategy:   "",
@@ -60,6 +61,19 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
 		},
+		"blocks default sharding, ingester gRPC streaming enabled, inmemory index cache, bucket index enabled": {
+			blocksShardingStrategy:   "default",
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
+			bucketIndexEnabled:       true,
+		},
+		"blocks shuffle sharding, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
+			blocksShardingStrategy:   "shuffle-sharding",
+			tenantShardSize:          1,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:       true,
+		},
 	}
 
 	for testName, testCfg := range tests {
@@ -73,16 +87,17 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// Configure the blocks storage to frequently compact TSDB head
 			// and ship blocks to the storage.
 			flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-				"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
-				"-blocks-storage.tsdb.ship-interval":               "1s",
-				"-blocks-storage.bucket-store.sync-interval":       "1s",
-				"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
-				"-blocks-storage.bucket-store.index-cache.backend": testCfg.indexCacheBackend,
-				"-store-gateway.sharding-enabled":                  strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
-				"-store-gateway.sharding-strategy":                 testCfg.blocksShardingStrategy,
-				"-store-gateway.tenant-shard-size":                 fmt.Sprintf("%d", testCfg.tenantShardSize),
-				"-querier.ingester-streaming":                      strconv.FormatBool(testCfg.ingesterStreamingEnabled),
-				"-querier.query-store-for-labels-enabled":          "true",
+				"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+				"-blocks-storage.tsdb.ship-interval":                "1s",
+				"-blocks-storage.bucket-store.sync-interval":        "1s",
+				"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+				"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
+				"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
+				"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
+				"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
+				"-querier.ingester-streaming":                       strconv.FormatBool(testCfg.ingesterStreamingEnabled),
+				"-querier.query-store-for-labels-enabled":           "true",
+				"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 			})
 
 			// Start dependencies.
@@ -158,8 +173,14 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(3), "cortex_ingester_memory_series_created_total"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 
-			// Wait until the querier has discovered the uploaded blocks.
-			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_blocks_meta_synced"))
+			if testCfg.bucketIndexEnabled {
+				// Start the compactor to have the bucket index created before querying.
+				compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+				require.NoError(t, s.StartAndWaitReady(compactor))
+			} else {
+				// Wait until the querier has discovered the uploaded blocks.
+				require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_blocks_meta_synced"))
+			}
 
 			// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled
 			// we don't known which store-gateway instance will synch the blocks, so we need to wait on
@@ -239,6 +260,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 		blocksShardingEnabled    bool
 		ingesterStreamingEnabled bool
 		indexCacheBackend        string
+		bucketIndexEnabled       bool
 	}{
 		"blocks sharding enabled, ingester gRPC streaming disabled, inmemory index cache": {
 			blocksShardingEnabled:    true,
@@ -262,6 +284,12 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			blocksShardingEnabled:    true,
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:       true,
 		},
 	}
 
@@ -293,6 +321,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				"-blocks-storage.tsdb.retention-period":                        ((blockRangePeriod * 2) - 1).String(),
 				"-blocks-storage.bucket-store.index-cache.backend":             testCfg.indexCacheBackend,
 				"-blocks-storage.bucket-store.index-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+				"-blocks-storage.bucket-store.bucket-index.enabled":            strconv.FormatBool(testCfg.bucketIndexEnabled),
 				"-querier.ingester-streaming":                                  strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 				"-querier.query-store-for-labels-enabled":                      "true",
 				// Ingester.
@@ -361,17 +390,24 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(3*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
 			require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
 
-			// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-			require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
-				labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
-
-			// Wait until the store-gateway has synched the new uploaded blocks.
-			const shippedBlocks = 2
-
-			if testCfg.blocksShardingEnabled {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
+			if testCfg.bucketIndexEnabled {
+				// Start the compactor to have the bucket index created before querying. We need to run the compactor
+				// as a separate service because it's currently not part of the single binary.
+				compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+				require.NoError(t, s.StartAndWaitReady(compactor))
 			} else {
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
+				// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
+				require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
+					labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
+			}
+
+			// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
+			// may be greater than expected if the compactor is running (there may have been compacted).
+			const shippedBlocks = 2
+			if testCfg.blocksShardingEnabled {
+				require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
+			} else {
+				require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 			}
 
 			// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).

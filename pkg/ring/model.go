@@ -189,6 +189,10 @@ func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration) b
 //
 // This method is part of memberlist.Mergeable interface, and is only used by gossiping ring.
 func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.Mergeable, error) {
+	return d.mergeWithTime(mergeable, localCAS, time.Now())
+}
+
+func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now time.Time) (memberlist.Mergeable, error) {
 	if mergeable == nil {
 		return nil, nil
 	}
@@ -229,6 +233,10 @@ func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.
 				// missing, let's mark our ingester as LEFT
 				ting.State = LEFT
 				ting.Tokens = nil
+				// We are deleting entry "now", and should not keep old timestamp, because there may already be pending
+				// message in the gossip network with newer timestamp (but still older than "now").
+				// Such message would "resurrect" this deleted entry.
+				ting.Timestamp = now.Unix()
 				thisIngesterMap[name] = ting
 
 				updated = append(updated, name)

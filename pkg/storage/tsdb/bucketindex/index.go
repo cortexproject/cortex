@@ -43,6 +43,10 @@ type Index struct {
 	UpdatedAt int64 `json:"updated_at"`
 }
 
+func (idx *Index) GetUpdatedAt() time.Time {
+	return time.Unix(idx.UpdatedAt, 0)
+}
+
 // RemoveBlock removes block and its deletion mark (if any) from index.
 func (idx *Index) RemoveBlock(id ulid.ULID) {
 	for i := 0; i < len(idx.Blocks); i++ {
@@ -79,6 +83,13 @@ type Block struct {
 	// UploadedAt is a unix timestamp (seconds precision) of when the block has been completed to be uploaded
 	// to the storage.
 	UploadedAt int64 `json:"uploaded_at"`
+}
+
+// Within returns whether the block contains samples within the provided range.
+// Input minT and maxT are both inclusive.
+func (m *Block) Within(minT, maxT int64) bool {
+	// NOTE: Block intervals are half-open: [MinTime, MaxTime).
+	return m.MinTime <= maxT && minT < m.MaxTime
 }
 
 func (m *Block) GetUploadedAt() time.Time {

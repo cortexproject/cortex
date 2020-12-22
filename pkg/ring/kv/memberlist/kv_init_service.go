@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,7 +64,11 @@ func (kvs *KVInitService) GetMemberlistKV() (*KV, error) {
 
 // Returns KV if it was initialized, or nil.
 func (kvs *KVInitService) getKV() *KV {
-	return kvs.kv.Load().(*KV)
+	kv := kvs.kv.Load()
+	if kv == nil {
+		return nil
+	}
+	return kv.(*KV)
 }
 
 func (kvs *KVInitService) running(ctx context.Context) error {
@@ -93,9 +98,10 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	const (
-		downloadKeyParam = "downloadKey"
-		viewKeyParam     = "viewKey"
-		viewMsgParam     = "viewMsg"
+		downloadKeyParam    = "downloadKey"
+		viewKeyParam        = "viewKey"
+		viewMsgParam        = "viewMsg"
+		deleteMessagesParam = "deleteMessages"
 	)
 
 	if err := req.ParseForm(); err == nil {
@@ -126,6 +132,15 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 
 			http.Error(w, "message not found", http.StatusNotFound)
+			return
+		}
+
+		if len(req.Form[deleteMessagesParam]) > 0 && req.Form[deleteMessagesParam][0] == "true" {
+			kv.deleteSentReceivedMessages()
+
+			// Redirect back.
+			w.Header().Set("Location", "?"+deleteMessagesParam+"=false")
+			w.WriteHeader(http.StatusFound)
 			return
 		}
 	}
@@ -236,7 +251,9 @@ type pageData struct {
 	ReceivedMessages []message
 }
 
-var pageTemplate = template.Must(template.New("webpage").Parse(pageContent))
+var pageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
+	"StringsJoin": strings.Join,
+}).Parse(pageContent))
 
 const pageContent = `
 <!DOCTYPE html>
@@ -309,6 +326,8 @@ const pageContent = `
 
 		<h2>Received Messages</h2>
 
+		<a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
+
 		<table width="100%" border="1">
 			<thead>
 				<tr>
@@ -317,6 +336,7 @@ const pageContent = `
 					<th>Key</th>
 					<th>Value in the Message</th>
 					<th>Version After Update (0 = no change)</th>
+					<th>Changes</th>
 					<th>Actions</th>
 				</tr>
 			</thead>
@@ -329,6 +349,7 @@ const pageContent = `
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
+					<td>{{ StringsJoin .Changes ", " }}</td> 
 					<td>
 						<a href="?viewMsg={{ .ID }}&format=json">json</a>
 						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>
@@ -341,6 +362,8 @@ const pageContent = `
 
 		<h2>Sent Messages</h2>
 
+		<a href="?deleteMessages=true">Delete All Messages (received and sent)</a>
+
 		<table width="100%" border="1">
 			<thead>
 				<tr>
@@ -349,6 +372,7 @@ const pageContent = `
 					<th>Key</th>
 					<th>Value</th>
 					<th>Version</th>
+					<th>Changes</th>
 					<th>Actions</th>
 				</tr>
 			</thead>
@@ -361,6 +385,7 @@ const pageContent = `
 					<td>{{ .Pair.Key }}</td>
 					<td>size: {{ .Pair.Value | len }}, codec: {{ .Pair.Codec }}</td>
 					<td>{{ .Version }}</td>
+					<td>{{ StringsJoin .Changes ", " }}</td> 
 					<td>
 						<a href="?viewMsg={{ .ID }}&format=json">json</a>
 						| <a href="?viewMsg={{ .ID }}&format=json-pretty">json-pretty</a>

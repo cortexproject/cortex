@@ -356,30 +356,30 @@ func TestMergeRemoveMissing(t *testing.T) {
 			Ingesters: map[string]IngesterDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
-				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEFT},
+				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
 			},
 		}
 	}
 
 	{
-		our, ch := mergeLocalCAS(firstRing(), secondRing())
+		our, ch := mergeLocalCAS(firstRing(), secondRing(), now+3)
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		assert.Equal(t, &Desc{
 			Ingesters: map[string]IngesterDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
-				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEFT},
+				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
 			},
 		}, ch) // entire second ring is new
 	}
 
-	{ // idempotency: (no change after applying same ring again)
-		our, ch := mergeLocalCAS(expectedFirstSecondMerge(), secondRing())
+	{ // idempotency: (no change after applying same ring again, even if time has advanced)
+		our, ch := mergeLocalCAS(expectedFirstSecondMerge(), secondRing(), now+10)
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		assert.Equal(t, (*Desc)(nil), ch)
 	}
 
 	{ // commutativity is broken when deleting missing entries. But let's make sure we get reasonable results at least.
-		our, ch := mergeLocalCAS(secondRing(), firstRing())
+		our, ch := mergeLocalCAS(secondRing(), firstRing(), now+3)
 		assert.Equal(t, &Desc{
 			Ingesters: map[string]IngesterDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
@@ -419,7 +419,7 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 	}
 
 	{
-		our, ch := mergeLocalCAS(ring1(), ring2())
+		our, ch := mergeLocalCAS(ring1(), ring2(), now+10)
 		assert.Equal(t, &Desc{
 			Ingesters: map[string]IngesterDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
@@ -438,8 +438,8 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 	}
 }
 
-func mergeLocalCAS(ring1, ring2 *Desc) (*Desc, *Desc) {
-	change, err := ring1.Merge(ring2, true)
+func mergeLocalCAS(ring1, ring2 *Desc, nowUnixTime int64) (*Desc, *Desc) {
+	change, err := ring1.mergeWithTime(ring2, true, time.Unix(nowUnixTime, 0))
 	if err != nil {
 		panic(err)
 	}

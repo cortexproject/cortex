@@ -111,7 +111,9 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 		l.cacheIndex(userID, nil, err)
 
 		l.loadFailures.Inc()
-		if !errors.Is(err, ErrIndexNotFound) {
+		if errors.Is(err, ErrIndexNotFound) {
+			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
+		} else {
 			level.Error(l.logger).Log("msg", "unable to load bucket index", "user", userID, "err", err)
 		}
 

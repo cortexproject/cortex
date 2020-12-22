@@ -28,6 +28,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+type testBlocksCleanerOptions struct {
+	concurrency             int
+	markersMigrationEnabled bool
+	tenantDeletionDelay     time.Duration
+	user4FilesExist         bool // User 4 has "FinishedTime" in tenant deletion marker set to "1h" ago.
+}
+
+func (o testBlocksCleanerOptions) String() string {
+	return fmt.Sprintf("concurrency=%d, markers migration enabled=%v, tenant deletion delay=%v",
+		o.concurrency, o.markersMigrationEnabled, o.tenantDeletionDelay)
+}
+
 func TestBlocksCleaner(t *testing.T) {
 	for _, options := range []testBlocksCleanerOptions{
 		{concurrency: 1, tenantDeletionDelay: 0, user4FilesExist: false},
@@ -43,18 +55,6 @@ func TestBlocksCleaner(t *testing.T) {
 			testBlocksCleanerWithOptions(t, options)
 		})
 	}
-}
-
-type testBlocksCleanerOptions struct {
-	concurrency             int
-	markersMigrationEnabled bool
-	tenantDeletionDelay     time.Duration
-	user4FilesExist         bool // User 4 has "FinishedTime" in tenant deletion marker set to "1h" ago.
-}
-
-func (o testBlocksCleanerOptions) String() string {
-	return fmt.Sprintf("concurrency=%d, markers migration enabled=%v, tenant deletion delay=%v",
-		o.concurrency, o.markersMigrationEnabled, o.tenantDeletionDelay)
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
@@ -197,7 +197,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	}
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
@@ -205,9 +205,14 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 2
+		cortex_bucket_blocks_partials_count{user="user-2"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 }
 
@@ -357,7 +362,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	require.NoError(t, cleaner.cleanUsers(ctx, true))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
@@ -365,9 +370,14 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 0
+		cortex_bucket_blocks_partials_count{user="user-2"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 
 	// Override the users scanner to reconfigure it to only return a subset of users.
@@ -380,15 +390,19 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 3
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 }
 

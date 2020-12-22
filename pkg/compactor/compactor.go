@@ -81,7 +81,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
-	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
+	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction within a single compaction run.")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
 	f.DurationVar(&cfg.CleanupInterval, "compactor.cleanup-interval", 15*time.Minute, "How frequently compactor should run blocks cleanup and maintenance, as well as update the bucket index.")
 	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
@@ -367,7 +367,7 @@ func (c *Compactor) stopping(_ error) error {
 
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
-	c.compactUsersWithRetries(ctx)
+	c.compactUsers(ctx)
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
@@ -375,7 +375,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			c.compactUsersWithRetries(ctx)
+			c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():
@@ -384,33 +384,18 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: c.compactorCfg.retryMinBackoff,
-		MaxBackoff: c.compactorCfg.retryMaxBackoff,
-		MaxRetries: c.compactorCfg.CompactionRetries,
-	})
-
+func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
 	c.compactionRunsStarted.Inc()
 
-	for retries.Ongoing() {
-		if err := c.compactUsers(ctx); err == nil {
+	defer func() {
+		if returnErr == nil {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
-			return
-		} else if errors.Is(err, context.Canceled) {
-			return
+		} else {
+			c.compactionRunsFailed.Inc()
 		}
 
-		retries.Wait()
-	}
-
-	c.compactionRunsFailed.Inc()
-}
-
-func (c *Compactor) compactUsers(ctx context.Context) error {
-	// Reset progress metrics once done.
-	defer func() {
+		// Reset progress metrics once done.
 		c.compactionRunDiscoveredTenants.Set(0)
 		c.compactionRunSkippedTenants.Set(0)
 		c.compactionRunSucceededTenants.Set(0)
@@ -418,7 +403,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}()
 
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
-	users, err := c.discoverUsers(ctx)
+	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
 		return errors.Wrap(err, "failed to discover users from bucket")
@@ -466,7 +451,7 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
-		if err = c.compactUser(ctx, userID); err != nil {
+		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
 			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
@@ -478,6 +463,27 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}
 
 	return errs.Err()
+}
+
+func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		lastErr = c.compactUser(ctx, userID)
+		if lastErr == nil {
+			return nil
+		}
+
+		retries.Wait()
+	}
+
+	return lastErr
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
@@ -568,6 +574,29 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	}
 
 	return nil
+}
+
+func (c *Compactor) discoverUsersWithRetries(ctx context.Context) ([]string, error) {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		var users []string
+
+		users, lastErr = c.discoverUsers(ctx)
+		if lastErr == nil {
+			return users, nil
+		}
+
+		retries.Wait()
+	}
+
+	return nil, lastErr
 }
 
 func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {

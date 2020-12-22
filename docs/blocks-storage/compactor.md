@@ -116,8 +116,7 @@ compactor:
   # CLI flag: -compactor.compaction-interval
   [compaction_interval: <duration> | default = 1h]
 
-  # How many times to retry a failed compaction during a single compaction
-  # interval
+  # How many times to retry a failed compaction within a single compaction run.
   # CLI flag: -compactor.compaction-retries
   [compaction_retries: <int> | default = 3]
 

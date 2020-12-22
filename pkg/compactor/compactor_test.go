@@ -290,10 +290,6 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		`level=error component=cleaner msg="failed to run blocks cleanup and maintenance" err="failed to discover users from bucket: failed to iterate the bucket"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
-		`level=info component=compactor msg="discovering users from bucket"`,
-		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
-		`level=info component=compactor msg="discovering users from bucket"`,
-		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
 	}, strings.Split(strings.TrimSpace(logs.String()), "\n"))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`

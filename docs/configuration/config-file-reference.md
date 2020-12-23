@@ -144,7 +144,7 @@ api:
 [purger: <purger_config>]
 
 tenant_federation:
-  # If enabled on all components, queries can be federated across multiple
+  # If enabled on all Cortex services, queries can be federated across multiple
   # tenants. The tenant IDs involved need to be specified separated by a `|`
   # character in the `X-Scope-OrgID` header (experimental).
   # CLI flag: -tenant-federation.enabled

@@ -1863,7 +1863,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	s := mockUserShipper(t, i)
 	s.On("Sync", mock.Anything).Run(func(args mock.Arguments) {
 		time.Sleep(3 * time.Second)
-	})
+	}).Return(0, nil)
 
 	// Mock the shipper meta (no blocks).
 	db := i.getTSDB(userID)

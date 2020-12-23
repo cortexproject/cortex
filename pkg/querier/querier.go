@@ -175,7 +175,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
-	return &sampleAndChunkQueryable{lazyQueryable}, engine
+	return NewSampleAndChunkQueryable(lazyQueryable), engine
+}
+
+// NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a
+// Queryable with a ChunkQueryable stub, that errors once it get's called.
+func NewSampleAndChunkQueryable(q storage.Queryable) storage.SampleAndChunkQueryable {
+	return &sampleAndChunkQueryable{q}
 }
 
 type sampleAndChunkQueryable struct {

@@ -2,6 +2,7 @@ package validation
 
 import (
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
@@ -112,4 +113,106 @@ metric_relabel_configs:
 	require.NoError(t, err)
 
 	assert.Equal(t, []*relabel.Config{&exp}, l.MetricRelabelConfigs)
+}
+
+func TestSmallestPositiveIntPerTenant(t *testing.T) {
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			MaxQueryParallelism: 5,
+		},
+		"tenant-b": {
+			MaxQueryParallelism: 10,
+		},
+	}
+
+	defaults := Limits{
+		MaxQueryParallelism: 0,
+	}
+	ov, err := NewOverrides(defaults, func(userID string) *Limits {
+		return tenantLimits[userID]
+	})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		tenantIDs []string
+		expLimit  int
+	}{
+		{tenantIDs: []string{}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-b"}, expLimit: 10},
+		{tenantIDs: []string{"tenant-c"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: 0},
+	} {
+		assert.Equal(t, tc.expLimit, SmallestPositiveIntPerTenant(tc.tenantIDs, ov.MaxQueryParallelism))
+	}
+}
+
+func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			MaxQueriersPerTenant: 5,
+		},
+		"tenant-b": {
+			MaxQueriersPerTenant: 10,
+		},
+	}
+
+	defaults := Limits{
+		MaxQueriersPerTenant: 0,
+	}
+	ov, err := NewOverrides(defaults, func(userID string) *Limits {
+		return tenantLimits[userID]
+	})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		tenantIDs []string
+		expLimit  int
+	}{
+		{tenantIDs: []string{}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-b"}, expLimit: 10},
+		{tenantIDs: []string{"tenant-c"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b"}, expLimit: 5},
+		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: 0},
+		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: 5},
+	} {
+		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroIntPerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
+	}
+}
+
+func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			MaxQueryLength: time.Hour,
+		},
+		"tenant-b": {
+			MaxQueryLength: 4 * time.Hour,
+		},
+	}
+
+	defaults := Limits{
+		MaxQueryLength: 0,
+	}
+	ov, err := NewOverrides(defaults, func(userID string) *Limits {
+		return tenantLimits[userID]
+	})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		tenantIDs []string
+		expLimit  time.Duration
+	}{
+		{tenantIDs: []string{}, expLimit: time.Duration(0)},
+		{tenantIDs: []string{"tenant-a"}, expLimit: time.Hour},
+		{tenantIDs: []string{"tenant-b"}, expLimit: 4 * time.Hour},
+		{tenantIDs: []string{"tenant-c"}, expLimit: time.Duration(0)},
+		{tenantIDs: []string{"tenant-a", "tenant-b"}, expLimit: time.Hour},
+		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: time.Duration(0)},
+		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: time.Hour},
+	} {
+		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroDurationPerTenant(tc.tenantIDs, ov.MaxQueryLength))
+	}
 }

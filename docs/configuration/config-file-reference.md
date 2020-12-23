@@ -143,6 +143,13 @@ api:
 # The purger_config configures the purger which takes care of delete requests
 [purger: <purger_config>]
 
+tenant_federation:
+  # If enabled on all Cortex services, queries can be federated across multiple
+  # tenants. The tenant IDs involved need to be specified separated by a `|`
+  # character in the `X-Scope-OrgID` header (experimental).
+  # CLI flag: -tenant-federation.enabled
+  [enabled: <boolean> | default = false]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

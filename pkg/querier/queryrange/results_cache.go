@@ -179,10 +179,16 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+
+	// do not cache multi tenant queries
+	if len(tenantIDs) != 1 {
+		return s.next.Do(ctx, r)
+	}
+	userID := tenantIDs[0]
 
 	if s.shouldCache != nil && !s.shouldCache(r) {
 		return s.next.Do(ctx, r)

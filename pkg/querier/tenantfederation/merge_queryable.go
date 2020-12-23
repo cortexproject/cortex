@@ -183,7 +183,7 @@ func (m *mergeQuerier) Close() error {
 // forwarded labelSelector is not containing those that operate on
 // tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	matchedTenants, filteredMatchers := filterValuesByMatchers(string(defaultTenantLabel), m.tenantIDs, matchers...)
+	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, m.tenantIDs, matchers...)
 	var seriesSets = make([]storage.SeriesSet, 0, len(matchedTenants))
 	for pos, tenantID := range m.tenantIDs {
 		if _, matched := matchedTenants[tenantID]; !matched {

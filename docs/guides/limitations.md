@@ -46,4 +46,4 @@ When running queries to the `/api/v1/series`, `/api/v1/labels` and `/api/v1/labe
 
 ## Tenant federation
 
-When using tenant federation on a Cortex cluster with chunk storage, cache invalidation is not fully supported. Metrics that have been deleted via `/api/v1/admin/tsdb/delete_series` API endpoint can still appear in cached query results.
+When tenant federation is enabled on a Cortex cluster, result caching is disabled for queries spanning more than a single tenant. Result caching is planned to be implemented before general availability of this feature.

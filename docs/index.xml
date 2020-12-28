@@ -26,7 +26,7 @@
 &lt;p>We believe the same technique described in this proposal could be applied to optimise the store-gateway too (we&amp;rsquo;ve built a &lt;a href="https://github.com/cortexproject/cortex/compare/pracucci:experiment-object-store-based-blocks-index">PoC&lt;/a>), however to keep the design doc easier to discuss we suggest to keep the store-gateway out of scope and address it in a follow-up design doc.&lt;/p>
 &lt;h2 id="proposal">Proposal&lt;/h2>
 &lt;p>We propose to introduce a per-tenant bucket index. The index is a single JSON file containing two main information: list of all completed (non partial) blocks in the bucket + list of all deletion marks. The bucket index is stored in the bucket within the tenant location (eg. &lt;code>/user-1/bucket-index.json&lt;/code>) and is kept updated by the compactor.&lt;/p>
-&lt;p>The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it&amp;rsquo;s a small file, we expect the lazy download of the bucket index to not significantly impact first query performances.&lt;/p>
+&lt;p>The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it&amp;rsquo;s a small file, we expect the lazy download of the bucket index to not significantly impact 1st query performances.&lt;/p>
 &lt;p>While in-memory, a background process will keep it updated at periodic intervals (configurable), so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index.&lt;/p>
 &lt;p>If a bucket index is unused for a long time (configurable), eg. because that querier instance is not receiving any query from the tenant, the querier will offload it, stopping to keep it updated at regular intervals. This is particularly useful when shuffle sharding is enabled, because a querier will only run queries for a subset of tenants and tenants can be re-sharded across queries in the event of a scale up/down or rolling updates.&lt;/p>
 &lt;p>The bucket index will be also cached on memcached for a short period of time, to reduce the number of &amp;ldquo;get object&amp;rdquo; operations in case multiple queriers fetch it in a short period of time (eg. 5 minutes).&lt;/p>
@@ -371,13 +371,6 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The purger_config configures the purger which takes care of delete requests&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[purger&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;purger_config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenant_federation&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># If enabled on all Cortex services, queries can be federated across multiple&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># tenants. The tenant IDs involved need to be specified separated by a `|`&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># character in the `X-Scope-OrgID` header (experimental).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -tenant-federation.enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The ruler_config configures the Cortex ruler.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ruler&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;ruler_config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -770,9 +763,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[instance_interface_names&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;list&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>of&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>eth0&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>en0&lt;span style="color:#000;font-weight:bold">]]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="ingester_config">&lt;code>ingester_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>ingester_config&lt;/code> configures the Cortex ingester.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Configures the Write-Ahead Log (WAL) for the Cortex chunks storage. This&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># config is ignored when running the Cortex blocks storage.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">walconfig&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">walconfig&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable writing of ingested data into WAL.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ingester.wal-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[wal_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1004,7 +995,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.query-store-for-labels-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_store_for_labels_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The time after which a metric should be queried from storage and not just&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The time after which a metric should only be queried from storage and not just&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ingesters. 0 means all queries are sent to store. When running the blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># storage, if this option is enabled, the time range of the query sent to the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># store will be manipulated to ensure the query end is not more recent than &amp;#39;now&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1088,7 +1079,8 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_body_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10485760&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># True to enable query statistics tracking. When enabled, a message with some&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># statistics is logged for every query.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># statistics is logged for every query. This configuration option must be set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># both on query-frontend and querier.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -frontend.query-stats-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_stats_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1643,7 +1635,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.ring.instance-interface-names&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[instance_interface_names&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;list&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>of&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>eth0&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>en0&lt;span style="color:#000;font-weight:bold">]]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Number of tokens for each ruler.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Number of tokens for each ingester.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.ring.num-tokens&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[num_tokens&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">128&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -3131,11 +3123,6 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.leave-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[leave_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How much space to use for keeping received and sent messages in memory for&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># troubleshooting (two buffers). 0 to disable.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.message-history-buffer-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[message_history_buffer_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># IP address to listen on for gossip messages. Multiple addresses may be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># specified. Defaults to 0.0.0.0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.bind-addr&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -3732,8 +3719,8 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.filesystem.dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[dir&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the querier and store-gateway discover and synchronize&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks stored in the bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the store-gateway synchronizes blocks stored in the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Directory to store synchronized TSDB index headers.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.sync-dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -3969,29 +3956,13 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>24h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid network&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># round trip for large content if the configured caching backend has an hard&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># limit on cached items size (in this case, you should set this limit to the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache attributes of the block metafile.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_attributes_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>168h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache content of the bucket index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of bucket index content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid network&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># round trip for large content if the configured caching backend has an hard&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># limit on cached items size (in this case, you should set this limit to the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Duration after which the blocks marked for deletion will be filtered out&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4001,33 +3972,6 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -compactor.deletion-delay.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ignore_deletion_mark_delay&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>6h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_index&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># True to enable querier to discover blocks in the storage via bucket index&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># instead of bucket scanning.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a cached bucket index should be refreshed.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_stale_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a bucket index, which previously failed to load, should be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># tried to load again.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_error_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long a unused bucket index should be cached. Once this timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># expires, the unused bucket index is removed from the in-memory cache.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The maximum allowed age of a bucket index (last updated) before queries&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># start failing because the bucket index is too old. The bucket index is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># periodically updated by the compactor, while this check is enforced in the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># querier (at query time).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_stale_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Local directory to store TSDBs in the ingesters.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4143,30 +4087,19 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.compaction-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[compaction_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently compactor should run blocks cleanup and maintenance, as well as&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># update the bucket index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks cleanup and maintenance should run&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># concurrently.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks should be cleaned up concurrently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># (deletion of blocks previously marked for deletion).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Time before a block marked for deletion is deleted from bucket. If not 0,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will permanently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># delete blocks marked for deletion from the bucket. If 0, blocks will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will delete blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># marked for deletion from the bucket. If delete-delay is 0, blocks will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># deleted straight away. Note that deleting blocks immediately can cause query&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># failures.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># failures, if store gateway still has the block loaded, or compactor is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ignoring the deletion because it&amp;#39;s compacting the block at the same time.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.deletion-delay&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[deletion_delay&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>12h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># When enabled, at compactor startup the bucket will be scanned and all found&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># deletion marks inside the block location will be copied to the markers global&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># location too. This option can (and should) be safely disabled as soon as the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># compactor has successfully run at least once.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.block-deletion-marks-migration-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[block_deletion_marks_migration_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Comma separated list of tenants that can be compacted. If specified, only&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># these tenants will be compacted by compactor, otherwise all tenants can be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4445,117 +4378,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;h4 id="allow-customisation-of-the-label-used-to-expose-tenant-ids">Allow customisation of the label used to expose tenant ids&lt;/h4>
 &lt;p>As per this proposal the label name &lt;code>__tenant_id__&lt;/code> is fixed, but users might want to be able to modify that through a configuration option.&lt;/p>
 &lt;h4 id="retain-overlapping-tenant-id-label-values-recursively">Retain overlapping tenant id label values recursively&lt;/h4>
-&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Deletion of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-deletion/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-deletion/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/pstibrany">Peter Stibrany&lt;/a>&lt;/li>
-&lt;li>Date: November 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="deletion-of-tenant-data">Deletion of tenant data&lt;/h2>
-&lt;h2 id="problem">Problem&lt;/h2>
-&lt;p>When a tenant is deleted from the external system that controls access to Cortex, we want to clean up tenants data from Cortex as well.&lt;/p>
-&lt;h2 id="background">Background&lt;/h2>
-&lt;p>When using blocks storage, Cortex stores tenant’s data in several places:&lt;/p>
-&lt;ul>
-&lt;li>object store for long-term storage of blocks,&lt;/li>
-&lt;li>ingesters disks for short-term storage. Ingesters eventually upload data to long-term storage,&lt;/li>
-&lt;li>various caches: query-frontend, chunks, index and metadata,&lt;/li>
-&lt;li>object store for rules (separate from blocks),&lt;/li>
-&lt;li>object store for alert manager configuration,&lt;/li>
-&lt;li>state for alertmanager instances (notifications and silences).&lt;/li>
-&lt;/ul>
-&lt;p>This document expects that there is an external authorization system in place.
-Disabling or deleting the tenant in this system will stop tenants data, queries and other API calls from reaching Cortex.
-Note that there may be a delay before disabling or deleting the user, until data / queries fully stop, due to eg. caching in authorization proxies.
-Cortex endpoint for deleting a tenant data should be only called after this blocking is in place.&lt;/p>
-&lt;h2 id="proposal">Proposal&lt;/h2>
-&lt;h3 id="api-endpoints">API Endpoints&lt;/h3>
-&lt;h4 id="post-purgerdelete_tenant">POST /purger/delete_tenant&lt;/h4>
-&lt;p>We propose to introduce an &lt;code>/purger/delete_tenant&lt;/code> API endpoint to trigger data deletion for the tenant.&lt;/p>
-&lt;p>While this endpoint works as an “admin” endpoint and should not be exposed directly to tenants, it still needs to know under which tenant it should operate.
-For consistency with other endpoints this endpoint would therefore require an &lt;code>X-Scope-OrgID&lt;/code> header and use the tenant from it.&lt;/p>
-&lt;p>It is safe to call “delete_tenant” multiple times.&lt;/p>
-&lt;h4 id="get-purgerdelete_tenant_status">GET /purger/delete_tenant_status&lt;/h4>
-&lt;p>To monitor the state of data deletion, another endpoint will be available: &lt;code>/purger/delete_tenant_status&lt;/code>.
-This will return OK if tenant’s data has been fully deleted – no more blocks exist on the long-term storage, alertmanager and rulers are fully stopped and configuration removed.
-Similarly to “delete_tenant” endpoint, “delete_tenant_status” will require &lt;code>X-Scope-OrgID&lt;/code> header.&lt;/p>
-&lt;h3 id="implementation-asynchronous">Implementation (asynchronous)&lt;/h3>
-&lt;p>Purger will implement both API endpoints.
-Upon receiving the call to &lt;code>/purger/delete_tenant&lt;/code> endpoint, Purger will initiate the deletion by writing “deletion marker” objects for specific tenant to following buckets:&lt;/p>
-&lt;ul>
-&lt;li>Blocks bucket&lt;/li>
-&lt;li>Ruler configuration bucket&lt;/li>
-&lt;li>Alertmanager configuration bucket&lt;/li>
-&lt;/ul>
-&lt;p>Deletion marker for the tenant will be an object stored under tenant prefix, eg. “/&lt;tenant>/deleted”.
-This object will contain the timestamp when it was created, so that we can delete it later based on the specified time period.
-We could reuse a subset of the proposed Thanos tombstones format, or use custom format.&lt;/p>
-&lt;p>“delete_tenant_status” endpoint will report success, if all of the following are true:&lt;/p>
-&lt;ul>
-&lt;li>There are no blocks for the tenant in the blocks bucket&lt;/li>
-&lt;li>There is a “deletion finished” object in the bucket for the tenant in the ruler configuration bucket.&lt;/li>
-&lt;li>There is a “deletion finished” object in the bucket for the tenant in the alertmanager configuration bucket.&lt;/li>
-&lt;/ul>
-&lt;p>See later sections on Ruler and Alertmanager for explanation of “deletion finished” objects.&lt;/p>
-&lt;h3 id="blocks-deletion-marker">Blocks deletion marker&lt;/h3>
-&lt;p>Blocks deletion marker will be used by compactor, querier and store-gateway.&lt;/p>
-&lt;h4 id="compactor">Compactor&lt;/h4>
-&lt;p>Upon discovering the blocks deletion marker, the compactor will start deletion of all blocks that belong to the tenant.
-This can take hours to finish, depending on the number of blocks.
-Even after deleting all blocks on the storage, ingesters may upload additional blocks for the tenant.
-To make sure that the compactor deletes these blocks, the compactor will keep the deletion marker in the bucket.
-After a configurable period of time it can delete the deletion marker too.&lt;/p>
-&lt;p>To implement deletion, Compactor should use new TenantsCleaner component similar to existing BlocksCleaner (which deletes blocks marked for deletion), and modify UserScanner to ignore deleted tenants (for BlocksCleaner and Compactor itself) or only return deleted tenants (for TenantsCleaner).&lt;/p>
-&lt;h4 id="querier-store-gateway">Querier, Store-gateway&lt;/h4>
-&lt;p>These two components scan for all tenants periodically, and can use the tenant deletion marker to skip tenants and avoid loading their blocks into memory and caching to disk (store-gateways).
-By implementing this, store-gateways will also unload and remove cached blocks.&lt;/p>
-&lt;p>Queriers and store-gateways use metadata cache and chunks cache when accessing blocks to reduce the number of API calls to object storage.
-In this proposal we don’t suggest removing obsolete entries from the cache – we will instead rely on configured expiration time for cache items.&lt;/p>
-&lt;p>Note: assuming no queries will be sent to the system once the tenant is deleted, implementing support for tenant deletion marker in queriers and store-gateways is just an optimization.
-These components will unload blocks once they are deleted from the object store even without this optimization.&lt;/p>
-&lt;h4 id="query-frontend">Query Frontend&lt;/h4>
-&lt;p>While query-frontend could use the tenant blocks deletion marker to clean up the cache, we don’t suggest to do that due to additional complexity.
-Instead we will only rely on eventual eviction of cached query results from the cache.
-It is possible to configure Cortex to set TTL for items in the frontend cache by using &lt;code>-frontend.default-validity&lt;/code> option.&lt;/p>
-&lt;h4 id="ingester">Ingester&lt;/h4>
-&lt;p>Ingesters don’t scan object store for tenants.&lt;/p>
-&lt;p>To clean up the local state on ingesters, we will implement closing and deletion of local per-tenant data for idle TSDB. (See Cortex PR #3491).
-This requires additional configuration for ingesters, specifically how long to wait before closing and deleting TSDB.
-This feature needs to work properly in two different scenarios:&lt;/p>
-&lt;ul>
-&lt;li>Ingester is no longer receiving data due to ring changes (eg. scale up of ingesters)&lt;/li>
-&lt;li>Data is received because user has been deleted.&lt;/li>
-&lt;/ul>
-&lt;p>Ingester doesn’t distinguish between the two at the moment.
-To make sure we don’t break queries by accidentally deleting TSDB too early, ingester needs to wait at least &lt;code>-querier.query-ingesters-within&lt;/code> duration.&lt;/p>
-&lt;p>Alternatively, ingester could check whether deletion marker exists on the block storage, when it detects idle TSDB.&lt;/p>
-&lt;p>&lt;strong>If more data is pushed to the ingester for a given tenant, ingester will open new TSDB, build new blocks and upload them. It is therefore essential that no more data is pushed to Cortex for the tenant after calling the “delete_tenant” endpoint.&lt;/strong>&lt;/p>
-&lt;h4 id="ruler-deletion-marker">Ruler deletion marker&lt;/h4>
-&lt;p>This deletion marker is stored in the ruler configuration bucket.
-When rulers discover this marker during the periodic sync of the rule groups, they will&lt;/p>
-&lt;ul>
-&lt;li>stop the evaluation of the rule groups for the user,&lt;/li>
-&lt;li>delete tenant rule groups (when multiple rulers do this at the same time, they will race for deletion, and need to be prepared to handle possible “object not found” errors)&lt;/li>
-&lt;li>delete local state.&lt;/li>
-&lt;/ul>
-&lt;p>When the ruler is finished with this cleanup, it will ask all other rulers if they still have any data for the tenant.
-If all other rulers reply with “no”, ruler can write “deletion finished” marker back to the bucket.
-This allows rulers to ignore the ruler completely, and it also communicates the status of the deletion back to purger.&lt;/p>
-&lt;p>Note that ruler currently relies on cached local files when using Prometheus Ruler Manager component.
-&lt;a href="https://github.com/cortexproject/cortex/issues/3134">This can be avoided now&lt;/a>, and since it makes cleanup simpler, we suggest to modify Cortex ruler implementation to avoid this local copy.&lt;/p>
-&lt;p>&lt;strong>Similarly to ingesters, it is necessary to disable access to the ruler API for deleted tenant.
-This must be done in external authorization proxy.&lt;/strong>&lt;/p>
-&lt;h4 id="alertmanager-deletion-marker">Alertmanager deletion marker&lt;/h4>
-&lt;p>Deletion marker for alert manager is stored in the alertmanager configuration bucket. Cleanup procedure for alertmanager data is similar to rulers – when individual alertmanager instances discover the marker, they will:&lt;/p>
-&lt;ul>
-&lt;li>Delete tenant configuration&lt;/li>
-&lt;li>Delete local notifications and silences state&lt;/li>
-&lt;li>Ask other alertmanagers if they have any tenant state yet, and if not, write “deletion finished” marker back to the bucket.&lt;/li>
-&lt;/ul>
-&lt;p>To perform the last step, Alertmanagers need to find other alertmanager instances. This will be implemented by using the ring, which will (likely) be added as per &lt;a href="https://github.com/cortexproject/cortex/pull/3574">Alertmanager scaling proposal&lt;/a>.&lt;/p>
-&lt;p>Access to Alertmanager API must be disabled for tenant that is going to be deleted.&lt;/p>
-&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
-&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>
@@ -4936,48 +4759,7 @@ See &lt;a href="/docs/guides/auth/">Authentication and Authorisation&lt;/a> for 
 &lt;p>You should use a pair of Prometheus servers to monitor your targets and send metrics to Cortex.
 This allows your monitoring system to survive the failure of one of these Prometheus instances.
 Cortex support deduping the samples on ingestion.
-For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href="/docs/guides/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>.&lt;/p></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/gotjosh">Josh Abreu&lt;/a>&lt;/li>
-&lt;li>Date: December 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="context-and-background">Context and Background&lt;/h2>
-&lt;p>The Cortex Alertmanager at its current state supports high-availability by using the same technique as the upstream Prometheus Alertmanager: we gossip silences and notifications between replicas to achieve eventual consistency. This allows us to tolerate machine failure without interruption of service. The caveat here is traffic between the ruler and Alertmanagers must not be load balanced as alerts themselves are not gossiped.&lt;/p>
-&lt;p>By itself it is not horizontally scalable; it is recommended to run a maximum of 3 replicas (for high availability). Each alertmanager replica will contain an internal instance for every tenant. The Alertmanager uses roughly ~3.7MB of memory and ~0.001 CPU cores per tenant, with an average tenant having ~10 active alerts and ~1 silences. These stats were measured from a cluster with ~80 QPS (Alerts received Per Second), ~40 NPS (Notifications Per Second), and ~700 configurations over a single replica.&lt;/p>
-&lt;h2 id="problem-and-requirements">Problem and Requirements&lt;/h2>
-&lt;p>Current numbers show a reasonably sized machine can handle 2000 tenants in the current service. We would like to be able to scale this up to 10x without increasing the machine size; i.e. we would like to make Cortex Alertmanager service horizontally scalable.&lt;/p>
-&lt;p>Furthermore, we desire to preserve the following characteristics:&lt;/p>
-&lt;ul>
-&lt;li>A single Cortex Alertmanager replica crashing or exiting abruptly should not cause externally-visible downtime or failure to deliver notifications.&lt;/li>
-&lt;li>Users should have an eventually consistent view of all the alerts current firing and under active notification, favouring availability of the Cortex Alertmanager over consistency.&lt;/li>
-&lt;li>We should be able to scale up, down and roll out new versions of the service without any service interruption or data loss.&lt;/li>
-&lt;/ul>
-&lt;h2 id="design">Design&lt;/h2>
-&lt;p>This is a big design, and as such we have divided the problem up into 4 areas: Routing &amp;amp; Sharding, Persistence &amp;amp; State, Replication &amp;amp; Consistency, and Architecture. The options and solutions I propose are divided along these lines to aid clarity.&lt;/p>
-&lt;h3 id="routing--sharding">Routing &amp;amp; Sharding&lt;/h3>
-&lt;p>To achieve horizontal scalability, we need to distribute the workload among replicas of the service. We need to choose an appropriate field to use to distribute the workload. The field must be present on all the API requests to the Alertmanager service.&lt;/p>
-&lt;p>&lt;strong>We propose the sharding on Tenant ID&lt;/strong>. The simplicity of this implementation, would allow us to get up and running relatively quickly whilst helping us validate assumptions. We intend to use the existing ring code to manage this. Other options such as tenant ID + receiver or Tenant ID + route are relatively complex as distributor components (in this case the Ruler) would need to be aware of Alertmanager configuration.&lt;/p>
-&lt;h3 id="persistence--state">Persistence &amp;amp; State&lt;/h3>
-&lt;p>Alertmanager is a stateful service; it stores the notification state and configured silences. By default, Alertmanager persists its state to disk every 15mins. In the horizontally scalable Alertmanager service, we need to move this state around as the number of replicas grows and shrinks. We also need to persist this state across restarts and rolling upgrades.&lt;/p>
-&lt;p>&lt;strong>We propose&lt;/strong> making each Alertmanager replica flush the state to object storage, under its own key that’s a combination of tenant ID + replica periodically. This state on durable storage will only be used when cold-starting the cluster.&lt;/p>
-&lt;p>This mechanism covers multiple challenges (scaling up &amp;amp; down, rolling restarts, total cluster failure). &lt;strong>To top this off, in the implementation, we’ll always try to request state from other replicas in the cluster before ever trying to go to object storage.&lt;/strong>&lt;/p>
-&lt;h3 id="replication--consistency">Replication &amp;amp; Consistency&lt;/h3>
-&lt;p>Upstream Alertmanager replicates notification state between replicas to ensure notifications are not sent more than once. Cortex Alertmanager does the same. When we move to a model where AM instances for a given tenant only live on a subset of replicas, we have to decide how we will keep these replicas in sync.&lt;/p>
-&lt;p>&lt;strong>We have an option of doing nothing&lt;/strong> and use the existing gossip mechanism and gossip all tenants state to all replicas. The AM Router will then drop state updates for tenants which don’t shard to a given replica. I think this will be easy to implement as it requires few changes but probably won’t scale.&lt;/p>
-&lt;p>&lt;strong>However, I propose we Synchronized state over gRPC.&lt;/strong> The upstream Alertmanager notification dispatcher uses a timeout-based approach for its notifications. Using the “peer order”, it’ll wait a certain amount of time before letting other replicas know if this notification succeeded or not. If it didn’t, the next replica in line will try to send the notification. We propose to communicate this via gRPC calls.&lt;/p>
-&lt;p>While I propose the use of gRPC, is good to note that doing nothing is still a solid candidate for consideration but not having to maintain and operate two separate replication patterns feels like a win.&lt;/p>
-&lt;h3 id="architecture">Architecture&lt;/h3>
-&lt;p>To implement the sharding strategy we need a component in charge of handling incoming alerts and API requests, distributing it to the corresponding shard.&lt;/p>
-&lt;p>The idea here is to have an “Alertmanager Distributor” as a first stop in the reception of alerts. Once alerts are received, the component is in charge of validating the alerts against the limits. Validated alerts are then sent to multiple managers in parallel.&lt;/p>
-&lt;p>The individual pieces of this component (sharding, limits) cannot be optional - the optional part of it is where we decide to run it.&lt;/p>
-&lt;p>We can either run it as a separate service or embed it. &lt;strong>I propose we simply embed it&lt;/strong>. At its core it’ll be simpler to operate. With future work making it possible to run as a separate service so that operators can scale when/if needed.&lt;/p>
-&lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>Under the assumption we implement the options proposed above, our architecture looks like this:&lt;/p>
-&lt;p>&lt;img src="/images/proposals/scalable-am.png" alt="Scalable Alertmanager Architecture">&lt;/p>
-&lt;p>&lt;strong>POST /api/v1/alerts (from the ruler) can go to any Alertmanager replica.&lt;/strong> The AM distributor uses the ring to write alerts to a quorum of AM managers (reusing the existing code). We continue to use the same in-memory data structure from the upstream Alertmanager to save alerts and notify other pieces&lt;/p>
-&lt;p>&lt;strong>GET /api/v1/alerts and /api/v1/alerts/group&lt;/strong> uses the ring to find the right alertmanager replicas for the given tenant. They read from a quorum of alertmanager replicas and return an union of the results.&lt;/p>
-&lt;p>&lt;strong>Alertmanager state is replicated between instances to keep them in sync&lt;/strong>. Where the state is replicated to to is controlled by the ring.&lt;/p></description></item><item><title>Docs: Scalable Query Frontend</title><link>/docs/proposals/scalable-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-query-frontend/</guid><description>
+For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href="/docs/guides/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>.&lt;/p></description></item><item><title>Docs: Scalable Query Frontend</title><link>/docs/proposals/scalable-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-query-frontend/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/joe-elliott">Joe Elliott&lt;/a>&lt;/li>
 &lt;li>Date: April 2020&lt;/li>
@@ -6228,6 +6010,25 @@ Defaults to &lt;code>Bigchunk&lt;/code> starting version 0.7.0.&lt;/p>
 Make sure you configure ingesters with a different cache to queriers, which need the whole value.&lt;/p>
 &lt;/li>
 &lt;/ul>
+&lt;h4 id="wal">WAL&lt;/h4>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;code>-ingester.wal-dir&lt;/code>
+Directory where the WAL data should be stored and/or recovered from.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>-ingester.wal-enabled&lt;/code>&lt;/p>
+&lt;p>Setting this to &lt;code>true&lt;/code> enables writing to WAL during ingestion.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>-ingester.checkpoint-duration&lt;/code>
+This is the interval at which checkpoints should be created.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;code>-ingester.recover-from-wal&lt;/code>
+Set this to &lt;code>true&lt;/code> to recover data from an existing WAL. The data is recovered even if WAL is disabled and this is set to &lt;code>true&lt;/code>. The WAL dir needs to be set for this.&lt;/p>
+&lt;/li>
+&lt;/ul>
 &lt;h4 id="flusher">Flusher&lt;/h4>
 &lt;ul>
 &lt;li>
@@ -6512,22 +6313,9 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;p>The &lt;strong>querier&lt;/strong> service handles queries using the &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">PromQL&lt;/a> query language. The querier service is used both by the chunks and blocks storage, and the &lt;a href="/docs/architecture/#querier">general architecture documentation&lt;/a> applies to the blocks storage too, except for the differences described in this document.&lt;/p>
 &lt;p>The querier is &lt;strong>stateless&lt;/strong>.&lt;/p>
 &lt;h2 id="how-it-works">How it works&lt;/h2>
-&lt;p>The querier needs to have an almost up-to-date view over the entire storage bucket, in order to find the right blocks to lookup at query time. The querier can keep the bucket view updated in to two different ways:&lt;/p>
-&lt;ol>
-&lt;li>Periodically scanning the bucket (default)&lt;/li>
-&lt;li>Periodically downloading the &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a>&lt;/li>
-&lt;/ol>
-&lt;h3 id="bucket-index-disabled-default">Bucket index disabled (default)&lt;/h3>
-&lt;p>At startup, &lt;strong>queriers&lt;/strong> iterate over the entire storage bucket to discover all tenants blocks and download the &lt;code>meta.json&lt;/code> for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its &lt;code>/ready&lt;/code> readiness probe endpoint will fail.&lt;/p>
+&lt;p>At startup &lt;strong>queriers&lt;/strong> iterate over the entire storage bucket to discover all tenants blocks and download the &lt;code>meta.json&lt;/code> for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its &lt;code>/ready&lt;/code> readiness probe endpoint will fail.&lt;/p>
 &lt;p>While running, queriers periodically iterate over the storage bucket to discover new tenants and recently uploaded blocks. Queriers do &lt;strong>not&lt;/strong> download any content from blocks except a small &lt;code>meta.json&lt;/code> file containing the block&amp;rsquo;s metadata (including the minimum and maximum timestamp of samples within the block).&lt;/p>
 &lt;p>Queriers use the metadata to compute the list of blocks that need to be queried at query time and fetch matching series from the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> instances holding the required blocks.&lt;/p>
-&lt;h3 id="bucket-index-enabled">Bucket index enabled&lt;/h3>
-&lt;p>When &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a> is enabled, queriers lazily download the bucket index upon the first query received for a given tenant, cache it in memory and periodically keep it update. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.&lt;/p>
-&lt;p>Given the bucket index removes the need to scan the bucket, it brings few benefits:&lt;/p>
-&lt;ol>
-&lt;li>The querier is expected to be ready shortly after startup.&lt;/li>
-&lt;li>Lower volume of API calls to object storage.&lt;/li>
-&lt;/ol>
 &lt;h3 id="anatomy-of-a-query-request">Anatomy of a query request&lt;/h3>
 &lt;p>When a querier receives a query range request, it contains the following parameters:&lt;/p>
 &lt;ul>
@@ -6557,7 +6345,6 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;li>List of blocks per tenant&lt;/li>
 &lt;li>Block&amp;rsquo;s &lt;code>meta.json&lt;/code> content&lt;/li>
 &lt;li>Block&amp;rsquo;s &lt;code>deletion-mark.json&lt;/code> existence and content&lt;/li>
-&lt;li>Tenant&amp;rsquo;s &lt;code>bucket-index.json.gz&lt;/code> content&lt;/li>
 &lt;/ul>
 &lt;p>Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).&lt;/p>
 &lt;p>To enable metadata cache, please set &lt;code>-blocks-storage.bucket-store.metadata-cache.backend&lt;/code>. Only &lt;code>memcached&lt;/code> backend is supported currently. Memcached client has additional configuration available via flags with &lt;code>-blocks-storage.bucket-store.metadata-cache.memcached.*&lt;/code> prefix.&lt;/p>
@@ -6604,11 +6391,11 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.query-store-for-labels-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_store_for_labels_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The time after which a metric should be queried from storage and not just&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ingesters. 0 means all queries are sent to store. When running the blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># storage, if this option is enabled, the time range of the query sent to the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># store will be manipulated to ensure the query end is not more recent than&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># &amp;#39;now - query-store-after&amp;#39;.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The time after which a metric should only be queried from storage and not&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># just ingesters. 0 means all queries are sent to store. When running the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks storage, if this option is enabled, the time range of the query sent&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># to the store will be manipulated to ensure the query end is not more recent&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># than &amp;#39;now - query-store-after&amp;#39;.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.query-store-after&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_store_after&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -6825,8 +6612,8 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.filesystem.dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[dir&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the querier and store-gateway discover and synchronize&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks stored in the bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the store-gateway synchronizes blocks stored in the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Directory to store synchronized TSDB index headers.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.sync-dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -7063,29 +6850,13 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>24h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># network round trip for large content if the configured caching backend&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># has an hard limit on cached items size (in this case, you should set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># this limit to the same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache attributes of the block metafile.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_attributes_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>168h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache content of the bucket index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of bucket index content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># network round trip for large content if the configured caching backend&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># has an hard limit on cached items size (in this case, you should set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># this limit to the same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Duration after which the blocks marked for deletion will be filtered out&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># while fetching blocks. The idea of ignore-deletion-marks-delay is to&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -7095,33 +6866,6 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -compactor.deletion-delay.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ignore_deletion_mark_delay&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>6h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_index&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># True to enable querier to discover blocks in the storage via bucket&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># index instead of bucket scanning.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a cached bucket index should be refreshed.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_stale_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a bucket index, which previously failed to load, should&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># be tried to load again.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_error_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long a unused bucket index should be cached. Once this timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># expires, the unused bucket index is removed from the in-memory cache.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The maximum allowed age of a bucket index (last updated) before queries&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># start failing because the bucket index is too old. The bucket index is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># periodically updated by the compactor, while this check is enforced in&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the querier (at query time).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_stale_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Local directory to store TSDBs in the ingesters.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -7900,7 +7644,6 @@ killing them is a last resort and should not be left to a machine.&lt;/p></descr
 &lt;li>List of blocks per tenant&lt;/li>
 &lt;li>Block&amp;rsquo;s &lt;code>meta.json&lt;/code> content&lt;/li>
 &lt;li>Block&amp;rsquo;s &lt;code>deletion-mark.json&lt;/code> existence and content&lt;/li>
-&lt;li>Tenant&amp;rsquo;s &lt;code>bucket-index.json.gz&lt;/code> content&lt;/li>
 &lt;/ul>
 &lt;p>Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).&lt;/p>
 &lt;p>To enable metadata cache, please set &lt;code>-blocks-storage.bucket-store.metadata-cache.backend&lt;/code>. Only &lt;code>memcached&lt;/code> backend is supported currently. Memcached client has additional configuration available via flags with &lt;code>-blocks-storage.bucket-store.metadata-cache.memcached.*&lt;/code> prefix.&lt;/p>
@@ -8153,8 +7896,8 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.filesystem.dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[dir&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the querier and store-gateway discover and synchronize&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks stored in the bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># This configures how the store-gateway synchronizes blocks stored in the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># bucket.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Directory to store synchronized TSDB index headers.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.sync-dir&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -8391,29 +8134,13 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>24h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># network round trip for large content if the configured caching backend&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># has an hard limit on cached items size (in this case, you should set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># this limit to the same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of metafile content to cache in bytes.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache attributes of the block metafile.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[metafile_attributes_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>168h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to cache content of the bucket index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_content_ttl&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum size of bucket index content to cache in bytes. Caching will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># skipped if the content exceeds this size. This is useful to avoid&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># network round trip for large content if the configured caching backend&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># has an hard limit on cached items size (in this case, you should set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># this limit to the same limit in the caching backend).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[bucket_index_max_size_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1048576&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Duration after which the blocks marked for deletion will be filtered out&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># while fetching blocks. The idea of ignore-deletion-marks-delay is to&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -8423,33 +8150,6 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># -compactor.deletion-delay.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ignore_deletion_mark_delay&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>6h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_index&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># True to enable querier to discover blocks in the storage via bucket&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># index instead of bucket scanning.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a cached bucket index should be refreshed.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_stale_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently a bucket index, which previously failed to load, should&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># be tried to load again.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[update_on_error_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long a unused bucket index should be cached. Once this timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># expires, the unused bucket index is removed from the in-memory cache.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[idle_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The maximum allowed age of a bucket index (last updated) before queries&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># start failing because the bucket index is too old. The bucket index is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># periodically updated by the compactor, while this check is enforced in&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the querier (at query time).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_stale_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tsdb&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Local directory to store TSDBs in the ingesters.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -8740,14 +8440,10 @@ As such, entries are only written to the index write cache &lt;em>after&lt;/em> 
 Data stays in the index indefinitely or until it is evicted by newer entries.&lt;/p>
 &lt;p>The index write cache should be configures on the &lt;strong>ingesters&lt;/strong> using flags with the &lt;code>-store.index-cache-write&lt;/code> prefix.&lt;/p></description></item><item><title>Docs: Compactor</title><link>/docs/blocks-storage/compactor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/compactor/</guid><description>
 &lt;!-- DO NOT EDIT THIS FILE - This file has been automatically generated from its .template -->
-&lt;p>The &lt;strong>compactor&lt;/strong> is an service which is responsible to:&lt;/p>
-&lt;ul>
-&lt;li>Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).&lt;/li>
-&lt;li>Keep the per-tenant bucket index updated. The &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a> is used by &lt;a href="/docs/blocks-storage/querier/">queriers&lt;/a> to discover new blocks in the storage.&lt;/li>
-&lt;/ul>
+&lt;p>The &lt;strong>compactor&lt;/strong> is an optional service which compacts multiple blocks of a given tenant into a single optimized larger block. Running compactor is &lt;strong>highly recommended&lt;/strong> to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).&lt;/p>
 &lt;p>The compactor is &lt;strong>stateless&lt;/strong>.&lt;/p>
-&lt;h2 id="how-compaction-works">How compaction works&lt;/h2>
-&lt;p>The blocks compaction has two main benefits:&lt;/p>
+&lt;h2 id="how-it-works">How it works&lt;/h2>
+&lt;p>The compactor has two main benefits:&lt;/p>
 &lt;ol>
 &lt;li>Vertically compact blocks uploaded by all ingesters for the same time range&lt;/li>
 &lt;li>Horizontally compact blocks with small time ranges into a single larger block&lt;/li>
@@ -8827,30 +8523,20 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.compaction-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[compaction_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How frequently compactor should run blocks cleanup and maintenance, as well&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># as update the bucket index.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks cleanup and maintenance should run&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># concurrently.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Max number of tenants for which blocks should be cleaned up concurrently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># (deletion of blocks previously marked for deletion).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.cleanup-concurrency&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cleanup_concurrency&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Time before a block marked for deletion is deleted from bucket. If not 0,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will permanently&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># delete blocks marked for deletion from the bucket. If 0, blocks will be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># deleted straight away. Note that deleting blocks immediately can cause query&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># failures.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks will be marked for deletion and compactor component will delete&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># blocks marked for deletion from the bucket. If delete-delay is 0, blocks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># will be deleted straight away. Note that deleting blocks immediately can&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># cause query failures, if store gateway still has the block loaded, or&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># compactor is ignoring the deletion because it&amp;#39;s compacting the block at the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># same time.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.deletion-delay&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[deletion_delay&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>12h&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># When enabled, at compactor startup the bucket will be scanned and all found&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># deletion marks inside the block location will be copied to the markers&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># global location too. This option can (and should) be safely disabled as soon&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># as the compactor has successfully run at least once.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.block-deletion-marks-migration-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[block_deletion_marks_migration_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Comma separated list of tenants that can be compacted. If specified, only&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># these tenants will be compacted by compactor, otherwise all tenants can be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -8936,12 +8622,12 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;li>Upgrade Golang version in &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
 &lt;li>Build new image &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
 &lt;li>Publish the new image to &lt;code>quay.io&lt;/code> (requires a maintainer)&lt;/li>
-&lt;li>Update the Docker image tag in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
+&lt;li>Update the Docker image tag in &lt;code>.circleci/config.yml&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;li>Upgrade integration tests version
 &lt;ul>
-&lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
+&lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.circleci/config.yml&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ol>
@@ -9074,44 +8760,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 │ │ TOC │ │
 │ └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
-&lt;/code>&lt;/pre></description></item><item><title>Docs: Bucket Index</title><link>/docs/blocks-storage/bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/bucket-index/</guid><description>
-&lt;p>The bucket index is a &lt;strong>per-tenant file containing the list of blocks and block deletion marks&lt;/strong> in the storage. The bucket index itself is stored in the backend object storage, is periodically updated by the compactor and used by queriers to discover blocks in the storage.&lt;/p>
-&lt;p>The bucket index usage is &lt;strong>optional&lt;/strong> and can be enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code> (or its respective YAML config option).&lt;/p>
-&lt;h2 id="benefits">Benefits&lt;/h2>
-&lt;p>The &lt;a href="/docs/blocks-storage/querier/">querier&lt;/a> needs to have an almost up-to-date view over the entire storage bucket, in order to find the right blocks to lookup at query time. Because of this, querier needs to periodically scan the bucket to look for new blocks uploaded by ingester or compactor, and blocks deleted (or marked for deletion) by compactor.&lt;/p>
-&lt;p>When this bucket index is enabled, the querier periodically look up the per-tenant bucket index instead of scanning the bucket via &amp;ldquo;list objects&amp;rdquo; operations. This brings few benefits:&lt;/p>
-&lt;ol>
-&lt;li>Reduced number of API calls to the object storage by querier&lt;/li>
-&lt;li>No &amp;ldquo;list objects&amp;rdquo; storage API calls done by querier&lt;/li>
-&lt;li>The &lt;a href="/docs/blocks-storage/querier/">querier&lt;/a> is up and running immediately after the startup (no need to run an initial bucket scan)&lt;/li>
-&lt;/ol>
-&lt;h2 id="structure-of-the-index">Structure of the index&lt;/h2>
-&lt;p>The &lt;code>bucket-index.json.gz&lt;/code> contains:&lt;/p>
-&lt;ul>
-&lt;li>&lt;strong>&lt;code>blocks&lt;/code>&lt;/strong>&lt;br />
-List of complete blocks of a tenant, including blocks marked for deletion (partial blocks are excluded from the index).&lt;/li>
-&lt;li>&lt;strong>&lt;code>block_deletion_marks&lt;/code>&lt;/strong>&lt;br />
-List of block deletion marks.&lt;/li>
-&lt;li>&lt;strong>&lt;code>updated_at&lt;/code>&lt;/strong>&lt;br />
-Unix timestamp (seconds precision) of when the index has been updated (written in the storage) the last time.&lt;/li>
-&lt;/ul>
-&lt;h2 id="how-it-gets-updated">How it gets updated&lt;/h2>
-&lt;p>The &lt;a href="/docs/blocks-storage/compactor/">compactor&lt;/a> periodically scans the bucket and uploads an updated bucket index to the storage. The frequency at which the bucket index is updated can be configured via &lt;code>-compactor.cleanup-interval&lt;/code>.&lt;/p>
-&lt;p>Despite using the bucket index is optional, the index itself is built and updated by the compactor even if &lt;code>-blocks-storage.bucket-store.bucket-index.enabled&lt;/code> has &lt;strong>not&lt;/strong> been enabled. This is intentional, so that once a Cortex cluster operator decides to enable the bucket index in a live cluster, the bucket index for any tenant is already existing and query results consistency is guaranteed. The overhead introduced by keeping the bucket index updated is expected to be non significative.&lt;/p>
-&lt;h2 id="how-its-used-by-the-querier">How it&amp;rsquo;s used by the querier&lt;/h2>
-&lt;p>The &lt;a href="/docs/blocks-storage/querier/">querier&lt;/a>, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier downloads it from the storage and cache it in memory.&lt;/p>
-&lt;p>&lt;em>Given it&amp;rsquo;s a small file, lazy downloading it doesn&amp;rsquo;t significantly impact on first query performances, but allows to get a querier up and running without pre-downloading every tenant&amp;rsquo;s bucket index. Moreover, if the &lt;a href="/docs/blocks-storage/querier/#metadata-cache">metadata cache&lt;/a> is enabled, the bucket index will be cached for a short time in a shared cache, reducing the actual latency and number of API calls to the object storage in case multiple queriers will fetch the same tenant&amp;rsquo;s bucket index in a short time.&lt;/em>&lt;/p>
-&lt;p>&lt;img src="/images/blocks-storage/bucket-index-querier-logic.png" alt="Querier - Bucket index">&lt;/p>
-&lt;!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
-&lt;p>While in-memory, a background process will keep it &lt;strong>updated at periodic intervals&lt;/strong>, so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index. There are two config options involved:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-blocks-storage.bucket-store.bucket-index.update-on-stale-interval&lt;/code>&lt;br />
-This option configures how frequently a cached bucket index should be refreshed.&lt;/li>
-&lt;li>&lt;code>-blocks-storage.bucket-store.bucket-index.update-on-error-interval&lt;/code>&lt;br />
-If downloading a bucket index fails, the failure is cached for a short time in order to avoid hammering the backend storage. This option configures how frequently a bucket index, which previously failed to load, should be tried to load again.&lt;/li>
-&lt;/ul>
-&lt;p>If a bucket index is unused for a long time (configurable via &lt;code>-blocks-storage.bucket-store.bucket-index.idle-timeout&lt;/code>), e.g. because that querier instance is not receiving any query from the tenant, the querier will offload it, stopping to keep it updated at regular intervals. This is particularly for tenants which are resharded to different queriers when &lt;a href="/docs/guides/shuffle-sharding/">shuffle sharding&lt;/a> is enabled.&lt;/p>
-&lt;p>Finally, the querier, at query time, checks how old is a bucket index (based on its &lt;code>updated_at&lt;/code>) and fail a query if its age is older than &lt;code>-blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/code>. This circuit breaker is used to ensure queriers will not return any partial query results due to a stale view over the long-term storage.&lt;/p></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
+&lt;/code>&lt;/pre></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
 &lt;p>Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e">custom framework&lt;/a> running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/">&lt;code>testing&lt;/code>&lt;/a> package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p>
 &lt;h2 id="how-to-run-integration-tests">How to run integration tests&lt;/h2>
 &lt;p>When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong>locally&lt;/strong> you should build the Cortex Docker image first:&lt;/p>
@@ -9141,6 +8790,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Update &lt;code>build-image/Docker&lt;/code>&lt;/li>
 &lt;li>Build the image running &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
 &lt;li>Publish the image to the repository running &lt;code>docker push quay.io/cortexproject/build-image:TAG&lt;/code> (this can only be done by a maintainer)&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.circleci/config.yml&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/chunks-storage/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/ingesters-with-wal/</guid><description>
@@ -9750,11 +9400,161 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>Ingester: close idle TSDB and remove them from local disk (&lt;code>-blocks-storage.tsdb.close-idle-tsdb-timeout&lt;/code>)&lt;/li>
 &lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
 &lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage bucket index
+&lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
+&lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
+&lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>
+&lt;p>The Cortex blocks storage has few requirements that should be considered when migrating TSDB blocks from Thanos / Prometheus to Cortex:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>The blocks in the bucket should be located at &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code>&lt;/strong>&lt;br />
+Cortex isolates blocks on a per-tenant basis in the bucket and, for this reason, each tenant blocks should be uploaded to a different location in the bucket. The bucket prefix, where a specific tenant blocks should be uploaded, is &lt;code>/&amp;lt;tenant-id&amp;gt;/&lt;/code>; if Cortex is running with auth disabled (no multi-tenancy) then the &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> to use is &lt;code>fake&lt;/code>.&lt;/li>
+&lt;li>&lt;strong>Remove Thanos external labels and inject &lt;code>__org_id__&lt;/code> into each block&amp;rsquo;s &lt;code>meta.json&lt;/code>&lt;/strong>&lt;br />
+Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thanos stores external labels at &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>, which should be all removed when migrating to Cortex, while the &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> added.&lt;/li>
+&lt;/ol>
+&lt;h2 id="how-to-migrate-the-storage">How to migrate the storage&lt;/h2>
+&lt;p>Currently, no tool is provided to migrate TSDB blocks from Thanos / Prometheus to Cortex, but writing an automation should be fairly easy. This automation could do the following:&lt;/p>
+&lt;ol>
+&lt;li>Upload TSDB blocks from Thanos / Prometheus to Cortex bucket&lt;/li>
+&lt;li>Manipulate &lt;code>meta.json&lt;/code> file for each block in the Cortex bucket&lt;/li>
+&lt;/ol>
+&lt;h3 id="upload-tsdb-blocks-to-cortex-bucket">Upload TSDB blocks to Cortex bucket&lt;/h3>
+&lt;p>TSDB blocks stored in Prometheus local disk or Thanos bucket should be copied/uploaded to the Cortex bucket at the location &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code> (when Cortex is running with auth disabled then &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> must be &lt;code>fake&lt;/code>).&lt;/p>
+&lt;h3 id="manipulate-metajson-file">Manipulate &lt;code>meta.json&lt;/code> file&lt;/h3>
+&lt;p>For each block copied/uploaded to the Cortex bucket, the &lt;code>meta.json&lt;/code> should be manipulated. The easiest approach would be iterating the tenants and blocks in the bucket and for each block:&lt;/p>
+&lt;ol>
+&lt;li>Download the &lt;code>meta.json&lt;/code> to the local filesystem&lt;/li>
+&lt;li>Decode the JSON&lt;/li>
+&lt;li>Manipulate the data structure (&lt;em>see below&lt;/em>)&lt;/li>
+&lt;li>Re-encode the JSON&lt;/li>
+&lt;li>Re-upload it to the bucket (overwriting the previous version of the &lt;code>meta.json&lt;/code> file)&lt;/li>
+&lt;/ol>
+&lt;p>The &lt;code>meta.json&lt;/code> should be manipulated in order to ensure:&lt;/p>
 &lt;ul>
-&lt;li>The bucket index support in the querier (enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code>) is experimental&lt;/li>
-&lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
+&lt;li>It contains the &lt;code>thanos&lt;/code> root-level entry&lt;/li>
+&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> do not contain any Thanos-specific external label&lt;/li>
+&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> contain the Cortex-specific external label &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code>&lt;/li>
 &lt;/ul>
-&lt;/li>
-&lt;li>Querier: tenant federation&lt;/li>
+&lt;h4 id="when-migrating-from-thanos">When migrating from Thanos&lt;/h4>
+&lt;p>When migrating from Thanos, the easiest approach would be keep the existing &lt;code>thanos&lt;/code> root-level entry as is, except:&lt;/p>
+&lt;ol>
+&lt;li>Completely remove the content of &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
+&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>For example, when migrating a block from Thanos for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file will look like:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">},&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
+&lt;span style="color:#000;font-weight:bold">},&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="when-migrating-from-prometheus">When migrating from Prometheus&lt;/h4>
+&lt;p>When migrating from Prometheus, the &lt;code>meta.json&lt;/code> file will not contain any &lt;code>thanos&lt;/code> root-level entry and, for this reason, it would need to be generated:&lt;/p>
+&lt;ol>
+&lt;li>Create the &lt;code>thanos&lt;/code> root-level entry (&lt;em>see below&lt;/em>)&lt;/li>
+&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>For example, when migrating a block from Prometheus for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file should be as follow:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">},&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
+&lt;span style="color:#000;font-weight:bold">},&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
+&lt;p>All Cortex components take the tenant ID from a header &lt;code>X-Scope-OrgID&lt;/code>
+on each request. A tenant (also called &amp;ldquo;user&amp;rdquo; or &amp;ldquo;org&amp;rdquo;) is the owner of
+a set of series written to and queried from Cortex. All Cortex components
+trust this value completely: if you need to protect your Cortex installation
+from accidental or malicious calls then you must add an additional layer
+of protection.&lt;/p>
+&lt;p>Typically this means you run Cortex behind a reverse proxy, and you must
+ensure that all callers, both machines sending data over the &lt;code>remote_write&lt;/code>
+interface and humans sending queries from GUIs, supply credentials
+which identify them and confirm they are authorised.&lt;/p>
+&lt;p>When configuring the &lt;code>remote_write&lt;/code> API in Prometheus there is no way to
+add extra headers. The user and password fields of http Basic auth, or
+Bearer token, can be used to convey the tenant ID and/or credentials.&lt;/p>
+&lt;p>To disable the multi-tenant functionality, you can pass the argument
+&lt;code>-auth.enabled=false&lt;/code> to every Cortex component, which will set the OrgID
+to the string &lt;code>fake&lt;/code> for every request.&lt;/p>
+&lt;p>Note that the tenant ID that is used to write the series to the datastore
+should be the same as the one you use to query the data. If they don&amp;rsquo;t match
+you won&amp;rsquo;t see any data. As of now, you can&amp;rsquo;t see series from other tenants.&lt;/p>
+&lt;p>For more information regarding the tenant ID limits, refer to: &lt;a href="/docs/guides/limitations/#tenant-id-naming">Tenant ID limitations&lt;/a>&lt;/p></description></item><item><title>Docs: AWS tips</title><link>/docs/chunks-storage/aws-tips/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/aws-tips/</guid><description>
+&lt;p>This page shares some tips and things to take in consideration when running Cortex chunks storage on AWS.&lt;/p>
+&lt;h2 id="aws-credentials">AWS Credentials&lt;/h2>
+&lt;p>You can supply credentials to Cortex by setting environment variables
+&lt;code>AWS_ACCESS_KEY_ID&lt;/code>, &lt;code>AWS_SECRET_ACCESS_KEY&lt;/code> (and &lt;code>AWS_SESSION_TOKEN&lt;/code>
+if you use MFA), or use a short-term token solution such as
+&lt;a href="https://github.com/uswitch/kiam">kiam&lt;/a>.&lt;/p>
+&lt;h2 id="should-i-use-s3-or-dynamodb-">Should I use S3 or DynamoDB ?&lt;/h2>
+&lt;p>Note that the choices for the chunks storage backend are: &amp;ldquo;chunks&amp;rdquo; of
+timeseries data in S3 and index in DynamoDB, or everything in DynamoDB.
+Using just S3 is not an option, unless you use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> engine.&lt;/p>
+&lt;p>Broadly S3 is much more expensive to read and write, while DynamoDB is
+much more expensive to store over months. S3 charges differently, so
+the cross-over will depend on the size of your chunks, and how long
+you keep them. Very roughly: for 3KB chunks if you keep them longer
+than 8 months then S3 is cheaper.&lt;/p>
+&lt;h2 id="dynamodb-capacity-provisioning">DynamoDB capacity provisioning&lt;/h2>
+&lt;p>By default, the Cortex Tablemanager will provision tables with 1,000
+units of write capacity and 300 read - these numbers are chosen to be
+high enough that most trial installations won&amp;rsquo;t see a bottleneck on
+storage, but do note that that AWS will charge you approximately $60
+per day for this capacity.&lt;/p>
+&lt;p>To match your costs to requirements, observe the actual capacity
+utilisation via CloudWatch or Prometheus metrics, then adjust the
+Tablemanager provision via command-line options
+&lt;code>-dynamodb.chunk-table.write-throughput&lt;/code>, &lt;code>read-throughput&lt;/code> and
+similar with &lt;code>.periodic-table&lt;/code> which controls the index table.&lt;/p>
+&lt;p>Tablemanager can even adjust the capacity dynamically, by watching
+metrics for DynamoDB throttling and ingester queue length. Here is an
+example set of command-line parameters from a fairly modest install:&lt;/p>
+&lt;pre>&lt;code> -target=table-manager
+-metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
+-metrics.target-queue-length=100000
+-dynamodb.url=dynamodb://us-east-1/
+-schema-config-file=/etc/schema.yaml
+-dynamodb.periodic-table.write-throughput=1000
+-dynamodb.periodic-table.write-throughput.scale.enabled=true
+-dynamodb.periodic-table.write-throughput.scale.min-capacity=200
+-dynamodb.periodic-table.write-throughput.scale.max-capacity=2000
+-dynamodb.periodic-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.periodic-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.periodic-table.read-throughput=300
+-dynamodb.chunk-table.write-throughput=800
+-dynamodb.chunk-table.write-throughput.scale.enabled=true
+-dynamodb.chunk-table.write-throughput.scale.min-capacity=200
+-dynamodb.chunk-table.write-throughput.scale.max-capacity=1000
+-dynamodb.chunk-table.write-throughput.scale.out-cooldown=300 # 5 minutes between scale ups
+-dynamodb.chunk-table.inactive-enable-ondemand-throughput-mode=true
+-dynamodb.chunk-table.read-throughput=300
+&lt;/code>&lt;/pre>&lt;p>Several things to note here:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-metrics.url&lt;/code> points at a Prometheus server running within the
+cluster, scraping Cortex. Currently it is not possible to use
+Cortex itself as the target here.&lt;/li>
+&lt;li>&lt;code>-metrics.target-queue-length&lt;/code>: when the ingester queue is below
+this level, Tablemanager will not scale up. When the queue is
+growing above this level, Tablemanager will scale up whatever
+table is being throttled.&lt;/li>
+&lt;li>The plain &lt;code>throughput&lt;/code> values are used when the tables are first
+created. Scale-up to any level up to this value will be very quick,
+but if you go higher than this initial value, AWS may take tens of
+minutes to finish scaling. In the config above they are set.&lt;/li>
+&lt;li>&lt;code>ondemand-throughput-mode&lt;/code> tells AWS to charge for what you use, as
+opposed to continuous provisioning. This mode is cost-effective for
+older data, which is never written and only read sporadically.&lt;/li>
+&lt;li>If you want to add AWS tags to the created DynamoDB tables you
+can do it by adding a &lt;code>tags&lt;/code> map to your schema definition. See
+&lt;a href="/docs/chunks-storage/schema-configuration/">&lt;code>schema configuration&lt;/code>&lt;/a>&lt;/li>
 &lt;/ul></description></item></channel></rss>

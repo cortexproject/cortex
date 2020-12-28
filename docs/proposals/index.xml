@@ -26,7 +26,7 @@
 &lt;p>We believe the same technique described in this proposal could be applied to optimise the store-gateway too (we&amp;rsquo;ve built a &lt;a href="https://github.com/cortexproject/cortex/compare/pracucci:experiment-object-store-based-blocks-index">PoC&lt;/a>), however to keep the design doc easier to discuss we suggest to keep the store-gateway out of scope and address it in a follow-up design doc.&lt;/p>
 &lt;h2 id="proposal">Proposal&lt;/h2>
 &lt;p>We propose to introduce a per-tenant bucket index. The index is a single JSON file containing two main information: list of all completed (non partial) blocks in the bucket + list of all deletion marks. The bucket index is stored in the bucket within the tenant location (eg. &lt;code>/user-1/bucket-index.json&lt;/code>) and is kept updated by the compactor.&lt;/p>
-&lt;p>The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it&amp;rsquo;s a small file, we expect the lazy download of the bucket index to not significantly impact first query performances.&lt;/p>
+&lt;p>The querier, at query time, checks whether the bucket index for the tenant has already been loaded in memory. If not, the querier will download it and cache it in memory. Given it&amp;rsquo;s a small file, we expect the lazy download of the bucket index to not significantly impact 1st query performances.&lt;/p>
 &lt;p>While in-memory, a background process will keep it updated at periodic intervals (configurable), so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index.&lt;/p>
 &lt;p>If a bucket index is unused for a long time (configurable), eg. because that querier instance is not receiving any query from the tenant, the querier will offload it, stopping to keep it updated at regular intervals. This is particularly useful when shuffle sharding is enabled, because a querier will only run queries for a subset of tenants and tenants can be re-sharded across queries in the event of a scale up/down or rolling updates.&lt;/p>
 &lt;p>The bucket index will be also cached on memcached for a short period of time, to reduce the number of &amp;ldquo;get object&amp;rdquo; operations in case multiple queriers fetch it in a short period of time (eg. 5 minutes).&lt;/p>
@@ -233,117 +233,7 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;h4 id="allow-customisation-of-the-label-used-to-expose-tenant-ids">Allow customisation of the label used to expose tenant ids&lt;/h4>
 &lt;p>As per this proposal the label name &lt;code>__tenant_id__&lt;/code> is fixed, but users might want to be able to modify that through a configuration option.&lt;/p>
 &lt;h4 id="retain-overlapping-tenant-id-label-values-recursively">Retain overlapping tenant id label values recursively&lt;/h4>
-&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Deletion of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-deletion/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-deletion/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/pstibrany">Peter Stibrany&lt;/a>&lt;/li>
-&lt;li>Date: November 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="deletion-of-tenant-data">Deletion of tenant data&lt;/h2>
-&lt;h2 id="problem">Problem&lt;/h2>
-&lt;p>When a tenant is deleted from the external system that controls access to Cortex, we want to clean up tenants data from Cortex as well.&lt;/p>
-&lt;h2 id="background">Background&lt;/h2>
-&lt;p>When using blocks storage, Cortex stores tenant’s data in several places:&lt;/p>
-&lt;ul>
-&lt;li>object store for long-term storage of blocks,&lt;/li>
-&lt;li>ingesters disks for short-term storage. Ingesters eventually upload data to long-term storage,&lt;/li>
-&lt;li>various caches: query-frontend, chunks, index and metadata,&lt;/li>
-&lt;li>object store for rules (separate from blocks),&lt;/li>
-&lt;li>object store for alert manager configuration,&lt;/li>
-&lt;li>state for alertmanager instances (notifications and silences).&lt;/li>
-&lt;/ul>
-&lt;p>This document expects that there is an external authorization system in place.
-Disabling or deleting the tenant in this system will stop tenants data, queries and other API calls from reaching Cortex.
-Note that there may be a delay before disabling or deleting the user, until data / queries fully stop, due to eg. caching in authorization proxies.
-Cortex endpoint for deleting a tenant data should be only called after this blocking is in place.&lt;/p>
-&lt;h2 id="proposal">Proposal&lt;/h2>
-&lt;h3 id="api-endpoints">API Endpoints&lt;/h3>
-&lt;h4 id="post-purgerdelete_tenant">POST /purger/delete_tenant&lt;/h4>
-&lt;p>We propose to introduce an &lt;code>/purger/delete_tenant&lt;/code> API endpoint to trigger data deletion for the tenant.&lt;/p>
-&lt;p>While this endpoint works as an “admin” endpoint and should not be exposed directly to tenants, it still needs to know under which tenant it should operate.
-For consistency with other endpoints this endpoint would therefore require an &lt;code>X-Scope-OrgID&lt;/code> header and use the tenant from it.&lt;/p>
-&lt;p>It is safe to call “delete_tenant” multiple times.&lt;/p>
-&lt;h4 id="get-purgerdelete_tenant_status">GET /purger/delete_tenant_status&lt;/h4>
-&lt;p>To monitor the state of data deletion, another endpoint will be available: &lt;code>/purger/delete_tenant_status&lt;/code>.
-This will return OK if tenant’s data has been fully deleted – no more blocks exist on the long-term storage, alertmanager and rulers are fully stopped and configuration removed.
-Similarly to “delete_tenant” endpoint, “delete_tenant_status” will require &lt;code>X-Scope-OrgID&lt;/code> header.&lt;/p>
-&lt;h3 id="implementation-asynchronous">Implementation (asynchronous)&lt;/h3>
-&lt;p>Purger will implement both API endpoints.
-Upon receiving the call to &lt;code>/purger/delete_tenant&lt;/code> endpoint, Purger will initiate the deletion by writing “deletion marker” objects for specific tenant to following buckets:&lt;/p>
-&lt;ul>
-&lt;li>Blocks bucket&lt;/li>
-&lt;li>Ruler configuration bucket&lt;/li>
-&lt;li>Alertmanager configuration bucket&lt;/li>
-&lt;/ul>
-&lt;p>Deletion marker for the tenant will be an object stored under tenant prefix, eg. “/&lt;tenant>/deleted”.
-This object will contain the timestamp when it was created, so that we can delete it later based on the specified time period.
-We could reuse a subset of the proposed Thanos tombstones format, or use custom format.&lt;/p>
-&lt;p>“delete_tenant_status” endpoint will report success, if all of the following are true:&lt;/p>
-&lt;ul>
-&lt;li>There are no blocks for the tenant in the blocks bucket&lt;/li>
-&lt;li>There is a “deletion finished” object in the bucket for the tenant in the ruler configuration bucket.&lt;/li>
-&lt;li>There is a “deletion finished” object in the bucket for the tenant in the alertmanager configuration bucket.&lt;/li>
-&lt;/ul>
-&lt;p>See later sections on Ruler and Alertmanager for explanation of “deletion finished” objects.&lt;/p>
-&lt;h3 id="blocks-deletion-marker">Blocks deletion marker&lt;/h3>
-&lt;p>Blocks deletion marker will be used by compactor, querier and store-gateway.&lt;/p>
-&lt;h4 id="compactor">Compactor&lt;/h4>
-&lt;p>Upon discovering the blocks deletion marker, the compactor will start deletion of all blocks that belong to the tenant.
-This can take hours to finish, depending on the number of blocks.
-Even after deleting all blocks on the storage, ingesters may upload additional blocks for the tenant.
-To make sure that the compactor deletes these blocks, the compactor will keep the deletion marker in the bucket.
-After a configurable period of time it can delete the deletion marker too.&lt;/p>
-&lt;p>To implement deletion, Compactor should use new TenantsCleaner component similar to existing BlocksCleaner (which deletes blocks marked for deletion), and modify UserScanner to ignore deleted tenants (for BlocksCleaner and Compactor itself) or only return deleted tenants (for TenantsCleaner).&lt;/p>
-&lt;h4 id="querier-store-gateway">Querier, Store-gateway&lt;/h4>
-&lt;p>These two components scan for all tenants periodically, and can use the tenant deletion marker to skip tenants and avoid loading their blocks into memory and caching to disk (store-gateways).
-By implementing this, store-gateways will also unload and remove cached blocks.&lt;/p>
-&lt;p>Queriers and store-gateways use metadata cache and chunks cache when accessing blocks to reduce the number of API calls to object storage.
-In this proposal we don’t suggest removing obsolete entries from the cache – we will instead rely on configured expiration time for cache items.&lt;/p>
-&lt;p>Note: assuming no queries will be sent to the system once the tenant is deleted, implementing support for tenant deletion marker in queriers and store-gateways is just an optimization.
-These components will unload blocks once they are deleted from the object store even without this optimization.&lt;/p>
-&lt;h4 id="query-frontend">Query Frontend&lt;/h4>
-&lt;p>While query-frontend could use the tenant blocks deletion marker to clean up the cache, we don’t suggest to do that due to additional complexity.
-Instead we will only rely on eventual eviction of cached query results from the cache.
-It is possible to configure Cortex to set TTL for items in the frontend cache by using &lt;code>-frontend.default-validity&lt;/code> option.&lt;/p>
-&lt;h4 id="ingester">Ingester&lt;/h4>
-&lt;p>Ingesters don’t scan object store for tenants.&lt;/p>
-&lt;p>To clean up the local state on ingesters, we will implement closing and deletion of local per-tenant data for idle TSDB. (See Cortex PR #3491).
-This requires additional configuration for ingesters, specifically how long to wait before closing and deleting TSDB.
-This feature needs to work properly in two different scenarios:&lt;/p>
-&lt;ul>
-&lt;li>Ingester is no longer receiving data due to ring changes (eg. scale up of ingesters)&lt;/li>
-&lt;li>Data is received because user has been deleted.&lt;/li>
-&lt;/ul>
-&lt;p>Ingester doesn’t distinguish between the two at the moment.
-To make sure we don’t break queries by accidentally deleting TSDB too early, ingester needs to wait at least &lt;code>-querier.query-ingesters-within&lt;/code> duration.&lt;/p>
-&lt;p>Alternatively, ingester could check whether deletion marker exists on the block storage, when it detects idle TSDB.&lt;/p>
-&lt;p>&lt;strong>If more data is pushed to the ingester for a given tenant, ingester will open new TSDB, build new blocks and upload them. It is therefore essential that no more data is pushed to Cortex for the tenant after calling the “delete_tenant” endpoint.&lt;/strong>&lt;/p>
-&lt;h4 id="ruler-deletion-marker">Ruler deletion marker&lt;/h4>
-&lt;p>This deletion marker is stored in the ruler configuration bucket.
-When rulers discover this marker during the periodic sync of the rule groups, they will&lt;/p>
-&lt;ul>
-&lt;li>stop the evaluation of the rule groups for the user,&lt;/li>
-&lt;li>delete tenant rule groups (when multiple rulers do this at the same time, they will race for deletion, and need to be prepared to handle possible “object not found” errors)&lt;/li>
-&lt;li>delete local state.&lt;/li>
-&lt;/ul>
-&lt;p>When the ruler is finished with this cleanup, it will ask all other rulers if they still have any data for the tenant.
-If all other rulers reply with “no”, ruler can write “deletion finished” marker back to the bucket.
-This allows rulers to ignore the ruler completely, and it also communicates the status of the deletion back to purger.&lt;/p>
-&lt;p>Note that ruler currently relies on cached local files when using Prometheus Ruler Manager component.
-&lt;a href="https://github.com/cortexproject/cortex/issues/3134">This can be avoided now&lt;/a>, and since it makes cleanup simpler, we suggest to modify Cortex ruler implementation to avoid this local copy.&lt;/p>
-&lt;p>&lt;strong>Similarly to ingesters, it is necessary to disable access to the ruler API for deleted tenant.
-This must be done in external authorization proxy.&lt;/strong>&lt;/p>
-&lt;h4 id="alertmanager-deletion-marker">Alertmanager deletion marker&lt;/h4>
-&lt;p>Deletion marker for alert manager is stored in the alertmanager configuration bucket. Cleanup procedure for alertmanager data is similar to rulers – when individual alertmanager instances discover the marker, they will:&lt;/p>
-&lt;ul>
-&lt;li>Delete tenant configuration&lt;/li>
-&lt;li>Delete local notifications and silences state&lt;/li>
-&lt;li>Ask other alertmanagers if they have any tenant state yet, and if not, write “deletion finished” marker back to the bucket.&lt;/li>
-&lt;/ul>
-&lt;p>To perform the last step, Alertmanagers need to find other alertmanager instances. This will be implemented by using the ring, which will (likely) be added as per &lt;a href="https://github.com/cortexproject/cortex/pull/3574">Alertmanager scaling proposal&lt;/a>.&lt;/p>
-&lt;p>Access to Alertmanager API must be disabled for tenant that is going to be deleted.&lt;/p>
-&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
-&lt;p>Another possibility how to deal with tenant data deletion is to make purger component actively communicate with ingester, compactor, ruler and alertmanagers to make data deletion faster. In this case purger would need to understand how to reach out to all those components (with multiple ring configurations, one for each component type), and internal API calls would need to have strict semantics around when the data deletion is complete. This alternative has been rejected due to additional complexity and only small benefit in terms of how fast data would be deleted.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
+&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Documentation Versioning</title><link>/docs/proposals/documentation-versioning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/documentation-versioning/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/jaybatra26">Jay Batra&lt;/a>&lt;/li>
 &lt;li>Date: March 2020&lt;/li>
@@ -624,48 +514,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;li>Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.&lt;/li>
 &lt;li>Querier: Add support for querying both chunk store and blocks at the same time and test the support for querying both chunks and blocks from ingesters works correctly&lt;/li>
 &lt;li>Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
-&lt;ul>
-&lt;li>Author: &lt;a href="https://github.com/gotjosh">Josh Abreu&lt;/a>&lt;/li>
-&lt;li>Date: December 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
-&lt;/ul>
-&lt;h2 id="context-and-background">Context and Background&lt;/h2>
-&lt;p>The Cortex Alertmanager at its current state supports high-availability by using the same technique as the upstream Prometheus Alertmanager: we gossip silences and notifications between replicas to achieve eventual consistency. This allows us to tolerate machine failure without interruption of service. The caveat here is traffic between the ruler and Alertmanagers must not be load balanced as alerts themselves are not gossiped.&lt;/p>
-&lt;p>By itself it is not horizontally scalable; it is recommended to run a maximum of 3 replicas (for high availability). Each alertmanager replica will contain an internal instance for every tenant. The Alertmanager uses roughly ~3.7MB of memory and ~0.001 CPU cores per tenant, with an average tenant having ~10 active alerts and ~1 silences. These stats were measured from a cluster with ~80 QPS (Alerts received Per Second), ~40 NPS (Notifications Per Second), and ~700 configurations over a single replica.&lt;/p>
-&lt;h2 id="problem-and-requirements">Problem and Requirements&lt;/h2>
-&lt;p>Current numbers show a reasonably sized machine can handle 2000 tenants in the current service. We would like to be able to scale this up to 10x without increasing the machine size; i.e. we would like to make Cortex Alertmanager service horizontally scalable.&lt;/p>
-&lt;p>Furthermore, we desire to preserve the following characteristics:&lt;/p>
-&lt;ul>
-&lt;li>A single Cortex Alertmanager replica crashing or exiting abruptly should not cause externally-visible downtime or failure to deliver notifications.&lt;/li>
-&lt;li>Users should have an eventually consistent view of all the alerts current firing and under active notification, favouring availability of the Cortex Alertmanager over consistency.&lt;/li>
-&lt;li>We should be able to scale up, down and roll out new versions of the service without any service interruption or data loss.&lt;/li>
-&lt;/ul>
-&lt;h2 id="design">Design&lt;/h2>
-&lt;p>This is a big design, and as such we have divided the problem up into 4 areas: Routing &amp;amp; Sharding, Persistence &amp;amp; State, Replication &amp;amp; Consistency, and Architecture. The options and solutions I propose are divided along these lines to aid clarity.&lt;/p>
-&lt;h3 id="routing--sharding">Routing &amp;amp; Sharding&lt;/h3>
-&lt;p>To achieve horizontal scalability, we need to distribute the workload among replicas of the service. We need to choose an appropriate field to use to distribute the workload. The field must be present on all the API requests to the Alertmanager service.&lt;/p>
-&lt;p>&lt;strong>We propose the sharding on Tenant ID&lt;/strong>. The simplicity of this implementation, would allow us to get up and running relatively quickly whilst helping us validate assumptions. We intend to use the existing ring code to manage this. Other options such as tenant ID + receiver or Tenant ID + route are relatively complex as distributor components (in this case the Ruler) would need to be aware of Alertmanager configuration.&lt;/p>
-&lt;h3 id="persistence--state">Persistence &amp;amp; State&lt;/h3>
-&lt;p>Alertmanager is a stateful service; it stores the notification state and configured silences. By default, Alertmanager persists its state to disk every 15mins. In the horizontally scalable Alertmanager service, we need to move this state around as the number of replicas grows and shrinks. We also need to persist this state across restarts and rolling upgrades.&lt;/p>
-&lt;p>&lt;strong>We propose&lt;/strong> making each Alertmanager replica flush the state to object storage, under its own key that’s a combination of tenant ID + replica periodically. This state on durable storage will only be used when cold-starting the cluster.&lt;/p>
-&lt;p>This mechanism covers multiple challenges (scaling up &amp;amp; down, rolling restarts, total cluster failure). &lt;strong>To top this off, in the implementation, we’ll always try to request state from other replicas in the cluster before ever trying to go to object storage.&lt;/strong>&lt;/p>
-&lt;h3 id="replication--consistency">Replication &amp;amp; Consistency&lt;/h3>
-&lt;p>Upstream Alertmanager replicates notification state between replicas to ensure notifications are not sent more than once. Cortex Alertmanager does the same. When we move to a model where AM instances for a given tenant only live on a subset of replicas, we have to decide how we will keep these replicas in sync.&lt;/p>
-&lt;p>&lt;strong>We have an option of doing nothing&lt;/strong> and use the existing gossip mechanism and gossip all tenants state to all replicas. The AM Router will then drop state updates for tenants which don’t shard to a given replica. I think this will be easy to implement as it requires few changes but probably won’t scale.&lt;/p>
-&lt;p>&lt;strong>However, I propose we Synchronized state over gRPC.&lt;/strong> The upstream Alertmanager notification dispatcher uses a timeout-based approach for its notifications. Using the “peer order”, it’ll wait a certain amount of time before letting other replicas know if this notification succeeded or not. If it didn’t, the next replica in line will try to send the notification. We propose to communicate this via gRPC calls.&lt;/p>
-&lt;p>While I propose the use of gRPC, is good to note that doing nothing is still a solid candidate for consideration but not having to maintain and operate two separate replication patterns feels like a win.&lt;/p>
-&lt;h3 id="architecture">Architecture&lt;/h3>
-&lt;p>To implement the sharding strategy we need a component in charge of handling incoming alerts and API requests, distributing it to the corresponding shard.&lt;/p>
-&lt;p>The idea here is to have an “Alertmanager Distributor” as a first stop in the reception of alerts. Once alerts are received, the component is in charge of validating the alerts against the limits. Validated alerts are then sent to multiple managers in parallel.&lt;/p>
-&lt;p>The individual pieces of this component (sharding, limits) cannot be optional - the optional part of it is where we decide to run it.&lt;/p>
-&lt;p>We can either run it as a separate service or embed it. &lt;strong>I propose we simply embed it&lt;/strong>. At its core it’ll be simpler to operate. With future work making it possible to run as a separate service so that operators can scale when/if needed.&lt;/p>
-&lt;h2 id="conclusion">Conclusion&lt;/h2>
-&lt;p>Under the assumption we implement the options proposed above, our architecture looks like this:&lt;/p>
-&lt;p>&lt;img src="/images/proposals/scalable-am.png" alt="Scalable Alertmanager Architecture">&lt;/p>
-&lt;p>&lt;strong>POST /api/v1/alerts (from the ruler) can go to any Alertmanager replica.&lt;/strong> The AM distributor uses the ring to write alerts to a quorum of AM managers (reusing the existing code). We continue to use the same in-memory data structure from the upstream Alertmanager to save alerts and notify other pieces&lt;/p>
-&lt;p>&lt;strong>GET /api/v1/alerts and /api/v1/alerts/group&lt;/strong> uses the ring to find the right alertmanager replicas for the given tenant. They read from a quorum of alertmanager replicas and return an union of the results.&lt;/p>
-&lt;p>&lt;strong>Alertmanager state is replicated between instances to keep them in sync&lt;/strong>. Where the state is replicated to to is controlled by the ring.&lt;/p></description></item><item><title>Docs: Scalable Query Frontend</title><link>/docs/proposals/scalable-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-query-frontend/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Scalable Query Frontend</title><link>/docs/proposals/scalable-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-query-frontend/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/joe-elliott">Joe Elliott&lt;/a>&lt;/li>
 &lt;li>Date: April 2020&lt;/li>

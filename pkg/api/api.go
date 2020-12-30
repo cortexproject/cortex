@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
@@ -173,6 +175,13 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
+}
+
+// RegisterOverrides registers the endpoints associates with the configuration overrides
+func (a *API) RegisterOverrides(runtimeCfgManager *runtimeconfig.Manager) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/overrides", "Current Overrides Config")
+
+	a.RegisterRoute("/overrides", overridesHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

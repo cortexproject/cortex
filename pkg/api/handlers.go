@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 const (
@@ -218,6 +219,22 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		util.WriteYAMLResponse(w, output)
+	}
+}
+
+func overridesHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out, err := yaml.Marshal(runtimeCfgManager.GetConfig())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/yaml")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(out); err != nil {
+			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
+		}
 	}
 }
 

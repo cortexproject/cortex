@@ -19,6 +19,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | --- | ------- | -------- |
 | [Index page](#index-page) | _All services_ | `GET /` |
 | [Configuration](#configuration) | _All services_ | `GET /config` |
+| [Overrides](#overrides) | _All services_ | `GET /overrides` |
 | [Services status](#services-status) | _All services_ | `GET /services` |
 | [Readiness probe](#readiness-probe) | _All services_ | `GET /ready` |
 | [Metrics](#metrics) | _All services_ | `GET /metrics` |
@@ -122,6 +123,14 @@ GET /config?mode=defaults
 ```
 
 Displays the configuration using only the default values.
+
+### Overrides
+
+```
+GET /overrides
+```
+
+Displays the limit overrides, per tenant, currently applied to Cortex (in YAML format), including default values.
 
 ### Services status
 

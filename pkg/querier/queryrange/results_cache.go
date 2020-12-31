@@ -25,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -36,7 +37,7 @@ var (
 )
 
 type CacheGenNumberLoader interface {
-	GetResultsCacheGenNumber(userID string) string
+	GetResultsCacheGenNumber(tenantIDs []string) string
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -184,27 +185,21 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	// do not cache multi tenant queries
-	if len(tenantIDs) != 1 {
-		return s.next.Do(ctx, r)
-	}
-	userID := tenantIDs[0]
-
 	if s.shouldCache != nil && !s.shouldCache(r) {
 		return s.next.Do(ctx, r)
 	}
 
 	if s.cacheGenNumberLoader != nil {
-		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(userID))
+		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(userID, r)
+		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
 
-	maxCacheFreshness := s.limits.MaxCacheFreshness(userID)
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)

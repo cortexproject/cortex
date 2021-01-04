@@ -1506,7 +1506,7 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		// Run the shipper's Sync() to upload unshipped blocks. Make sure the TSDB state is active, in order to
 		// avoid any race condition with closing idle TSDBs.
 		if !userDB.casState(active, activeShipping) {
-			level.Warn(util.Logger).Log("msg", "shipper shipped because the TSDB is not active", "user", userID)
+			level.Info(util.Logger).Log("msg", "shipper skipped because the TSDB is not active", "user", userID)
 			return nil
 		}
 		defer userDB.casState(activeShipping, active)

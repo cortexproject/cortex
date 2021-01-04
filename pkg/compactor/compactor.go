@@ -383,7 +383,9 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsers(ctx context.Context) (succeeded bool) {
+func (c *Compactor) compactUsers(ctx context.Context) {
+	succeeded := false
+
 	c.compactionRunsStarted.Inc()
 
 	defer func() {
@@ -405,7 +407,7 @@ func (c *Compactor) compactUsers(ctx context.Context) (succeeded bool) {
 	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return false
+		return
 	}
 
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
@@ -422,7 +424,7 @@ func (c *Compactor) compactUsers(ctx context.Context) (succeeded bool) {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return false
+			return
 		}
 
 		// Ensure the user ID belongs to our shard.
@@ -458,7 +460,8 @@ func (c *Compactor) compactUsers(ctx context.Context) (succeeded bool) {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return true
+	succeeded = true
+	return
 }
 
 func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {

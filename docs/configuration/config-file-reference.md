@@ -1256,13 +1256,22 @@ storage:
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
+    # Deprecated: use -ruler.storage.s3.sse_config instead. sse_encryption enabled is equivalent to -ruler.storage.s3.sse_config.type=SSE-S3
     # Enable AWS Server Side Encryption
     # CLI flag: -ruler.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
 
-    # AWS Server Side Encryption Type
-    # CLI flag: -ruler.storage.s3.sse-encryption-type
-    [sse_encryption_type: <string> | default = "AES256"]
+    sse_config:
+      # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported.
+      # SSE-S3 uses AES-256 to encrypt all objects saved in the S3 bucket.
+      # SSE-KMS uses KMS to encrypt all objects saved in the S3 bucket.
+      # kms_key_id is required when the SSE-KMS type is selected.
+      # CLI flag: -ruler.storage.s3.sse_config.type
+      [type: <string> | default = ""]
+
+      # KMS Key ID that is going to be used to encrypt objects in S3.
+      # CLI flag: -ruler.storage.s3.sse_config.kms_key_id
+      [kms_key_id: <string> | default = 0s]
 
     http_config:
       # The maximum amount of time an idle connection will be held open.
@@ -2112,13 +2121,22 @@ aws:
   # CLI flag: -s3.insecure
   [insecure: <boolean> | default = false]
 
+  # Deprecated: use -s3.sse_config instead. sse_encryption enabled is equivalent to -s3.sse_config.type=SSE-S3
   # Enable AWS Server Side Encryption
   # CLI flag: -s3.sse-encryption
   [sse_encryption: <boolean> | default = false]
 
-  # AWS Server Side Encryption Type
-  # CLI flag: -s3.sse-encryption-type
-  [sse_encryption_type: <string> | default = "AES256"]
+  sse_config:
+    # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported.
+    # SSE-S3 uses AES-256 to encrypt all objects saved in the S3 bucket.
+    # SSE-KMS uses KMS to encrypt all objects saved in the S3 bucket.
+    # kms_key_id is required when the SSE-KMS type is selected.
+    # CLI flag: -s3.sse_config.type
+    [type: <string> | default = ""]
+
+    # KMS Key ID that is going to be used to encrypt objects in S3.
+    # CLI flag: -s3.sse_config.kms_key_id
+    [kms_key_id: <string> | default = 0s]
 
   http_config:
     # The maximum amount of time an idle connection will be held open.

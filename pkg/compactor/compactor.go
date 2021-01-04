@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -367,7 +366,7 @@ func (c *Compactor) stopping(_ error) error {
 
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
-	_ = c.compactUsers(ctx)
+	c.compactUsers(ctx)
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
@@ -375,7 +374,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			_ = c.compactUsers(ctx)
+			c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():
@@ -384,11 +383,11 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
+func (c *Compactor) compactUsers(ctx context.Context) (succeeded bool) {
 	c.compactionRunsStarted.Inc()
 
 	defer func() {
-		if returnErr == nil {
+		if succeeded {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
 		} else {
@@ -406,7 +405,7 @@ func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
 	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return errors.Wrap(err, "failed to discover users from bucket")
+		return false
 	}
 
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
@@ -419,13 +418,11 @@ func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
 		users[i], users[j] = users[j], users[i]
 	})
 
-	errs := tsdb_errors.NewMulti()
-
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return ctx.Err()
+			return false
 		}
 
 		// Ensure the user ID belongs to our shard.
@@ -454,7 +451,6 @@ func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
 		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
-			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
 			continue
 		}
 
@@ -462,7 +458,7 @@ func (c *Compactor) compactUsers(ctx context.Context) (returnErr error) {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return errs.Err()
+	return true
 }
 
 func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {

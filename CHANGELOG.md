@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+* [FEATURE] Adds support to S3 server side encryption using KMS. The following config fields have been added. #3651
+  - `<prefix>-s3.sse-config.type`
+  - `<prefix>-s3.sse-config.kms-key-id`
+  - `<prefix>-s3.sse-config.kms-encryption-context`
 * [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595
 * [CHANGE] Blocks storage: compactor is now required when running a Cortex cluster with the blocks storage, because it also keeps the bucket index updated. #3583
 * [CHANGE] Blocks storage: block deletion marks are now stored in a per-tenant global markers/ location too, other than within the block location. The compactor, at startup, will copy deletion marks from the block location to the global location. This migration is required only once, so you can safely disable it via `-compactor.block-deletion-marks-migration-enabled=false` once new compactor has successfully started once in your cluster. #3583

@@ -642,6 +642,10 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
       [metafile_attributes_ttl: <duration> | default = 168h]
 
+      # How long to cache attributes of the block index.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
+      [block_index_attributes_ttl: <duration> | default = 168h]
+
       # How long to cache content of the bucket index.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
       [bucket_index_content_ttl: <duration> | default = 5m]

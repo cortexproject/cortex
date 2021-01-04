@@ -1522,10 +1522,52 @@ storage:
   # The CLI flags prefix for this block config is: alertmanager
   [configdb: <configstore_config>]
 
-  local:
-    # Path at which alertmanager configurations are stored.
-    # CLI flag: -alertmanager.storage.local.path
-    [path: <string> | default = ""]
+  azure:
+    # Azure Cloud environment. Supported values are: AzureGlobal,
+    # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
+    # CLI flag: -alertmanager.storage.azure.environment
+    [environment: <string> | default = "AzureGlobal"]
+
+    # Name of the blob container used to store chunks. This container must be
+    # created before running cortex.
+    # CLI flag: -alertmanager.storage.azure.container-name
+    [container_name: <string> | default = "cortex"]
+
+    # The Microsoft Azure account name to be used
+    # CLI flag: -alertmanager.storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # The Microsoft Azure account key to use.
+    # CLI flag: -alertmanager.storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Preallocated buffer size for downloads.
+    # CLI flag: -alertmanager.storage.azure.download-buffer-size
+    [download_buffer_size: <int> | default = 512000]
+
+    # Preallocated buffer size for uploads.
+    # CLI flag: -alertmanager.storage.azure.upload-buffer-size
+    [upload_buffer_size: <int> | default = 256000]
+
+    # Number of buffers used to used to upload a chunk.
+    # CLI flag: -alertmanager.storage.azure.download-buffer-count
+    [upload_buffer_count: <int> | default = 1]
+
+    # Timeout for requests made against azure blob storage.
+    # CLI flag: -alertmanager.storage.azure.request-timeout
+    [request_timeout: <duration> | default = 30s]
+
+    # Number of retries for a request which times out.
+    # CLI flag: -alertmanager.storage.azure.max-retries
+    [max_retries: <int> | default = 5]
+
+    # Minimum time to wait before retrying a request.
+    # CLI flag: -alertmanager.storage.azure.min-retry-delay
+    [min_retry_delay: <duration> | default = 10ms]
+
+    # Maximum time to wait before retrying a request.
+    # CLI flag: -alertmanager.storage.azure.max-retry-delay
+    [max_retry_delay: <duration> | default = 500ms]
 
   gcs:
     # Name of GCS bucket. Please refer to
@@ -1601,6 +1643,11 @@ storage:
     # values are: v4, v2.
     # CLI flag: -alertmanager.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager.storage.local.path
+    [path: <string> | default = ""]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api

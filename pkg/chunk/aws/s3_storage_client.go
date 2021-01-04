@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
+	SignatureVersionV4       = "v4"
+	SignatureVersionV2       = "v2"
+	defaultSSEEncryptionType = "AES256"
 )
 
 var (
@@ -63,15 +64,16 @@ type S3Config struct {
 	S3               flagext.URLValue
 	S3ForcePathStyle bool
 
-	BucketNames      string
-	Endpoint         string     `yaml:"endpoint"`
-	Region           string     `yaml:"region"`
-	AccessKeyID      string     `yaml:"access_key_id"`
-	SecretAccessKey  string     `yaml:"secret_access_key"`
-	Insecure         bool       `yaml:"insecure"`
-	SSEEncryption    bool       `yaml:"sse_encryption"`
-	HTTPConfig       HTTPConfig `yaml:"http_config"`
-	SignatureVersion string     `yaml:"signature_version"`
+	BucketNames       string
+	Endpoint          string     `yaml:"endpoint"`
+	Region            string     `yaml:"region"`
+	AccessKeyID       string     `yaml:"access_key_id"`
+	SecretAccessKey   string     `yaml:"secret_access_key"`
+	Insecure          bool       `yaml:"insecure"`
+	SSEEncryption     bool       `yaml:"sse_encryption"`
+	SSEEncryptionType string     `yaml:"sse_encryption_type"`
+	HTTPConfig        HTTPConfig `yaml:"http_config"`
+	SignatureVersion  string     `yaml:"signature_version"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -100,7 +102,8 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AES256 AWS Server Side Encryption")
+	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption")
+	f.StringVar(&cfg.SSEEncryptionType, prefix+"s3.sse-encryption-type", defaultSSEEncryptionType, "AWS Server Side Encryption, default is AES256")
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
@@ -142,7 +145,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 
 	var sseEncryption *string
 	if cfg.SSEEncryption {
-		sseEncryption = aws.String("AES256")
+		sseEncryption = aws.String(cfg.SSEEncryptionType)
 	}
 
 	client := S3ObjectClient{

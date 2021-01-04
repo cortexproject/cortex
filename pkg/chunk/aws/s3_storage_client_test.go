@@ -75,3 +75,77 @@ func TestRequestMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestNewS3ObjectClientWithSSEEncryptionType(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, r.Header.Get("echo-me"))
+	}))
+	defer ts.Close()
+
+	accessKeyID := "key"
+	cfg := S3Config{
+		Endpoint:         ts.URL,
+		BucketNames:      "buck-o",
+		S3ForcePathStyle: true,
+		Insecure:         true,
+		AccessKeyID:      accessKeyID,
+		SecretAccessKey:  "secret",
+	}
+
+	type params struct {
+		SSEEncryption     bool
+		SSEEncryptionType string
+	}
+
+	tests := []struct {
+		name     string
+		params   params
+		expected string
+	}{
+		{
+			name: "Test sse encryption false",
+			params: params{
+				SSEEncryption: false,
+			},
+			expected: "",
+		},
+		{
+			name: "Test sse encryption true with value",
+			params: params{
+				SSEEncryption:     true,
+				SSEEncryptionType: defaultSSEEncryptionType,
+			},
+			expected: defaultSSEEncryptionType,
+		},
+		{
+			name: "Test sse encryption true with value",
+			params: params{
+				SSEEncryption:     true,
+				SSEEncryptionType: "aws:kms",
+			},
+			expected: "aws:kms",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg.SSEEncryption = tt.params.SSEEncryption
+			cfg.SSEEncryptionType = tt.params.SSEEncryptionType
+			client, err := NewS3ObjectClient(cfg)
+			require.NoError(t, err)
+
+			readCloser, err := client.GetObject(context.Background(), accessKeyID)
+			require.NoError(t, err)
+
+			buffer := make([]byte, 100)
+			_, err = readCloser.Read(buffer)
+			if err != io.EOF {
+				require.NoError(t, err)
+			}
+
+			if tt.params.SSEEncryption {
+				assert.Equal(t, tt.expected, *client.sseEncryption)
+			}
+		})
+	}
+}

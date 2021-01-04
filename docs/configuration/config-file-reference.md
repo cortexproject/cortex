@@ -1256,9 +1256,13 @@ storage:
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # Enable AES256 AWS Server Side Encryption
+    # Enable AWS Server Side Encryption
     # CLI flag: -ruler.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
+
+    # AWS Server Side Encryption Type
+    # CLI flag: -ruler.storage.s3.sse-encryption-type
+    [sse_encryption_type: <string> | default = "AES256"]
 
     http_config:
       # The maximum amount of time an idle connection will be held open.
@@ -2108,9 +2112,13 @@ aws:
   # CLI flag: -s3.insecure
   [insecure: <boolean> | default = false]
 
-  # Enable AES256 AWS Server Side Encryption
+  # Enable AWS Server Side Encryption
   # CLI flag: -s3.sse-encryption
   [sse_encryption: <boolean> | default = false]
+
+  # AWS Server Side Encryption Type
+  # CLI flag: -s3.sse-encryption-type
+  [sse_encryption_type: <string> | default = "AES256"]
 
   http_config:
     # The maximum amount of time an idle connection will be held open.

@@ -1634,9 +1634,22 @@ storage:
     # CLI flag: -alertmanager.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # Enable AES256 AWS Server Side Encryption
+    # Deprecated: use -alertmanager.storage.s3.sse_config instead. sse_encryption enabled is equivalent to -alertmanager.storage.s3.sse_config.type=SSE-S3
+    # Enable AWS Server Side Encryption
     # CLI flag: -alertmanager.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
+
+    sse_config:
+      # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported.
+      # SSE-S3 uses AES-256 to encrypt all objects saved in the S3 bucket.
+      # SSE-KMS uses KMS to encrypt all objects saved in the S3 bucket.
+      # kms_key_id is required when the SSE-KMS type is selected.
+      # CLI flag: -alertmanager.storage.s3.sse_config.type
+      [type: <string> | default = ""]
+
+      # KMS Key ID that is going to be used to encrypt objects in S3.
+      # CLI flag: -alertmanager.storage.s3.sse_config.kms_key_id
+      [kms_key_id: <string> | default = ""]
 
     http_config:
       # The maximum amount of time an idle connection will be held open.

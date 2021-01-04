@@ -461,7 +461,6 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	}
 
 	succeeded = true
-	return
 }
 
 func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {

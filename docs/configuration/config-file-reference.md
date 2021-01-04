@@ -1271,7 +1271,7 @@ storage:
 
       # KMS Key ID that is going to be used to encrypt objects in S3.
       # CLI flag: -ruler.storage.s3.sse_config.kms_key_id
-      [kms_key_id: <string> | default = 0s]
+      [kms_key_id: <string> | default = ""]
 
     http_config:
       # The maximum amount of time an idle connection will be held open.
@@ -2136,7 +2136,7 @@ aws:
 
     # KMS Key ID that is going to be used to encrypt objects in S3.
     # CLI flag: -s3.sse_config.kms_key_id
-    [kms_key_id: <string> | default = 0s]
+    [kms_key_id: <string> | default = ""]
 
   http_config:
     # The maximum amount of time an idle connection will be held open.

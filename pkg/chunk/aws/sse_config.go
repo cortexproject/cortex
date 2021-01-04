@@ -21,12 +21,16 @@ type SSEEncryptionConfig struct {
 func NewSSEEncryptionConfig(sseType, kmsKeyID string) (*SSEEncryptionConfig, error) {
 	switch sseType {
 	case SSES3:
-		return &SSEEncryptionConfig{ServerSideEncryption: "AES256"}, nil
+		return &SSEEncryptionConfig{
+			// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
+			ServerSideEncryption: "AES256",
+		}, nil
 	case SSEKMS:
 		if kmsKeyID == "" {
 			return nil, errors.New("kms key must be presented when aws:kms SSE encryption is selected")
 		}
 		return &SSEEncryptionConfig{
+			// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
 			ServerSideEncryption: "aws:kms",
 			KMSKeyID:             kmsKeyID,
 		}, nil

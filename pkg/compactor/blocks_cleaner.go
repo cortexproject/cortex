@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -162,18 +161,18 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 
 	return concurrency.ForEachUser(ctx, allUsers, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 		if isDeleted[userID] {
-			return errors.Wrapf(c.deleteUser(ctx, userID), "failed to delete blocks for user marked for deletion: %s", userID)
+			return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userID), "failed to delete user marked for deletion: %s", userID)
 		}
 		return errors.Wrapf(c.cleanUser(ctx, userID, firstRun), "failed to delete blocks for user: %s", userID)
 	})
 }
 
-// Remove all blocks for user marked for deletion.
-func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
+// Remove blocks and remaining data for tenant marked for deletion.
+func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID string) error {
 	userLogger := util.WithUserID(userID, c.logger)
 	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
 
-	level.Info(userLogger).Log("msg", "deleting blocks for user marked for deletion")
+	level.Info(userLogger).Log("msg", "deleting blocks for tenant marked for deletion")
 
 	// We immediately delete the bucket index, to signal to its consumers that
 	// the tenant has "no blocks" in the storage.
@@ -182,7 +181,7 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 
-	var deleted, failed int
+	var deletedBlocks, failed int
 	err := userBucket.Iter(ctx, "", func(name string) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -201,7 +200,7 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 			return nil // Continue with other blocks.
 		}
 
-		deleted++
+		deletedBlocks++
 		c.blocksCleanedTotal.Inc()
 		level.Info(userLogger).Log("msg", "deleted block", "block", id)
 		return nil
@@ -225,10 +224,8 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	c.tenantBlocks.DeleteLabelValues(userID)
 	c.tenantMarkedBlocks.DeleteLabelValues(userID)
 
-	if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted blocks for user marked for deletion", "deletedBlocks", deleted)
-	} else {
-		level.Info(userLogger).Log("msg", "no blocks found")
+	if deletedBlocks > 0 {
+		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks)
 	}
 
 	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
@@ -242,7 +239,7 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 	// If we have just deleted some blocks, update "finished" time. Also update "finished" time if it wasn't set yet, but there are no blocks.
 	// Note: this UPDATES the tenant deletion mark. Components that use caching bucket will NOT SEE this update,
 	// but that is fine -- they only check whether tenant deletion marker exists or not.
-	if deleted > 0 || mark.FinishedTime == 0 {
+	if deletedBlocks > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
 		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
@@ -252,43 +249,23 @@ func (c *BlocksCleaner) deleteUser(ctx context.Context, userID string) error {
 		return nil
 	}
 
-	level.Info(userLogger).Log("msg", "cleaning up remaining tenant data")
+	level.Info(userLogger).Log("msg", "cleaning up remaining blocks data for tenant marked for deletion")
 
 	// Let's do final cleanup of tenant.
-	if deleted, err := deletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {
-		return errors.Wrap(err, "failed to delete debug/metas for user marked for deletion")
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, block.DebugMetas, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete "+block.DebugMetas)
 	} else if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted debug/metas files", "count", deleted)
+		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted)
 	}
 
 	// Tenant deletion mark file is inside Markers as well.
-	if deleted, err := deletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
-		return errors.Wrap(err, "failed to delete marker files for user marked for deletion")
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete marker files")
 	} else if deleted > 0 {
-		level.Info(userLogger).Log("msg", "deleted marker files", "count", deleted)
+		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
 	}
 
 	return nil
-}
-
-func deletePrefix(ctx context.Context, bkt objstore.Bucket, prefix string, logger log.Logger) (int, error) {
-	result := 0
-	err := bkt.Iter(ctx, prefix, func(name string) error {
-		if strings.HasSuffix(name, objstore.DirDelim) {
-			deleted, err := deletePrefix(ctx, bkt, name, logger)
-			result += deleted
-			return err
-		}
-
-		if err := bkt.Delete(ctx, name); err != nil {
-			return err
-		}
-		result++
-		level.Debug(logger).Log("msg", "deleted file", "file", name)
-		return nil
-	})
-
-	return result, err
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun bool) (returnErr error) {

@@ -32,10 +32,11 @@ import (
 
 func TestBlocksCleaner(t *testing.T) {
 	for _, options := range []testBlocksCleanerOptions{
-		{concurrency: 1},
+		{concurrency: 1, tenantDeletionDelay: 0, user4FilesExist: false},
+		{concurrency: 1, tenantDeletionDelay: 2 * time.Hour, user4FilesExist: true},
+		{concurrency: 1, markersMigrationEnabled: true},
 		{concurrency: 2},
 		{concurrency: 10},
-		{concurrency: 1, markersMigrationEnabled: true},
 	} {
 		options := options
 
@@ -49,11 +50,13 @@ func TestBlocksCleaner(t *testing.T) {
 type testBlocksCleanerOptions struct {
 	concurrency             int
 	markersMigrationEnabled bool
+	tenantDeletionDelay     time.Duration
+	user4FilesExist         bool // User 4 has "FinishedTime" in tenant deletion marker set to "1h" ago.
 }
 
 func (o testBlocksCleanerOptions) String() string {
-	return fmt.Sprintf("concurrency=%d markers migration enabled=%v",
-		o.concurrency, o.markersMigrationEnabled)
+	return fmt.Sprintf("concurrency=%d, markers migration enabled=%v, tenant deletion delay=%v",
+		o.concurrency, o.markersMigrationEnabled, o.tenantDeletionDelay)
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
@@ -92,7 +95,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
 	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
-	user4Mark.FinishedTime = time.Now().Unix() // Must be set, otherwise cleaner will not do final cleanup on first run.
+	user4Mark.FinishedTime = time.Now().Unix() - 60 // Set to check final user cleanup.
 	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
 	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
 	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
@@ -108,7 +111,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupInterval:                    time.Minute,
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
-		TenantCleanupDelay:                 0, // immediately
+		TenantCleanupDelay:                 options.tenantDeletionDelay,
 	}
 
 	reg := prometheus.NewPedanticRegistry()
@@ -148,8 +151,8 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		// Tenant deletion mark is not removed.
 		{path: path.Join("user-3", tsdb.TenantDeletionMarkPath), expectedExists: true},
 		// User-4 is removed fully.
-		{path: path.Join("user-4", tsdb.TenantDeletionMarkPath), expectedExists: false},
-		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: false},
+		{path: path.Join("user-4", tsdb.TenantDeletionMarkPath), expectedExists: options.user4FilesExist},
+		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)

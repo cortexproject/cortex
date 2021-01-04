@@ -1823,7 +1823,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db := i.getTSDB(userID)

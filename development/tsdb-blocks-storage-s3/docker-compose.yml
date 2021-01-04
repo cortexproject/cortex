@@ -336,3 +336,24 @@ services:
       - 18013:18013
     volumes:
       - ./config:/cortex/config
+
+  purger:
+    build:
+      context:    .
+      dockerfile: dev.dockerfile
+    image: cortex
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18014 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=purger -server.http-listen-port=8014 -server.grpc-listen-port=9014"]
+    depends_on:
+      - consul
+      - minio
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831
+      - JAEGER_TAGS=app=querier-scheduler
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    ports:
+      - 8014:8014
+      - 18014:18014
+    volumes:
+      - ./config:/cortex/config

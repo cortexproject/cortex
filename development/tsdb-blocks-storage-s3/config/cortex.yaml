@@ -101,6 +101,8 @@ compactor:
   data_dir:            /tmp/cortex-compactor
   consistency_delay:   1m
   sharding_enabled:    true
+  cleanup_interval:    1m
+  tenant_cleanup_delay: 1m
   sharding_ring:
     kvstore:
       store: consul

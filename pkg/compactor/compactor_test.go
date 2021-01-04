@@ -651,13 +651,15 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	t.Parallel()
 
 	cfg := prepareConfig()
-	cfg.DeletionDelay = 10 * time.Minute // Delete block after 10 minutes
+	cfg.DeletionDelay = 10 * time.Minute      // Delete block after 10 minutes
+	cfg.TenantCleanupDelay = 10 * time.Minute // To make sure it's not 0.
 
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
-	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), true, nil)
+	bucketClient.MockGet(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), `{"deletion_time": 1}`, nil)
+	bucketClient.MockUpload(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), nil)
 
 	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTVP434PA9VFXSW2JKB3392D/index"}, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -690,11 +692,12 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="deleting blocks for user marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="deleting blocks for tenant marked for deletion"`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block" block=01DTVP434PA9VFXSW2JKB3392D`,
-		`level=info component=cleaner org_id=user-1 msg="finished deleting blocks for user marked for deletion" deletedBlocks=1`,
+		`level=info component=cleaner org_id=user-1 msg="deleted blocks for tenant marked for deletion" deletedBlocks=1`,
+		`level=info component=cleaner org_id=user-1 msg="updating finished time in tenant deletion mark"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,

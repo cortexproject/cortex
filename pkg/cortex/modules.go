@@ -3,6 +3,7 @@ package cortex
 import (
 	"flag"
 	"fmt"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"os"
 	"time"
 
@@ -70,6 +71,7 @@ const (
 	Ruler                    string = "ruler"
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
+	AlertManagerDistributor  string = "alertmanager-distributor"
 	Compactor                string = "compactor"
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
@@ -682,6 +684,25 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	return t.Alertmanager, nil
 }
 
+func (t *Cortex) initAlertManagerDistributor() (serv services.Service, err error) {
+	amRing, err := ring.NewWithStrategy(
+		t.Cfg.Alertmanager.ShardingRing.ToRingConfig(),
+		alertmanager.RingNameForServer, alertmanager.RingKey,
+		prometheus.DefaultRegisterer, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	if err != nil {
+		return nil, err
+	}
+	prometheus.MustRegister(amRing)
+
+	t.AlertmanagerDistributor, err = am_distributor.New(t.Cfg.AlertmanagerDistributor, t.Cfg.API.AlertmanagerHTTPPrefix, amRing, amRing, prometheus.DefaultRegisterer, util.Logger)
+	if err != nil {
+		return
+	}
+
+	t.API.RegisterAlertmanagerDistributor(t.AlertmanagerDistributor, t.Cfg.isModuleEnabled(AlertManagerDistributor))
+	return t.AlertmanagerDistributor, nil
+}
+
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
@@ -807,6 +828,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
+	mm.RegisterModule(AlertManagerDistributor, t.initAlertManagerDistributor)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(ChunksPurger, t.initChunksPurger, modules.UserInvisibleModule)
@@ -839,6 +861,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV},
+		AlertManagerDistributor:  {API},
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},

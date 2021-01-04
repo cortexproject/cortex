@@ -159,6 +159,11 @@ tenant_federation:
 # The alertmanager_config configures the Cortex alertmanager.
 [alertmanager: <alertmanager_config>]
 
+alertmanager_distributor:
+  # Timeout for downstream alertmanagers.
+  # CLI flag: -alertmanager.distributor.remote-timeout
+  [remote_timeout: <duration> | default = 2s]
+
 runtime_config:
   # How often to check runtime config file.
   # CLI flag: -runtime-config.reload-period

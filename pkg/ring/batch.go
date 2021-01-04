@@ -107,6 +107,54 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 	}
 }
 
+// DoAll request all healthy entries in the ring and calls the callback
+// on each entry once.
+func DoAll(ctx context.Context, r ReadRing, callback func(IngesterDesc) error, cleanup func()) error {
+	if r.IngesterCount() <= 0 {
+		return fmt.Errorf("DoBatch: IngesterCount <= 0")
+	}
+	replicationSet, err := r.GetAllHealthy(Write)
+	if err != nil {
+		return err
+	}
+
+	iTracker := itemTracker{}
+	iTracker.minSuccess = len(replicationSet.Ingesters)
+
+	tracker := batchTracker{
+		done: make(chan struct{}, 1),
+		err:  make(chan error, 1),
+	}
+	tracker.rpcsPending.Store(1)
+
+	var wg sync.WaitGroup
+
+	wg.Add(len(replicationSet.Ingesters))
+	for _, i := range replicationSet.Ingesters {
+		go func(i IngesterDesc) {
+			err := callback(i)
+			tracker.record([]*itemTracker{&iTracker}, err)
+			wg.Done()
+		}(i)
+	}
+
+	// Perform cleanup at the end.
+	go func() {
+		wg.Wait()
+
+		cleanup()
+	}()
+
+	select {
+	case err := <-tracker.err:
+		return err
+	case <-tracker.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
 	// If we succeed, decrement each sample's pending count by one.  If we reach
 	// the required number of successful puts on this sample, then decrement the

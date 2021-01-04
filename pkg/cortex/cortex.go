@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"net/http"
 	"os"
 	"reflect"
@@ -108,12 +109,13 @@ type Config struct {
 	PurgerConfig     purger.Config                   `yaml:"purger"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
-	Ruler          ruler.Config                               `yaml:"ruler"`
-	Configs        configs.Config                             `yaml:"configs"`
-	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
-	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
+	Ruler                   ruler.Config                               `yaml:"ruler"`
+	Configs                 configs.Config                             `yaml:"configs"`
+	Alertmanager            alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	AlertmanagerDistributor am_distributor.Config                      `yaml:"alertmanager_distributor"`
+	RuntimeConfig           runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV            memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler          scheduler.Config                           `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -158,6 +160,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ruler.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
+	c.AlertmanagerDistributor.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.QueryScheduler.RegisterFlags(f)
@@ -286,14 +289,15 @@ type Cortex struct {
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware queryrange.Tripperware
 
-	Ruler        *ruler.Ruler
-	RulerStorage rules.RuleStore
-	ConfigAPI    *configAPI.API
-	ConfigDB     db.DB
-	Alertmanager *alertmanager.MultitenantAlertmanager
-	Compactor    *compactor.Compactor
-	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInitService
+	Ruler                   *ruler.Ruler
+	RulerStorage            rules.RuleStore
+	ConfigAPI               *configAPI.API
+	ConfigDB                db.DB
+	Alertmanager            *alertmanager.MultitenantAlertmanager
+	AlertmanagerDistributor *am_distributor.Distributor
+	Compactor               *compactor.Compactor
+	StoreGateway            *storegateway.StoreGateway
+	MemberlistKV            *memberlist.KVInitService
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

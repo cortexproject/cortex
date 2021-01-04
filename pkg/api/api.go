@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"flag"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"net/http"
 	"strings"
 	"time"
@@ -164,6 +165,23 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+	}
+}
+
+// RegisterAlertmanagerDistributor registers endpoints associated with the alertmanager distributor. It will only
+// serve endpoints using the legacy http-prefix if it is not run as a single binary.
+func (a *API) RegisterAlertmanagerDistributor(amd *am_distributor.Distributor, target bool) {
+	// TODO(codesome): status handlers.
+
+	level.Debug(a.logger).Log("msg", "api: registering alertmanager distributor", "path_prefix", a.cfg.AlertmanagerHTTPPrefix)
+
+	a.RegisterRoutesWithPrefix("/", amd, true)
+
+	// If the target is Alertmanager Distributor, enable the legacy behaviour. Otherwise only enable
+	// the component routed API.
+	if target {
+		// TODO(codesome): status handlers.
+		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, amd, true)
 	}
 }
 

@@ -692,11 +692,11 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="deleting blocks for user marked for deletion"`,
+		`level=info component=cleaner org_id=user-1 msg="deleting blocks for tenant marked for deletion"`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block" block=01DTVP434PA9VFXSW2JKB3392D`,
-		`level=info component=cleaner org_id=user-1 msg="deleted blocks for user marked for deletion" deletedBlocks=1`,
+		`level=info component=cleaner org_id=user-1 msg="deleted blocks for tenant marked for deletion" deletedBlocks=1`,
 		`level=info component=cleaner org_id=user-1 msg="updating finished time in tenant deletion mark"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,

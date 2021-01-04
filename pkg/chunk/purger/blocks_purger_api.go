@@ -59,8 +59,8 @@ func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request)
 type DeleteTenantStatusResponse struct {
 	TenantID                  string `json:"tenant_id"`
 	BlocksDeleted             bool   `json:"blocks_deleted"`
-	RuleGroupsDeleted         bool   `json:"rule_groups_deleted,omitempty"`
-	AlertManagerConfigDeleted bool   `json:"alert_manager_config_deleted,omitempty"`
+	RuleGroupsDeleted         bool   `json:"rule_groups_deleted,omitempty"`          // Not yet supported.
+	AlertManagerConfigDeleted bool   `json:"alert_manager_config_deleted,omitempty"` // Not yet supported.
 }
 
 func (api *BlocksPurgerAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.Request) {

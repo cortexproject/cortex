@@ -52,7 +52,8 @@ type Shipper interface {
 type tsdbState int
 
 const (
-	active          tsdbState = iota // Pushes are allowed only in this state.
+	active          tsdbState = iota // Pushes are allowed.
+	activeShipping                   // Pushes are allowed. Blocks shipping is in progress.
 	forceCompacting                  // TSDB is being force-compacted.
 	closing                          // Used while closing idle TSDB.
 	closed                           // Used to avoid setting closing back to active in closeAndDeleteIdleUsers method.
@@ -89,7 +90,7 @@ type userTSDB struct {
 
 	stateMtx       sync.RWMutex
 	state          tsdbState
-	pushesInFlight sync.WaitGroup // Increased with Read lock held, only if state == active.
+	pushesInFlight sync.WaitGroup // Increased with stateMtx read lock held, only if state == active or activeShipping.
 
 	// Used to detect idle TSDBs.
 	lastUpdate atomic.Int64
@@ -153,7 +154,7 @@ func (u *userTSDB) casState(from, to tsdbState) bool {
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(blockDuration int64) error {
 	if !u.casState(active, forceCompacting) {
-		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed)")
+		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed or blocks shipping in progress)")
 	}
 
 	defer u.casState(forceCompacting, active)
@@ -801,15 +802,16 @@ func (u *userTSDB) acquireAppendLock() error {
 	u.stateMtx.RLock()
 	defer u.stateMtx.RUnlock()
 
-	if u.state != active {
-		switch u.state {
-		case forceCompacting:
-			return errors.New("forced compaction in progress")
-		case closing:
-			return errors.New("TSDB is closing")
-		default:
-			return errors.New("TSDB is not active")
-		}
+	switch u.state {
+	case active:
+	case activeShipping:
+		// Pushes are allowed.
+	case forceCompacting:
+		return errors.New("forced compaction in progress")
+	case closing:
+		return errors.New("TSDB is closing")
+	default:
+		return errors.New("TSDB is not active")
 	}
 
 	u.pushesInFlight.Add(1)
@@ -1501,7 +1503,14 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 			}
 		}
 
-		// Run the shipper's Sync() to upload unshipped blocks.
+		// Run the shipper's Sync() to upload unshipped blocks. Make sure the TSDB state is active, in order to
+		// avoid any race condition with closing idle TSDBs.
+		if !userDB.casState(active, activeShipping) {
+			level.Info(util.Logger).Log("msg", "shipper skipped because the TSDB is not active", "user", userID)
+			return nil
+		}
+		defer userDB.casState(activeShipping, active)
+
 		if uploaded, err := userDB.shipper.Sync(ctx); err != nil {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
@@ -1619,7 +1628,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		return result
 	}
 
-	// This disables pushes and force-compactions.
+	// This disables pushes and force-compactions. Not allowed to close while shipping is in progress.
 	if !userDB.casState(active, closing) {
 		return tsdbNotActive
 	}

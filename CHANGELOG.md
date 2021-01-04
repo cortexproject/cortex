@@ -23,6 +23,7 @@
 * [ENHANCEMENT] Alertmanager: Add support for Azure blob storage. #3634
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
 * [BUGFIX] Memberlist: Entry in the ring should now not appear again after using "Forget" feature (unless it's still heartbeating). #3603
+* [BUGFIX] Ingester: do not close idle TSDBs while blocks shipping is in progress. #3630
 
 ## 1.6.0
 

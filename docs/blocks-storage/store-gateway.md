@@ -13,6 +13,13 @@ The store-gateway is **semi-stateful**.
 
 ## How it works
 
+The store-gateway needs to have an almost up-to-date view over the storage bucket, in order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:
+
+1. Periodically scanning the bucket (default)
+2. Periodically downloading the [bucket index](./bucket-index.md)
+
+### Bucket index disabled (default)
+
 At startup **store-gateways** iterate over the entire storage bucket to discover blocks for all tenants and download the `meta.json` and index-header for each block. During this initial bucket synchronization phase, the store-gateway `/ready` readiness probe endpoint will fail.
 
 While running, store-gateways periodically rescan the storage bucket to discover new blocks (uploaded by the ingesters and [compactor](./compactor.md)) and blocks marked for deletion or fully deleted since the last scan (as a result of compaction). The frequency at which this occurs is configured via `-blocks-storage.bucket-store.sync-interval`.
@@ -20,6 +27,12 @@ While running, store-gateways periodically rescan the storage bucket to discover
 The blocks chunks and the entire index are never fully downloaded by the store-gateway. The index-header is stored to the local disk, in order to avoid to re-download it on subsequent restarts of a store-gateway. For this reason, it's recommended - but not required - to run the store-gateway with a persistent disk. For example, if you're running the Cortex cluster in Kubernetes, you may use a StatefulSet with a persistent volume claim for the store-gateways.
 
 _For more information about the index-header, please refer to [Binary index-header documentation](./binary-index-header.md)._
+
+### Bucket index enabled
+
+When bucket index is enabled, the overall workflow is the same but, instead of iterating over the bucket objects, the store-gateway fetch the [bucket index](./bucket-index.md) for each tenant belonging to their shard in order to discover each tenant's blocks and block deletion marks.
+
+_For more information about the bucket index, please refer to [bucket index documentation](./bucket-index.md)._
 
 ## Blocks sharding and replication
 
@@ -399,8 +412,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
-    # How frequently scan the bucket to look for changes (new blocks shipped by
-    # ingesters and blocks removed by retention or compaction). 0 disables it.
+    # How frequently scan the bucket - or fetch the bucket index (if enabled) -
+    # to look for changes (new blocks shipped by ingesters and blocks removed by
+    # retention or compaction). 0 disables it.
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m]
 
@@ -668,22 +682,24 @@ blocks_storage:
     [ignore_deletion_mark_delay: <duration> | default = 6h]
 
     bucket_index:
-      # True to enable querier to discover blocks in the storage via bucket
-      # index instead of bucket scanning.
+      # True to enable querier and store-gateway to discover blocks in the
+      # storage via bucket index instead of bucket scanning.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
       [enabled: <boolean> | default = false]
 
-      # How frequently a cached bucket index should be refreshed.
+      # How frequently a cached bucket index should be refreshed. This option is
+      # used only by querier.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
       [update_on_stale_interval: <duration> | default = 15m]
 
       # How frequently a bucket index, which previously failed to load, should
-      # be tried to load again.
+      # be tried to load again. This option is used only by querier.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
       [update_on_error_interval: <duration> | default = 1m]
 
       # How long a unused bucket index should be cached. Once this timeout
       # expires, the unused bucket index is removed from the in-memory cache.
+      # This option is used only by querier.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
       [idle_timeout: <duration> | default = 1h]
 

@@ -261,7 +261,7 @@ func TestBlock_ThanosMeta(t *testing.T) {
 
 	tests := map[string]struct {
 		block    Block
-		expected metadata.Meta
+		expected *metadata.Meta
 	}{
 		"block with segment files format 1 based 6 digits": {
 			block: Block{
@@ -271,7 +271,7 @@ func TestBlock_ThanosMeta(t *testing.T) {
 				SegmentsFormat: SegmentsFormat1Based6Digits,
 				SegmentsNum:    3,
 			},
-			expected: metadata.Meta{
+			expected: &metadata.Meta{
 				BlockMeta: tsdb.BlockMeta{
 					ULID:    blockID,
 					MinTime: 10,
@@ -299,7 +299,7 @@ func TestBlock_ThanosMeta(t *testing.T) {
 				SegmentsFormat: SegmentsFormatUnknown,
 				SegmentsNum:    0,
 			},
-			expected: metadata.Meta{
+			expected: &metadata.Meta{
 				BlockMeta: tsdb.BlockMeta{
 					ULID:    blockID,
 					MinTime: 10,
@@ -321,6 +321,17 @@ func TestBlock_ThanosMeta(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.block.ThanosMeta(userID))
 		})
 	}
+}
+
+func TestBlockDeletionMark_ThanosDeletionMark(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	mark := &BlockDeletionMark{ID: block1, DeletionTime: 1}
+
+	assert.Equal(t, &metadata.DeletionMark{
+		ID:           block1,
+		Version:      metadata.DeletionMarkVersion1,
+		DeletionTime: 1,
+	}, mark.ThanosDeletionMark())
 }
 
 func TestBlockDeletionMarks_Clone(t *testing.T) {

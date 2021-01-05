@@ -212,6 +212,9 @@ func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid
 	m := metadata.DeletionMark{}
 
 	if err := metadata.ReadMarker(ctx, w.logger, w.bkt, id.String(), &m); err != nil {
+		if errors.Is(err, metadata.ErrorMarkerNotFound) {
+			return nil, errors.Wrap(ErrBlockDeletionMarkNotFound, err.Error())
+		}
 		if errors.Is(err, metadata.ErrorUnmarshalMarker) {
 			return nil, errors.Wrap(ErrBlockDeletionMarkCorrupted, err.Error())
 		}

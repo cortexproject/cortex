@@ -8,10 +8,12 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
 func TestGlobalMarkersBucket_Delete_ShouldSucceedIfDeletionMarkDoesNotExistInTheBlockButExistInTheGlobalLocation(t *testing.T) {
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	bkt = BucketWithGlobalMarkers(bkt)

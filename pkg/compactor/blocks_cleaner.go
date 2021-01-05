@@ -50,6 +50,7 @@ type BlocksCleaner struct {
 	blocksFailedTotal           prometheus.Counter
 	tenantBlocks                *prometheus.GaugeVec
 	tenantMarkedBlocks          *prometheus.GaugeVec
+	tenantPartialBlocks         *prometheus.GaugeVec
 	tenantBucketIndexLastUpdate *prometheus.GaugeVec
 }
 
@@ -89,11 +90,15 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 		// metrics can be tracked.
 		tenantBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_count",
-			Help: "Total number of blocks in the bucket. Includes blocks marked for deletion.",
+			Help: "Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.",
 		}, []string{"user"}),
 		tenantMarkedBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_deletion_count",
 			Help: "Total number of blocks marked for deletion in the bucket.",
+		}, []string{"user"}),
+		tenantPartialBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_bucket_blocks_partials_count",
+			Help: "Total number of partial blocks.",
 		}, []string{"user"}),
 		tenantBucketIndexLastUpdate: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_index_last_successful_update_timestamp_seconds",
@@ -154,6 +159,7 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 		if !isActive[userID] && !isDeleted[userID] {
 			c.tenantBlocks.DeleteLabelValues(userID)
 			c.tenantMarkedBlocks.DeleteLabelValues(userID)
+			c.tenantPartialBlocks.DeleteLabelValues(userID)
 			c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 		}
 	}
@@ -216,6 +222,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 		// to delete them again.
 		c.tenantBlocks.WithLabelValues(userID).Set(float64(failed))
 		c.tenantMarkedBlocks.WithLabelValues(userID).Set(float64(failed))
+		c.tenantPartialBlocks.WithLabelValues(userID).Set(0)
 
 		return errors.Errorf("failed to delete %d blocks", failed)
 	}
@@ -223,6 +230,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	// Given all blocks have been deleted, we can also remove the metrics.
 	c.tenantBlocks.DeleteLabelValues(userID)
 	c.tenantMarkedBlocks.DeleteLabelValues(userID)
+	c.tenantPartialBlocks.DeleteLabelValues(userID)
 
 	if deletedBlocks > 0 {
 		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks)
@@ -339,11 +347,14 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantMarkedBlocks.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
+	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
 
 	return nil
 }
 
+// cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map
+// is updated accordingly.
 func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
@@ -353,7 +364,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 
 		// We can safely delete only partial blocks with a deletion mark.
 		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})
-		if err == metadata.ErrorMarkerNotFound {
+		if errors.Is(err, metadata.ErrorMarkerNotFound) {
 			continue
 		}
 		if err != nil {
@@ -371,6 +382,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 
 		// Remove the block from the bucket index too.
 		idx.RemoveBlock(blockID)
+		delete(partials, blockID)
 
 		c.blocksCleanedTotal.Inc()
 		level.Info(userLogger).Log("msg", "deleted partial block marked for deletion", "block", blockID)

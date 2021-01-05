@@ -21,12 +21,12 @@ var (
 
 // ReadIndex reads, parses and returns a bucket index from the bucket.
 func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger log.Logger) (*Index, error) {
-	bkt = bucket.NewUserBucketClient(userID, bkt)
+	userBkt := bucket.NewUserBucketClient(userID, bkt)
 
 	// Get the bucket index.
-	reader, err := bkt.Get(ctx, IndexCompressedFilename)
+	reader, err := userBkt.WithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, IndexCompressedFilename)
 	if err != nil {
-		if bkt.IsObjNotFoundErr(err) {
+		if userBkt.IsObjNotFoundErr(err) {
 			return nil, ErrIndexNotFound
 		}
 		return nil, errors.Wrap(err, "read bucket index")

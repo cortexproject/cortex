@@ -329,7 +329,7 @@ func (d *BucketScanBlocksFinder) scanUserBlocks(ctx context.Context, userID stri
 	// The blocks scanner expects all blocks to be sorted by max time.
 	sortBlocksByMaxTime(res)
 
-	// Convert deletion marks to our onw data type.
+	// Convert deletion marks to our own data type.
 	marks := map[ulid.ULID]*bucketindex.BlockDeletionMark{}
 	for id, m := range deletionMarkFilter.DeletionMarkBlocks() {
 		marks[id] = bucketindex.BlockDeletionMarkFromThanosMarker(m)

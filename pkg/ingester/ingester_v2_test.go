@@ -2271,7 +2271,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
 	// wait one second -- TSDB is now idle.
 	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
@@ -2286,7 +2290,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
 	// Pushing another sample still works.
 	pushSingleSample(t, i)
@@ -2300,7 +2308,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 }
 
 func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
@@ -2334,6 +2346,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	m.On("Sync", mock.Anything).Return(0, nil)
 
 	pushSingleSample(t, i)
+	i.v2UpdateActiveSeries()
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -2343,7 +2356,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 
 	// Wait until idle TSDB is force-compacted, shipped, and eventually closed and removed.
 	test.Poll(t, 10*time.Second, 0, func() interface{} {
@@ -2366,6 +2387,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
+	i.v2UpdateActiveSeries()
 
 	// Verify that user has disappeared from metrics.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -2374,10 +2396,18 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 0
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 
 	// Pushing another sample will recreate TSDB.
 	pushSingleSample(t, i)
+	i.v2UpdateActiveSeries()
 
 	// User is back.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -2388,7 +2418,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {

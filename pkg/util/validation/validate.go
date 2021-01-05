@@ -73,6 +73,15 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	[]string{discardReasonLabel, "user"},
 )
 
+// RateLimitedSamples is a metric of the number of samples rejected for being over the rate-limit, by user.
+var RateLimitedSamples = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_ratelimited_samples_total",
+		Help: "The total number of samples that were rejected via 5xx error as over rate-limit.",
+	},
+	[]string{"user"},
+)
+
 // DiscardedMetadata is a metric of the number of discarded metadata, by reason.
 var DiscardedMetadata = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -84,6 +93,7 @@ var DiscardedMetadata = prometheus.NewCounterVec(
 
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(RateLimitedSamples)
 	prometheus.MustRegister(DiscardedMetadata)
 }
 

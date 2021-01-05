@@ -109,6 +109,20 @@ GET /config
 
 Displays the configuration currently applied to Cortex (in YAML format), including default values and settings via CLI flags. Sensitive data is masked. Please be aware that the exported configuration **doesn't include the per-tenant overrides**.
 
+#### Different modes
+
+```
+GET /config?mode=diff
+```
+
+Displays the configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the  default values.
+
+```
+GET /config?mode=defaults
+```
+
+Displays the configuration using only the default values.
+
 ### Services status
 
 ```

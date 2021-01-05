@@ -172,7 +172,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		finder = NewBucketIndexBlocksFinder(BucketIndexBlocksFinderConfig{
 			IndexLoader: bucketindex.LoaderConfig{
 				CheckInterval:         time.Minute,
-				UpdateOnStaleInterval: storageCfg.BucketStore.BucketIndex.UpdateOnStaleInterval,
+				UpdateOnStaleInterval: storageCfg.BucketStore.SyncInterval,
 				UpdateOnErrorInterval: storageCfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
 				IdleTimeout:           storageCfg.BucketStore.BucketIndex.IdleTimeout,
 			},

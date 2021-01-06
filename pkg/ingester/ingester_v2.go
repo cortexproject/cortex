@@ -1316,6 +1316,9 @@ func (i *Ingester) closeAllTSDB() {
 			i.userStatesMtx.Lock()
 			delete(i.TSDBState.dbs, userID)
 			i.userStatesMtx.Unlock()
+
+			i.metrics.memUsers.Dec()
+			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 
@@ -1666,6 +1669,8 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	delete(i.TSDBState.dbs, userID)
 	i.userStatesMtx.Unlock()
 
+	i.metrics.memUsers.Dec()
+	i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 	i.TSDBState.tsdbMetrics.removeRegistryForUser(userID)
 
 	// And delete local data.

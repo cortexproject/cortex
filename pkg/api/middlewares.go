@@ -20,9 +20,7 @@ func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.T
 				return
 			}
 
-			// len(tenantIDs) will always be > 0, as it otherwise errors
-			// TODO: Handle multiple tenants by creating reproducible aggregation of all individual cacheGenNumbers
-			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(tenantIDs[0])
+			cacheGenNumber := cacheGenNumbersLoader.GetResultsCacheGenNumber(tenantIDs)
 
 			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
 			next.ServeHTTP(w, r)

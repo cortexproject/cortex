@@ -474,3 +474,16 @@ func SmallestPositiveNonZeroDurationPerTenant(tenantIDs []string, f func(string)
 	}
 	return *result
 }
+
+// MaxDurationPerTenant is returning the maximum duration per tenant. Without
+// tenants given it will return a time.Duration(0).
+func MaxDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
+	result := time.Duration(0)
+	for _, tenantID := range tenantIDs {
+		v := f(tenantID)
+		if v > result {
+			result = v
+		}
+	}
+	return result
+}

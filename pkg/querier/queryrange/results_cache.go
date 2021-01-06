@@ -296,7 +296,8 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	requests, responses, err := partition(r, extents, s.extractor)
+	const minCacheExtent = 5 * 60 * 1000 // 5 minutes
+	requests, responses, err := partition(r, extents, s.extractor, minCacheExtent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -411,7 +412,7 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req Request, extents []Extent, extractor Extractor) ([]Request, []Response, error) {
+func partition(req Request, extents []Extent, extractor Extractor, minCacheExtent int64) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
@@ -419,6 +420,10 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
 		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
+			continue
+		}
+		// If this extent is tiny, discard it: more efficient to do a few larger queries
+		if extent.End-extent.Start < minCacheExtent {
 			continue
 		}
 

@@ -363,7 +363,7 @@ func TestPartition(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{})
+			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{}, 10)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)

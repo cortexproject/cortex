@@ -340,6 +340,27 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(160, 200, 10),
 			},
 		},
+
+		// Partial hits with tiny gap.
+		{
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   160,
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(50, 120),
+				mkExtent(122, 130),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponse(100, 120, 10),
+			},
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{})

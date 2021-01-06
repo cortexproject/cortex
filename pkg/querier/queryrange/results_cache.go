@@ -412,6 +412,7 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
+// extents must be in order by start time.
 func partition(req Request, extents []Extent, extractor Extractor, minCacheExtent int64) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
@@ -441,6 +442,7 @@ func partition(req Request, extents []Extent, extractor Extractor, minCacheExten
 		start = extent.End
 	}
 
+	// Lastly, make a request for any data missing at the end.
 	if start < req.GetEnd() {
 		r := req.WithStartEnd(start, req.GetEnd())
 		requests = append(requests, r)

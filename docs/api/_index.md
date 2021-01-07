@@ -19,7 +19,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | --- | ------- | -------- |
 | [Index page](#index-page) | _All services_ | `GET /` |
 | [Configuration](#configuration) | _All services_ | `GET /config` |
-| [Runtime Configuration](#runtime-config) | _All services_ | `GET /runtime_config` |
+| [Runtime Configuration](#runtime-configuration) | _All services_ | `GET /runtime_config` |
 | [Services status](#services-status) | _All services_ | `GET /services` |
 | [Readiness probe](#readiness-probe) | _All services_ | `GET /ready` |
 | [Metrics](#metrics) | _All services_ | `GET /metrics` |

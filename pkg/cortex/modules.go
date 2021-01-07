@@ -295,9 +295,9 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// and internal using the default instrumentation when running as a standalone service.
 		internalQuerierRouter = t.Server.HTTPServer.Handler
 	} else {
-		// Single binary mode requires a query frontend endpoint for the worker. If no frontend or scheduler endpoint
+		// Single binary mode requires a query frontend endpoint for the worker. If no frontend and scheduler endpoint
 		// is configured, Cortex will default to using frontend on localhost on it's own GRPC listening port.
-		if t.Cfg.Worker.FrontendAddress == "" || t.Cfg.Worker.SchedulerAddress == "" {
+		if t.Cfg.Worker.FrontendAddress == "" && t.Cfg.Worker.SchedulerAddress == "" {
 			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 			t.Cfg.Worker.FrontendAddress = address

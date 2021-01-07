@@ -434,8 +434,6 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
 
-	i.userStates = newUserStates(i.limiter, cfg, i.metrics)
-
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
 	i.BasicService = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)

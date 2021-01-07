@@ -412,9 +412,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
-    # How frequently scan the bucket - or fetch the bucket index (if enabled) -
-    # to look for changes (new blocks shipped by ingesters and blocks removed by
-    # retention or compaction). 0 disables it.
+    # How frequently to scan the bucket, or to refresh the bucket index (if
+    # enabled), in order to look for changes (new blocks shipped by ingesters
+    # and blocks deleted by retention or compaction).
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m]
 
@@ -686,11 +686,6 @@ blocks_storage:
       # storage via bucket index instead of bucket scanning.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
       [enabled: <boolean> | default = false]
-
-      # How frequently a cached bucket index should be refreshed. This option is
-      # used only by querier.
-      # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
-      [update_on_stale_interval: <duration> | default = 15m]
 
       # How frequently a bucket index, which previously failed to load, should
       # be tried to load again. This option is used only by querier.

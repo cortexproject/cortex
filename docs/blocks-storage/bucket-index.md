@@ -47,7 +47,7 @@ _Given it's a small file, lazy downloading it doesn't significantly impact on fi
 
 While in-memory, a background process will keep it **updated at periodic intervals**, so that subsequent queries from the same tenant to the same querier instance will use the cached (and periodically updated) bucket index. There are two config options involved:
 
-- `-blocks-storage.bucket-store.bucket-index.update-on-stale-interval`<br />
+- `-blocks-storage.bucket-store.sync-interval`<br />
   This option configures how frequently a cached bucket index should be refreshed.
 - `-blocks-storage.bucket-store.bucket-index.update-on-error-interval`<br />
   If downloading a bucket index fails, the failure is cached for a short time in order to avoid hammering the backend storage. This option configures how frequently a bucket index, which previously failed to load, should be tried to load again.

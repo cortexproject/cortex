@@ -416,7 +416,7 @@ overrides:
     max_series_per_query: 100000
 
 multi_kv_config:
-    mirror-enabled: false
+    mirror_enabled: false
     primary: memberlist
 ```
 

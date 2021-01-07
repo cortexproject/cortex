@@ -158,7 +158,6 @@ by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is include
 as part of the Starter and Basic Hosted Grafana plans.
 
 ### Amazon Managed Service for Prometheus (AMP)
-Highly available, secure, and managed monitoring for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home) with your AWS account.
-
+[Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/) is a Prometheus-compatible monitoring service that makes it easy to monitor containerized applications at scale. It is a highly available, secure, and managed monitoring for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home). To learn more about the AMP, reference our [documentation](https://docs.aws.amazon.com/prometheus/latest/userguide/what-is-Amazon-Managed-Service-Prometheus.html) and [Getting Started with AMP blog](https://aws.amazon.com/blogs/mt/getting-started-amazon-managed-service-for-prometheus/).
 
 

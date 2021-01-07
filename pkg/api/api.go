@@ -179,9 +179,9 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 
 // RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
 func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config/overrides", "Current Overrides Config")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config")
 
-	a.RegisterRoute("/runtime_config/overrides", overridesHandler(runtimeCfgManager), false, "GET")
+	a.RegisterRoute("/runtime_config", runtimeConfigHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

@@ -222,7 +222,7 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 	}
 }
 
-func overridesHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
+func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		out, err := yaml.Marshal(runtimeCfgManager.GetConfig())
 		if err != nil {
@@ -230,7 +230,7 @@ func overridesHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/yaml")
+		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(out); err != nil {
 			level.Error(util.Logger).Log("msg", "error writing response", "err", err)

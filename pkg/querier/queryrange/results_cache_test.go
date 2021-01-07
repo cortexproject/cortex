@@ -503,7 +503,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 
 			// fill cache
 			key := constSplitter(day).GenerateCacheKey("1", req)
-			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
+			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
 			require.NoError(t, err)

@@ -1522,10 +1522,52 @@ storage:
   # The CLI flags prefix for this block config is: alertmanager
   [configdb: <configstore_config>]
 
-  local:
-    # Path at which alertmanager configurations are stored.
-    # CLI flag: -alertmanager.storage.local.path
-    [path: <string> | default = ""]
+  azure:
+    # Azure Cloud environment. Supported values are: AzureGlobal,
+    # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
+    # CLI flag: -alertmanager.storage.azure.environment
+    [environment: <string> | default = "AzureGlobal"]
+
+    # Name of the blob container used to store chunks. This container must be
+    # created before running cortex.
+    # CLI flag: -alertmanager.storage.azure.container-name
+    [container_name: <string> | default = "cortex"]
+
+    # The Microsoft Azure account name to be used
+    # CLI flag: -alertmanager.storage.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # The Microsoft Azure account key to use.
+    # CLI flag: -alertmanager.storage.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # Preallocated buffer size for downloads.
+    # CLI flag: -alertmanager.storage.azure.download-buffer-size
+    [download_buffer_size: <int> | default = 512000]
+
+    # Preallocated buffer size for uploads.
+    # CLI flag: -alertmanager.storage.azure.upload-buffer-size
+    [upload_buffer_size: <int> | default = 256000]
+
+    # Number of buffers used to used to upload a chunk.
+    # CLI flag: -alertmanager.storage.azure.download-buffer-count
+    [upload_buffer_count: <int> | default = 1]
+
+    # Timeout for requests made against azure blob storage.
+    # CLI flag: -alertmanager.storage.azure.request-timeout
+    [request_timeout: <duration> | default = 30s]
+
+    # Number of retries for a request which times out.
+    # CLI flag: -alertmanager.storage.azure.max-retries
+    [max_retries: <int> | default = 5]
+
+    # Minimum time to wait before retrying a request.
+    # CLI flag: -alertmanager.storage.azure.min-retry-delay
+    [min_retry_delay: <duration> | default = 10ms]
+
+    # Maximum time to wait before retrying a request.
+    # CLI flag: -alertmanager.storage.azure.max-retry-delay
+    [max_retry_delay: <duration> | default = 500ms]
 
   gcs:
     # Name of GCS bucket. Please refer to
@@ -1601,6 +1643,11 @@ storage:
     # values are: v4, v2.
     # CLI flag: -alertmanager.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager.storage.local.path
+    [path: <string> | default = ""]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -3635,8 +3682,9 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-dir
   [sync_dir: <string> | default = "tsdb-sync"]
 
-  # How frequently scan the bucket to look for changes (new blocks shipped by
-  # ingesters and blocks removed by retention or compaction). 0 disables it.
+  # How frequently to scan the bucket, or to refresh the bucket index (if
+  # enabled), in order to look for changes (new blocks shipped by ingesters and
+  # blocks deleted by retention or compaction).
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 5m]
 
@@ -3877,6 +3925,10 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
     [metafile_attributes_ttl: <duration> | default = 168h]
 
+    # How long to cache attributes of the block index.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
+    [block_index_attributes_ttl: <duration> | default = 168h]
+
     # How long to cache content of the bucket index.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
     [bucket_index_content_ttl: <duration> | default = 5m]
@@ -3899,22 +3951,19 @@ bucket_store:
   [ignore_deletion_mark_delay: <duration> | default = 6h]
 
   bucket_index:
-    # True to enable querier to discover blocks in the storage via bucket index
-    # instead of bucket scanning.
+    # True to enable querier and store-gateway to discover blocks in the storage
+    # via bucket index instead of bucket scanning.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
     [enabled: <boolean> | default = false]
 
-    # How frequently a cached bucket index should be refreshed.
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
-    [update_on_stale_interval: <duration> | default = 15m]
-
     # How frequently a bucket index, which previously failed to load, should be
-    # tried to load again.
+    # tried to load again. This option is used only by querier.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
     [update_on_error_interval: <duration> | default = 1m]
 
     # How long a unused bucket index should be cached. Once this timeout
-    # expires, the unused bucket index is removed from the in-memory cache.
+    # expires, the unused bucket index is removed from the in-memory cache. This
+    # option is used only by querier.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
     [idle_timeout: <duration> | default = 1h]
 
@@ -4035,8 +4084,7 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.compaction-interval
 [compaction_interval: <duration> | default = 1h]
 
-# How many times to retry a failed compaction during a single compaction
-# interval
+# How many times to retry a failed compaction within a single compaction run.
 # CLI flag: -compactor.compaction-retries
 [compaction_retries: <int> | default = 3]
 
@@ -4061,6 +4109,11 @@ The `compactor_config` configures the compactor for the blocks storage.
 # failures.
 # CLI flag: -compactor.deletion-delay
 [deletion_delay: <duration> | default = 12h]
+
+# For tenants marked for deletion, this is time between deleting of last block,
+# and doing final cleanup (marker files, debug files) of the tenant.
+# CLI flag: -compactor.tenant-cleanup-delay
+[tenant_cleanup_delay: <duration> | default = 6h]
 
 # When enabled, at compactor startup the bucket will be scanned and all found
 # deletion marks inside the block location will be copied to the markers global

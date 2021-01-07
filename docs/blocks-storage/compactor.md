@@ -10,7 +10,7 @@ slug: compactor
 The **compactor** is an service which is responsible to:
 
 - Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).
-- Keep the per-tenant bucket index updated. The [bucket index](./bucket-index.md) is used by [queriers](./querier.md) to discover new blocks in the storage.
+- Keep the per-tenant bucket index updated. The [bucket index](./bucket-index.md) is used by [queriers](./querier.md) and [store-gateways](./store-gateway.md) to discover new blocks in the storage.
 
 The compactor is **stateless**.
 
@@ -116,8 +116,7 @@ compactor:
   # CLI flag: -compactor.compaction-interval
   [compaction_interval: <duration> | default = 1h]
 
-  # How many times to retry a failed compaction during a single compaction
-  # interval
+  # How many times to retry a failed compaction within a single compaction run.
   # CLI flag: -compactor.compaction-retries
   [compaction_retries: <int> | default = 3]
 
@@ -142,6 +141,11 @@ compactor:
   # failures.
   # CLI flag: -compactor.deletion-delay
   [deletion_delay: <duration> | default = 12h]
+
+  # For tenants marked for deletion, this is time between deleting of last
+  # block, and doing final cleanup (marker files, debug files) of the tenant.
+  # CLI flag: -compactor.tenant-cleanup-delay
+  [tenant_cleanup_delay: <duration> | default = 6h]
 
   # When enabled, at compactor startup the bucket will be scanned and all found
   # deletion marks inside the block location will be copied to the markers

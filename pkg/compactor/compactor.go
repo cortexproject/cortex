@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
@@ -48,6 +47,7 @@ type Config struct {
 	CleanupInterval       time.Duration            `yaml:"cleanup_interval"`
 	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
 	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
+	TenantCleanupDelay    time.Duration            `yaml:"tenant_cleanup_delay"`
 
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
@@ -80,7 +80,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
-	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction during a single compaction interval")
+	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction within a single compaction run.")
 	f.IntVar(&cfg.CompactionConcurrency, "compactor.compaction-concurrency", 1, "Max number of concurrent compactions running.")
 	f.DurationVar(&cfg.CleanupInterval, "compactor.cleanup-interval", 15*time.Minute, "How frequently compactor should run blocks cleanup and maintenance, as well as update the bucket index.")
 	f.IntVar(&cfg.CleanupConcurrency, "compactor.cleanup-concurrency", 20, "Max number of tenants for which blocks cleanup and maintenance should run concurrently.")
@@ -88,6 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.DeletionDelay, "compactor.deletion-delay", 12*time.Hour, "Time before a block marked for deletion is deleted from bucket. "+
 		"If not 0, blocks will be marked for deletion and compactor component will permanently delete blocks marked for deletion from the bucket. "+
 		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
+	f.DurationVar(&cfg.TenantCleanupDelay, "compactor.tenant-cleanup-delay", 6*time.Hour, "For tenants marked for deletion, this is time between deleting of last block, and doing final cleanup (marker files, debug files) of the tenant.")
 	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", true, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
@@ -341,6 +342,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupInterval:                    util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1),
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
+		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
 	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
@@ -364,7 +366,7 @@ func (c *Compactor) stopping(_ error) error {
 
 func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
-	c.compactUsersWithRetries(ctx)
+	c.compactUsers(ctx)
 
 	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
 	defer ticker.Stop()
@@ -372,7 +374,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			c.compactUsersWithRetries(ctx)
+			c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil
 		case err := <-c.ringSubservicesWatcher.Chan():
@@ -381,33 +383,20 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 }
 
-func (c *Compactor) compactUsersWithRetries(ctx context.Context) {
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: c.compactorCfg.retryMinBackoff,
-		MaxBackoff: c.compactorCfg.retryMaxBackoff,
-		MaxRetries: c.compactorCfg.CompactionRetries,
-	})
+func (c *Compactor) compactUsers(ctx context.Context) {
+	succeeded := false
 
 	c.compactionRunsStarted.Inc()
 
-	for retries.Ongoing() {
-		if err := c.compactUsers(ctx); err == nil {
+	defer func() {
+		if succeeded {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
-			return
-		} else if errors.Is(err, context.Canceled) {
-			return
+		} else {
+			c.compactionRunsFailed.Inc()
 		}
 
-		retries.Wait()
-	}
-
-	c.compactionRunsFailed.Inc()
-}
-
-func (c *Compactor) compactUsers(ctx context.Context) error {
-	// Reset progress metrics once done.
-	defer func() {
+		// Reset progress metrics once done.
 		c.compactionRunDiscoveredTenants.Set(0)
 		c.compactionRunSkippedTenants.Set(0)
 		c.compactionRunSucceededTenants.Set(0)
@@ -415,10 +404,10 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 	}()
 
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
-	users, err := c.discoverUsers(ctx)
+	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
-		return errors.Wrap(err, "failed to discover users from bucket")
+		return
 	}
 
 	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
@@ -431,13 +420,11 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		users[i], users[j] = users[j], users[i]
 	})
 
-	errs := tsdb_errors.NewMulti()
-
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
-			return ctx.Err()
+			return
 		}
 
 		// Ensure the user ID belongs to our shard.
@@ -463,10 +450,9 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
-		if err = c.compactUser(ctx, userID); err != nil {
+		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
-			errs.Add(errors.Wrapf(err, "failed to compact user blocks (user: %s)", userID))
 			continue
 		}
 
@@ -474,7 +460,28 @@ func (c *Compactor) compactUsers(ctx context.Context) error {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	return errs.Err()
+	succeeded = true
+}
+
+func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		lastErr = c.compactUser(ctx, userID)
+		if lastErr == nil {
+			return nil
+		}
+
+		retries.Wait()
+	}
+
+	return lastErr
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
@@ -565,6 +572,29 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	}
 
 	return nil
+}
+
+func (c *Compactor) discoverUsersWithRetries(ctx context.Context) ([]string, error) {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: c.compactorCfg.retryMinBackoff,
+		MaxBackoff: c.compactorCfg.retryMaxBackoff,
+		MaxRetries: c.compactorCfg.CompactionRetries,
+	})
+
+	for retries.Ongoing() {
+		var users []string
+
+		users, lastErr = c.discoverUsers(ctx)
+		if lastErr == nil {
+			return users, nil
+		}
+
+		retries.Wait()
+	}
+
+	return nil, lastErr
 }
 
 func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {

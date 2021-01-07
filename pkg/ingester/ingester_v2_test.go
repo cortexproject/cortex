@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -1822,7 +1823,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db := i.getTSDB(userID)
@@ -1837,6 +1838,50 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjectsAfterMarkingTenantForDeletion := len(bucket.Objects())
 	require.Equal(t, numObjects, numObjectsAfterMarkingTenantForDeletion)
 	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
+}
+
+func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInProgress(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer cleanup()
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Mock the shipper to slow down Sync() execution.
+	s := mockUserShipper(t, i)
+	s.On("Sync", mock.Anything).Run(func(args mock.Arguments) {
+		time.Sleep(3 * time.Second)
+	}).Return(0, nil)
+
+	// Mock the shipper meta (no blocks).
+	db := i.getTSDB(userID)
+	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.db.Dir(), &shipper.Meta{
+		Version: shipper.MetaVersion1,
+	}))
+
+	// Run blocks shipping in a separate go routine.
+	go i.shipBlocks(ctx)
+
+	// Wait until shipping starts.
+	test.Poll(t, 1*time.Second, activeShipping, func() interface{} {
+		db.stateMtx.RLock()
+		defer db.stateMtx.RUnlock()
+		return db.state
+	})
+
+	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 
 type shipperMock struct {
@@ -2226,7 +2271,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
 	// wait one second -- TSDB is now idle.
 	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
@@ -2241,7 +2290,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
 	// Pushing another sample still works.
 	pushSingleSample(t, i)
@@ -2255,7 +2308,11 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 }
 
 func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
@@ -2289,6 +2346,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	m.On("Sync", mock.Anything).Return(0, nil)
 
 	pushSingleSample(t, i)
+	i.v2UpdateActiveSeries()
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -2298,7 +2356,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 
 	// Wait until idle TSDB is force-compacted, shipped, and eventually closed and removed.
 	test.Poll(t, 10*time.Second, 0, func() interface{} {
@@ -2321,6 +2387,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
+	i.v2UpdateActiveSeries()
 
 	// Verify that user has disappeared from metrics.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -2329,10 +2396,18 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 0
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 
 	// Pushing another sample will recreate TSDB.
 	pushSingleSample(t, i)
+	i.v2UpdateActiveSeries()
 
 	// User is back.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -2343,7 +2418,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 		# TYPE cortex_ingester_memory_series_removed_total counter
 		cortex_ingester_memory_series_removed_total{user="1"} 0
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName))
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+
+		# HELP cortex_ingester_active_series Number of currently active series per user.
+		# TYPE cortex_ingester_active_series gauge
+		cortex_ingester_active_series{user="1"} 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {

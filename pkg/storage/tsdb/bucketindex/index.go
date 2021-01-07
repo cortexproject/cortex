@@ -99,8 +99,8 @@ func (m *Block) GetUploadedAt() time.Time {
 // ThanosMeta returns a block meta based on the known information in the index.
 // The returned meta doesn't include all original meta.json data but only a subset
 // of it.
-func (m *Block) ThanosMeta(userID string) metadata.Meta {
-	return metadata.Meta{
+func (m *Block) ThanosMeta(userID string) *metadata.Meta {
+	return &metadata.Meta{
 		BlockMeta: tsdb.BlockMeta{
 			ULID:    m.ID,
 			MinTime: m.MinTime,
@@ -197,6 +197,15 @@ type BlockDeletionMark struct {
 
 func (m *BlockDeletionMark) GetDeletionTime() time.Time {
 	return time.Unix(m.DeletionTime, 0)
+}
+
+// ThanosMeta returns the Thanos deletion mark.
+func (m *BlockDeletionMark) ThanosDeletionMark() *metadata.DeletionMark {
+	return &metadata.DeletionMark{
+		ID:           m.ID,
+		Version:      metadata.DeletionMarkVersion1,
+		DeletionTime: m.DeletionTime,
+	}
 }
 
 func BlockDeletionMarkFromThanosMarker(mark *metadata.DeletionMark) *BlockDeletionMark {

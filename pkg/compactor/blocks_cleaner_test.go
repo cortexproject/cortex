@@ -5,8 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path"
 	"strings"
 	"testing"
@@ -19,22 +17,36 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+type testBlocksCleanerOptions struct {
+	concurrency             int
+	markersMigrationEnabled bool
+	tenantDeletionDelay     time.Duration
+	user4FilesExist         bool // User 4 has "FinishedTime" in tenant deletion marker set to "1h" ago.
+}
+
+func (o testBlocksCleanerOptions) String() string {
+	return fmt.Sprintf("concurrency=%d, markers migration enabled=%v, tenant deletion delay=%v",
+		o.concurrency, o.markersMigrationEnabled, o.tenantDeletionDelay)
+}
+
 func TestBlocksCleaner(t *testing.T) {
 	for _, options := range []testBlocksCleanerOptions{
-		{concurrency: 1},
+		{concurrency: 1, tenantDeletionDelay: 0, user4FilesExist: false},
+		{concurrency: 1, tenantDeletionDelay: 2 * time.Hour, user4FilesExist: true},
+		{concurrency: 1, markersMigrationEnabled: true},
 		{concurrency: 2},
 		{concurrency: 10},
-		{concurrency: 1, markersMigrationEnabled: true},
 	} {
 		options := options
 
@@ -45,18 +57,8 @@ func TestBlocksCleaner(t *testing.T) {
 	}
 }
 
-type testBlocksCleanerOptions struct {
-	concurrency             int
-	markersMigrationEnabled bool
-}
-
-func (o testBlocksCleanerOptions) String() string {
-	return fmt.Sprintf("concurrency=%d markers migration enabled=%v",
-		o.concurrency, o.markersMigrationEnabled)
-}
-
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// If the markers migration is enabled, then we create the fixture blocks without
 	// writing the deletion marks in the global location, because they will be migrated
@@ -85,9 +87,16 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, marked for deletion.
-	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3"))
+	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
+
+	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
+	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
+	user4Mark.FinishedTime = time.Now().Unix() - 60 // Set to check final user cleanup.
+	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
+	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
+	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
 
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
 	// deletion marks to the global location too, then this is the right time to do it.
@@ -100,6 +109,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupInterval:                    time.Minute,
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
+		TenantCleanupDelay:                 options.tenantDeletionDelay,
 	}
 
 	reg := prometheus.NewPedanticRegistry()
@@ -138,6 +148,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block10.String(), "index"), expectedExists: false},
 		// Tenant deletion mark is not removed.
 		{path: path.Join("user-3", tsdb.TenantDeletionMarkPath), expectedExists: true},
+		// User-4 is removed fully.
+		{path: path.Join("user-4", tsdb.TenantDeletionMarkPath), expectedExists: options.user4FilesExist},
+		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
@@ -184,7 +197,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	}
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
@@ -192,16 +205,21 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 2
+		cortex_bucket_blocks_partials_count{user="user-2"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 }
 
 func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	const userID = "user-1"
 
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -265,7 +283,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	const userID = "user-1"
 
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -321,7 +339,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 }
 
 func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShard(t *testing.T) {
-	bucketClient := prepareFilesystemBucket(t)
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	// Create blocks.
@@ -344,7 +362,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	require.NoError(t, cleaner.cleanUsers(ctx, true))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
@@ -352,9 +370,14 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 0
+		cortex_bucket_blocks_partials_count{user="user-2"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 
 	// Override the users scanner to reconfigure it to only return a subset of users.
@@ -367,15 +390,19 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion.
+		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 3
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
+		# TYPE cortex_bucket_blocks_partials_count gauge
+		cortex_bucket_blocks_partials_count{user="user-1"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_partials_count",
 	))
 }
 
@@ -390,19 +417,4 @@ func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
 		return errors.New("mocked delete failure")
 	}
 	return m.Bucket.Delete(ctx, name)
-}
-
-func prepareFilesystemBucket(t *testing.T) objstore.Bucket {
-	// Create a temporary directory for local storage.
-	storageDir, err := ioutil.TempDir(os.TempDir(), "storage")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(storageDir))
-	})
-
-	// Create a bucket client on the local storage.
-	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
-
-	return bucketClient
 }

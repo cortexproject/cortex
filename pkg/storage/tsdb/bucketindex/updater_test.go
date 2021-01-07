@@ -3,8 +3,6 @@ package bucketindex
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
-	"os"
 	"path"
 	"testing"
 	"time"
@@ -20,14 +18,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
 func TestUpdater_UpdateIndex(t *testing.T) {
 	const userID = "user-1"
 
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -69,7 +66,7 @@ func TestUpdater_UpdateIndex(t *testing.T) {
 func TestUpdater_UpdateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 	const userID = "user-1"
 
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -98,7 +95,7 @@ func TestUpdater_UpdateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 	const userID = "user-1"
 
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -127,7 +124,7 @@ func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 	const userID = "user-1"
 
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
@@ -155,7 +152,7 @@ func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	for _, oldIdx := range []*Index{nil, {}} {
 		w := NewUpdater(bkt, userID, log.NewNopLogger())
@@ -168,20 +165,6 @@ func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 		assert.Len(t, idx.BlockDeletionMarks, 0)
 		assert.Empty(t, partials)
 	}
-}
-
-func prepareFilesystemBucket(t testing.TB) objstore.Bucket {
-	storageDir, err := ioutil.TempDir(os.TempDir(), "")
-	require.NoError(t, err)
-
-	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(storageDir))
-	})
-
-	return objstore.BucketWithMetrics("test", bkt, nil)
 }
 
 func getBlockUploadedAt(t testing.TB, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {

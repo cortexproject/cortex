@@ -22,7 +22,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -488,7 +487,7 @@ func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfi
 		require.NoError(t, os.RemoveAll(cacheDir))
 	})
 
-	bkt, storageDir := prepareFilesystemBucket(t)
+	bkt, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg.CacheDir = cacheDir
@@ -509,18 +508,4 @@ func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
 		MetasConcurrency:         10,
 		IgnoreDeletionMarksDelay: time.Hour,
 	}
-}
-
-func prepareFilesystemBucket(t testing.TB) (objstore.Bucket, string) {
-	storageDir, err := ioutil.TempDir(os.TempDir(), "bucket")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(storageDir))
-	})
-
-	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-	require.NoError(t, err)
-
-	return bkt, storageDir
 }

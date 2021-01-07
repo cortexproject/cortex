@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -22,7 +23,7 @@ import (
 func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -87,7 +88,7 @@ func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
@@ -123,7 +124,7 @@ func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -188,7 +189,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -241,7 +242,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 func TestLoader_ShouldNotCacheErrorOnBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -297,7 +298,7 @@ func TestLoader_ShouldNotCacheErrorOnBackgroundUpdates(t *testing.T) {
 func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{
@@ -352,7 +353,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create a bucket index.
 	idx := &Index{

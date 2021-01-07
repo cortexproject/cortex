@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
 func TestBlockDeletionMarkFilepath(t *testing.T) {
@@ -36,7 +38,7 @@ func TestIsBlockDeletionMarkFilename(t *testing.T) {
 }
 
 func TestMigrateBlockDeletionMarksToGlobalLocation(t *testing.T) {
-	bkt := prepareFilesystemBucket(t)
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	ctx := context.Background()
 
 	// Create some fixtures.

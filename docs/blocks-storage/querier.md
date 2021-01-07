@@ -365,9 +365,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
-    # How frequently scan the bucket - or refresh the bucket index (if enabled)
-    # - to look for changes (new blocks shipped by ingesters and blocks deleted
-    # by retention or compaction).
+    # How frequently to scan the bucket, or to refresh the bucket index (if
+    # enabled), in order to look for changes (new blocks shipped by ingesters
+    # and blocks deleted by retention or compaction).
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m]
 

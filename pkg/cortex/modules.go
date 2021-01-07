@@ -172,13 +172,13 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	t.RuntimeConfig = serv
+	t.API.RegisterRuntimeConfig(t.RuntimeConfig)
 	return serv, err
 }
 
 func (t *Cortex) initOverrides() (serv services.Service, err error) {
 	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.RuntimeConfig))
 
-	t.API.RegisterOverrides(t.RuntimeConfig)
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, err
@@ -830,8 +830,9 @@ func (t *Cortex) setupModuleManager() error {
 	deps := map[string][]string{
 		API:                      {Server},
 		MemberlistKV:             {API},
+		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
-		Overrides:                {RuntimeConfig, API},
+		Overrides:                {RuntimeConfig},
 		Distributor:              {DistributorService, API},
 		DistributorService:       {Ring, Overrides},
 		Store:                    {Overrides, DeleteRequestsStore},

@@ -177,11 +177,11 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
 }
 
-// RegisterOverrides registers the endpoints associates with the configuration overrides
-func (a *API) RegisterOverrides(runtimeCfgManager *runtimeconfig.Manager) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/overrides", "Current Overrides Config")
+// RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
+func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config/overrides", "Current Overrides Config")
 
-	a.RegisterRoute("/overrides", overridesHandler(runtimeCfgManager), false, "GET")
+	a.RegisterRoute("/runtime_config/overrides", overridesHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	thanos "github.com/thanos-io/thanos/pkg/objstore/swift"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -27,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -299,8 +299,8 @@ func newRuleGroup(userID, namespace, group string) *rules.RuleGroupDesc {
 
 func swiftConfig(s *e2e.HTTPService) openstack.SwiftConfig {
 	return openstack.SwiftConfig{
-		SwiftConfig: thanos.SwiftConfig{
-			AuthUrl:       "http://" + s.HTTPEndpoint() + "/auth/v1.0",
+		Config: cortex_swift.Config{
+			AuthURL:       "http://" + s.HTTPEndpoint() + "/auth/v1.0",
 			Password:      "testing",
 			ContainerName: "e2e",
 			Username:      "test:tester",

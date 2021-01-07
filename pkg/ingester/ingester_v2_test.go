@@ -2323,7 +2323,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
 
 	r := prometheus.NewRegistry()
 
@@ -2334,7 +2334,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	t.Cleanup(func() {
-		_ = services.StopAndAwaitTerminated(context.Background(), i)
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
 	})
 
 	// Wait until it's ACTIVE

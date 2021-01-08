@@ -20,6 +20,7 @@ func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {
 	// intentionally overridden
 	expected.ListenPort = cfg.ListenPort
 	expected.RingConfig.ReplicationFactor = 1
+	expected.RingConfig.SubringCacheDisabled = true
 	expected.NumTokens = 512
 	expected.MinReadyDuration = 0
 	expected.FinalSleep = 0
@@ -45,6 +46,7 @@ func TestRingConfig_CustomConfigToLifecyclerConfig(t *testing.T) {
 	// ring config
 	expected.HeartbeatPeriod = cfg.HeartbeatPeriod
 	expected.RingConfig.HeartbeatTimeout = cfg.HeartbeatTimeout
+	expected.RingConfig.SubringCacheDisabled = true
 	expected.ID = cfg.InstanceID
 	expected.InfNames = cfg.InstanceInterfaceNames
 	expected.Port = cfg.InstancePort

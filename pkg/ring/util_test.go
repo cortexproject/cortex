@@ -59,12 +59,13 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 	}}
 
 	ring := &Ring{
-		cfg:              Config{HeartbeatTimeout: time.Minute},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		cfg:                 Config{HeartbeatTimeout: time.Minute},
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(true),
 	}
 
 	startTime := time.Now()
@@ -93,12 +94,13 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 	}}
 
 	ring := &Ring{
-		cfg:              Config{HeartbeatTimeout: time.Minute},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		cfg:                 Config{HeartbeatTimeout: time.Minute},
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(true),
 	}
 
 	// Add 1 new instance after some time.
@@ -111,8 +113,9 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 		instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
 		ringDesc.Ingesters[instanceID] = IngesterDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
 		ring.ringDesc = ringDesc
-		ring.ringTokens = ringDesc.getTokens()
+		ring.ringTokens = ringDesc.GetTokens()
 		ring.ringTokensByZone = ringDesc.getTokensByZone()
+		ring.ringInstanceByToken = ringDesc.getTokensInfo()
 		ring.ringZones = getZones(ringDesc.getTokensByZone())
 	}()
 
@@ -142,12 +145,13 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 	}}
 
 	ring := &Ring{
-		cfg:              Config{HeartbeatTimeout: time.Minute},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		cfg:                 Config{HeartbeatTimeout: time.Minute},
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(true),
 	}
 
 	// Keep changing the ring.
@@ -164,8 +168,9 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 				instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
 				ringDesc.Ingesters[instanceID] = IngesterDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
 				ring.ringDesc = ringDesc
-				ring.ringTokens = ringDesc.getTokens()
+				ring.ringTokens = ringDesc.GetTokens()
 				ring.ringTokensByZone = ringDesc.getTokensByZone()
+				ring.ringInstanceByToken = ringDesc.getTokensInfo()
 				ring.ringZones = getZones(ringDesc.getTokensByZone())
 
 				ring.mtx.Unlock()

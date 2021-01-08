@@ -396,7 +396,8 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.queryGate,
 		u.cfg.BucketStore.MaxChunkPoolBytes,
 		newChunksLimiterFactory(u.limits, userID),
-		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
+		store.NewSeriesLimiterFactory(0), // No series limiter.
+		u.logLevel.String() == "debug",   // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

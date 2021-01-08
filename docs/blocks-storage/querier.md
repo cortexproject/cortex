@@ -295,6 +295,10 @@ blocks_storage:
     [max_retries: <int> | default = 20]
 
   swift:
+    # OpenStack Swift authentication API version. 0 to autodetect.
+    # CLI flag: -blocks-storage.swift.auth-version
+    [auth_version: <int> | default = 0]
+
     # OpenStack Swift authentication URL
     # CLI flag: -blocks-storage.swift.auth-url
     [auth_url: <string> | default = ""]
@@ -352,6 +356,20 @@ blocks_storage:
     # Name of the OpenStack Swift container to put chunks in.
     # CLI flag: -blocks-storage.swift.container-name
     [container_name: <string> | default = ""]
+
+    # Max retries on requests error.
+    # CLI flag: -blocks-storage.swift.max-retries
+    [max_retries: <int> | default = 3]
+
+    # Time after which a connection attempt is aborted.
+    # CLI flag: -blocks-storage.swift.connect-timeout
+    [connect_timeout: <duration> | default = 10s]
+
+    # Time after which an idle request is aborted. The timeout watchdog is reset
+    # each time some data is received, so the timeout triggers after X time no
+    # data is received on a request.
+    # CLI flag: -blocks-storage.swift.request-timeout
+    [request_timeout: <duration> | default = 5s]
 
   filesystem:
     # Local filesystem storage directory.

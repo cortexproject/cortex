@@ -5,6 +5,7 @@
 * [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595
 * [CHANGE] Blocks storage: compactor is now required when running a Cortex cluster with the blocks storage, because it also keeps the bucket index updated. #3583
 * [CHANGE] Blocks storage: block deletion marks are now stored in a per-tenant global markers/ location too, other than within the block location. The compactor, at startup, will copy deletion marks from the block location to the global location. This migration is required only once, so you can safely disable it via `-compactor.block-deletion-marks-migration-enabled=false` once new compactor has successfully started once in your cluster. #3583
+* [CHANGE] OpenStack Swift: the default value for the `-ruler.storage.swift.container-name` and `-swift.container-name` config options has changed from `cortex` to empty string. If you were relying on the default value, you should set it back to `cortex`. #3660
 * [FEATURE] Querier: Queries can be federated across multiple tenants. The tenants IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` request header. This is an experimental feature, which can be enabled by setting `-tenant-federation.enabled=true` on all Cortex services. #3250
 * [ENHANCEMENT] Blocks storage: introduced a per-tenant bucket index, periodically updated by the compactor, used to avoid full bucket scanning done by queriers and store-gateways. The bucket index is updated by the compactor during blocks cleanup, on every `-compactor.cleanup-interval`. #3553 #3555 #3561 #3583 #3625
 * [ENHANCEMENT] Blocks storage: introduced an option `-blocks-storage.bucket-store.bucket-index.enabled` to enable the usage of the bucket index in the querier and store-gateway. When enabled, the querier and store-gateway will use the bucket index to find a tenant's blocks instead of running the periodic bucket scan. The following new metrics are exported by the querier: #3614 #3625
@@ -25,6 +26,10 @@
 * [ENHANCEMENT] Compactor: tenants marked for deletion will now be fully cleaned up after some delay since deletion of last block. Cleanup includes removal of remaining marker files (including tenant deletion mark file) and files under `debug/metas`. #3613
 * [ENHANCEMENT] Compactor: retry compaction of a single tenant on failure instead of re-running compaction for all tenants. #3627
 * [ENHANCEMENT] Querier: Implement result caching for tenant query federation. #3640
+* [ENHANCEMENT] OpenStack Swift: added the following config options to OpenStack Swift backend client: #3660
+  - Chunks storage: `-swift.auth-version`, `-swift.max-retries`, `-swift.connect-timeout`, `-swift.request-timeout`.
+  - Blocks storage: ` -blocks-storage.swift.auth-version`, ` -blocks-storage.swift.max-retries`, ` -blocks-storage.swift.connect-timeout`, ` -blocks-storage.swift.request-timeout`.
+  - Ruler: `-ruler.storage.swift.auth-version`, `-ruler.storage.swift.max-retries`, `-ruler.storage.swift.connect-timeout`, `-ruler.storage.swift.request-timeout`.
 * [ENHANCEMENT] Disabled in-memory shuffle-sharding subring cache in the store-gateway, ruler and compactor. This should reduce the memory utilisation in these services when shuffle-sharding is enabled, without introducing a significantly increase CPU utilisation. #3601
 * [ENHANCEMENT] Shuffle sharding: optimised subring generation used by shuffle sharding. #3601
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
@@ -32,6 +37,8 @@
 * [BUGFIX] Ingester: do not close idle TSDBs while blocks shipping is in progress. #3630
 * [BUGFIX] Ingester: correctly update `cortex_ingester_memory_users` and `cortex_ingester_active_series` when a tenant's idle TSDB is closed, when running Cortex with the blocks storage. #3646
 * [BUGFIX] Querier: fix default value incorrectly overriding `-querier.frontend-address` in single-binary mode. #3650
+* [BUGFIX] Compactor: delete `deletion-mark.json` at last when deleting a block in order to not leave partial blocks without deletion mark in the bucket if the compactor is interrupted while deleting a block. #3660
+* [BUGFIX] Blocks storage: do not cleanup a partially uploaded block when `meta.json` upload fails. Despite failure to upload `meta.json`, this file may in some cases still appear in the bucket later. By skipping early cleanup, we avoid having corrupted blocks in the storage. #3660
 
 ## 1.6.0
 

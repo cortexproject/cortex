@@ -52,6 +52,9 @@
 * [ENHANCEMENT] New /runtime_config endpoint that returns the defined runtime configuration in YAML format. The returned configuration includes overrides. #3639
 * [ENHANCEMENT] query_range API to include parameter name in HTTP 400 message. #3699
 * [ENHANCEMENT] Fail to startup Cortex if provided runtime config is invalid. #3707
+* [ENHANCEMENT] Alertmanager: Add flags to customize the cluster configuration: #3667
+  * `-alertmanager.cluster.gossip-interval`: The interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across cluster more quickly at the expense of increased bandwidth usage.
+  * `-alertmanager.cluster.push-pull-interval`: The interval between gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
 * [BUGFIX] Memberlist: Entry in the ring should now not appear again after using "Forget" feature (unless it's still heartbeating). #3603
 * [BUGFIX] Ingester: do not close idle TSDBs while blocks shipping is in progress. #3630

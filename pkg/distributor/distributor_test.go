@@ -400,8 +400,8 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 		// Using very long replica label value results in validation error.
 		{
 			enableTracker:    true,
-			acceptedReplica:  "hello-123",
-			testReplica:      "hello-1234567890123456789012345678901234567890",
+			acceptedReplica:  "instance0",
+			testReplica:      "instance1234567890123456789012345678901234567890",
 			cluster:          "cluster0",
 			samples:          5,
 			expectedResponse: emptyResponse,

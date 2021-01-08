@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 var (
@@ -135,7 +136,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeout:          time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -165,7 +166,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -200,7 +201,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -235,7 +236,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -286,7 +287,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -347,7 +348,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, nil)
+	}, trackerLimits{maxClusters: 100}, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -430,7 +431,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeout:          testData.updateTimeout,
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
-			}, nil)
+			}, trackerLimits{maxClusters: 100}, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -517,4 +518,50 @@ func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
 
 	assert.Equal(t, "ha-tracker/", haConfig.KVStore.Prefix)
 	assert.NotEqual(t, haConfig.KVStore.Prefix, ringConfig.KVStore.Prefix)
+}
+
+func TestHAClustersLimit(t *testing.T) {
+	const userID = "user"
+
+	codec := GetReplicaDescCodec()
+	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	limits := trackerLimits{maxClusters: 2}
+
+	t1, err := newClusterTracker(HATrackerConfig{
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mock},
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
+	}, limits, nil)
+
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), t1))
+	defer services.StopAndAwaitTerminated(context.Background(), t1) //nolint:errcheck
+
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "a", "a1"))
+	waitForClustersUpdate(t, 1, t1, userID)
+
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b1"))
+	waitForClustersUpdate(t, 2, t1, userID)
+
+	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1"), "rpc error: code = Code(400) desc = too many HA clusters (limit: 2)")
+}
+
+func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID string) {
+	t.Helper()
+	test.Poll(t, 2*time.Second, expected, func() interface{} {
+		tr.electedLock.RLock()
+		defer tr.electedLock.RUnlock()
+
+		return tr.clusters[userID]
+	})
+}
+
+type trackerLimits struct {
+	maxClusters int
+}
+
+func (l trackerLimits) MaxHAClusters(_ string) int {
+	return l.maxClusters
 }

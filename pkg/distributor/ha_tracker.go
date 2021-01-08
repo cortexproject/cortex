@@ -54,6 +54,12 @@ var (
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
+type HALimits interface {
+	// Returns max number of clusters that HA tracker should track for a user.
+	// Samples from additional clusters are rejected.
+	MaxHAClusters(user string) int
+}
+
 // ProtoReplicaDescFactory makes new InstanceDescs
 func ProtoReplicaDescFactory() proto.Message {
 	return NewReplicaDesc()
@@ -73,10 +79,11 @@ type haTracker struct {
 	cfg                 HATrackerConfig
 	client              kv.Client
 	updateTimeoutJitter time.Duration
+	limits              HALimits
 
-	// Replicas we are accepting samples from.
 	electedLock sync.RWMutex
-	elected     map[string]ReplicaDesc
+	elected     map[string]ReplicaDesc // Replicas we are accepting samples from. Key = "user/cluster".
+	clusters    map[string]int         // Number of clusters with elected replicas that a single user has. Key = user.
 }
 
 // HATrackerConfig contains the configuration require to
@@ -143,7 +150,7 @@ func GetReplicaDescCodec() codec.Proto {
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store. Tracker must be started via StartAsync().
-func newClusterTracker(cfg HATrackerConfig, reg prometheus.Registerer) (*haTracker, error) {
+func newClusterTracker(cfg HATrackerConfig, limits HALimits, reg prometheus.Registerer) (*haTracker, error) {
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {
 		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax
@@ -153,7 +160,9 @@ func newClusterTracker(cfg HATrackerConfig, reg prometheus.Registerer) (*haTrack
 		logger:              util.Logger,
 		cfg:                 cfg,
 		updateTimeoutJitter: jitter,
+		limits:              limits,
 		elected:             map[string]ReplicaDesc{},
+		clusters:            map[string]int{},
 	}
 
 	if cfg.EnableHATracker {
@@ -188,17 +197,23 @@ func (c *haTracker) loop(ctx context.Context) error {
 		defer c.electedLock.Unlock()
 		chunks := strings.SplitN(key, "/", 2)
 
-		// The prefix has already been stripped, so a valid key would look like cluster/replica,
-		// and a key without a / such as `ring` would be invalid.
+		// Valid key would look like cluster/replica, and a key without a / such as `ring` would be invalid.
 		if len(chunks) != 2 {
 			return true
 		}
 
-		if replica.Replica != c.elected[key].Replica {
-			electedReplicaChanges.WithLabelValues(chunks[0], chunks[1]).Inc()
+		user := chunks[0]
+		cluster := chunks[1]
+
+		elected, exists := c.elected[key]
+		if replica.Replica != elected.Replica {
+			electedReplicaChanges.WithLabelValues(user, cluster).Inc()
+		}
+		if !exists {
+			c.clusters[user]++
 		}
 		c.elected[key] = *replica
-		electedReplicaTimestamp.WithLabelValues(chunks[0], chunks[1]).Set(float64(replica.ReceivedAt / 1000))
+		electedReplicaTimestamp.WithLabelValues(user, cluster).Set(float64(replica.ReceivedAt / 1000))
 		electedReplicaPropagationTime.Observe(time.Since(timestamp.Time(replica.ReceivedAt)).Seconds())
 		return true
 	})
@@ -220,14 +235,22 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	}
 	key := fmt.Sprintf("%s/%s", userID, cluster)
 	now := mtime.Now()
+
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]
+	clusters := c.clusters[userID]
 	c.electedLock.RUnlock()
+
 	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {
 		if entry.Replica != replica {
 			return replicasNotMatchError(replica, entry.Replica)
 		}
 		return nil
+	}
+
+	// We don't know about this cluster yet. If we have reached the limit for number of clusters, we error out now.
+	if limit := c.limits.MaxHAClusters(userID); clusters+1 > limit {
+		return httpgrpc.Errorf(http.StatusBadRequest, "too many HA clusters (limit: %d)", limit)
 	}
 
 	err := c.checkKVStore(ctx, key, replica, now)

@@ -54,7 +54,7 @@ var (
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
-type HALimits interface {
+type haTrackerLimits interface {
 	// Returns max number of clusters that HA tracker should track for a user.
 	// Samples from additional clusters are rejected.
 	MaxHAClusters(user string) int
@@ -79,7 +79,7 @@ type haTracker struct {
 	cfg                 HATrackerConfig
 	client              kv.Client
 	updateTimeoutJitter time.Duration
-	limits              HALimits
+	limits              haTrackerLimits
 
 	electedLock sync.RWMutex
 	elected     map[string]ReplicaDesc // Replicas we are accepting samples from. Key = "user/cluster".
@@ -150,7 +150,7 @@ func GetReplicaDescCodec() codec.Proto {
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store. Tracker must be started via StartAsync().
-func newClusterTracker(cfg HATrackerConfig, limits HALimits, reg prometheus.Registerer) (*haTracker, error) {
+func newClusterTracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Registerer) (*haTracker, error) {
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {
 		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax

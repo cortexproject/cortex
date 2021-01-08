@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/kit/log"
@@ -35,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 type Config struct {
@@ -179,7 +178,7 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 
 // RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
 func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config (incl. Overrides)")
 
 	a.RegisterRoute("/runtime_config", runtimeConfigHandler(runtimeCfgManager), false, "GET")
 }

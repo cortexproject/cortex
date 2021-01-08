@@ -224,17 +224,12 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 
 func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := yaml.Marshal(runtimeCfgManager.GetConfig())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		runtimeConfig := runtimeCfgManager.GetConfig()
+		if runtimeConfig == nil {
+			http.Error(w, "runtime config file doesn't exist", http.StatusInternalServerError)
 			return
 		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write(out); err != nil {
-			level.Error(util.Logger).Log("msg", "error writing response", "err", err)
-		}
+		util.WriteYAMLResponse(w, runtimeConfig)
 	}
 }
 

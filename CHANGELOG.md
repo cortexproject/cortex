@@ -105,7 +105,7 @@
   * `cortex_compactor_tenants_processing_failed`
 * [ENHANCEMENT] Added new experimental API endpoints: `POST /purger/delete_tenant` and `GET /purger/delete_tenant_status` for deleting all tenant data. Only works with blocks storage. Compactor removes blocks that belong to user marked for deletion. #3549 #3558
 * [ENHANCEMENT] Chunks storage: add option to use V2 signatures for S3 authentication. #3560
-* [ENHANCEMENT] HA Tracker: new limit for max number of clusters tracked for single user. Default limit is 128 clusters. #3668
+* [ENHANCEMENT] HA Tracker: new limit for max number of clusters tracked for single user. Default limit is 128 clusters per user. #3668
 * [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422

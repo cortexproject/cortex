@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -80,6 +81,13 @@ const (
 	All                      string = "all"
 )
 
+func newDefaultConfig() *Config {
+	defaultConfig := &Config{}
+	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
+	defaultConfig.RegisterFlags(defaultFS)
+	return defaultConfig
+}
+
 func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
@@ -90,8 +98,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	}
 
 	t.API = a
-
-	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg, newDefaultConfig())
 
 	return nil, nil
 }

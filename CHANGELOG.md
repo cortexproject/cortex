@@ -65,6 +65,7 @@
 * [CHANGE] Ruler: gRPC message size default limits on the Ruler-client side have changed: #3523
   - limit for outgoing gRPC messages has changed from 2147483647 to 16777216 bytes
   - limit for incoming gRPC messages has changed from 4194304 to 104857600 bytes
+* [CHANGE] HA Tracker: verify label value limit for replica label. #3668
 * [FEATURE] Distributor/Ingester: Provide ability to not overflow writes in the presence of a leaving or unhealthy ingester. This allows for more efficient ingester rolling restarts. #3305
 * [FEATURE] Query-frontend: introduced query statistics logged in the query-frontend when enabled via `-frontend.query-stats-enabled=true`. When enabled, the metric `cortex_query_seconds_total` is tracked, counting the sum of the wall time spent across all queriers while running queries (on a per-tenant basis). The metrics `cortex_request_duration_seconds` and `cortex_query_seconds_total` are different: the first one tracks the request duration (eg. HTTP request from the client), while the latter tracks the sum of the wall time on all queriers involved executing the query. #3539
 * [ENHANCEMENT] API: Add GZIP HTTP compression to the API responses. Compression can be enabled via `-api.response-compression-enabled`. #3536
@@ -104,6 +105,7 @@
   * `cortex_compactor_tenants_processing_failed`
 * [ENHANCEMENT] Added new experimental API endpoints: `POST /purger/delete_tenant` and `GET /purger/delete_tenant_status` for deleting all tenant data. Only works with blocks storage. Compactor removes blocks that belong to user marked for deletion. #3549 #3558
 * [ENHANCEMENT] Chunks storage: add option to use V2 signatures for S3 authentication. #3560
+* [ENHANCEMENT] HA Tracker: new limit for max number of clusters tracked for single user. #3668
 * [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422

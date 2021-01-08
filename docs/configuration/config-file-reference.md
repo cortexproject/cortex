@@ -1280,64 +1280,81 @@ storage:
     [signature_version: <string> | default = "v4"]
 
   swift:
-    # Openstack authentication URL.
+    # OpenStack Swift authentication API version. 0 to autodetect.
+    # CLI flag: -ruler.storage.swift.auth-version
+    [auth_version: <int> | default = 0]
+
+    # OpenStack Swift authentication URL
     # CLI flag: -ruler.storage.swift.auth-url
     [auth_url: <string> | default = ""]
 
-    # Openstack username for the api.
+    # OpenStack Swift username.
     # CLI flag: -ruler.storage.swift.username
     [username: <string> | default = ""]
 
-    # Openstack user's domain name.
+    # OpenStack Swift user's domain name.
     # CLI flag: -ruler.storage.swift.user-domain-name
     [user_domain_name: <string> | default = ""]
 
-    # Openstack user's domain id.
+    # OpenStack Swift user's domain ID.
     # CLI flag: -ruler.storage.swift.user-domain-id
     [user_domain_id: <string> | default = ""]
 
-    # Openstack userid for the api.
+    # OpenStack Swift user ID.
     # CLI flag: -ruler.storage.swift.user-id
     [user_id: <string> | default = ""]
 
-    # Openstack api key.
+    # OpenStack Swift API key.
     # CLI flag: -ruler.storage.swift.password
     [password: <string> | default = ""]
 
-    # Openstack user's domain id.
+    # OpenStack Swift user's domain ID.
     # CLI flag: -ruler.storage.swift.domain-id
     [domain_id: <string> | default = ""]
 
-    # Openstack user's domain name.
+    # OpenStack Swift user's domain name.
     # CLI flag: -ruler.storage.swift.domain-name
     [domain_name: <string> | default = ""]
 
-    # Openstack project id (v2,v3 auth only).
+    # OpenStack Swift project ID (v2,v3 auth only).
     # CLI flag: -ruler.storage.swift.project-id
     [project_id: <string> | default = ""]
 
-    # Openstack project name (v2,v3 auth only).
+    # OpenStack Swift project name (v2,v3 auth only).
     # CLI flag: -ruler.storage.swift.project-name
     [project_name: <string> | default = ""]
 
-    # Id of the project's domain (v3 auth only), only needed if it differs the
-    # from user domain.
+    # ID of the OpenStack Swift project's domain (v3 auth only), only needed if
+    # it differs the from user domain.
     # CLI flag: -ruler.storage.swift.project-domain-id
     [project_domain_id: <string> | default = ""]
 
-    # Name of the project's domain (v3 auth only), only needed if it differs
-    # from the user domain.
+    # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+    # if it differs from the user domain.
     # CLI flag: -ruler.storage.swift.project-domain-name
     [project_domain_name: <string> | default = ""]
 
-    # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
-    # auth only)
+    # OpenStack Swift Region to use (v2,v3 auth only).
     # CLI flag: -ruler.storage.swift.region-name
     [region_name: <string> | default = ""]
 
-    # Name of the Swift container to put chunks in.
+    # Name of the OpenStack Swift container to put chunks in.
     # CLI flag: -ruler.storage.swift.container-name
-    [container_name: <string> | default = "cortex"]
+    [container_name: <string> | default = ""]
+
+    # Max retries on requests error.
+    # CLI flag: -ruler.storage.swift.max-retries
+    [max_retries: <int> | default = 3]
+
+    # Time after which a connection attempt is aborted.
+    # CLI flag: -ruler.storage.swift.connect-timeout
+    [connect_timeout: <duration> | default = 10s]
+
+    # Time after which an idle request is aborted. The timeout watchdog is reset
+    # each time some data is received, so the timeout triggers after X time no
+    # data is received on a request.
+    # CLI flag: -ruler.storage.swift.request-timeout
+    [request_timeout: <duration> | default = 5s]
 
   local:
     # Directory to scan for rules
@@ -2380,64 +2397,81 @@ filesystem:
   [directory: <string> | default = ""]
 
 swift:
-  # Openstack authentication URL.
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
   # CLI flag: -swift.auth-url
   [auth_url: <string> | default = ""]
 
-  # Openstack username for the api.
+  # OpenStack Swift username.
   # CLI flag: -swift.username
   [username: <string> | default = ""]
 
-  # Openstack user's domain name.
+  # OpenStack Swift user's domain name.
   # CLI flag: -swift.user-domain-name
   [user_domain_name: <string> | default = ""]
 
-  # Openstack user's domain id.
+  # OpenStack Swift user's domain ID.
   # CLI flag: -swift.user-domain-id
   [user_domain_id: <string> | default = ""]
 
-  # Openstack userid for the api.
+  # OpenStack Swift user ID.
   # CLI flag: -swift.user-id
   [user_id: <string> | default = ""]
 
-  # Openstack api key.
+  # OpenStack Swift API key.
   # CLI flag: -swift.password
   [password: <string> | default = ""]
 
-  # Openstack user's domain id.
+  # OpenStack Swift user's domain ID.
   # CLI flag: -swift.domain-id
   [domain_id: <string> | default = ""]
 
-  # Openstack user's domain name.
+  # OpenStack Swift user's domain name.
   # CLI flag: -swift.domain-name
   [domain_name: <string> | default = ""]
 
-  # Openstack project id (v2,v3 auth only).
+  # OpenStack Swift project ID (v2,v3 auth only).
   # CLI flag: -swift.project-id
   [project_id: <string> | default = ""]
 
-  # Openstack project name (v2,v3 auth only).
+  # OpenStack Swift project name (v2,v3 auth only).
   # CLI flag: -swift.project-name
   [project_name: <string> | default = ""]
 
-  # Id of the project's domain (v3 auth only), only needed if it differs the
-  # from user domain.
+  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
+  # differs the from user domain.
   # CLI flag: -swift.project-domain-id
   [project_domain_id: <string> | default = ""]
 
-  # Name of the project's domain (v3 auth only), only needed if it differs from
-  # the user domain.
+  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
+  # it differs from the user domain.
   # CLI flag: -swift.project-domain-name
   [project_domain_name: <string> | default = ""]
 
-  # Openstack Region to use eg LON, ORD - default is use first region (v2,v3
-  # auth only)
+  # OpenStack Swift Region to use (v2,v3 auth only).
   # CLI flag: -swift.region-name
   [region_name: <string> | default = ""]
 
-  # Name of the Swift container to put chunks in.
+  # Name of the OpenStack Swift container to put chunks in.
   # CLI flag: -swift.container-name
-  [container_name: <string> | default = "cortex"]
+  [container_name: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
 
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
@@ -3612,6 +3646,10 @@ azure:
   [max_retries: <int> | default = 20]
 
 swift:
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -blocks-storage.swift.auth-version
+  [auth_version: <int> | default = 0]
+
   # OpenStack Swift authentication URL
   # CLI flag: -blocks-storage.swift.auth-url
   [auth_url: <string> | default = ""]
@@ -3670,6 +3708,20 @@ swift:
   # CLI flag: -blocks-storage.swift.container-name
   [container_name: <string> | default = ""]
 
+  # Max retries on requests error.
+  # CLI flag: -blocks-storage.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -blocks-storage.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -blocks-storage.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -blocks-storage.filesystem.dir
@@ -3682,9 +3734,9 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-dir
   [sync_dir: <string> | default = "tsdb-sync"]
 
-  # How frequently scan the bucket - or fetch the bucket index (if enabled) - to
-  # look for changes (new blocks shipped by ingesters and blocks removed by
-  # retention or compaction). 0 disables it.
+  # How frequently to scan the bucket, or to refresh the bucket index (if
+  # enabled), in order to look for changes (new blocks shipped by ingesters and
+  # blocks deleted by retention or compaction).
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 5m]
 
@@ -3955,11 +4007,6 @@ bucket_store:
     # via bucket index instead of bucket scanning.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
     [enabled: <boolean> | default = false]
-
-    # How frequently a cached bucket index should be refreshed. This option is
-    # used only by querier.
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
-    [update_on_stale_interval: <duration> | default = 15m]
 
     # How frequently a bucket index, which previously failed to load, should be
     # tried to load again. This option is used only by querier.

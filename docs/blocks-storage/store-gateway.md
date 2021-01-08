@@ -342,6 +342,10 @@ blocks_storage:
     [max_retries: <int> | default = 20]
 
   swift:
+    # OpenStack Swift authentication API version. 0 to autodetect.
+    # CLI flag: -blocks-storage.swift.auth-version
+    [auth_version: <int> | default = 0]
+
     # OpenStack Swift authentication URL
     # CLI flag: -blocks-storage.swift.auth-url
     [auth_url: <string> | default = ""]
@@ -400,6 +404,20 @@ blocks_storage:
     # CLI flag: -blocks-storage.swift.container-name
     [container_name: <string> | default = ""]
 
+    # Max retries on requests error.
+    # CLI flag: -blocks-storage.swift.max-retries
+    [max_retries: <int> | default = 3]
+
+    # Time after which a connection attempt is aborted.
+    # CLI flag: -blocks-storage.swift.connect-timeout
+    [connect_timeout: <duration> | default = 10s]
+
+    # Time after which an idle request is aborted. The timeout watchdog is reset
+    # each time some data is received, so the timeout triggers after X time no
+    # data is received on a request.
+    # CLI flag: -blocks-storage.swift.request-timeout
+    [request_timeout: <duration> | default = 5s]
+
   filesystem:
     # Local filesystem storage directory.
     # CLI flag: -blocks-storage.filesystem.dir
@@ -412,9 +430,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-dir
     [sync_dir: <string> | default = "tsdb-sync"]
 
-    # How frequently scan the bucket - or fetch the bucket index (if enabled) -
-    # to look for changes (new blocks shipped by ingesters and blocks removed by
-    # retention or compaction). 0 disables it.
+    # How frequently to scan the bucket, or to refresh the bucket index (if
+    # enabled), in order to look for changes (new blocks shipped by ingesters
+    # and blocks deleted by retention or compaction).
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 5m]
 
@@ -686,11 +704,6 @@ blocks_storage:
       # storage via bucket index instead of bucket scanning.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
       [enabled: <boolean> | default = false]
-
-      # How frequently a cached bucket index should be refreshed. This option is
-      # used only by querier.
-      # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-stale-interval
-      [update_on_stale_interval: <duration> | default = 15m]
 
       # How frequently a bucket index, which previously failed to load, should
       # be tried to load again. This option is used only by querier.

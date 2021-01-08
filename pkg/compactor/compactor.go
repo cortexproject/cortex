@@ -624,7 +624,7 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	userHash := hasher.Sum32()
 
 	// Check whether this compactor instance owns the user.
-	rs, err := c.ring.Get(userHash, ring.Compactor, []ring.IngesterDesc{})
+	rs, err := c.ring.Get(userHash, ring.Compactor, nil, nil, nil)
 	if err != nil {
 		return false, err
 	}

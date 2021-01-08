@@ -609,8 +609,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			}))
 
 			cfg := ring.Config{
-				ReplicationFactor: testData.replicationFactor,
-				HeartbeatTimeout:  time.Minute,
+				ReplicationFactor:    testData.replicationFactor,
+				HeartbeatTimeout:     time.Minute,
+				SubringCacheDisabled: true,
 			}
 
 			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})

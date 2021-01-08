@@ -753,11 +753,13 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	zones := map[string]struct{}{}
 
 	if ringDesc != nil {
+		now := time.Now()
+
 		for _, ingester := range ringDesc.Ingesters {
 			zones[ingester.Zone] = struct{}{}
 
 			// Count the number of healthy instances for Write operation.
-			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout) {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, now) {
 				healthyInstancesCount++
 			}
 		}

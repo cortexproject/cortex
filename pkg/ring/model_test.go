@@ -51,13 +51,13 @@ func TestIngesterDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			actual := testData.ingester.IsHealthy(Write, testData.timeout)
+			actual := testData.ingester.IsHealthy(Write, testData.timeout, time.Now())
 			assert.Equal(t, testData.writeExpected, actual)
 
-			actual = testData.ingester.IsHealthy(Read, testData.timeout)
+			actual = testData.ingester.IsHealthy(Read, testData.timeout, time.Now())
 			assert.Equal(t, testData.readExpected, actual)
 
-			actual = testData.ingester.IsHealthy(Reporting, testData.timeout)
+			actual = testData.ingester.IsHealthy(Reporting, testData.timeout, time.Now())
 			assert.Equal(t, testData.reportExpected, actual)
 		})
 	}
@@ -108,10 +108,10 @@ func TestIngesterDesc_IsHealthy_ForStoreGatewayOperations(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			actual := testData.instance.IsHealthy(BlocksSync, testData.timeout)
+			actual := testData.instance.IsHealthy(BlocksSync, testData.timeout, time.Now())
 			assert.Equal(t, testData.syncExpected, actual)
 
-			actual = testData.instance.IsHealthy(BlocksRead, testData.timeout)
+			actual = testData.instance.IsHealthy(BlocksRead, testData.timeout, time.Now())
 			assert.Equal(t, testData.queryExpected, actual)
 		})
 	}
@@ -220,11 +220,11 @@ func TestDesc_Ready(t *testing.T) {
 func TestDesc_getTokensByZone(t *testing.T) {
 	tests := map[string]struct {
 		desc     *Desc
-		expected map[string][]TokenDesc
+		expected map[string][]uint32
 	}{
 		"empty ring": {
 			desc:     &Desc{Ingesters: map[string]IngesterDesc{}},
-			expected: map[string][]TokenDesc{},
+			expected: map[string][]uint32{},
 		},
 		"single zone": {
 			desc: &Desc{Ingesters: map[string]IngesterDesc{
@@ -232,15 +232,8 @@ func TestDesc_getTokensByZone(t *testing.T) {
 				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: ""},
 				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: ""},
 			}},
-			expected: map[string][]TokenDesc{
-				"": {
-					{Token: 1, Ingester: "instance-1", Zone: ""},
-					{Token: 2, Ingester: "instance-2", Zone: ""},
-					{Token: 3, Ingester: "instance-3", Zone: ""},
-					{Token: 4, Ingester: "instance-2", Zone: ""},
-					{Token: 5, Ingester: "instance-1", Zone: ""},
-					{Token: 6, Ingester: "instance-3", Zone: ""},
-				},
+			expected: map[string][]uint32{
+				"": {1, 2, 3, 4, 5, 6},
 			},
 		},
 		"multiple zones": {
@@ -249,17 +242,9 @@ func TestDesc_getTokensByZone(t *testing.T) {
 				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: "zone-1"},
 				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: "zone-2"},
 			}},
-			expected: map[string][]TokenDesc{
-				"zone-1": {
-					{Token: 1, Ingester: "instance-1", Zone: "zone-1"},
-					{Token: 2, Ingester: "instance-2", Zone: "zone-1"},
-					{Token: 4, Ingester: "instance-2", Zone: "zone-1"},
-					{Token: 5, Ingester: "instance-1", Zone: "zone-1"},
-				},
-				"zone-2": {
-					{Token: 3, Ingester: "instance-3", Zone: "zone-2"},
-					{Token: 6, Ingester: "instance-3", Zone: "zone-2"},
-				},
+			expected: map[string][]uint32{
+				"zone-1": {1, 2, 4, 5},
+				"zone-2": {3, 6},
 			},
 		},
 	}
@@ -267,6 +252,46 @@ func TestDesc_getTokensByZone(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.desc.getTokensByZone())
+		})
+	}
+}
+
+func TestDesc_TokensFor(t *testing.T) {
+	tests := map[string]struct {
+		desc         *Desc
+		expectedMine Tokens
+		expectedAll  Tokens
+	}{
+		"empty ring": {
+			desc:         &Desc{Ingesters: map[string]IngesterDesc{}},
+			expectedMine: Tokens(nil),
+			expectedAll:  Tokens{},
+		},
+		"single zone": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: ""},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: ""},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: ""},
+			}},
+			expectedMine: Tokens{1, 5},
+			expectedAll:  Tokens{1, 2, 3, 4, 5, 6},
+		},
+		"multiple zones": {
+			desc: &Desc{Ingesters: map[string]IngesterDesc{
+				"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1, 5}, Zone: "zone-1"},
+				"instance-2": {Addr: "127.0.0.1", Tokens: []uint32{2, 4}, Zone: "zone-1"},
+				"instance-3": {Addr: "127.0.0.1", Tokens: []uint32{3, 6}, Zone: "zone-2"},
+			}},
+			expectedMine: Tokens{1, 5},
+			expectedAll:  Tokens{1, 2, 3, 4, 5, 6},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actualMine, actualAll := testData.desc.TokensFor("instance-1")
+			assert.Equal(t, testData.expectedMine, actualMine)
+			assert.Equal(t, testData.expectedAll, actualAll)
 		})
 	}
 }
@@ -347,6 +372,93 @@ func TestDesc_RingsCompare(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.r1.RingCompare(testData.r2))
 			assert.Equal(t, testData.expected, testData.r2.RingCompare(testData.r1))
+		})
+	}
+}
+
+func TestMergeTokens(t *testing.T) {
+	tests := map[string]struct {
+		input    [][]uint32
+		expected []uint32
+	}{
+		"empty input": {
+			input:    nil,
+			expected: []uint32{},
+		},
+		"single instance in input": {
+			input: [][]uint32{
+				{1, 3, 4, 8},
+			},
+			expected: []uint32{1, 3, 4, 8},
+		},
+		"multiple instances in input": {
+			input: [][]uint32{
+				{1, 3, 4, 8},
+				{0, 2, 6, 9},
+				{5, 7, 10, 11},
+			},
+			expected: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+		},
+		"some instances have no tokens": {
+			input: [][]uint32{
+				{1, 3, 4, 8},
+				{},
+				{0, 2, 6, 9},
+				{},
+				{5, 7, 10, 11},
+			},
+			expected: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expected, MergeTokens(testData.input))
+		})
+	}
+}
+
+func TestMergeTokensByZone(t *testing.T) {
+	tests := map[string]struct {
+		input    map[string][][]uint32
+		expected map[string][]uint32
+	}{
+		"empty input": {
+			input:    nil,
+			expected: map[string][]uint32{},
+		},
+		"single zone": {
+			input: map[string][][]uint32{
+				"zone-1": {
+					{1, 3, 4, 8},
+					{2, 5, 6, 7},
+				},
+			},
+			expected: map[string][]uint32{
+				"zone-1": {1, 2, 3, 4, 5, 6, 7, 8},
+			},
+		},
+		"multiple zones": {
+			input: map[string][][]uint32{
+				"zone-1": {
+					{1, 3, 4, 8},
+					{2, 5, 6, 7},
+				},
+				"zone-2": {
+					{3, 5},
+					{2, 4},
+				},
+			},
+			expected: map[string][]uint32{
+				"zone-1": {1, 2, 3, 4, 5, 6, 7, 8},
+				"zone-2": {2, 3, 4, 5},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expected, MergeTokensByZone(testData.input))
 		})
 	}
 }

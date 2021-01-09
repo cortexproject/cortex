@@ -130,7 +130,7 @@ Displays the configuration using only the default values.
 GET /runtime_config
 ```
 
-Displays the runtime configuration currently applied to Cortex (in YAML format), including default values. Please be aware that the configuration will be available only if Cortex is configured with a valid `-runtime-config.file`.
+Displays the runtime configuration currently applied to Cortex (in YAML format), including default values. Please be aware that the endpoint will be only available if Cortex is configured with the `-runtime-config.file` option.
 
 ### Services status
 

@@ -226,7 +226,7 @@ func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager) http.Handler
 	return func(w http.ResponseWriter, r *http.Request) {
 		runtimeConfig := runtimeCfgManager.GetConfig()
 		if runtimeConfig == nil {
-			http.Error(w, "runtime config file doesn't exist", http.StatusInternalServerError)
+			util.WriteTextResponse(w, "runtime config file doesn't exist")
 			return
 		}
 		util.WriteYAMLResponse(w, runtimeConfig)

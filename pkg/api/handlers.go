@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 const (
@@ -218,6 +219,17 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		util.WriteYAMLResponse(w, output)
+	}
+}
+
+func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		runtimeConfig := runtimeCfgManager.GetConfig()
+		if runtimeConfig == nil {
+			util.WriteTextResponse(w, "runtime config file doesn't exist")
+			return
+		}
+		util.WriteYAMLResponse(w, runtimeConfig)
 	}
 }
 

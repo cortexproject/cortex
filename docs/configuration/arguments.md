@@ -286,7 +286,7 @@ Multi KV also reacts on changes done via runtime configuration. It uses this sec
 
 ```yaml
 multi_kv_config:
-    mirror-enabled: false
+    mirror_enabled: false
     primary: memberlist
 ```
 
@@ -421,6 +421,8 @@ multi_kv_config:
 ```
 
 When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
+
+The `/runtime_config` endpoint returns the runtime configuration, including the overrides.
 
 ## Ingester, Distributor & Querier limits.
 

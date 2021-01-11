@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 type Config struct {
@@ -173,6 +174,13 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
+}
+
+// RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
+func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config (incl. Overrides)")
+
+	a.RegisterRoute("/runtime_config", runtimeConfigHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

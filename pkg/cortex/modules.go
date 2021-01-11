@@ -172,6 +172,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	t.RuntimeConfig = serv
+	t.API.RegisterRuntimeConfig(t.RuntimeConfig)
 	return serv, err
 }
 
@@ -828,6 +829,7 @@ func (t *Cortex) setupModuleManager() error {
 	deps := map[string][]string{
 		API:                      {Server},
 		MemberlistKV:             {API},
+		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		Distributor:              {DistributorService, API},

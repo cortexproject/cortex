@@ -138,3 +138,6 @@ query_range:
 limits:
   # Limit max query time range to 31d
   max_query_length: 744h
+
+runtime_config:
+  file: ./config/runtime.yaml

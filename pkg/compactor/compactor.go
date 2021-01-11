@@ -31,7 +31,8 @@ import (
 )
 
 var (
-	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	errInvalidBlockRanges                = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	ringCompactorOp       ring.Operation = ring.NewOp(ring.ACTIVE)
 )
 
 // Config holds the Compactor config.
@@ -328,7 +329,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 			maxWaiting := c.compactorCfg.ShardingRing.WaitStabilityMaxDuration
 
 			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
-			if err := ring.WaitRingStability(ctx, c.ring, ring.Compactor, minWaiting, maxWaiting); err != nil {
+			if err := ring.WaitRingStability(ctx, c.ring, ringCompactorOp, minWaiting, maxWaiting); err != nil {
 				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
 				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
@@ -624,7 +625,7 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	userHash := hasher.Sum32()
 
 	// Check whether this compactor instance owns the user.
-	rs, err := c.ring.Get(userHash, ring.Compactor, nil, nil, nil)
+	rs, err := c.ring.Get(userHash, ringCompactorOp, nil, nil, nil)
 	if err != nil {
 		return false, err
 	}

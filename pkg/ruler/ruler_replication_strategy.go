@@ -8,6 +8,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
+// ringOp is the operation used for distributing rule groups between rulers.
+var ringOp ring.Operation = ring.NewOpWithReplicaSetExtension(func(s ring.IngesterState) bool {
+	// Only ACTIVE rulers get any rule groups. If instance is not ACTIVE, we need to find another ruler.
+	return s != ring.ACTIVE
+}, ring.ACTIVE)
+
 type rulerReplicationStrategy struct {
 }
 
@@ -28,12 +34,4 @@ func (r rulerReplicationStrategy) Filter(instances []ring.IngesterDesc, op ring.
 	}
 
 	return instances, len(instances) - 1, nil
-}
-
-func (r rulerReplicationStrategy) ShouldExtendReplicaSet(instance ring.IngesterDesc, op ring.Operation) bool {
-	// Only ACTIVE rulers get any rule groups. If instance is not ACTIVE, we need to find another ruler.
-	if op == ring.Ruler && instance.GetState() != ring.ACTIVE {
-		return true
-	}
-	return false
 }

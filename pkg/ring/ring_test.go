@@ -53,7 +53,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	r := Ring{
 		cfg:      cfg,
 		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(true),
+		strategy: NewDefaultReplicationStrategy(),
 	}
 
 	ctx := context.Background()
@@ -68,7 +68,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		generateKeys(rnd, numKeys, keys)
-		err := DoBatch(ctx, &r, keys, callback, cleanup)
+		err := DoBatch(ctx, Write, &r, keys, callback, cleanup)
 		require.NoError(b, err)
 	}
 }
@@ -94,9 +94,9 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 	r := Ring{
 		cfg:      Config{},
 		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(true),
+		strategy: NewDefaultReplicationStrategy(),
 	}
-	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
+	require.Error(t, DoBatch(ctx, Write, &r, keys, callback, cleanup))
 }
 
 func TestAddIngester(t *testing.T) {
@@ -200,7 +200,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				ringTokensByZone:    r.getTokensByZone(),
 				ringInstanceByToken: r.getTokensInfo(),
 				ringZones:           getZones(r.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			ingesters := make([]IngesterDesc, 0, len(r.GetIngesters()))
@@ -294,7 +294,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			set, err := ring.GetAllHealthy(Read)
@@ -405,7 +405,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			set, err := ring.GetReplicationSetForOperation(Read)
@@ -723,7 +723,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Check the replication set has the correct settings
@@ -859,7 +859,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			shardRing := ring.ShuffleShard("tenant-id", testData.shardSize)
@@ -911,7 +911,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(true),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	for i := 1; i <= numTenants; i++ {
@@ -979,7 +979,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(true),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Compute the shard for each tenant.
@@ -1078,7 +1078,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Compute the initial shard for each tenant.
@@ -1142,7 +1142,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(true),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Get the replication set with shard size = 3.
@@ -1219,7 +1219,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 		ringTokensByZone:    ringDesc.getTokensByZone(),
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(true),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Get the replication set with shard size = 2.
@@ -1478,7 +1478,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				ringTokensByZone:    ringDesc.getTokensByZone(),
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
-				strategy:            NewDefaultReplicationStrategy(true),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Replay the events on the timeline.
@@ -1543,7 +1543,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					ringTokensByZone:    ringDesc.getTokensByZone(),
 					ringInstanceByToken: ringDesc.getTokensInfo(),
 					ringZones:           getZones(ringDesc.getTokensByZone()),
-					strategy:            NewDefaultReplicationStrategy(true),
+					strategy:            NewDefaultReplicationStrategy(),
 				}
 
 				// The simulation starts with the minimum shard size. Random events can later increase it.
@@ -1696,7 +1696,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
-		strategy:             NewDefaultReplicationStrategy(true),
+		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 	}
 
@@ -1724,7 +1724,7 @@ func BenchmarkRing_Get(b *testing.B) {
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
-		strategy:             NewDefaultReplicationStrategy(true),
+		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 	}
 
@@ -1752,7 +1752,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
-		strategy:             NewDefaultReplicationStrategy(true),
+		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 	}
 

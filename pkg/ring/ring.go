@@ -75,26 +75,38 @@ type ReadRing interface {
 	HasInstance(instanceID string) bool
 }
 
-// Operation can be Read or Write
-type Operation int
+// Operation describes which instances can be included in the replica set, based on their state.
+type Operation interface {
+	// ShouldExtendReplicaSet returns true if given a state of instance that's going to be
+	// added to the replica set, the replica set size should be extended by 1
+	// more instance for the given operation.
+	ShouldExtendReplicaSetOnState(s IngesterState) bool
 
-// Values for Operation
-const (
-	Read Operation = iota
-	Write
-	Reporting // Special value for inquiring about health
+	// Used during "filtering" phase to remove undesired instances based on their state.
+	IncludeInstanceInState(s IngesterState) bool
+}
 
-	// BlocksSync is the operation run by the store-gateway to sync blocks.
-	BlocksSync
+var (
+	// Write, with no replicaset extension.
+	WriteNoExtend Operation = NewOp(ACTIVE)
 
-	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
-	BlocksRead
+	// Write, which extends replica set, if ingester state is not ACTIVE.
+	Write Operation = NewOpWithReplicaSetExtension(func(s IngesterState) bool {
+		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// to write the extra replica somewhere.  So we increase the size of the set
+		// of replicas for the key. This means we have to also increase the
+		// size of the replica set for read, but we can read from Leaving ingesters,
+		// so don't skip it in this case.
+		// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
+		return s != ACTIVE
+	}, ACTIVE)
 
-	// Ruler is the operation used for distributing rule groups between rulers.
-	Ruler
+	Read Operation = NewOpWithReplicaSetExtension(func(s IngesterState) bool {
+		return s != ACTIVE && s != LEAVING
+	}, ACTIVE, LEAVING, PENDING)
 
-	// Compactor is the operation used for distributing tenants/blocks across compactors.
-	Compactor
+	// Special value for inquiring about health
+	Reporting Operation = allStatesRingOperation{}
 )
 
 var (
@@ -202,7 +214,7 @@ func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error)
 		return nil, err
 	}
 
-	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy(cfg.ExtendWrites))
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy())
 }
 
 func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
@@ -349,7 +361,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, 
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
-		if r.strategy.ShouldExtendReplicaSet(ingester, op) {
+		if op.ShouldExtendReplicaSetOnState(ingester.State) {
 			n++
 		}
 
@@ -803,3 +815,39 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
 	}
 }
+
+// Default implementation for Operation interface.
+type Op struct {
+	includedStates map[IngesterState]bool
+	extend         func(s IngesterState) bool
+}
+
+func NewOp(states ...IngesterState) Op {
+	is := make(map[IngesterState]bool, len(states))
+	for _, s := range states {
+		is[s] = true
+	}
+	return Op{includedStates: is, extend: nil}
+}
+
+func NewOpWithReplicaSetExtension(shouldExtendReplicaSet func(s IngesterState) bool, states ...IngesterState) Op {
+	op := NewOp(states...)
+	op.extend = shouldExtendReplicaSet
+	return op
+}
+
+func (op Op) IncludeInstanceInState(s IngesterState) bool {
+	return op.includedStates[s]
+}
+
+func (op Op) ShouldExtendReplicaSetOnState(s IngesterState) bool {
+	if op.extend == nil {
+		return false
+	}
+	return op.extend(s)
+}
+
+type allStatesRingOperation struct{}
+
+func (op allStatesRingOperation) IncludeInstanceInState(_ IngesterState) bool        { return true }
+func (op allStatesRingOperation) ShouldExtendReplicaSetOnState(_ IngesterState) bool { return false }

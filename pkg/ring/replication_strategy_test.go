@@ -11,7 +11,6 @@ import (
 func TestRingReplicationStrategy(t *testing.T) {
 	for i, tc := range []struct {
 		RF, LiveIngesters, DeadIngesters int
-		op                               Operation // Will default to READ
 		ExpectedMaxFailure               int
 		ExpectedError                    string
 	}{
@@ -90,8 +89,8 @@ func TestRingReplicationStrategy(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
-			strategy := NewDefaultReplicationStrategy(true)
-			liveIngesters, maxFailure, err := strategy.Filter(ingesters, tc.op, tc.RF, 100*time.Second, false)
+			strategy := NewDefaultReplicationStrategy()
+			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.RF, 100*time.Second, false)
 			if tc.ExpectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.LiveIngesters, len(liveIngesters))

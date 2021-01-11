@@ -79,3 +79,6 @@ ruler:
       store: consul
       consul:
         host: localhost:8500
+
+runtime_config:
+  file: ./config/runtime.yaml

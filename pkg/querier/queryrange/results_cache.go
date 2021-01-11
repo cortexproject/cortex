@@ -296,7 +296,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	const minCacheExtent = 5 * 60 * 1000 // 5 minutes
+	minCacheExtent := (5 * time.Minute).Milliseconds()
 	requests, responses, err := partition(r, extents, s.extractor, minCacheExtent)
 	if err != nil {
 		return nil, nil, err

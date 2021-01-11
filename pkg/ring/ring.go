@@ -87,10 +87,7 @@ type Operation interface {
 }
 
 var (
-	// Write, with no replicaset extension.
-	WriteNoExtend Operation = NewOp(ACTIVE)
-
-	// Write, which extends replica set, if ingester state is not ACTIVE.
+	// Write operation that also extends replica set, if ingester state is not ACTIVE.
 	Write Operation = NewOpWithReplicaSetExtension(func(s IngesterState) bool {
 		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
 		// to write the extra replica somewhere.  So we increase the size of the set
@@ -101,11 +98,14 @@ var (
 		return s != ACTIVE
 	}, ACTIVE)
 
+	// WriteNoExtend is like Write, but with no replicaset extension.
+	WriteNoExtend Operation = NewOp(ACTIVE)
+
 	Read Operation = NewOpWithReplicaSetExtension(func(s IngesterState) bool {
 		return s != ACTIVE && s != LEAVING
 	}, ACTIVE, LEAVING, PENDING)
 
-	// Special value for inquiring about health
+	// Reporting is a special value for inquiring about health.
 	Reporting Operation = allStatesRingOperation{}
 )
 

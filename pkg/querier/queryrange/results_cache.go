@@ -129,6 +129,7 @@ type resultsCache struct {
 	splitter CacheSplitter
 
 	extractor            Extractor
+	minCacheExtent       int64 // discard any cache extent smaller than this
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
@@ -172,6 +173,7 @@ func NewResultsCacheMiddleware(
 			limits:               limits,
 			merger:               merger,
 			extractor:            extractor,
+			minCacheExtent:       (5 * time.Minute).Milliseconds(),
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
@@ -296,8 +298,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	minCacheExtent := (5 * time.Minute).Milliseconds()
-	requests, responses, err := partition(r, extents, s.extractor, minCacheExtent)
+	requests, responses, err := s.partition(r, extents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -413,7 +414,7 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 
 // partition calculates the required requests to satisfy req given the cached data.
 // extents must be in order by start time.
-func partition(req Request, extents []Extent, extractor Extractor, minCacheExtent int64) ([]Request, []Response, error) {
+func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
@@ -424,7 +425,7 @@ func partition(req Request, extents []Extent, extractor Extractor, minCacheExten
 			continue
 		}
 		// If this extent is tiny, discard it: more efficient to do a few larger queries
-		if extent.End-extent.Start < minCacheExtent {
+		if extent.End-extent.Start < s.minCacheExtent {
 			continue
 		}
 
@@ -438,7 +439,7 @@ func partition(req Request, extents []Extent, extractor Extractor, minCacheExten
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, extractor.Extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
 	}
 

@@ -9,7 +9,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
-func TestIngesterDesc_IsHealthy_ForStoreGatewayOperations(t *testing.T) {
+func TestIsHealthyForStoreGatewayOperations(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {

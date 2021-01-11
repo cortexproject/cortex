@@ -134,7 +134,7 @@ func (i *IngesterDesc) GetRegisteredAt() time.Time {
 }
 
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
-	healthy := op.IncludeInstanceInState(i.State)
+	healthy := op.IsInstanceInStateHealthy(i.State)
 
 	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
 }

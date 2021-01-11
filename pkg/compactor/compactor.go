@@ -31,8 +31,8 @@ import (
 )
 
 var (
-	errInvalidBlockRanges                = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
-	RingOp                ring.Operation = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
+	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	RingOp                = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
 )
 
 // Config holds the Compactor config.

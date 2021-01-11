@@ -75,20 +75,9 @@ type ReadRing interface {
 	HasInstance(instanceID string) bool
 }
 
-// Operation describes which instances can be included in the replica set, based on their state.
-type Operation interface {
-	// ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
-	// added to the replica set, the replica set size should be extended by 1
-	// more instance for the given operation.
-	ShouldExtendReplicaSetOnState(s IngesterState) bool
-
-	// IsInstanceInStateHealthy is used during "filtering" phase to remove undesired instances based on their state.
-	IsInstanceInStateHealthy(s IngesterState) bool
-}
-
 var (
 	// Write operation that also extends replica set, if ingester state is not ACTIVE.
-	Write Operation = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
+	Write = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
 		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
 		// to write the extra replica somewhere.  So we increase the size of the set
 		// of replicas for the key.
@@ -97,16 +86,16 @@ var (
 	})
 
 	// WriteNoExtend is like Write, but with no replicaset extension.
-	WriteNoExtend Operation = NewOp([]IngesterState{ACTIVE}, nil)
+	WriteNoExtend = NewOp([]IngesterState{ACTIVE}, nil)
 
-	Read Operation = NewOp([]IngesterState{ACTIVE, PENDING, LEAVING}, func(s IngesterState) bool {
+	Read = NewOp([]IngesterState{ACTIVE, PENDING, LEAVING}, func(s IngesterState) bool {
 		// To match Write with extended replica set we have to also increase the
 		// size of the replica set for Read, but we can read from LEAVING ingesters.
 		return s != ACTIVE && s != LEAVING
 	})
 
 	// Reporting is a special value for inquiring about health.
-	Reporting Operation = allStatesRingOperation{}
+	Reporting = allStatesRingOperation
 )
 
 var (
@@ -816,36 +805,41 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 	}
 }
 
-// Default implementation for Operation interface.
-type Op struct {
-	// Bitmap of instance states that should be considered for this operation.
-	states uint32
-
-	// Function that extends replica set based on instance state.
-	extend func(s IngesterState) bool
-}
+// Operation describes which instances can be included in the replica set, based on their state.
+//
+// Implemented as bitmap, with upper 16-bits used for encoding extendReplicaSet, and lower 16-bits used for encoding healthy states.
+type Operation uint32
 
 // NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set.
-func NewOp(states []IngesterState, shouldExtendReplicaSet func(s IngesterState) bool) Op {
-	st := uint32(0)
-	for _, s := range states {
-		st |= (1 << s)
+// Result of calling shouldExtendReplicaSet is cached.
+func NewOp(healthyStates []IngesterState, shouldExtendReplicaSet func(s IngesterState) bool) Operation {
+	op := Operation(0)
+	for _, s := range healthyStates {
+		op |= (1 << s)
 	}
-	return Op{states: st, extend: shouldExtendReplicaSet}
-}
 
-func (op Op) IsInstanceInStateHealthy(s IngesterState) bool {
-	return op.states&(1<<s) > 0
-}
-
-func (op Op) ShouldExtendReplicaSetOnState(s IngesterState) bool {
-	if op.extend == nil {
-		return false
+	if shouldExtendReplicaSet != nil {
+		for _, s := range []IngesterState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+			if shouldExtendReplicaSet(s) {
+				op |= (0x10000 << s)
+			}
+		}
 	}
-	return op.extend(s)
+
+	return op
 }
 
-type allStatesRingOperation struct{}
+// IsInstanceInStateHealthy is used during "filtering" phase to remove undesired instances based on their state.
+func (op Operation) IsInstanceInStateHealthy(s IngesterState) bool {
+	return op&(1<<s) > 0
+}
 
-func (op allStatesRingOperation) IsInstanceInStateHealthy(_ IngesterState) bool      { return true }
-func (op allStatesRingOperation) ShouldExtendReplicaSetOnState(_ IngesterState) bool { return false }
+// ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
+// added to the replica set, the replica set size should be extended by 1
+// more instance for the given operation.
+func (op Operation) ShouldExtendReplicaSetOnState(s IngesterState) bool {
+	return op&(0x10000<<s) > 0
+}
+
+// All states are healthy, no states extend replica set.
+var allStatesRingOperation = Operation(0x0000ffff)

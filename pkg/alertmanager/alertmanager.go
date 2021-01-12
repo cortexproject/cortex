@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -180,6 +181,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	ui.Register(router, webReload, log.With(am.logger, "component", "ui"))
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
+	// Override prefix+/metrics, which by default exposes prometheus.DefaultRegisterer.
+	// We can override prefix+"/metrics", because router is registered into "/", so there is no conflict.
+	am.mux.Handle(path.Join(am.cfg.ExternalURL.Path, "/metrics"), http.NotFoundHandler())
 
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
 	return am, nil

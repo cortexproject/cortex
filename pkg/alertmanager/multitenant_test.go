@@ -247,40 +247,28 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 		require.Equal(t, 301, w.Code) // redirect to UI
 	}
 
-	// Verify that /metrics returns 404 even when AM is active.
+	// Verify that GET /metrics returns 404 even when AM is active.
 	{
 		metricURL := externalURL.String() + "/metrics"
 		require.Equal(t, "http://localhost:8080/alertmanager/metrics", metricURL)
-		metricsReq := httptest.NewRequest("GET", metricURL, nil)
-		w := httptest.NewRecorder()
-		am.ServeHTTP(w, metricsReq.WithContext(ctx))
-
-		require.Equal(t, 404, w.Code)
+		verify404(t, ctx, am, "GET", metricURL)
 	}
 
-	// Verify that /-/reload returns 404 even when AM is active.
+	// Verify that POST /-/reload returns 404 even when AM is active.
 	{
 		metricURL := externalURL.String() + "/-/reload"
 		require.Equal(t, "http://localhost:8080/alertmanager/-/reload", metricURL)
-		metricsReq := httptest.NewRequest("POST", metricURL, strings.NewReader("Hello"))
-		w := httptest.NewRecorder()
-		am.ServeHTTP(w, metricsReq.WithContext(ctx))
-
-		require.Equal(t, 404, w.Code)
+		verify404(t, ctx, am, "POST", metricURL)
 	}
 
-	// Verify that /debug/index returns 404 even when AM is active.
+	// Verify that GET /debug/index returns 404 even when AM is active.
 	{
 		// Register pprof Index (under non-standard path, but this path is exposed by AM using default MUX!)
 		http.HandleFunc("/alertmanager/debug/index", pprof.Index)
 
 		metricURL := externalURL.String() + "/debug/index"
 		require.Equal(t, "http://localhost:8080/alertmanager/debug/index", metricURL)
-		metricsReq := httptest.NewRequest("GET", metricURL, nil)
-		w := httptest.NewRecorder()
-		am.ServeHTTP(w, metricsReq.WithContext(ctx))
-
-		require.Equal(t, 404, w.Code)
+		verify404(t, ctx, am, "GET", metricURL)
 	}
 
 	// Pause alert manager.
@@ -296,6 +284,14 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 		require.Equal(t, 404, w.Code)
 		require.Equal(t, "the Alertmanager is not configured\n", string(body))
 	}
+}
+
+func verify404(t *testing.T, ctx context.Context, am *MultitenantAlertmanager, method string, url string) {
+	metricsReq := httptest.NewRequest(method, url, strings.NewReader("Hello")) // Body for POST Request.
+	w := httptest.NewRecorder()
+	am.ServeHTTP(w, metricsReq.WithContext(ctx))
+
+	require.Equal(t, 404, w.Code)
 }
 
 func TestAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -212,6 +213,9 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 		DataDir:     tempDir,
 	}, nil, nil, mockStore, log.NewNopLogger(), reg)
 
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
+
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String(), nil)
 	ctx := user.InjectOrgID(req.Context(), "user1")
@@ -275,6 +279,9 @@ receivers:
 		DataDir:     tempDir,
 	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 	am.fallbackConfig = fallbackCfg
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)

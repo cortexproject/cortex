@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -209,8 +210,9 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
 	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
-		ExternalURL: externalURL,
-		DataDir:     tempDir,
+		ExternalURL:  externalURL,
+		DataDir:      tempDir,
+		PollInterval: time.Minute,
 	}, nil, nil, mockStore, log.NewNopLogger(), reg)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
@@ -275,8 +277,9 @@ receivers:
 
 	// Create the Multitenant Alertmanager.
 	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
-		ExternalURL: externalURL,
-		DataDir:     tempDir,
+		ExternalURL:  externalURL,
+		DataDir:      tempDir,
+		PollInterval: time.Minute,
 	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 	am.fallbackConfig = fallbackCfg
 

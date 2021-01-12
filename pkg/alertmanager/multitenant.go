@@ -283,9 +283,11 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 		am.Stop()
 	}
 	am.alertmanagersMtx.Unlock()
-	err := am.peer.Leave(am.cfg.PeerTimeout)
-	if err != nil {
-		level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
+	if am.peer != nil { // Tests don't setup any peer.
+		err := am.peer.Leave(am.cfg.PeerTimeout)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
+		}
 	}
 	level.Debug(am.logger).Log("msg", "stopping")
 	return nil

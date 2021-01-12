@@ -7,7 +7,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/http/pprof"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -249,6 +251,31 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	{
 		metricURL := externalURL.String() + "/metrics"
 		require.Equal(t, "http://localhost:8080/alertmanager/metrics", metricURL)
+		metricsReq := httptest.NewRequest("GET", metricURL, nil)
+		w := httptest.NewRecorder()
+		am.ServeHTTP(w, metricsReq.WithContext(ctx))
+
+		require.Equal(t, 404, w.Code)
+	}
+
+	// Verify that /-/reload returns 404 even when AM is active.
+	{
+		metricURL := externalURL.String() + "/-/reload"
+		require.Equal(t, "http://localhost:8080/alertmanager/-/reload", metricURL)
+		metricsReq := httptest.NewRequest("POST", metricURL, strings.NewReader("Hello"))
+		w := httptest.NewRecorder()
+		am.ServeHTTP(w, metricsReq.WithContext(ctx))
+
+		require.Equal(t, 404, w.Code)
+	}
+
+	// Verify that /debug/index returns 404 even when AM is active.
+	{
+		// Register pprof Index (under non-standard path, but this path is exposed by AM using default MUX!)
+		http.HandleFunc("/alertmanager/debug/index", pprof.Index)
+
+		metricURL := externalURL.String() + "/debug/index"
+		require.Equal(t, "http://localhost:8080/alertmanager/debug/index", metricURL)
 		metricsReq := httptest.NewRequest("GET", metricURL, nil)
 		w := httptest.NewRecorder()
 		am.ServeHTTP(w, metricsReq.WithContext(ctx))

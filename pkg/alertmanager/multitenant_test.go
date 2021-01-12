@@ -251,14 +251,14 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	{
 		metricURL := externalURL.String() + "/metrics"
 		require.Equal(t, "http://localhost:8080/alertmanager/metrics", metricURL)
-		verify404(t, ctx, am, "GET", metricURL)
+		verify404(ctx, t, am, "GET", metricURL)
 	}
 
 	// Verify that POST /-/reload returns 404 even when AM is active.
 	{
 		metricURL := externalURL.String() + "/-/reload"
 		require.Equal(t, "http://localhost:8080/alertmanager/-/reload", metricURL)
-		verify404(t, ctx, am, "POST", metricURL)
+		verify404(ctx, t, am, "POST", metricURL)
 	}
 
 	// Verify that GET /debug/index returns 404 even when AM is active.
@@ -268,7 +268,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 		metricURL := externalURL.String() + "/debug/index"
 		require.Equal(t, "http://localhost:8080/alertmanager/debug/index", metricURL)
-		verify404(t, ctx, am, "GET", metricURL)
+		verify404(ctx, t, am, "GET", metricURL)
 	}
 
 	// Pause alert manager.
@@ -286,7 +286,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	}
 }
 
-func verify404(t *testing.T, ctx context.Context, am *MultitenantAlertmanager, method string, url string) {
+func verify404(ctx context.Context, t *testing.T, am *MultitenantAlertmanager, method string, url string) {
 	metricsReq := httptest.NewRequest(method, url, strings.NewReader("Hello")) // Body for POST Request.
 	w := httptest.NewRecorder()
 	am.ServeHTTP(w, metricsReq.WithContext(ctx))

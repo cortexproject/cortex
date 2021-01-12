@@ -102,7 +102,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 		// returned replication set.
 		bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
-		set, err := userRing.Get(cortex_tsdb.HashBlockID(blockID), ring.BlocksRead, bufDescs, bufHosts, bufZones)
+		set, err := userRing.Get(cortex_tsdb.HashBlockID(blockID), storegateway.BlocksRead, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get store-gateway replication set owning the block %s", blockID.String())
 		}

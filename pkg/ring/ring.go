@@ -75,26 +75,27 @@ type ReadRing interface {
 	HasInstance(instanceID string) bool
 }
 
-// Operation can be Read or Write
-type Operation int
+var (
+	// Write operation that also extends replica set, if ingester state is not ACTIVE.
+	Write = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
+		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// to write the extra replica somewhere.  So we increase the size of the set
+		// of replicas for the key.
+		// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
+		return s != ACTIVE
+	})
 
-// Values for Operation
-const (
-	Read Operation = iota
-	Write
-	Reporting // Special value for inquiring about health
+	// WriteNoExtend is like Write, but with no replicaset extension.
+	WriteNoExtend = NewOp([]IngesterState{ACTIVE}, nil)
 
-	// BlocksSync is the operation run by the store-gateway to sync blocks.
-	BlocksSync
+	Read = NewOp([]IngesterState{ACTIVE, PENDING, LEAVING}, func(s IngesterState) bool {
+		// To match Write with extended replica set we have to also increase the
+		// size of the replica set for Read, but we can read from LEAVING ingesters.
+		return s != ACTIVE && s != LEAVING
+	})
 
-	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
-	BlocksRead
-
-	// Ruler is the operation used for distributing rule groups between rulers.
-	Ruler
-
-	// Compactor is the operation used for distributing tenants/blocks across compactors.
-	Compactor
+	// Reporting is a special value for inquiring about health.
+	Reporting = allStatesRingOperation
 )
 
 var (
@@ -202,7 +203,7 @@ func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error)
 		return nil, err
 	}
 
-	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy(cfg.ExtendWrites))
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy())
 }
 
 func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {
@@ -349,7 +350,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, 
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
-		if r.strategy.ShouldExtendReplicaSet(ingester, op) {
+		if op.ShouldExtendReplicaSetOnState(ingester.State) {
 			n++
 		}
 
@@ -803,3 +804,42 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
 	}
 }
+
+// Operation describes which instances can be included in the replica set, based on their state.
+//
+// Implemented as bitmap, with upper 16-bits used for encoding extendReplicaSet, and lower 16-bits used for encoding healthy states.
+type Operation uint32
+
+// NewOp constructs new Operation with given "healthy" states for operation, and optional function to extend replica set.
+// Result of calling shouldExtendReplicaSet is cached.
+func NewOp(healthyStates []IngesterState, shouldExtendReplicaSet func(s IngesterState) bool) Operation {
+	op := Operation(0)
+	for _, s := range healthyStates {
+		op |= (1 << s)
+	}
+
+	if shouldExtendReplicaSet != nil {
+		for _, s := range []IngesterState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+			if shouldExtendReplicaSet(s) {
+				op |= (0x10000 << s)
+			}
+		}
+	}
+
+	return op
+}
+
+// IsInstanceInStateHealthy is used during "filtering" phase to remove undesired instances based on their state.
+func (op Operation) IsInstanceInStateHealthy(s IngesterState) bool {
+	return op&(1<<s) > 0
+}
+
+// ShouldExtendReplicaSetOnState returns true if given a state of instance that's going to be
+// added to the replica set, the replica set size should be extended by 1
+// more instance for the given operation.
+func (op Operation) ShouldExtendReplicaSetOnState(s IngesterState) bool {
+	return op&(0x10000<<s) > 0
+}
+
+// All states are healthy, no states extend replica set.
+var allStatesRingOperation = Operation(0x0000ffff)

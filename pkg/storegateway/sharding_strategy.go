@@ -126,7 +126,7 @@ func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[
 
 	for blockID := range metas {
 		key := cortex_tsdb.HashBlockID(blockID)
-		set, err := r.Get(key, ring.BlocksSync, bufDescs, bufHosts, bufZones)
+		set, err := r.Get(key, BlocksSync, bufDescs, bufHosts, bufZones)
 
 		// If there are no healthy instances in the replication set or
 		// the replication set for this block doesn't include this instance

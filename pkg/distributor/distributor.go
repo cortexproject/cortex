@@ -174,6 +174,9 @@ type Config struct {
 
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
+
+	// Defined in ingester's lifecycler.
+	ExtendWrites bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -548,7 +551,12 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
-	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
+	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		var metadata []*client.MetricMetadata
 

@@ -133,32 +133,8 @@ func (i *IngesterDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
-// IsHealthy checks whether the ingester appears to be alive and heartbeating
 func (i *IngesterDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
-	healthy := false
-
-	switch op {
-	case Write:
-		healthy = i.State == ACTIVE
-
-	case Read:
-		healthy = (i.State == ACTIVE) || (i.State == LEAVING) || (i.State == PENDING)
-
-	case Reporting:
-		healthy = true
-
-	case BlocksSync:
-		healthy = (i.State == JOINING) || (i.State == ACTIVE) || (i.State == LEAVING)
-
-	case BlocksRead:
-		healthy = i.State == ACTIVE
-
-	case Ruler:
-		healthy = i.State == ACTIVE
-
-	case Compactor:
-		healthy = i.State == ACTIVE
-	}
+	healthy := op.IsInstanceInStateHealthy(i.State)
 
 	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
 }

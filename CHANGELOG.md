@@ -43,7 +43,8 @@
 * [BUGFIX] Querier: fix default value incorrectly overriding `-querier.frontend-address` in single-binary mode. #3650
 * [BUGFIX] Compactor: delete `deletion-mark.json` at last when deleting a block in order to not leave partial blocks without deletion mark in the bucket if the compactor is interrupted while deleting a block. #3660
 * [BUGFIX] Blocks storage: do not cleanup a partially uploaded block when `meta.json` upload fails. Despite failure to upload `meta.json`, this file may in some cases still appear in the bucket later. By skipping early cleanup, we avoid having corrupted blocks in the storage. #3660
-* [BUGFIX] AlertManager: don't serve HTTP requests until AlertManager has fully started. Serving HTTP requests earlier may result in loss of configuration for the user. #3679
+* [BUGFIX] Alertmanager: disable access to `/alertmanager/metrics` (which exposes all Cortex metrics), `/alertmanager/-/reload` and `/alertmanager/debug/*`, which were available to any authenticated user with enabled AlertManager. #3678
+* [BUGFIX] Alertmanager: don't serve HTTP requests until AlertManager has fully started. Serving HTTP requests earlier may result in loss of configuration for the user. #3679
 
 ## 1.6.0
 

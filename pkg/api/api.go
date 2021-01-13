@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 )
 
 type Config struct {
@@ -167,12 +168,20 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 }
 
 // RegisterAPI registers the standard endpoints associated with a running Cortex.
-func (a *API) RegisterAPI(httpPathPrefix string, cfg interface{}) {
-	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config")
+func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultCfg interface{}) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config (including the default values)")
+	a.indexPage.AddLink(SectionAdminEndpoints, "/config?mode=diff", "Current Config (show only values that differ from the defaults)")
 
-	a.RegisterRoute("/config", configHandler(cfg), false, "GET")
+	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
+}
+
+// RegisterRuntimeConfig registers the endpoints associates with the runtime configuration
+func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/runtime_config", "Current Runtime Config (incl. Overrides)")
+
+	a.RegisterRoute("/runtime_config", runtimeConfigHandler(runtimeCfgManager), false, "GET")
 }
 
 // RegisterDistributor registers the endpoints associated with the distributor.

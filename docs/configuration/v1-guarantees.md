@@ -45,7 +45,6 @@ Currently experimental features are:
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
-- Openstack Swift storage.
 - gRPC Store.
 - Querier support for querying chunks and blocks store at the same time.
 - Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)
@@ -53,7 +52,7 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools
-- OpenStack Swift storage support.
+- OpenStack Swift storage support (both in blocks and chunks storage).
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)

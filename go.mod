@@ -39,7 +39,7 @@ require (
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.2
 	github.com/mitchellh/go-wordwrap v1.0.0
-	github.com/ncw/swift v1.0.50
+	github.com/ncw/swift v1.0.52
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
 	github.com/opentracing-contrib/go-stdlib v1.0.0
@@ -54,7 +54,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
-	github.com/thanos-io/thanos v0.13.1-0.20201130180807-84afc97e7d58
+	github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50

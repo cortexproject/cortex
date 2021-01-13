@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -80,6 +81,13 @@ const (
 	All                      string = "all"
 )
 
+func newDefaultConfig() *Config {
+	defaultConfig := &Config{}
+	defaultFS := flag.NewFlagSet("", flag.PanicOnError)
+	defaultConfig.RegisterFlags(defaultFS)
+	return defaultConfig
+}
+
 func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
@@ -90,8 +98,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	}
 
 	t.API = a
-
-	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg)
+	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg, newDefaultConfig())
 
 	return nil, nil
 }
@@ -165,6 +172,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	t.RuntimeConfig = serv
+	t.API.RegisterRuntimeConfig(t.RuntimeConfig)
 	return serv, err
 }
 
@@ -178,6 +186,7 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
+	t.Cfg.Distributor.ExtendWrites = t.Cfg.Ingester.LifecyclerConfig.RingConfig.ExtendWrites
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -295,9 +304,9 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// and internal using the default instrumentation when running as a standalone service.
 		internalQuerierRouter = t.Server.HTTPServer.Handler
 	} else {
-		// Single binary mode requires a query frontend endpoint for the worker. If no frontend or scheduler endpoint
+		// Single binary mode requires a query frontend endpoint for the worker. If no frontend and scheduler endpoint
 		// is configured, Cortex will default to using frontend on localhost on it's own GRPC listening port.
-		if t.Cfg.Worker.FrontendAddress == "" || t.Cfg.Worker.SchedulerAddress == "" {
+		if t.Cfg.Worker.FrontendAddress == "" && t.Cfg.Worker.SchedulerAddress == "" {
 			address := fmt.Sprintf("127.0.0.1:%d", t.Cfg.Server.GRPCListenPort)
 			level.Warn(util.Logger).Log("msg", "Worker address is empty in single binary mode.  Attempting automatic worker configuration.  If queries are unresponsive consider configuring the worker explicitly.", "address", address)
 			t.Cfg.Worker.FrontendAddress = address
@@ -821,6 +830,7 @@ func (t *Cortex) setupModuleManager() error {
 	deps := map[string][]string{
 		API:                      {Server},
 		MemberlistKV:             {API},
+		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		Distributor:              {DistributorService, API},

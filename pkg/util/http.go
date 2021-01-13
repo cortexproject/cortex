@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
+
 // WriteJSONResponse writes some JSON as a HTTP response.
 func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -103,16 +105,58 @@ func CompressionTypeFor(version string) CompressionType {
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
-	var body []byte
-	var err error
+	body, err := decompressRequest(ctx, reader, expectedSize, maxSize, compression)
+	if err != nil {
+		return err
+	}
+
+	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
+	// which we can't override without upsetting golint.
+	req.Reset()
+	if u, ok := req.(proto.Unmarshaler); ok {
+		err = u.Unmarshal(body)
+	} else {
+		err = proto.NewBuffer(body).Unmarshal(req)
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func decompressRequest(ctx context.Context, reader io.Reader, expectedSize, maxSize int, compression CompressionType) (body []byte, err error) {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp != nil {
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
+		defer func() {
+			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"),
+				otlog.Int("size", len(body)))
+		}()
 	}
-	var buf bytes.Buffer
+	defer func() {
+		if len(body) > maxSize {
+			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
+		}
+	}()
+	buffer, ok := tryBufferFromReader(reader)
+	if ok {
+		body, err = decompressFromBuffer(buffer, maxSize, compression, sp)
+		return
+	}
+	body, err = decompressFromReader(reader, expectedSize, maxSize, compression, sp)
+	return
+}
+
+func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
+	var (
+		buf  bytes.Buffer
+		body []byte
+		err  error
+	)
 	if expectedSize > 0 {
 		if expectedSize > maxSize {
-			return fmt.Errorf("message expected size larger than max (%d vs %d)", expectedSize, maxSize)
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
 		}
 		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
@@ -132,35 +176,72 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
 				otlog.Int("size", len(body)))
 		}
-		if err == nil && len(body) <= maxSize {
+		if err != nil {
+			return nil, err
+		}
+		if len(body) > maxSize {
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
+		}
+		var size int
+		size, err = snappy.DecodedLen(body)
+		if err != nil {
+			return nil, err
+		}
+		if size > maxSize {
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
+		}
+		if err == nil {
 			body, err = snappy.Decode(nil, body)
 		}
 	}
-	if err != nil {
-		return err
-	}
-	if len(body) > maxSize {
-		return fmt.Errorf("received message larger than max (%d vs %d)", len(body), maxSize)
+	return body, err
+}
+
+func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
+	if len(buffer.Bytes()) > maxSize {
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(buffer.Bytes()), maxSize)
 	}
 
-	if sp != nil {
-		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"),
-			otlog.Int("size", len(body)))
+	switch compression {
+	case NoCompression:
+		return buffer.Bytes(), nil
+	case FramedSnappy:
+		decompressed := bytes.NewBuffer(make([]byte, 0, len(buffer.Bytes())))
+		_, err := decompressed.ReadFrom(io.LimitReader(snappy.NewReader(buffer), int64(maxSize)+1))
+		if err != nil {
+			return nil, err
+		}
+		return decompressed.Bytes(), nil
+	case RawSnappy:
+		if sp != nil {
+			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
+				otlog.Int("size", len(buffer.Bytes())))
+		}
+		size, err := snappy.DecodedLen(buffer.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		if size > maxSize {
+			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
+		}
+		body, err := snappy.Decode(nil, buffer.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		return body, nil
 	}
+	return nil, nil
+}
 
-	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
-	// which we can't override without upsetting golint.
-	req.Reset()
-	if u, ok := req.(proto.Unmarshaler); ok {
-		err = u.Unmarshal(body)
-	} else {
-		err = proto.NewBuffer(body).Unmarshal(req)
+// tryBufferFromReader attempts to cast the reader to a `*bytes.Buffer` this is possible when using httpgrpc.
+// If it fails it will return nil and false.
+func tryBufferFromReader(reader io.Reader) (*bytes.Buffer, bool) {
+	if bufReader, ok := reader.(interface {
+		BytesBuffer() *bytes.Buffer
+	}); ok {
+		return bufReader.BytesBuffer(), true
 	}
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return nil, false
 }
 
 // SerializeProtoResponse serializes a protobuf response into an HTTP response.

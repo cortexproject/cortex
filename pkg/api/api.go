@@ -186,6 +186,7 @@ func (a *API) RegisterRuntimeConfig(runtimeCfgManager *runtimeconfig.Manager) {
 // RegisterDistributor registers the endpoints associated with the distributor.
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
 	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig, a.sourceIPs, d.Push), true, "POST")
+	a.RegisterRoute("/api/v1/push/influx/write", push.HandlerForInfluxLine(pushConfig, a.sourceIPs, d.Push), true, "POST")
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ha_tracker", "HA Tracking Status")

@@ -3,7 +3,7 @@ module github.com/cortexproject/cortex
 go 1.14
 
 require (
-	cloud.google.com/go/bigtable v1.2.0
+	cloud.google.com/go/bigtable v1.3.0
 	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
@@ -34,6 +34,8 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.2
+	github.com/influxdata/influxdb v1.8.3
+	github.com/influxdata/influxdb/v2 v2.0.3
 	github.com/json-iterator/go v1.1.10
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lib/pq v1.3.0
@@ -57,7 +59,7 @@ require (
 	github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20201119133501-0619918236ec
-	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
+	go.etcd.io/bbolt v1.3.5
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
 	go.uber.org/atomic v1.7.0
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b

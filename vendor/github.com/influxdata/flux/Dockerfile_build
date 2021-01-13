@@ -1,0 +1,153 @@
+# This file describes an image that is capable of building Flux.
+
+FROM golang:1.15
+
+# Install common packages
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y \
+    gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+    gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+    libtinfo5 \
+    ruby \
+    ca-certificates curl file gnupg \
+    build-essential cmake \
+    libxml2-dev libssl-dev zlib1g-dev \
+    autoconf automake autotools-dev libtool xutils-dev valgrind && \
+    rm -rf /var/lib/apt/lists/*
+
+# Download, verify, and install ragel version 6. 
+ENV RAGEL_VERSION=6.10
+RUN curl https://www.colm.net/files/thurston.asc | gpg --import - && \
+    curl https://www.colm.net/files/ragel/ragel-${RAGEL_VERSION}.tar.gz -O && \
+    curl https://www.colm.net/files/ragel/ragel-${RAGEL_VERSION}.tar.gz.asc -O && \
+    gpg --verify ragel-${RAGEL_VERSION}.tar.gz.asc ragel-${RAGEL_VERSION}.tar.gz && \
+    tar -xzf ragel-${RAGEL_VERSION}.tar.gz && \
+    cd ragel-${RAGEL_VERSION}/ && \
+    ./configure --prefix=/usr/local && \
+    make && \
+    make install && \
+    cd .. && rm -rf ragel-${RAGEL_VERSION}*
+
+# Download, verify, and install ragel version 7. This version depends on colm,
+# so we get that as well. Already have the gpg key above.
+ENV COLM_VERSION=0.14.2
+RUN curl https://www.colm.net/files/colm/colm-${COLM_VERSION}.tar.gz -O && \
+    curl https://www.colm.net/files/colm/colm-${COLM_VERSION}.tar.gz.asc -O && \
+    gpg --verify colm-${COLM_VERSION}.tar.gz.asc colm-${COLM_VERSION}.tar.gz && \
+    tar -xzf colm-${COLM_VERSION}.tar.gz && \
+    cd colm-${COLM_VERSION}/ && \
+    ./configure --prefix=/usr/local/ragel7 --disable-manual && \
+    make && \
+    make install && \
+    cd .. && rm -rf colm-${COLM_VERSION}*
+
+ENV RAGEL7_VERSION=7.0.1
+RUN curl https://www.colm.net/files/ragel/ragel-${RAGEL7_VERSION}.tar.gz -O && \
+    curl https://www.colm.net/files/ragel/ragel-${RAGEL7_VERSION}.tar.gz.asc -O && \
+    gpg --verify ragel-${RAGEL7_VERSION}.tar.gz.asc ragel-${RAGEL7_VERSION}.tar.gz && \
+    tar -xzf ragel-${RAGEL7_VERSION}.tar.gz && \
+    cd ragel-${RAGEL7_VERSION}/ && \
+    ./configure --prefix=/usr/local/ragel7 --with-colm=/usr/local/ragel7 --disable-manual && \
+    make && \
+    make install && \
+    cd .. && rm -rf ragel-${RAGEL7_VERSION}*
+
+# We installed ragel version 7 to a dedicated prefix. We put it on the path
+# after the place where ragel version 6 is located. Version 7 also has the
+# ragel binary, but we only need the ragel-rust binary from version 7.
+ENV PATH="/usr/local/bin:/usr/local/ragel7/bin:${PATH}"
+
+ENV FLATBUFFERS_VERSION=1.11.0
+RUN curl -LS https://github.com/google/flatbuffers/archive/v${FLATBUFFERS_VERSION}.tar.gz | gunzip -c | tar x && \
+    mkdir flatbuffers-${FLATBUFFERS_VERSION}/build && \
+    cd flatbuffers-${FLATBUFFERS_VERSION}/build && \
+    cmake -G "Unix Makefiles" .. && \
+    make && make install && \
+    cd ../.. && rm -rf flatbuffers-${FLATBUFFERS_VERSION}
+
+# Download, verify, install, and configure openssl (needed for proper Rust install)
+ENV SSL_VERSION=1.0.2t
+RUN curl https://www.openssl.org/source/openssl-$SSL_VERSION.tar.gz -O && \
+    curl https://www.openssl.org/source/openssl-$SSL_VERSION.tar.gz.sha256 -O && \
+    echo "$(cat openssl-$SSL_VERSION.tar.gz.sha256) openssl-$SSL_VERSION.tar.gz" | sha256sum --check && \
+    tar -xzf openssl-$SSL_VERSION.tar.gz && \
+    cd openssl-$SSL_VERSION && ./config && make depend && make install && \
+    cd .. && rm -rf openssl-$SSL_VERSION*
+ENV OPENSSL_LIB_DIR=/usr/local/ssl/lib \
+    OPENSSL_INCLUDE_DIR=/usr/local/ssl/include \
+    OPENSSL_STATIC=1
+
+# Download, verify, and install Clang
+# (See https://releases.llvm.org/download.html#8.0.0 for the latest available binaries)
+RUN curl https://releases.llvm.org/8.0.0/hans-gpg-key.asc | gpg --import - && \
+    curl https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz -O && \
+    curl https://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz.sig -O && \
+    gpg --verify clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz.sig \
+                 clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz && \
+    tar -xvf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz && \
+    mv clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 clang_8.0.0 && \
+    rm -rf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04*
+
+COPY xcc.sh /usr/local/bin/xcc
+ENV PATH="/go/clang_8.0.0/bin:${PATH}" \
+    LD_LIBRARY_PATH="/clang_8.0.0/lib:${LD_LIBRARY_PATH}" \
+    CC=clang
+
+# Install osxcross
+# The `git checkout` line specifies what was HEAD at the time of this authoring. It makes sense to pin
+# our build to that commit, rather than rely on a completely api-stable osxcross for eternity. There is
+# nothing special about that specific commit.
+ENV MACOSX_DEPLOYMENT_TARGET=10.11
+RUN mkdir -p /opt/osxcross && \
+    cd /opt && \
+    git clone https://github.com/tpoechtrager/osxcross.git && \
+    cd osxcross && \
+    git checkout c2ad5e859d12a295c3f686a15bd7181a165bfa82 && \
+    curl -L -o ./tarballs/MacOSX${MACOSX_DEPLOYMENT_TARGET}.sdk.tar.xz \
+        https://macos-sdks.s3.amazonaws.com/MacOSX${MACOSX_DEPLOYMENT_TARGET}.sdk.tar.xz && \
+    UNATTENDED=1 PORTABLE=true OCDEBUG=1 ./build.sh
+ENV PATH="/opt/osxcross/target/bin:${PATH}"
+
+# Add builder user
+ENV UNAME=builder
+ARG UID=1000
+ARG GID=1000
+RUN groupadd -g $GID -o $UNAME
+RUN useradd -m -u $UID -g $UNAME -s /bin/bash $UNAME
+USER $UNAME
+ENV HOME=/home/$UNAME
+
+# Install Rust
+RUN curl https://sh.rustup.rs -sSf | \
+    sh -s -- --default-toolchain stable -y
+ENV PATH="$HOME/.cargo/bin:${PATH}"
+RUN rustup component add rustfmt
+
+# Install additional Rust targets
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc
+ENV CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc
+ENV CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER=o64-clang
+# The default osxcross deployment target is 10.6, which doesn't support thread local variables.
+RUN rustup target add \
+    aarch64-unknown-linux-gnu \
+    arm-unknown-linux-gnueabihf \
+    armv7-unknown-linux-gnueabihf \
+    x86_64-apple-darwin
+
+# Install wasm-pack and sccache
+RUN cargo install wasm-pack
+# XXX: rockstar (30 Nov 2020) - The most recently released sccache has an
+# issue with rust 1.48. This revision from master gets us a working sccache.
+# See https://github.com/influxdata/flux/issues/3357
+RUN cargo install \
+    --git https://github.com/mozilla/sccache.git \
+    --rev 6628e1f70db3d583cb5e79210603ad878de3d315 \
+    sccache
+RUN rustup component add rust-std --target wasm32-unknown-unknown
+
+# Use sccache rustc wrapper for friendly build caching
+ENV RUSTC_WRAPPER=sccache
+
+WORKDIR $HOME

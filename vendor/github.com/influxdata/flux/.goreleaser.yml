@@ -1,0 +1,47 @@
+project_name: flux
+builds:
+  - goos:
+    - linux
+    - darwin
+    goarch:
+    - amd64
+    - arm
+    - arm64
+    goarm:
+    - 6
+    - 7
+    ignore:
+      - goos: darwin
+        goarch: 386 
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: arm64 
+      - goos: windows
+        goarch: 386
+    main: ./cmd/flux
+    env:
+      - GO111MODULE=on
+      - CGO_ENABLED=1
+      - CC=xcc
+      - PKG_CONFIG=/go/bin/pkg-config
+    ldflags: -s -w -X main.commit={{.Commit}}
+    binary: flux
+
+archive:
+  format: tar.gz
+  wrap_in_directory: true
+  format_overrides:
+    - goos: windows
+      format: zip
+  name_template: '{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{
+    .Arm }}{{ end }}'
+  files:
+  - LICENSE
+  - README.md
+
+
+release:
+  prerelease: auto
+  name_template: "v{{.Version}}"
+

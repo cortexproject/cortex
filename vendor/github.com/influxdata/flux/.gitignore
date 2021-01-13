@@ -1,0 +1,23 @@
+bin
+vendor
+target
+/dist
+.DS_Store
+.netrc
+.vscode
+.vs
+.tern-project
+.idea
+/coverage.txt
+/libflux/lib
+/libflux/pkg
+/libflux/site/node_modules
+/libflux/.cache
+/libflux/go/libflux/hack.gen.go
+/release-notes.txt
+cmake-build-debug
+
+# exclude any files with the name flux but
+# include any directories that share the same name.
+**/flux
+!**/flux/

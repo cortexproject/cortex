@@ -8,7 +8,7 @@ cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
-# cloud.google.com/go/bigtable v1.2.0
+# cloud.google.com/go/bigtable v1.3.0
 ## explicit
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/bttest
@@ -22,6 +22,12 @@ github.com/Azure/azure-pipeline-go/pipeline
 # github.com/Azure/azure-storage-blob-go v0.8.0
 ## explicit
 github.com/Azure/azure-storage-blob-go/azblob
+# github.com/BurntSushi/toml v0.3.1
+github.com/BurntSushi/toml
+# github.com/Masterminds/semver v1.4.2
+github.com/Masterminds/semver
+# github.com/Masterminds/sprig v2.16.0+incompatible
+github.com/Masterminds/sprig
 # github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 ## explicit
 github.com/Masterminds/squirrel
@@ -44,6 +50,17 @@ github.com/alicebob/gopher-json
 ## explicit
 github.com/alicebob/miniredis
 github.com/alicebob/miniredis/server
+# github.com/aokoli/goutils v1.0.1
+github.com/aokoli/goutils
+# github.com/apache/arrow/go/arrow v0.0.0-20200923215132-ac86123a3f01
+github.com/apache/arrow/go/arrow
+github.com/apache/arrow/go/arrow/array
+github.com/apache/arrow/go/arrow/bitutil
+github.com/apache/arrow/go/arrow/decimal128
+github.com/apache/arrow/go/arrow/float16
+github.com/apache/arrow/go/arrow/internal/cpu
+github.com/apache/arrow/go/arrow/internal/debug
+github.com/apache/arrow/go/arrow/memory
 # github.com/armon/go-metrics v0.3.3
 ## explicit
 github.com/armon/go-metrics
@@ -101,6 +118,10 @@ github.com/aws/aws-sdk-go/service/s3
 github.com/aws/aws-sdk-go/service/s3/s3iface
 github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
+# github.com/benbjohnson/immutable v0.2.1
+github.com/benbjohnson/immutable
+# github.com/benbjohnson/tmpl v1.0.0
+github.com/benbjohnson/tmpl
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.0+incompatible
@@ -133,6 +154,18 @@ github.com/docker/go-units
 # github.com/dustin/go-humanize v1.0.0
 ## explicit
 github.com/dustin/go-humanize
+github.com/dustin/go-humanize/english
+# github.com/editorconfig-checker/editorconfig-checker v0.0.0-20190819115812-1474bdeaf2a2
+github.com/editorconfig-checker/editorconfig-checker/cmd/editorconfig-checker
+github.com/editorconfig-checker/editorconfig-checker/pkg/config
+github.com/editorconfig-checker/editorconfig-checker/pkg/error
+github.com/editorconfig-checker/editorconfig-checker/pkg/files
+github.com/editorconfig-checker/editorconfig-checker/pkg/logger
+github.com/editorconfig-checker/editorconfig-checker/pkg/utils
+github.com/editorconfig-checker/editorconfig-checker/pkg/validation
+github.com/editorconfig-checker/editorconfig-checker/pkg/validation/validators
+# github.com/editorconfig/editorconfig-core-go/v2 v2.1.1
+github.com/editorconfig/editorconfig-core-go/v2
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
@@ -149,6 +182,8 @@ github.com/felixge/httpsnoop
 ## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
+# github.com/go-chi/chi v4.1.0+incompatible
+github.com/go-chi/chi
 # github.com/go-kit/kit v0.10.0
 ## explicit
 github.com/go-kit/kit/log
@@ -206,10 +241,34 @@ github.com/gogo/googleapis/google/rpc
 ## explicit
 github.com/gogo/protobuf/gogoproto
 github.com/gogo/protobuf/jsonpb
+github.com/gogo/protobuf/plugin/compare
+github.com/gogo/protobuf/plugin/defaultcheck
+github.com/gogo/protobuf/plugin/description
+github.com/gogo/protobuf/plugin/embedcheck
+github.com/gogo/protobuf/plugin/enumstringer
+github.com/gogo/protobuf/plugin/equal
+github.com/gogo/protobuf/plugin/face
+github.com/gogo/protobuf/plugin/gostring
+github.com/gogo/protobuf/plugin/marshalto
+github.com/gogo/protobuf/plugin/oneofcheck
+github.com/gogo/protobuf/plugin/populate
+github.com/gogo/protobuf/plugin/size
+github.com/gogo/protobuf/plugin/stringer
+github.com/gogo/protobuf/plugin/testgen
+github.com/gogo/protobuf/plugin/union
+github.com/gogo/protobuf/plugin/unmarshal
 github.com/gogo/protobuf/proto
+github.com/gogo/protobuf/protoc-gen-gogo
 github.com/gogo/protobuf/protoc-gen-gogo/descriptor
+github.com/gogo/protobuf/protoc-gen-gogo/generator
+github.com/gogo/protobuf/protoc-gen-gogo/generator/internal/remap
+github.com/gogo/protobuf/protoc-gen-gogo/grpc
+github.com/gogo/protobuf/protoc-gen-gogo/plugin
+github.com/gogo/protobuf/protoc-gen-gogofaster
 github.com/gogo/protobuf/sortkeys
 github.com/gogo/protobuf/types
+github.com/gogo/protobuf/vanity
+github.com/gogo/protobuf/vanity/command
 # github.com/gogo/status v1.0.3
 ## explicit
 github.com/gogo/status
@@ -246,6 +305,8 @@ github.com/gomodule/redigo/internal
 github.com/gomodule/redigo/redis
 # github.com/google/btree v1.0.0
 github.com/google/btree
+# github.com/google/flatbuffers v1.11.0
+github.com/google/flatbuffers/go
 # github.com/google/go-cmp v0.5.2
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
@@ -305,6 +366,62 @@ github.com/hashicorp/golang-lru/simplelru
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.3
 github.com/hashicorp/serf/coordinate
+# github.com/huandu/xstrings v1.0.0
+github.com/huandu/xstrings
+# github.com/imdario/mergo v0.3.9
+github.com/imdario/mergo
+# github.com/inconshreveable/mousetrap v1.0.0
+github.com/inconshreveable/mousetrap
+# github.com/influxdata/cron v0.0.0-20191203200038-ded12750aac6
+github.com/influxdata/cron
+# github.com/influxdata/flux v0.99.0
+github.com/influxdata/flux
+github.com/influxdata/flux/ast
+github.com/influxdata/flux/ast/edit
+github.com/influxdata/flux/ast/internal/fbast
+github.com/influxdata/flux/codes
+github.com/influxdata/flux/complete
+github.com/influxdata/flux/dependencies/filesystem
+github.com/influxdata/flux/dependencies/http
+github.com/influxdata/flux/dependencies/secret
+github.com/influxdata/flux/dependencies/url
+github.com/influxdata/flux/internal/errors
+github.com/influxdata/flux/internal/fbsemantic
+github.com/influxdata/flux/internal/parser
+github.com/influxdata/flux/interpreter
+github.com/influxdata/flux/iocounter
+github.com/influxdata/flux/memory
+github.com/influxdata/flux/metadata
+github.com/influxdata/flux/semantic
+github.com/influxdata/flux/values
+# github.com/influxdata/httprouter v1.3.1-0.20191122104820-ee83e2772f69
+github.com/influxdata/httprouter
+# github.com/influxdata/influxdb v1.8.3
+## explicit
+github.com/influxdata/influxdb/models
+github.com/influxdata/influxdb/pkg/escape
+# github.com/influxdata/influxdb/v2 v2.0.3
+## explicit
+github.com/influxdata/influxdb/v2
+github.com/influxdata/influxdb/v2/http/points
+github.com/influxdata/influxdb/v2/kit/feature
+github.com/influxdata/influxdb/v2/kit/io
+github.com/influxdata/influxdb/v2/kit/tracing
+github.com/influxdata/influxdb/v2/models
+github.com/influxdata/influxdb/v2/pkg/escape
+github.com/influxdata/influxdb/v2/pkg/pointer
+github.com/influxdata/influxdb/v2/task/options
+github.com/influxdata/influxdb/v2/telegraf/plugins
+github.com/influxdata/influxdb/v2/telegraf/plugins/inputs
+github.com/influxdata/influxdb/v2/telegraf/plugins/outputs
+# github.com/influxdata/pkg-config v0.2.6
+github.com/influxdata/pkg-config
+github.com/influxdata/pkg-config/internal/logutil
+github.com/influxdata/pkg-config/internal/modfile
+github.com/influxdata/pkg-config/internal/modload
+github.com/influxdata/pkg-config/internal/module
+github.com/influxdata/pkg-config/internal/semver
+github.com/influxdata/pkg-config/libs/flux
 # github.com/jessevdk/go-flags v1.4.0
 github.com/jessevdk/go-flags
 # github.com/jmespath/go-jmespath v0.4.0
@@ -322,6 +439,9 @@ github.com/jstemmer/go-junit-report/formatter
 github.com/jstemmer/go-junit-report/parser
 # github.com/julienschmidt/httprouter v1.3.0
 github.com/julienschmidt/httprouter
+# github.com/kevinburke/go-bindata v3.11.0+incompatible
+github.com/kevinburke/go-bindata
+github.com/kevinburke/go-bindata/go-bindata
 # github.com/klauspost/cpuid v1.3.1
 github.com/klauspost/cpuid
 # github.com/konsorten/go-windows-terminal-sequences v1.0.3
@@ -374,12 +494,18 @@ github.com/mitchellh/go-homedir
 github.com/mitchellh/go-wordwrap
 # github.com/mitchellh/mapstructure v1.2.2
 github.com/mitchellh/mapstructure
+# github.com/mna/pigeon v1.0.1-0.20180808201053-bb0192cfc2ae
+github.com/mna/pigeon
+github.com/mna/pigeon/ast
+github.com/mna/pigeon/builder
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1
 github.com/modern-go/reflect2
 # github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
 github.com/mwitkow/go-conntrack
+# github.com/natefinch/lumberjack v2.0.0+incompatible
+github.com/natefinch/lumberjack
 # github.com/ncw/swift v1.0.52
 ## explicit
 github.com/ncw/swift
@@ -545,6 +671,8 @@ github.com/sony/gobreaker
 ## explicit
 github.com/spf13/afero
 github.com/spf13/afero/mem
+# github.com/spf13/cobra v1.0.0
+github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
 # github.com/stretchr/objx v0.2.0
@@ -643,7 +771,7 @@ github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
-# go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50
+# go.etcd.io/bbolt v1.3.5
 ## explicit
 go.etcd.io/bbolt
 # go.etcd.io/etcd v0.5.0-alpha.5.0.20200520232829-54ba9589114f
@@ -779,6 +907,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
+go.uber.org/zap/zapgrpc
 # golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -786,6 +915,8 @@ golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
+golang.org/x/crypto/pbkdf2
+golang.org/x/crypto/scrypt
 # golang.org/x/lint v0.0.0-20200302205851-738671d3881b
 golang.org/x/lint
 golang.org/x/lint/golint
@@ -837,9 +968,22 @@ golang.org/x/text/width
 golang.org/x/time/rate
 # golang.org/x/tools v0.0.0-20201119054027-25dc3e1ccc3c
 golang.org/x/tools/cmd/goimports
+golang.org/x/tools/cmd/stringer
+golang.org/x/tools/go/analysis
+golang.org/x/tools/go/analysis/passes/inspect
 golang.org/x/tools/go/ast/astutil
+golang.org/x/tools/go/ast/inspector
+golang.org/x/tools/go/buildutil
 golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/cgo
 golang.org/x/tools/go/internal/gcimporter
+golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/loader
+golang.org/x/tools/go/packages
+golang.org/x/tools/go/types/objectpath
+golang.org/x/tools/go/types/typeutil
+golang.org/x/tools/imports
+golang.org/x/tools/internal/analysisinternal
 golang.org/x/tools/internal/event
 golang.org/x/tools/internal/event/core
 golang.org/x/tools/internal/event/keys
@@ -848,6 +992,9 @@ golang.org/x/tools/internal/fastwalk
 golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/gopathwalk
 golang.org/x/tools/internal/imports
+golang.org/x/tools/internal/lsp/fuzzy
+golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/typesinternal
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
@@ -1005,6 +1152,38 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 ## explicit
 gopkg.in/yaml.v3
+# honnef.co/go/tools v0.0.1-2020.1.4
+honnef.co/go/tools/arg
+honnef.co/go/tools/cmd/staticcheck
+honnef.co/go/tools/code
+honnef.co/go/tools/config
+honnef.co/go/tools/deprecated
+honnef.co/go/tools/edit
+honnef.co/go/tools/facts
+honnef.co/go/tools/functions
+honnef.co/go/tools/go/types/typeutil
+honnef.co/go/tools/internal/cache
+honnef.co/go/tools/internal/passes/buildir
+honnef.co/go/tools/internal/renameio
+honnef.co/go/tools/internal/robustio
+honnef.co/go/tools/internal/sharedcheck
+honnef.co/go/tools/ir
+honnef.co/go/tools/ir/irutil
+honnef.co/go/tools/lint
+honnef.co/go/tools/lint/lintdsl
+honnef.co/go/tools/lint/lintutil
+honnef.co/go/tools/lint/lintutil/format
+honnef.co/go/tools/loader
+honnef.co/go/tools/pattern
+honnef.co/go/tools/printf
+honnef.co/go/tools/report
+honnef.co/go/tools/simple
+honnef.co/go/tools/staticcheck
+honnef.co/go/tools/stylecheck
+honnef.co/go/tools/unused
+honnef.co/go/tools/version
+# istio.io/pkg v0.0.0-20200606170016-70c5172b9cdf
+istio.io/pkg/log
 # rsc.io/binaryregexp v0.2.0
 rsc.io/binaryregexp
 rsc.io/binaryregexp/syntax

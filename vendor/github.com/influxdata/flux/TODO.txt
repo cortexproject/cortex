@@ -1,0 +1,5 @@
+
+* How do we handle the fact that the interpreter is going to try and validate the arugment types to transformation functions?
+    Does TableObject need a special case?
+    Should we just remove all argument type checking in the interpreter?
+* Resolve all TODO comments

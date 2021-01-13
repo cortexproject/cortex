@@ -3,6 +3,9 @@ adopters:
 - name: Aspen Mesh
   url: https://aspenmesh.io/
   logo: aspen-mesh.png
+- name: Amazon Managed Service for Prometheus (AMP)
+  url: https://aws.amazon.com/prometheus/
+  logo: Amazon-Managed-Service-for-Prometheus_64@5x.png
 - name: Buoyant
   url: https://buoyant.io/
   logo: buoyant.svg

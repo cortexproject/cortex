@@ -570,7 +570,7 @@ func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring rin
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to create group for user", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
 			continue
 		}
 

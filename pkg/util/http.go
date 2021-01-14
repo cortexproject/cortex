@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/blang/semver"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
@@ -83,25 +82,8 @@ type CompressionType int
 // Values for CompressionType
 const (
 	NoCompression CompressionType = iota
-	FramedSnappy
 	RawSnappy
 )
-
-var rawSnappyFromVersion = semver.MustParse("0.1.0")
-
-// CompressionTypeFor a given version of the Prometheus remote storage protocol.
-// See https://github.com/prometheus/prometheus/issues/2692.
-func CompressionTypeFor(version string) CompressionType {
-	ver, err := semver.Make(version)
-	if err != nil {
-		return FramedSnappy
-	}
-
-	if ver.GTE(rawSnappyFromVersion) {
-		return RawSnappy
-	}
-	return FramedSnappy
-}
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
@@ -166,9 +148,6 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 		// reader is over limit, the result will be bigger than max.
 		_, err = buf.ReadFrom(io.LimitReader(reader, int64(maxSize)+1))
 		body = buf.Bytes()
-	case FramedSnappy:
-		_, err = buf.ReadFrom(io.LimitReader(snappy.NewReader(reader), int64(maxSize)+1))
-		body = buf.Bytes()
 	case RawSnappy:
 		_, err = buf.ReadFrom(reader)
 		body = buf.Bytes()
@@ -205,13 +184,6 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression Compres
 	switch compression {
 	case NoCompression:
 		return buffer.Bytes(), nil
-	case FramedSnappy:
-		decompressed := bytes.NewBuffer(make([]byte, 0, len(buffer.Bytes())))
-		_, err := decompressed.ReadFrom(io.LimitReader(snappy.NewReader(buffer), int64(maxSize)+1))
-		if err != nil {
-			return nil, err
-		}
-		return decompressed.Bytes(), nil
 	case RawSnappy:
 		if sp != nil {
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
@@ -254,14 +226,6 @@ func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compressi
 
 	switch compression {
 	case NoCompression:
-	case FramedSnappy:
-		buf := bytes.Buffer{}
-		writer := snappy.NewBufferedWriter(&buf)
-		if _, err := writer.Write(data); err != nil {
-			return err
-		}
-		writer.Close()
-		data = buf.Bytes()
 	case RawSnappy:
 		data = snappy.Encode(nil, data)
 	}

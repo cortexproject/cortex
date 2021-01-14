@@ -111,19 +111,15 @@ func TestParseProtoReader(t *testing.T) {
 		useBytesBuffer bool
 	}{
 		{"rawSnappy", util.RawSnappy, 53, false, false},
-		{"framedSnappy", util.FramedSnappy, 53, false, false},
 		{"noCompression", util.NoCompression, 53, false, false},
 		{"too big rawSnappy", util.RawSnappy, 10, true, false},
 		{"too big decoded rawSnappy", util.RawSnappy, 50, true, false},
-		{"too big framedSnappy", util.FramedSnappy, 10, true, false},
 		{"too big noCompression", util.NoCompression, 10, true, false},
 
 		{"bytesbuffer rawSnappy", util.RawSnappy, 53, false, true},
-		{"bytesbuffer framedSnappy", util.FramedSnappy, 100, false, true},
 		{"bytesbuffer noCompression", util.NoCompression, 53, false, true},
 		{"bytesbuffer too big rawSnappy", util.RawSnappy, 10, true, true},
 		{"bytesbuffer too big decoded rawSnappy", util.RawSnappy, 50, true, true},
-		{"bytesbuffer too big framedSnappy", util.FramedSnappy, 10, true, true},
 		{"bytesbuffer too big noCompression", util.NoCompression, 10, true, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

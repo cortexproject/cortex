@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -225,7 +223,7 @@ func (c *haTracker) loop(ctx context.Context) error {
 // tracker c to see if we should accept the incomming sample. It will return an error if the sample
 // should not be accepted. Note that internally this function does checks against the stored values
 // and may modify the stored data, for example to failover between replicas after a certain period of time.
-// A 202 response code is returned (from checkKVstore) if we shouldn't store this sample but are
+// replicasNotMatchError is returned (from checkKVStore) if we shouldn't store this sample but are
 // accepting samples from another replica for the cluster, so that there isn't a bunch of error's returned
 // to customers clients.
 func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica string) error {
@@ -243,7 +241,7 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 
 	if ok && now.Sub(timestamp.Time(entry.ReceivedAt)) < c.cfg.UpdateTimeout+c.updateTimeoutJitter {
 		if entry.Replica != replica {
-			return replicasNotMatchError(replica, entry.Replica)
+			return replicasNotMatchError{replica: replica, elected: entry.Replica}
 		}
 		return nil
 	}
@@ -251,16 +249,16 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 	if !ok {
 		// If we don't know about this cluster yet and we have reached the limit for number of clusters, we error out now.
 		if limit := c.limits.MaxHAClusters(userID); limit > 0 && clusters+1 > limit {
-			return httpgrpc.Errorf(http.StatusBadRequest, "too many HA clusters (limit: %d)", limit)
+			return tooManyClustersError{limit: limit}
 		}
 	}
 
 	err := c.checkKVStore(ctx, key, replica, now)
 	kvCASCalls.WithLabelValues(userID, cluster).Inc()
 	if err != nil {
-		// The callback within checkKVStore will return a 202 if the sample is being deduped,
+		// The callback within checkKVStore will return a replicasNotMatchError if the sample is being deduped,
 		// otherwise there may have been an actual error CAS'ing that we should log.
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() != 202 {
+		if !errors.Is(err, replicasNotMatchError{}) {
 			level.Error(util.Logger).Log("msg", "rejecting sample", "err", err)
 		}
 	}
@@ -280,8 +278,7 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 			// We shouldn't failover to accepting a new replica if the timestamp we've received this sample at
 			// is less than failOver timeout amount of time since the timestamp in the KV store.
 			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.FailoverTimeout {
-				// Return a 202.
-				return nil, false, replicasNotMatchError(replica, desc.Replica)
+				return nil, false, replicasNotMatchError{replica: replica, elected: desc.Replica}
 			}
 		}
 
@@ -294,8 +291,34 @@ func (c *haTracker) checkKVStore(ctx context.Context, key, replica string, now t
 	})
 }
 
-func replicasNotMatchError(replica, elected string) error {
-	return httpgrpc.Errorf(http.StatusAccepted, "replicas did not mach, rejecting sample: replica=%s, elected=%s", replica, elected)
+type replicasNotMatchError struct {
+	replica, elected string
+}
+
+func (e replicasNotMatchError) Error() string {
+	return fmt.Sprintf("replicas did not mach, rejecting sample: replica=%s, elected=%s", e.replica, e.elected)
+}
+
+// Needed for errors.Is to work properly.
+func (e replicasNotMatchError) Is(err error) bool {
+	_, ok1 := err.(replicasNotMatchError)
+	_, ok2 := err.(*replicasNotMatchError)
+	return ok1 || ok2
+}
+
+type tooManyClustersError struct {
+	limit int
+}
+
+func (e tooManyClustersError) Error() string {
+	return fmt.Sprintf("too many HA clusters (limit: %d)", e.limit)
+}
+
+// Needed for errors.Is to work properly.
+func (e tooManyClustersError) Is(err error) bool {
+	_, ok1 := err.(tooManyClustersError)
+	_, ok2 := err.(*tooManyClustersError)
+	return ok1 || ok2
 }
 
 func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapter) (string, string) {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -564,6 +565,34 @@ func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID str
 
 		return tr.clusters[userID]
 	})
+}
+
+func TestTooManyClustersError(t *testing.T) {
+	var err error = tooManyClustersError{limit: 10}
+	assert.True(t, errors.Is(err, tooManyClustersError{}))
+	assert.True(t, errors.Is(err, &tooManyClustersError{}))
+
+	err = &tooManyClustersError{limit: 20}
+	assert.True(t, errors.Is(err, tooManyClustersError{}))
+	assert.True(t, errors.Is(err, &tooManyClustersError{}))
+
+	err = replicasNotMatchError{replica: "a", elected: "b"}
+	assert.False(t, errors.Is(err, tooManyClustersError{}))
+	assert.False(t, errors.Is(err, &tooManyClustersError{}))
+}
+
+func TestReplicasNotMatchError(t *testing.T) {
+	var err error = replicasNotMatchError{replica: "a", elected: "b"}
+	assert.True(t, errors.Is(err, replicasNotMatchError{}))
+	assert.True(t, errors.Is(err, &replicasNotMatchError{}))
+
+	err = &replicasNotMatchError{replica: "a", elected: "b"}
+	assert.True(t, errors.Is(err, replicasNotMatchError{}))
+	assert.True(t, errors.Is(err, &replicasNotMatchError{}))
+
+	err = tooManyClustersError{limit: 10}
+	assert.False(t, errors.Is(err, replicasNotMatchError{}))
+	assert.False(t, errors.Is(err, &replicasNotMatchError{}))
 }
 
 type trackerLimits struct {

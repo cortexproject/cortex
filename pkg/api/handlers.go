@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"html/template"
 	"net/http"
 	"path"
@@ -188,6 +189,22 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 	return output, nil
 }
 
+func diffLimitsConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
+	output := make(map[interface{}]interface{})
+	for tenant, tenantValues := range actualConfig {
+		tenantValuesObj, err := yamlMarshalUnmarshal(tenantValues)
+		if err != nil {
+			return nil, err
+		}
+		tenantDiff, err := diffConfig(defaultConfig, tenantValuesObj)
+		if err != nil {
+			return nil, err
+		}
+		output[tenant] = tenantDiff
+	}
+	return output, nil
+}
+
 func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var output interface{}
@@ -222,14 +239,43 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 	}
 }
 
-func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager) http.HandlerFunc {
+func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var output interface{}
 		runtimeConfig := runtimeCfgManager.GetConfig()
 		if runtimeConfig == nil {
 			util.WriteTextResponse(w, "runtime config file doesn't exist")
 			return
 		}
-		util.WriteYAMLResponse(w, runtimeConfig)
+		switch r.URL.Query().Get("mode") {
+		case "diff":
+			output = nil
+			defaultLimitsObj, err := yamlMarshalUnmarshal(defaultLimits)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			runtimeCfgObj, err := yamlMarshalUnmarshal(runtimeConfig)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			limitsCfgObj, err := yamlMarshalUnmarshal(runtimeCfgObj["overrides"])
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			limitsDiff, err := diffLimitsConfig(defaultLimitsObj, limitsCfgObj)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			runtimeCfgObj["overrides"] = limitsDiff
+			output = runtimeCfgObj
+		default:
+			output = runtimeConfig
+		}
+		util.WriteYAMLResponse(w, output)
 	}
 }
 

@@ -548,7 +548,7 @@ func TestHAClustersLimit(t *testing.T) {
 	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b1"))
 	waitForClustersUpdate(t, 2, t1, userID)
 
-	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1"), "rpc error: code = Code(400) desc = too many HA clusters (limit: 2)")
+	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1"), "too many HA clusters (limit: 2)")
 
 	// Move time forward, and make sure that checkReplica for existing cluster works fine.
 	mtime.NowForce(time.Now().Add(5 * time.Second)) // higher than "update timeout"

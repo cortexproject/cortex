@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,7 +183,10 @@ func TestAlertmanagerClustering(t *testing.T) {
 	err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 	require.NoError(t, err)
 
-	peers := "alertmanager-1:9094,alertmanager-2:9094" // based on the service name
+	peers := strings.Join([]string{
+		e2e.NetworkContainerHostPort(networkName, "alertmanager-1", e2ecortex.GossipPort),
+		e2e.NetworkContainerHostPort(networkName, "alertmanager-2", e2ecortex.GossipPort),
+	}, ",")
 	flags = mergeFlags(flags, AlertmanagerClusterFlags(peers))
 
 	// Wait for the Alertmanagers to start.

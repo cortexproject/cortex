@@ -10,7 +10,7 @@ import (
 const (
 	httpPort   = 80
 	grpcPort   = 9095
-	gossipPort = 9094
+	GossipPort = 9094
 )
 
 // GetDefaultImage returns the Docker image to use to run Cortex.
@@ -346,7 +346,7 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
 		grpcPort,
-		gossipPort,
+		GossipPort,
 	)
 }
 

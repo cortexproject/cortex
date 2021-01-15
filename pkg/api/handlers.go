@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"html/template"
 	"net/http"
 	"path"
@@ -34,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -249,7 +249,6 @@ func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimit
 		}
 		switch r.URL.Query().Get("mode") {
 		case "diff":
-			output = nil
 			defaultLimitsObj, err := yamlMarshalUnmarshal(defaultLimits)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

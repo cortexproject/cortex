@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"flag"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"net/http"
 	"strings"
 	"time"
@@ -35,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/push"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type Config struct {

@@ -3089,6 +3089,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [ha_replica_label: <string> | default = "__replica__"]
 
 # Maximum number of clusters that HA tracker will keep track of for single user.
+# 0 to disable the limit.
 # CLI flag: -distributor.ha-tracker.max-clusters
 [ha_max_clusters: <int> | default = 0]
 

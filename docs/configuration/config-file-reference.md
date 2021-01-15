@@ -3090,7 +3090,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum number of clusters that HA tracker will keep track of for single user.
 # CLI flag: -distributor.ha-tracker.max-clusters
-[ha_max_clusters: <int> | default = 128]
+[ha_max_clusters: <int> | default = 0]
 
 # This flag can be used to specify label names that to drop during sample
 # ingestion within the distributor and can be repeated in order to drop multiple

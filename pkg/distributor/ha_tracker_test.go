@@ -521,6 +521,8 @@ func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
 }
 
 func TestHAClustersLimit(t *testing.T) {
+	defer mtime.NowReset()
+
 	const userID = "user"
 
 	codec := GetReplicaDescCodec()
@@ -546,6 +548,12 @@ func TestHAClustersLimit(t *testing.T) {
 	waitForClustersUpdate(t, 2, t1, userID)
 
 	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1"), "rpc error: code = Code(400) desc = too many HA clusters (limit: 2)")
+
+	// Move time forward, and make sure that checkReplica for existing cluster works fine.
+	mtime.NowForce(time.Now().Add(5 * time.Second)) // higher than "update timeout"
+
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b2"))
+	waitForClustersUpdate(t, 2, t1, userID)
 }
 
 func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID string) {

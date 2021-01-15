@@ -195,15 +195,15 @@ func (c *haTracker) loop(ctx context.Context) error {
 		replica := value.(*ReplicaDesc)
 		c.electedLock.Lock()
 		defer c.electedLock.Unlock()
-		chunks := strings.SplitN(key, "/", 2)
+		segments := strings.SplitN(key, "/", 2)
 
 		// Valid key would look like cluster/replica, and a key without a / such as `ring` would be invalid.
-		if len(chunks) != 2 {
+		if len(segments) != 2 {
 			return true
 		}
 
-		user := chunks[0]
-		cluster := chunks[1]
+		user := segments[0]
+		cluster := segments[1]
 
 		elected, exists := c.elected[key]
 		if replica.Replica != elected.Replica {
@@ -248,9 +248,11 @@ func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica s
 		return nil
 	}
 
-	// We don't know about this cluster yet. If we have reached the limit for number of clusters, we error out now.
-	if limit := c.limits.MaxHAClusters(userID); clusters+1 > limit {
-		return httpgrpc.Errorf(http.StatusBadRequest, "too many HA clusters (limit: %d)", limit)
+	if !ok {
+		// If we don't know about this cluster yet and we have reached the limit for number of clusters, we error out now.
+		if limit := c.limits.MaxHAClusters(userID); limit > 0 && clusters+1 > limit {
+			return httpgrpc.Errorf(http.StatusBadRequest, "too many HA clusters (limit: %d)", limit)
+		}
 	}
 
 	err := c.checkKVStore(ctx, key, replica, now)

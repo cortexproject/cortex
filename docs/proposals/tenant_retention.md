@@ -32,7 +32,7 @@ Using the "overrides" mechanism (part of runtime config) already allows for per-
 
 We propose to introduce an new runtime config component `retention`.
 
-We can store per-tenant settings and global setting in the retention component. As a runtime config, the settings is reload period (which defaults to 10 seconds), so we can update the settings onfly. 
+We can store per-tenant settings and global setting in the retention component. As a runtime config, the settings is reload period (which defaults to 10 seconds), so we can update the settings onfly.
 
 Per-tenant retention configuration will be applyed for in follow order:
 
@@ -41,7 +41,7 @@ Per-tenant retention configuration will be applyed for in follow order:
 
 For each tenant, if a tenant-specific value exists, it will be used directly, otherwise, if a global value exists, then the global value will be used; If neither exists, do nothing.
 
-### Implementation 
+### Implementation
 
 The runtime config will add a retention component which include a dictionary to store per-tenant retention value and global retention value.
 

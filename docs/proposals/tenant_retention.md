@@ -6,59 +6,53 @@ slug: tenant-retention
 ---
 
 - Author: [Allenzhli](https://github.com/Allenzhli)
-- Date: December 2020
+- Date: January 2021
 - Status: Proposed
 
 ## Retention of tenant data
 
 ## Problem
 
-In Cortex, we are missing retention of blocks storage. The metric data is growing over time per-tenant, at the same time, the value of data decreases. We want to support retention time of metric data like prometheus does.
+Metric data is growing over time per-tenant, at the same time, the value of data decreases. We want to have a retention policy like prometheus does. In Cortex, data retention is typically achieved via a bucket policy. However, this has two main issues:
+
+1. Not every backend storage support bucket policies
+2. Bucket policies don't easily allow a per-tenant custom retention
 
 ## Background
 
+### tenant
 When using blocks storage, Cortex stores tenant’s data in object store for long-term storage of blocks, tenant id as part of the object store path. We discover all tenants via scan the root dir of bucket.
+
+### runtime config
+Using the "overrides" mechanism (part of runtime config) already allows for per-tenant settings. See https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file for more details. Using it for tenant retention would fit nicely. Admin could set per-tenant retention here, and also have a single global value for tenants that don't have custom value set.
 
 ## Proposal
 
-### API Endpoints
+### retention component
 
-#### POST /compactor/retention_tenant
+We propose to introduce an new runtime config component `retention`.
 
-We propose to introduce an `/compactor/retention_tenant` API endpoint to set data retention for the tenant.
+We can store per-tenant settings and global setting in the retention component. As a runtime config, the settings is reload period (which defaults to 10 seconds), so we can update the settings onfly. 
 
-While this endpoint works as an “admin” endpoint and should not be exposed directly to tenants, it still needs to know under which tenant it should operate.
-For consistency with other endpoints this endpoint would therefore require an `X-Scope-OrgID` header and use the tenant from it.
+Per-tenant retention configuration will be applyed for in follow order:
 
-It is safe to call “retention_tenant” multiple times.
+* tenant specified value
+* global value
 
-#### GET /compactor/retention_tenant
+For each tenant, if a tenant-specific value exists, it will be used directly, otherwise, if a global value exists, then the global value will be used; If neither exists, do nothing.
 
-To query the state of data retention, an endpoint will be available: `/compactor/retention_tenant`.
-This will return the retention of current tenant.
-For consistency with other endpoints this endpoint would therefore require an `X-Scope-OrgID` header and use the tenant from it.
+### Implementation 
 
-### Implementation (asynchronous)
+The runtime config will add a retention component which include a dictionary to store per-tenant retention value and global retention value.
 
-Compactor will implement both API endpoints.
-Upon receiving the call to `/compactor/retention_tenant` endpoint, Compactor will initiate the retention by writing “retetion marker” objects for specific tenant to blocks bucket.
+Compactor will check per-tanant retention value and compare to meta info of blocks. The blocks that match `maxTime < now - retention` will be marked for delete.
 
-Retention marker for the tenant will be an object stored under tenant prefix, eg. “/<tenant>/retention”.
-This object will contain the retention time when it was created, so that we can calculate and check if a block should be deleted.
-For every clean user period, we can check if any blocks should be retention, and the other should be delete.
-Delete a block also use deletetion marker.
-
-We could reuse a subset of the proposed Thanos tombstones format, or use custom format.
-
-### Blocks deletion marker
-
-Blocks deletion marker will be used by compactor, querier and store-gateway.
-
-#### Compactor
+## Compactor
 
 Upon discovering the tenant, the compactor will check following markers:
 
 - tenant delete marker
-- tenant retention marker
+- block delete marker
 
-if only tenant retention exists, the compactor will check retention of all blocks that belong to the tenant after compact. The blocks which match `maxTime < now - retention` will be marked for delete.
+If tenant delete marker exists, compactor use TenantCleaner delete tenant all data regardless of whether the block delete marker exists.
+If only block delete marker exists, compactor use BlocksCleaner delete the block after `deletion_delay` duration.

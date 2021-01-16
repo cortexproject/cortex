@@ -82,3 +82,5 @@ and also to the list below.
 ### Members of the list
 
 Members of the list are listed below:
+- Cortex Maintainers
+- AWS Security Announce (email private)

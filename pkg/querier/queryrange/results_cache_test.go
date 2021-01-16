@@ -340,9 +340,34 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(160, 200, 10),
 			},
 		},
+
+		// Partial hits with tiny gap.
+		{
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   160,
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(50, 120),
+				mkExtent(122, 130),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponse(100, 120, 10),
+			},
+		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			reqs, resps, err := partition(tc.input, tc.prevCachedResponse, PrometheusResponseExtractor{})
+			s := resultsCache{
+				extractor:      PrometheusResponseExtractor{},
+				minCacheExtent: 10,
+			}
+			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
@@ -482,7 +507,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 
 			// fill cache
 			key := constSplitter(day).GenerateCacheKey("1", req)
-			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(60*1e3), int64(modelNow))})
+			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
 			resp, err := rc.Do(ctx, req)
 			require.NoError(t, err)

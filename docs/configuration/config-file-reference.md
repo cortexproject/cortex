@@ -189,11 +189,6 @@ query_scheduler:
     # CLI flag: -query-scheduler.grpc-client-config.grpc-max-send-msg-size
     [max_send_msg_size: <int> | default = 16777216]
 
-    # Deprecated: Use gzip compression when sending messages.  If true,
-    # overrides grpc-compression flag.
-    # CLI flag: -query-scheduler.grpc-client-config.grpc-use-gzip-compression
-    [use_gzip_compression: <boolean> | default = false]
-
     # Use compression when sending messages. Supported values are: 'gzip',
     # 'snappy' and '' (disable compression)
     # CLI flag: -query-scheduler.grpc-client-config.grpc-compression
@@ -915,11 +910,6 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
 
-  # Deprecated: Use gzip compression when sending messages.  If true, overrides
-  # grpc-compression flag.
-  # CLI flag: -frontend.grpc-client-config.grpc-use-gzip-compression
-  [use_gzip_compression: <boolean> | default = false]
-
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)
   # CLI flag: -frontend.grpc-client-config.grpc-compression
@@ -1080,11 +1070,6 @@ ruler_client:
   # CLI flag: -ruler.client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
 
-  # Deprecated: Use gzip compression when sending messages.  If true, overrides
-  # grpc-compression flag.
-  # CLI flag: -ruler.client.grpc-use-gzip-compression
-  [use_gzip_compression: <boolean> | default = false]
-
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)
   # CLI flag: -ruler.client.grpc-compression
@@ -1137,10 +1122,6 @@ ruler_client:
 # How frequently to evaluate rules
 # CLI flag: -ruler.evaluation-interval
 [evaluation_interval: <duration> | default = 1m]
-
-# Deprecated. Please use -ruler.evaluation-delay-duration instead.
-# CLI flag: -ruler.evaluation-delay-duration-deprecated
-[evaluation_delay_duration: <duration> | default = 0s]
 
 # How frequently to poll for rule changes
 # CLI flag: -ruler.poll-interval
@@ -2215,11 +2196,6 @@ bigtable:
     # CLI flag: -bigtable.grpc-max-send-msg-size
     [max_send_msg_size: <int> | default = 16777216]
 
-    # Deprecated: Use gzip compression when sending messages.  If true,
-    # overrides grpc-compression flag.
-    # CLI flag: -bigtable.grpc-use-gzip-compression
-    [use_gzip_compression: <boolean> | default = false]
-
     # Use compression when sending messages. Supported values are: 'gzip',
     # 'snappy' and '' (disable compression)
     # CLI flag: -bigtable.grpc-compression
@@ -2740,11 +2716,6 @@ grpc_client_config:
   # CLI flag: -ingester.client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
 
-  # Deprecated: Use gzip compression when sending messages.  If true, overrides
-  # grpc-compression flag.
-  # CLI flag: -ingester.client.grpc-use-gzip-compression
-  [use_gzip_compression: <boolean> | default = false]
-
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)
   # CLI flag: -ingester.client.grpc-compression
@@ -2841,11 +2812,6 @@ grpc_client_config:
   # gRPC client max send message size (bytes).
   # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
   [max_send_msg_size: <int> | default = 16777216]
-
-  # Deprecated: Use gzip compression when sending messages.  If true, overrides
-  # grpc-compression flag.
-  # CLI flag: -querier.frontend-client.grpc-use-gzip-compression
-  [use_gzip_compression: <boolean> | default = false]
 
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy' and '' (disable compression)

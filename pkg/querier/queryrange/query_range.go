@@ -3,6 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -394,9 +395,10 @@ func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
 }
 
-func decorateWithParamName(cause error, field string) error {
-	if status, ok := status.FromError(cause); ok {
-		return httpgrpc.Errorf(int(status.Code()), "invalid parameter %q; %s", field, status.Message())
+func decorateWithParamName(err error, field string) error {
+	errTmpl := "invalid parameter %q; %v"
+	if status, ok := status.FromError(err); ok {
+		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
 	}
-	return cause
+	return fmt.Errorf(errTmpl, field, err)
 }

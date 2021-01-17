@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -186,12 +187,12 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "start")
 	}
 
 	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "end")
 	}
 
 	if result.End < result.Start {
@@ -200,7 +201,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 
 	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
-		return nil, err
+		return nil, decorateWithParamName(err, "step")
 	}
 
 	if result.Step <= 0 {
@@ -391,4 +392,11 @@ func encodeTime(t int64) string {
 
 func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
+}
+
+func decorateWithParamName(cause error, field string) error {
+	if status, ok := status.FromError(cause); ok {
+		return httpgrpc.Errorf(int(status.Code()), "invalid parameter %q; %s", field, status.Message())
+	}
+	return cause
 }

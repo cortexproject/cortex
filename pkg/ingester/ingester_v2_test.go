@@ -2653,7 +2653,8 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	// Create ingester
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	reg := prometheus.NewPedanticRegistry()
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, reg)
 	require.NoError(t, err)
 	t.Cleanup(cleanup)
 
@@ -2666,6 +2667,12 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
 		return i.lifecycler.GetState()
 	})
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_oldest_unshipped_block_timestamp_seconds Unix timestamp of the oldest TSDB block not shipped to the storage yet. 0 if ingester has no blocks or all blocks have been shipped.
+		# TYPE cortex_ingester_oldest_unshipped_block_timestamp_seconds gauge
+		cortex_ingester_oldest_unshipped_block_timestamp_seconds 0
+	`), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 
 	// Push some data to create 3 blocks.
 	ctx := user.InjectOrgID(context.Background(), userID)
@@ -2681,6 +2688,12 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	oldBlocks := db.Blocks()
 	require.Equal(t, 3, len(oldBlocks))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+		# HELP cortex_ingester_oldest_unshipped_block_timestamp_seconds Unix timestamp of the oldest TSDB block not shipped to the storage yet. 0 if ingester has no blocks or all blocks have been shipped.
+		# TYPE cortex_ingester_oldest_unshipped_block_timestamp_seconds gauge
+		cortex_ingester_oldest_unshipped_block_timestamp_seconds %d
+	`, oldBlocks[0].Meta().ULID.Time()/1000)), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 
 	// Saying that we have shipped the second block, so only that should get deleted.
 	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
@@ -2702,6 +2715,12 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	require.Equal(t, oldBlocks[0].Meta().ULID, newBlocks[0].Meta().ULID)    // First block remains same.
 	require.Equal(t, oldBlocks[2].Meta().ULID, newBlocks[1].Meta().ULID)    // 3rd block becomes 2nd now.
 	require.NotEqual(t, oldBlocks[1].Meta().ULID, newBlocks[2].Meta().ULID) // The new block won't match previous 2nd block.
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+		# HELP cortex_ingester_oldest_unshipped_block_timestamp_seconds Unix timestamp of the oldest TSDB block not shipped to the storage yet. 0 if ingester has no blocks or all blocks have been shipped.
+		# TYPE cortex_ingester_oldest_unshipped_block_timestamp_seconds gauge
+		cortex_ingester_oldest_unshipped_block_timestamp_seconds %d
+	`, newBlocks[0].Meta().ULID.Time()/1000)), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 
 	// Shipping 2 more blocks, hence all the blocks from first round.
 	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
@@ -2726,6 +2745,12 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		// Second block is not one among old blocks.
 		require.NotEqual(t, b.Meta().ULID, newBlocks2[1].Meta().ULID)
 	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
+		# HELP cortex_ingester_oldest_unshipped_block_timestamp_seconds Unix timestamp of the oldest TSDB block not shipped to the storage yet. 0 if ingester has no blocks or all blocks have been shipped.
+		# TYPE cortex_ingester_oldest_unshipped_block_timestamp_seconds gauge
+		cortex_ingester_oldest_unshipped_block_timestamp_seconds %d
+	`, newBlocks2[0].Meta().ULID.Time()/1000)), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 }
 
 func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {

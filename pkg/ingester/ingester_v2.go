@@ -262,6 +262,38 @@ func (u *userTSDB) getShippedBlocks() ([]ulid.ULID, error) {
 	return shipperMeta.Uploaded, nil
 }
 
+// getOldestUnshippedBlockTime returns the unix timestamp with milliseconds precision of the oldest
+// TSDB block not shipped to the storage yet, or 0 if all blocks have been shipped.
+func (u *userTSDB) getOldestUnshippedBlockTime() (uint64, error) {
+	// Read the list of shipper blocks. If the shipper metadata file doesn't exist
+	// (eg. because the shipper hasn't run yet) we're considering it as if no block
+	// has been shipped.
+	shipped, err := u.getShippedBlocks()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, errors.Wrapf(err, "failed to read shipper meta")
+	}
+
+	shippedMap := make(map[ulid.ULID]bool, len(shipped))
+	for _, b := range shipped {
+		shippedMap[b] = true
+	}
+
+	// Find the oldest unshipped block.
+	oldestTs := uint64(0)
+
+	for _, b := range u.Blocks() {
+		if shippedMap[b.Meta().ULID] {
+			continue
+		}
+
+		if oldestTs == 0 || b.Meta().ULID.Time() < oldestTs {
+			oldestTs = b.Meta().ULID.Time()
+		}
+	}
+
+	return oldestTs, nil
+}
+
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
 	lu := u.lastUpdate.Load()
 
@@ -287,21 +319,11 @@ func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) (tsdbCloseCheckRes
 		return tsdbNotCompacted, nil
 	}
 
-	// Verify that all blocks have been shipped.
-	shipped, err := u.getShippedBlocks()
-	if err != nil {
-		return tsdbCheckFailed, errors.Wrapf(err, "failed to read shipper meta")
-	}
-
-	shippedMap := make(map[ulid.ULID]bool, len(shipped))
-	for _, b := range shipped {
-		shippedMap[b] = true
-	}
-
-	for _, b := range u.Blocks() {
-		if !shippedMap[b.Meta().ULID] {
-			return tsdbNotShipped, nil
-		}
+	// Ensure that all blocks have been shipped.
+	if oldest, err := u.getOldestUnshippedBlockTime(); err != nil {
+		return tsdbCheckFailed, err
+	} else if oldest > 0 {
+		return tsdbNotShipped, nil
 	}
 
 	return tsdbIdle, nil
@@ -412,10 +434,16 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	// them from the underlying system (ie. TSDB).
 	if registerer != nil {
 		registerer.Unregister(i.metrics.memSeries)
+
 		promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_series",
 			Help: "The current number of series in memory.",
-		}, i.numSeriesInTSDB)
+		}, i.getMemorySeriesMetric)
+
+		promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_oldest_unshipped_block_timestamp_seconds",
+			Help: "Unix timestamp of the oldest TSDB block not shipped to the storage yet. 0 if ingester has no blocks or all blocks have been shipped.",
+		}, i.getOldestUnshippedBlockMetric)
 	}
 
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, registerer)
@@ -1428,8 +1456,8 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	return nil
 }
 
-// numSeriesInTSDB returns the total number of in-memory series across all open TSDBs.
-func (i *Ingester) numSeriesInTSDB() float64 {
+// getMemorySeriesMetric returns the total number of in-memory series across all open TSDBs.
+func (i *Ingester) getMemorySeriesMetric() float64 {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
@@ -1439,6 +1467,22 @@ func (i *Ingester) numSeriesInTSDB() float64 {
 	}
 
 	return float64(count)
+}
+
+// getOldestUnshippedBlockMetric returns the unix timestamp of the oldest unshipped block or
+// 0 if all blocks have been shipped.
+func (i *Ingester) getOldestUnshippedBlockMetric() float64 {
+	i.userStatesMtx.RLock()
+	defer i.userStatesMtx.RUnlock()
+
+	oldest := uint64(0)
+	for _, db := range i.TSDBState.dbs {
+		if ts, err := db.getOldestUnshippedBlockTime(); err == nil && (oldest == 0 || ts < oldest) {
+			oldest = ts
+		}
+	}
+
+	return float64(oldest / 1000)
 }
 
 func (i *Ingester) shipBlocksLoop(ctx context.Context) error {

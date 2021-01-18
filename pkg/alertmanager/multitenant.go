@@ -281,7 +281,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		}
 		err = peer.Join(cluster.DefaultReconnectInterval, cluster.DefaultReconnectTimeout)
 		if err != nil {
-			level.Warn(logger).Log("msg", "unable to join gossip mesh while initializing high availability mode", "err", err)
+			level.Warn(logger).Log("msg", "unable to join gossip mesh while initializing cluster for high availability mode", "err", err)
 		}
 		go peer.Settle(context.Background(), cluster.DefaultGossipInterval)
 	}

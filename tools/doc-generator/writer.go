@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/config"
 	wordwrap "github.com/mitchellh/go-wordwrap"
 )
 
@@ -14,12 +15,12 @@ type specWriter struct {
 	out strings.Builder
 }
 
-func (w *specWriter) writeConfigBlock(b *configBlock, indent int) {
-	if len(b.entries) == 0 {
+func (w *specWriter) writeConfigBlock(b *config.ConfigBlock, indent int) {
+	if len(b.Entries) == 0 {
 		return
 	}
 
-	for i, entry := range b.entries {
+	for i, entry := range b.Entries {
 		// Add a new line to separate from the previous entry
 		if i > 0 {
 			w.out.WriteString("\n")
@@ -29,48 +30,48 @@ func (w *specWriter) writeConfigBlock(b *configBlock, indent int) {
 	}
 }
 
-func (w *specWriter) writeConfigEntry(e *configEntry, indent int) {
-	if e.kind == "block" {
+func (w *specWriter) writeConfigEntry(e *config.ConfigEntry, indent int) {
+	if e.Kind == "block" {
 		// If the block is a root block it will have its dedicated section in the doc,
 		// so here we've just to write down the reference without re-iterating on it.
-		if e.root {
+		if e.Root {
 			// Description
-			w.writeComment(e.blockDesc, indent)
-			if e.block.flagsPrefix != "" {
-				w.writeComment(fmt.Sprintf("The CLI flags prefix for this block config is: %s", e.block.flagsPrefix), indent)
+			w.writeComment(e.BlockDesc, indent)
+			if e.Block.FlagsPrefix != "" {
+				w.writeComment(fmt.Sprintf("The CLI flags prefix for this block config is: %s", e.Block.FlagsPrefix), indent)
 			}
 
 			// Block reference without entries, because it's a root block
-			w.out.WriteString(pad(indent) + "[" + e.name + ": <" + e.block.name + ">]\n")
+			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.Block.Name + ">]\n")
 		} else {
 			// Description
-			w.writeComment(e.blockDesc, indent)
+			w.writeComment(e.BlockDesc, indent)
 
 			// Name
-			w.out.WriteString(pad(indent) + e.name + ":\n")
+			w.out.WriteString(pad(indent) + e.Name + ":\n")
 
 			// Entries
-			w.writeConfigBlock(e.block, indent+tabWidth)
+			w.writeConfigBlock(e.Block, indent+tabWidth)
 		}
 	}
 
-	if e.kind == "field" {
+	if e.Kind == "field" {
 		// Description
-		w.writeComment(e.fieldDesc, indent)
-		w.writeFlag(e.fieldFlag, indent)
+		w.writeComment(e.FieldDesc, indent)
+		w.writeFlag(e.FieldFlag, indent)
 
 		// Specification
-		fieldDefault := e.fieldDefault
-		if e.fieldType == "string" {
+		fieldDefault := e.FieldDefault
+		if e.FieldType == "string" {
 			fieldDefault = strconv.Quote(fieldDefault)
-		} else if e.fieldType == "duration" {
+		} else if e.FieldType == "duration" {
 			fieldDefault = cleanupDuration(fieldDefault)
 		}
 
-		if e.required {
-			w.out.WriteString(pad(indent) + e.name + ": <" + e.fieldType + "> | default = " + fieldDefault + "\n")
+		if e.Required {
+			w.out.WriteString(pad(indent) + e.Name + ": <" + e.FieldType + "> | default = " + fieldDefault + "\n")
 		} else {
-			w.out.WriteString(pad(indent) + "[" + e.name + ": <" + e.fieldType + "> | default = " + fieldDefault + "]\n")
+			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.FieldType + "> | default = " + fieldDefault + "]\n")
 		}
 	}
 }
@@ -104,11 +105,11 @@ type markdownWriter struct {
 	out strings.Builder
 }
 
-func (w *markdownWriter) writeConfigDoc(blocks []*configBlock) {
+func (w *markdownWriter) writeConfigDoc(blocks []*config.ConfigBlock) {
 	// Deduplicate root blocks.
-	uniqueBlocks := map[string]*configBlock{}
+	uniqueBlocks := map[string]*config.ConfigBlock{}
 	for _, block := range blocks {
-		uniqueBlocks[block.name] = block
+		uniqueBlocks[block.Name] = block
 	}
 
 	// Generate the markdown, honoring the root blocks order.
@@ -117,33 +118,33 @@ func (w *markdownWriter) writeConfigDoc(blocks []*configBlock) {
 	}
 
 	for _, rootBlock := range rootBlocks {
-		if block, ok := uniqueBlocks[rootBlock.name]; ok {
+		if block, ok := uniqueBlocks[rootBlock.Name]; ok {
 			w.writeConfigBlock(block)
 		}
 	}
 }
 
-func (w *markdownWriter) writeConfigBlock(block *configBlock) {
+func (w *markdownWriter) writeConfigBlock(block *config.ConfigBlock) {
 	// Title
-	if block.name != "" {
-		w.out.WriteString("### `" + block.name + "`\n")
+	if block.Name != "" {
+		w.out.WriteString("### `" + block.Name + "`\n")
 		w.out.WriteString("\n")
 	}
 
 	// Description
-	if block.desc != "" {
-		desc := block.desc
+	if block.Desc != "" {
+		desc := block.Desc
 
 		// Wrap the config block name with backticks
-		if block.name != "" {
-			desc = regexp.MustCompile(regexp.QuoteMeta(block.name)).ReplaceAllStringFunc(desc, func(input string) string {
+		if block.Name != "" {
+			desc = regexp.MustCompile(regexp.QuoteMeta(block.Name)).ReplaceAllStringFunc(desc, func(input string) string {
 				return "`" + input + "`"
 			})
 		}
 
 		// List of all prefixes used to reference this config block.
-		if len(block.flagsPrefixes) > 1 {
-			sortedPrefixes := sort.StringSlice(block.flagsPrefixes)
+		if len(block.FlagsPrefixes) > 1 {
+			sortedPrefixes := sort.StringSlice(block.FlagsPrefixes)
 			sortedPrefixes.Sort()
 
 			desc += " The supported CLI flags `<prefix>` used to reference this config block are:\n\n"

@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"io"
+	"io/ioutil"
 
 	"gopkg.in/yaml.v2"
 
@@ -20,11 +21,13 @@ type runtimeConfigValues struct {
 }
 
 func loadRuntimeConfig(r io.Reader) (interface{}, error) {
-	var overrides = &runtimeConfigValues{}
+	content, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
 
-	decoder := yaml.NewDecoder(r)
-	decoder.SetStrict(true)
-	if err := decoder.Decode(&overrides); err != nil {
+	var overrides = &runtimeConfigValues{}
+	if err := yaml.UnmarshalStrict(content, overrides); err != nil {
 		return nil, err
 	}
 

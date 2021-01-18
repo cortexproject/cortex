@@ -89,10 +89,10 @@ type MultitenantAlertmanagerConfig struct {
 	ExternalURL  flagext.URLValue `yaml:"external_url"`
 	PollInterval time.Duration    `yaml:"poll_interval"`
 
-	ClusterBindAddr      string              `yaml:"cluster_bind_address"`
-	ClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
-	Peers                flagext.StringSlice `yaml:"peers"`
-	PeerTimeout          time.Duration       `yaml:"peer_timeout"`
+	DeprecatedClusterBindAddr      string              `yaml:"cluster_bind_address"`
+	DeprecatedClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
+	DeprecatedPeers                flagext.StringSlice `yaml:"peers"`
+	DeprecatedPeerTimeout          time.Duration       `yaml:"peer_timeout"`
 
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
@@ -128,10 +128,10 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Flags prefixed with `cluster` are deprecated in favor of their `alertmanager` prefix equivalent.
 	// TODO: New flags introduced in Cortex 1.7, remove old ones in Cortex 1.9
-	f.StringVar(&cfg.ClusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Deprecated. Use -alertmanager.cluster.listen-address instead.")
-	f.StringVar(&cfg.ClusterAdvertiseAddr, "cluster.advertise-address", "", "Deprecated. Use -alertmanager.cluster.advertise-address instead.")
-	f.Var(&cfg.Peers, "cluster.peer", "Deprecated. Use -alertmanager.cluster.peers instead.")
-	f.DurationVar(&cfg.PeerTimeout, "cluster.peer-timeout", time.Second*15, "Deprecated. Use -alertmanager.cluster.peer-timeout instead.")
+	f.StringVar(&cfg.DeprecatedClusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Deprecated. Use -alertmanager.cluster.listen-address instead.")
+	f.StringVar(&cfg.DeprecatedClusterAdvertiseAddr, "cluster.advertise-address", "", "Deprecated. Use -alertmanager.cluster.advertise-address instead.")
+	f.Var(&cfg.DeprecatedPeers, "cluster.peer", "Deprecated. Use -alertmanager.cluster.peers instead.")
+	f.DurationVar(&cfg.DeprecatedPeerTimeout, "cluster.peer-timeout", time.Second*15, "Deprecated. Use -alertmanager.cluster.peer-timeout instead.")
 
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
@@ -147,33 +147,31 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.PeerTimeout, prefix+"peer-timeout", defaultPeerTimeout, "Time to wait between peers to send notifications.")
 }
 
-// SupportPreviousFlagset ensures we support the previous set of cluster flags.
-func (cfg *ClusterConfig) SupportPreviousFlagset(amCfg *MultitenantAlertmanagerConfig, logger log.Logger) error {
-	if amCfg.ClusterBindAddr != defaultClusterAddr {
+// SupportDeprecatedFlagset ensures we support the previous set of cluster flags that are now deprecated.
+func (cfg *ClusterConfig) SupportDeprecatedFlagset(amCfg *MultitenantAlertmanagerConfig, logger log.Logger) {
+	if amCfg.DeprecatedClusterBindAddr != defaultClusterAddr {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.listen-address, use -alertmanager.cluster.listen-address instead.")
-		cfg.ListenAddr = amCfg.ClusterBindAddr
+		cfg.ListenAddr = amCfg.DeprecatedClusterBindAddr
 	}
 
-	if amCfg.ClusterAdvertiseAddr != "" {
+	if amCfg.DeprecatedClusterAdvertiseAddr != "" {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.advertise-address, use -alertmanager.cluster.advertise-address instead.")
-		cfg.AdvertiseAddr = amCfg.ClusterAdvertiseAddr
+		cfg.AdvertiseAddr = amCfg.DeprecatedClusterAdvertiseAddr
 	}
 
-	if len(amCfg.Peers) > 0 {
+	if len(amCfg.DeprecatedPeers) > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.peer, use -alertmanager.cluster.peers instead.")
-		cfg.Peers = []string(amCfg.Peers)
+		cfg.Peers = []string(amCfg.DeprecatedPeers)
 	}
 
-	if amCfg.PeerTimeout != defaultPeerTimeout {
+	if amCfg.DeprecatedPeerTimeout != defaultPeerTimeout {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.peer-timeout, use -alertmanager.cluster.peer-timeout instead.")
-		cfg.PeerTimeout = amCfg.PeerTimeout
+		cfg.PeerTimeout = amCfg.DeprecatedPeerTimeout
 	}
-
-	return nil
 }
 
 // Validate config and returns error on failure
@@ -257,9 +255,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		}
 	}
 
-	if err := cfg.Cluster.SupportPreviousFlagset(cfg, logger); err != nil {
-		return nil, err
-	}
+	cfg.Cluster.SupportDeprecatedFlagset(cfg, logger)
 
 	var peer *cluster.Peer
 	if cfg.Cluster.ListenAddr != "" {

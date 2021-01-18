@@ -20,7 +20,7 @@ func RemoteReadHandler(q storage.Queryable) http.Handler {
 		var req client.ReadRequest
 		logger := util.WithContext(r.Context(), util.Logger)
 		if err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
-			level.Error(logger).Log("err", err.Error())
+			level.Error(logger).Log("msg", "failed to parse proto", "err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

@@ -87,9 +87,17 @@ const (
 
 // ParseProtoReader parses a compressed proto from an io.Reader.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
-	body, err := decompressRequest(ctx, reader, expectedSize, maxSize, compression)
+	sp := opentracing.SpanFromContext(ctx)
+	if sp != nil {
+		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
+	}
+	body, err := decompressRequest(ctx, reader, expectedSize, maxSize, compression, sp)
 	if err != nil {
 		return err
+	}
+
+	if sp != nil {
+		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"), otlog.Int("size", len(body)))
 	}
 
 	// We re-implement proto.Unmarshal here as it calls XXX_Unmarshal first,
@@ -107,20 +115,15 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 	return nil
 }
 
-func decompressRequest(ctx context.Context, reader io.Reader, expectedSize, maxSize int, compression CompressionType) (body []byte, err error) {
-	sp := opentracing.SpanFromContext(ctx)
-	if sp != nil {
-		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
-		defer func() {
-			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[unmarshal]"),
-				otlog.Int("size", len(body)))
-		}()
-	}
+func decompressRequest(ctx context.Context, reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
 	defer func() {
 		if len(body) > maxSize {
 			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
 		}
 	}()
+	if expectedSize > maxSize {
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
+	}
 	buffer, ok := tryBufferFromReader(reader)
 	if ok {
 		body, err = decompressFromBuffer(buffer, maxSize, compression, sp)
@@ -137,9 +140,6 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 		err  error
 	)
 	if expectedSize > 0 {
-		if expectedSize > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, expectedSize, maxSize)
-		}
 		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
 	switch compression {
@@ -150,28 +150,10 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 		body = buf.Bytes()
 	case RawSnappy:
 		_, err = buf.ReadFrom(reader)
-		body = buf.Bytes()
-		if sp != nil {
-			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
-				otlog.Int("size", len(body)))
-		}
 		if err != nil {
 			return nil, err
 		}
-		if len(body) > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
-		}
-		var size int
-		size, err = snappy.DecodedLen(body)
-		if err != nil {
-			return nil, err
-		}
-		if size > maxSize {
-			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
-		}
-		if err == nil {
-			body, err = snappy.Decode(nil, body)
-		}
+		body, err = decompressFromBuffer(&buf, maxSize, RawSnappy, sp)
 	}
 	return body, err
 }
@@ -180,7 +162,6 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression Compres
 	if len(buffer.Bytes()) > maxSize {
 		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(buffer.Bytes()), maxSize)
 	}
-
 	switch compression {
 	case NoCompression:
 		return buffer.Bytes(), nil

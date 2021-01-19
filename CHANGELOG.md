@@ -44,7 +44,7 @@
   * `/config?mode=diff`: Shows the YAML configuration with all values that differ from the defaults.
   * `/config?mode=defaults`: Shows the YAML configuration with all the default values.
 * [ENHANCEMENT] OpenStack Swift: added the following config options to OpenStack Swift backend client: #3660
-  - Chunks storage: `-swift.auth-version`, `-swift.max-retries`, `-swift.connect-timeout`, `-swift.request-timeout`.
+* [ENHANCEMENT] Query-frontend: included the parameter name failed to validate in HTTP 400 message. #3703
   - Blocks storage: ` -blocks-storage.swift.auth-version`, ` -blocks-storage.swift.max-retries`, ` -blocks-storage.swift.connect-timeout`, ` -blocks-storage.swift.request-timeout`.
   - Ruler: `-ruler.storage.swift.auth-version`, `-ruler.storage.swift.max-retries`, `-ruler.storage.swift.connect-timeout`, `-ruler.storage.swift.request-timeout`.
 * [ENHANCEMENT] Disabled in-memory shuffle-sharding subring cache in the store-gateway, ruler and compactor. This should reduce the memory utilisation in these services when shuffle-sharding is enabled, without introducing a significantly increase CPU utilisation. #3601

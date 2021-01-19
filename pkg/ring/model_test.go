@@ -63,60 +63,6 @@ func TestIngesterDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 	}
 }
 
-func TestIngesterDesc_IsHealthy_ForStoreGatewayOperations(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		instance      *IngesterDesc
-		timeout       time.Duration
-		syncExpected  bool
-		queryExpected bool
-	}{
-		"ACTIVE instance with last keepalive newer than timeout": {
-			instance:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			syncExpected:  true,
-			queryExpected: true,
-		},
-		"ACTIVE instance with last keepalive older than timeout": {
-			instance:      &IngesterDesc{State: ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
-			timeout:       time.Minute,
-			syncExpected:  false,
-			queryExpected: false,
-		},
-		"JOINING instance with last keepalive newer than timeout": {
-			instance:      &IngesterDesc{State: JOINING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			syncExpected:  true,
-			queryExpected: false,
-		},
-		"LEAVING instance with last keepalive newer than timeout": {
-			instance:      &IngesterDesc{State: LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			syncExpected:  true,
-			queryExpected: false,
-		},
-		"PENDING instance with last keepalive newer than timeout": {
-			instance:      &IngesterDesc{State: PENDING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
-			timeout:       time.Minute,
-			syncExpected:  false,
-			queryExpected: false,
-		},
-	}
-
-	for testName, testData := range tests {
-		testData := testData
-
-		t.Run(testName, func(t *testing.T) {
-			actual := testData.instance.IsHealthy(BlocksSync, testData.timeout, time.Now())
-			assert.Equal(t, testData.syncExpected, actual)
-
-			actual = testData.instance.IsHealthy(BlocksRead, testData.timeout, time.Now())
-			assert.Equal(t, testData.queryExpected, actual)
-		})
-	}
-}
-
 func TestIngesterDesc_GetRegisteredAt(t *testing.T) {
 	tests := map[string]struct {
 		desc     *IngesterDesc

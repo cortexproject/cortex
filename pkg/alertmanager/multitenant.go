@@ -283,9 +283,11 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 		am.Stop()
 	}
 	am.alertmanagersMtx.Unlock()
-	err := am.peer.Leave(am.cfg.PeerTimeout)
-	if err != nil {
-		level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
+	if am.peer != nil { // Tests don't setup any peer.
+		err := am.peer.Leave(am.cfg.PeerTimeout)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
+		}
 	}
 	level.Debug(am.logger).Log("msg", "stopping")
 	return nil
@@ -470,6 +472,11 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 
 // ServeHTTP serves the Alertmanager's web UI and API.
 func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if am.State() != services.Running {
+		http.Error(w, "Alertmanager not ready", http.StatusServiceUnavailable)
+		return
+	}
+
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)

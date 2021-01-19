@@ -129,6 +129,7 @@ type resultsCache struct {
 	splitter CacheSplitter
 
 	extractor            Extractor
+	minCacheExtent       int64 // discard any cache extent smaller than this
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
@@ -172,6 +173,7 @@ func NewResultsCacheMiddleware(
 			limits:               limits,
 			merger:               merger,
 			extractor:            extractor,
+			minCacheExtent:       (5 * time.Minute).Milliseconds(),
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
@@ -296,7 +298,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	requests, responses, err := partition(r, extents, s.extractor)
+	requests, responses, err := s.partition(r, extents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -411,7 +413,8 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req Request, extents []Extent, extractor Extractor) ([]Request, []Response, error) {
+// extents must be in order by start time.
+func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
@@ -419,6 +422,10 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
 		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
+			continue
+		}
+		// If this extent is tiny, discard it: more efficient to do a few larger queries
+		if extent.End-extent.Start < s.minCacheExtent {
 			continue
 		}
 
@@ -432,10 +439,11 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, extractor.Extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
 	}
 
+	// Lastly, make a request for any data missing at the end.
 	if start < req.GetEnd() {
 		r := req.WithStartEnd(start, req.GetEnd())
 		requests = append(requests, r)

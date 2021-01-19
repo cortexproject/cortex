@@ -7,8 +7,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/http/pprof"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -208,20 +212,27 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
 	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
-		ExternalURL: externalURL,
-		DataDir:     tempDir,
+		ExternalURL:  externalURL,
+		DataDir:      tempDir,
+		PollInterval: time.Minute,
 	}, nil, nil, mockStore, log.NewNopLogger(), reg)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String(), nil)
 	ctx := user.InjectOrgID(req.Context(), "user1")
-	w := httptest.NewRecorder()
 
-	am.ServeHTTP(w, req.WithContext(ctx))
+	{
+		w := httptest.NewRecorder()
+		am.ServeHTTP(w, req.WithContext(ctx))
 
-	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
-	require.Equal(t, "the Alertmanager is not configured\n", string(body))
+		resp := w.Result()
+		body, _ := ioutil.ReadAll(resp.Body)
+		require.Equal(t, 404, w.Code)
+		require.Equal(t, "the Alertmanager is not configured\n", string(body))
+	}
 
 	// Create a configuration for the user in storage.
 	mockStore.configs["user1"] = alerts.AlertConfigDesc{
@@ -233,15 +244,60 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	// Make the alertmanager pick it up, then pause it.
 	err = am.updateConfigs()
 	require.NoError(t, err)
+
+	// Request when AM is active.
+	{
+		w := httptest.NewRecorder()
+		am.ServeHTTP(w, req.WithContext(ctx))
+
+		require.Equal(t, 301, w.Code) // redirect to UI
+	}
+
+	// Verify that GET /metrics returns 404 even when AM is active.
+	{
+		metricURL := externalURL.String() + "/metrics"
+		require.Equal(t, "http://localhost:8080/alertmanager/metrics", metricURL)
+		verify404(ctx, t, am, "GET", metricURL)
+	}
+
+	// Verify that POST /-/reload returns 404 even when AM is active.
+	{
+		metricURL := externalURL.String() + "/-/reload"
+		require.Equal(t, "http://localhost:8080/alertmanager/-/reload", metricURL)
+		verify404(ctx, t, am, "POST", metricURL)
+	}
+
+	// Verify that GET /debug/index returns 404 even when AM is active.
+	{
+		// Register pprof Index (under non-standard path, but this path is exposed by AM using default MUX!)
+		http.HandleFunc("/alertmanager/debug/index", pprof.Index)
+
+		metricURL := externalURL.String() + "/debug/index"
+		require.Equal(t, "http://localhost:8080/alertmanager/debug/index", metricURL)
+		verify404(ctx, t, am, "GET", metricURL)
+	}
+
+	// Pause alert manager.
 	am.alertmanagers["user1"].Pause()
 
-	// Request when user configuration is paused.
-	w = httptest.NewRecorder()
-	am.ServeHTTP(w, req.WithContext(ctx))
+	{
+		// Request when user configuration is paused.
+		w := httptest.NewRecorder()
+		am.ServeHTTP(w, req.WithContext(ctx))
 
-	resp = w.Result()
-	body, _ = ioutil.ReadAll(resp.Body)
-	require.Equal(t, "the Alertmanager is not configured\n", string(body))
+		resp := w.Result()
+		body, _ := ioutil.ReadAll(resp.Body)
+		require.Equal(t, 404, w.Code)
+		require.Equal(t, "the Alertmanager is not configured\n", string(body))
+	}
+}
+
+func verify404(ctx context.Context, t *testing.T, am *MultitenantAlertmanager, method string, url string) {
+	metricsReq := httptest.NewRequest(method, url, strings.NewReader("Hello")) // Body for POST Request.
+	w := httptest.NewRecorder()
+	am.ServeHTTP(w, metricsReq.WithContext(ctx))
+
+	require.Equal(t, 404, w.Code)
 }
 
 func TestAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
@@ -271,10 +327,14 @@ receivers:
 
 	// Create the Multitenant Alertmanager.
 	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
-		ExternalURL: externalURL,
-		DataDir:     tempDir,
+		ExternalURL:  externalURL,
+		DataDir:      tempDir,
+		PollInterval: time.Minute,
 	}, nil, nil, mockStore, log.NewNopLogger(), nil)
 	am.fallbackConfig = fallbackCfg
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)

@@ -174,6 +174,9 @@ type Config struct {
 
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
+
+	// Defined in ingester's lifecycler.
+	ExtendWrites bool `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -213,7 +216,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	replicas, err := newClusterTracker(cfg.HATrackerConfig, reg)
+	replicas, err := newClusterTracker(cfg.HATrackerConfig, limits, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -339,10 +342,15 @@ func removeLabel(labelName string, labels *[]client.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (bool, error) {
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (removeReplicaLabel bool, _ error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
+		return false, nil
+	}
+
+	// If replica label is too long, don't use it. We accept the sample here, but it will fail validation later anyway.
+	if len(replica) > d.limits.MaxLabelValueLength(userID) {
 		return false, nil
 	}
 
@@ -416,13 +424,19 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
-			if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.GetCode() == 202 {
-				// These samples have been deduped.
-				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
-			}
-
 			// Ensure the request slice is reused if the series get deduped.
 			client.ReuseSlice(req.Timeseries)
+
+			if errors.Is(err, replicasNotMatchError{}) {
+				// These samples have been deduped.
+				dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
+				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
+			}
+
+			if errors.Is(err, tooManyClustersError{}) {
+				validation.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
 
 			return nil, err
 		}
@@ -548,7 +562,12 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
-	err = ring.DoBatch(ctx, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
+	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
 		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
 		var metadata []*client.MetricMetadata
 

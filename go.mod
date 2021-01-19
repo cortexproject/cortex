@@ -35,6 +35,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.2
 	github.com/json-iterator/go v1.1.10
+	github.com/jsonnet-libs/k8s v0.0.0-20210303160412-ddc21451d35a
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.2

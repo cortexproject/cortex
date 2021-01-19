@@ -316,6 +316,9 @@ github.com/jpillora/backoff
 # github.com/json-iterator/go v1.1.10
 ## explicit
 github.com/json-iterator/go
+# github.com/jsonnet-libs/k8s v0.0.0-20210303160412-ddc21451d35a
+## explicit
+github.com/jsonnet-libs/k8s/pkg/builder
 # github.com/jstemmer/go-junit-report v0.9.1
 github.com/jstemmer/go-junit-report
 github.com/jstemmer/go-junit-report/formatter

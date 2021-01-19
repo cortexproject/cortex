@@ -21,7 +21,7 @@
   * `-cluster.peer` in favor of `-alertmanager.cluster.peers`
   * `-cluster.peer-timeout` in favor of `-alertmanager.cluster.peer-timeout`
 * [FEATURE] Querier: Queries can be federated across multiple tenants. The tenants IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` request header. This is an experimental feature, which can be enabled by setting `-tenant-federation.enabled=true` on all Cortex services. #3250
-* [FEATURE] Alertmanager: introduced the option `-alertmanager.sharding-enabled` to shard tenants across multiple Alertmanager instances. The following new metrics are exported by the Alertmanager: #3664
+* [FEATURE] Alertmanager: introduced the experimental option `-alertmanager.sharding-enabled` to shard tenants across multiple Alertmanager instances. This feature is still under heavy development and its usage is discouraged. The following new metrics are exported by the Alertmanager: #3664
   * `cortex_alertmanager_ring_check_errors_total`
   * `cortex_alertmanager_sync_configs_total`
   * `cortex_alertmanager_sync_configs_failed_total`

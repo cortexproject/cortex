@@ -10,72 +10,72 @@ import (
 
 func TestRingReplicationStrategy(t *testing.T) {
 	for i, tc := range []struct {
-		replifcationFactor, liveIngesters, deadIngesters int
-		expectedMaxFailure                               int
-		expectedError                                    string
+		replicationFactor, liveIngesters, deadIngesters int
+		expectedMaxFailure                              int
+		expectedError                                   string
 	}{
 		// Ensure it works for a single ingester, for local testing.
 		{
-			replifcationFactor: 1,
+			replicationFactor:  1,
 			liveIngesters:      1,
 			expectedMaxFailure: 0,
 		},
 
 		{
-			replifcationFactor: 1,
-			deadIngesters:      1,
-			expectedError:      "at least 1 live replicas required, could only find 0",
+			replicationFactor: 1,
+			deadIngesters:     1,
+			expectedError:     "at least 1 live replicas required, could only find 0",
 		},
 
 		// Ensure it works for RF=3 and 2 ingesters.
 		{
-			replifcationFactor: 3,
+			replicationFactor:  3,
 			liveIngesters:      2,
 			expectedMaxFailure: 0,
 		},
 
 		// Ensure it works for the default production config.
 		{
-			replifcationFactor: 3,
+			replicationFactor:  3,
 			liveIngesters:      3,
 			expectedMaxFailure: 1,
 		},
 
 		{
-			replifcationFactor: 3,
+			replicationFactor:  3,
 			liveIngesters:      2,
 			deadIngesters:      1,
 			expectedMaxFailure: 0,
 		},
 
 		{
-			replifcationFactor: 3,
-			liveIngesters:      1,
-			deadIngesters:      2,
-			expectedError:      "at least 2 live replicas required, could only find 1",
+			replicationFactor: 3,
+			liveIngesters:     1,
+			deadIngesters:     2,
+			expectedError:     "at least 2 live replicas required, could only find 1",
 		},
 
 		// Ensure it works when adding / removing nodes.
 
 		// A node is joining or leaving, replica set expands.
 		{
-			replifcationFactor: 3,
+			replicationFactor:  3,
 			liveIngesters:      4,
 			expectedMaxFailure: 1,
 		},
 
 		{
-			replifcationFactor: 3,
+			replicationFactor:  3,
 			liveIngesters:      3,
 			deadIngesters:      1,
 			expectedMaxFailure: 0,
 		},
 
 		{
-			replifcationFactor: 3,
-			liveIngesters:      2,
-			deadIngesters:      2,
-			expectedError:      "at least 3 live replicas required, could only find 2",
+			replicationFactor: 3,
+			liveIngesters:     2,
+			deadIngesters:     2,
+			expectedError:     "at least 3 live replicas required, could only find 2",
 		},
 	} {
 		ingesters := []IngesterDesc{}
@@ -90,7 +90,7 @@ func TestRingReplicationStrategy(t *testing.T) {
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			strategy := NewDefaultReplicationStrategy()
-			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.replifcationFactor, 100*time.Second, false)
+			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.replicationFactor, 100*time.Second, false)
 			if tc.expectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.liveIngesters, len(liveIngesters))

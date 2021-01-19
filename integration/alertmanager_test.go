@@ -152,6 +152,7 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	require.Nil(t, cfg)
 	require.EqualError(t, err, "not found")
 }
+
 func TestAlertmanagerClustering(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)

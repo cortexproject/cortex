@@ -37,6 +37,7 @@ type SSEConfig struct {
 	KMSEncryptionContext chunk.Tags `yaml:"kms_encryption_context"`
 }
 
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Type, prefix+"type", "", "Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported")
 	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")

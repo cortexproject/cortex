@@ -145,7 +145,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
 	}
 
-	sseCfg, err := buildSSEConfig(cfg)
+	sseCfg, err := buildSSEParsedConfig(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build SSE config")
 	}
@@ -158,7 +158,7 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 	return &client, nil
 }
 
-func buildSSEConfig(cfg S3Config) (*SSEParsedConfig, error) {
+func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	if cfg.SSEConfig.Type != "" {
 		return NewSSEParsedConfig(cfg.SSEConfig.Type, &cfg.SSEConfig.KMSKeyID, cfg.SSEConfig.KMSEncryptionContext)
 	}

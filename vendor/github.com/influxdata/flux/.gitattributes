@@ -1,7 +1,0 @@
-internal/fbsemantic/semantic_generated.go binary merge=theirs
-ast/internal/fbast/ast_generated.go binary merge=theirs
-libflux/go/libflux/buildinfo.gen.go binary merge=theirs
-libflux/scanner.c binary merge=theirs
-libflux/core/src/semantic/flatbuffers/semantic_generated.rs binary merge=theirs
-libflux/core/src/ast/flatbuffers/ast_generated.rs binary merge=theirs
-libflux/flux/src/benches/everything.flux binary merge=theirs

@@ -1,8 +1,10 @@
 package push
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -16,9 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/influxdata/influxdb/models"
-	influx_points "github.com/influxdata/influxdb/v2/http/points"
-	v2_models "github.com/influxdata/influxdb/v2/models"
+	io2 "github.com/influxdata/influxdb/v2/kit/io"
+	"github.com/influxdata/influxdb/v2/models"
 )
 
 // Handler is a http.Handler which accepts WriteRequests.
@@ -110,12 +111,12 @@ func ParseInfluxLineReader(ctx context.Context, r *http.Request, maxSize int) (c
 		precision = "ns"
 	}
 
-	if !v2_models.ValidPrecision(precision) {
+	if !models.ValidPrecision(precision) {
 		return client.WriteRequest{}, fmt.Errorf("precision supplied is not valid: %s", precision)
 	}
 
 	encoding := r.Header.Get("Content-Encoding")
-	reader, err := influx_points.BatchReadCloser(r.Body, encoding, int64(maxSize))
+	reader, err := batchReadCloser(r.Body, encoding, int64(maxSize))
 	if err != nil {
 		return client.WriteRequest{}, err
 	}
@@ -234,4 +235,21 @@ func replaceInvalidChars(in *string) {
 	if int((*in)[0]) >= 48 && int((*in)[0]) <= 57 {
 		*in = "_" + *in
 	}
+}
+
+// batchReadCloser (potentially) wraps an io.ReadCloser in Gzip
+// decompression and limits the reading to a specific number of bytes.
+func batchReadCloser(rc io.ReadCloser, encoding string, maxBatchSizeBytes int64) (io.ReadCloser, error) {
+	switch encoding {
+	case "gzip", "x-gzip":
+		var err error
+		rc, err = gzip.NewReader(rc)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if maxBatchSizeBytes > 0 {
+		rc = io2.NewLimitedReadCloser(rc, maxBatchSizeBytes)
+	}
+	return rc, nil
 }

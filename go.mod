@@ -34,7 +34,6 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.2
-	github.com/influxdata/influxdb v1.8.3
 	github.com/influxdata/influxdb/v2 v2.0.3
 	github.com/json-iterator/go v1.1.10
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect

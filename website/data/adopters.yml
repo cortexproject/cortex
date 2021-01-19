@@ -3,6 +3,9 @@ adopters:
 - name: Aspen Mesh
   url: https://aspenmesh.io/
   logo: aspen-mesh.png
+- name: AWS
+  url: https://aws.amazon.com/prometheus/
+  logo: AWS_logo_RGB.png
 - name: Buoyant
   url: https://buoyant.io/
   logo: buoyant.svg

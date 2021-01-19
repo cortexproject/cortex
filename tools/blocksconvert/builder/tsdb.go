@@ -71,7 +71,7 @@ func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, l
 	}
 
 	// Also makes blockDir, if missing
-	err = os.MkdirAll(seriesDir, 0777)
+	err = os.MkdirAll(seriesDir, 0700)
 	if err != nil {
 		return nil, err
 	}

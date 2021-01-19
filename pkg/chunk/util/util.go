@@ -121,7 +121,7 @@ func QueryFilter(callback Callback) Callback {
 func EnsureDirectory(dir string) error {
 	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0777)
+		return os.MkdirAll(dir, 0700)
 	} else if err == nil && !info.IsDir() {
 		return fmt.Errorf("not a directory: %s", dir)
 	}

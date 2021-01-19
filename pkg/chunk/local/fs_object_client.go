@@ -75,7 +75,7 @@ func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object i
 		return err
 	}
 
-	fl, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	fl, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}

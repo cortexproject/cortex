@@ -61,7 +61,7 @@ func (of *openFiles) getFile(dir, filename string, headerFn func() interface{}) 
 			return nil, err
 		}
 
-		fl, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		fl, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
 			return nil, err
 		}

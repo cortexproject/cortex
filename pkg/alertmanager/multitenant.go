@@ -262,7 +262,7 @@ type MultitenantAlertmanager struct {
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
 func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
-	err := os.MkdirAll(cfg.DataDir, 0777)
+	err := os.MkdirAll(cfg.DataDir, 0700)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
 	}
@@ -817,7 +817,7 @@ func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
 	}
 
 	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(dir, 0700)
 	if err != nil {
 		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
 	}
@@ -828,7 +828,7 @@ func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
 		return false, nil
 	}
 
-	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
+	if err := ioutil.WriteFile(file, []byte(content), 0600); err != nil {
 		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
 	}
 

@@ -295,7 +295,7 @@ func (w *walWrapper) performCheckpoint(immediate bool) (err error) {
 	level.Info(util.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
 	checkpointDirTemp := checkpointDir + ".tmp"
 
-	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
+	if err := os.MkdirAll(checkpointDirTemp, 0700); err != nil {
 		return errors.Wrap(err, "create checkpoint dir")
 	}
 	checkpoint, err := wal.New(nil, nil, checkpointDirTemp, false)

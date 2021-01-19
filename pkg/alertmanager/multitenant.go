@@ -89,20 +89,31 @@ type MultitenantAlertmanagerConfig struct {
 	ExternalURL  flagext.URLValue `yaml:"external_url"`
 	PollInterval time.Duration    `yaml:"poll_interval"`
 
-	ClusterBindAddr      string              `yaml:"cluster_bind_address"`
-	ClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
-	Peers                flagext.StringSlice `yaml:"peers"`
-	PeerTimeout          time.Duration       `yaml:"peer_timeout"`
+	DeprecatedClusterBindAddr      string              `yaml:"cluster_bind_address"`
+	DeprecatedClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
+	DeprecatedPeers                flagext.StringSlice `yaml:"peers"`
+	DeprecatedPeerTimeout          time.Duration       `yaml:"peer_timeout"`
 
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store AlertStoreConfig `yaml:"storage"`
+	Store   AlertStoreConfig `yaml:"storage"`
+	Cluster ClusterConfig    `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
 }
 
-const defaultClusterAddr = "0.0.0.0:9094"
+type ClusterConfig struct {
+	ListenAddr    string                 `yaml:"listen_address"`
+	AdvertiseAddr string                 `yaml:"advertise_address"`
+	Peers         flagext.StringSliceCSV `yaml:"peers"`
+	PeerTimeout   time.Duration          `yaml:"peer_timeout"`
+}
+
+const (
+	defaultClusterAddr = "0.0.0.0:9094"
+	defaultPeerTimeout = 15 * time.Second
+)
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -115,14 +126,52 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
-	f.StringVar(&cfg.ClusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Listen address for cluster.")
-	f.StringVar(&cfg.ClusterAdvertiseAddr, "cluster.advertise-address", "", "Explicit address to advertise in cluster.")
-	f.Var(&cfg.Peers, "cluster.peer", "Initial peers (may be repeated).")
-	f.DurationVar(&cfg.PeerTimeout, "cluster.peer-timeout", time.Second*15, "Time to wait between peers to send notifications.")
+	// Flags prefixed with `cluster` are deprecated in favor of their `alertmanager` prefix equivalent.
+	// TODO: New flags introduced in Cortex 1.7, remove old ones in Cortex 1.9
+	f.StringVar(&cfg.DeprecatedClusterBindAddr, "cluster.listen-address", defaultClusterAddr, "Deprecated. Use -alertmanager.cluster.listen-address instead.")
+	f.StringVar(&cfg.DeprecatedClusterAdvertiseAddr, "cluster.advertise-address", "", "Deprecated. Use -alertmanager.cluster.advertise-address instead.")
+	f.Var(&cfg.DeprecatedPeers, "cluster.peer", "Deprecated. Use -alertmanager.cluster.peers instead.")
+	f.DurationVar(&cfg.DeprecatedPeerTimeout, "cluster.peer-timeout", time.Second*15, "Deprecated. Use -alertmanager.cluster.peer-timeout instead.")
 
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
 	cfg.Store.RegisterFlags(f)
+	cfg.Cluster.RegisterFlags(f)
+}
+
+func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
+	prefix := "alertmanager.cluster."
+	f.StringVar(&cfg.ListenAddr, prefix+"listen-address", defaultClusterAddr, "Listen address and port for the cluster. Not specifying this flag disables high-availability mode.")
+	f.StringVar(&cfg.AdvertiseAddr, prefix+"advertise-address", "", "Explicit address or hostname to advertise in cluster.")
+	f.Var(&cfg.Peers, prefix+"peers", "Comma-separated list of initial peers.")
+	f.DurationVar(&cfg.PeerTimeout, prefix+"peer-timeout", defaultPeerTimeout, "Time to wait between peers to send notifications.")
+}
+
+// SupportDeprecatedFlagset ensures we support the previous set of cluster flags that are now deprecated.
+func (cfg *ClusterConfig) SupportDeprecatedFlagset(amCfg *MultitenantAlertmanagerConfig, logger log.Logger) {
+	if amCfg.DeprecatedClusterBindAddr != defaultClusterAddr {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.listen-address, use -alertmanager.cluster.listen-address instead.")
+		cfg.ListenAddr = amCfg.DeprecatedClusterBindAddr
+	}
+
+	if amCfg.DeprecatedClusterAdvertiseAddr != "" {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.advertise-address, use -alertmanager.cluster.advertise-address instead.")
+		cfg.AdvertiseAddr = amCfg.DeprecatedClusterAdvertiseAddr
+	}
+
+	if len(amCfg.DeprecatedPeers) > 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.peer, use -alertmanager.cluster.peers instead.")
+		cfg.Peers = []string(amCfg.DeprecatedPeers)
+	}
+
+	if amCfg.DeprecatedPeerTimeout != defaultPeerTimeout {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag -cluster.peer-timeout, use -alertmanager.cluster.peer-timeout instead.")
+		cfg.PeerTimeout = amCfg.DeprecatedPeerTimeout
+	}
 }
 
 // Validate config and returns error on failure
@@ -206,14 +255,16 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		}
 	}
 
+	cfg.Cluster.SupportDeprecatedFlagset(cfg, logger)
+
 	var peer *cluster.Peer
-	if cfg.ClusterBindAddr != "" {
+	if cfg.Cluster.ListenAddr != "" {
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
 			registerer,
-			cfg.ClusterBindAddr,
-			cfg.ClusterAdvertiseAddr,
-			cfg.Peers,
+			cfg.Cluster.ListenAddr,
+			cfg.Cluster.AdvertiseAddr,
+			cfg.Cluster.Peers,
 			true,
 			cluster.DefaultPushPullInterval,
 			cluster.DefaultGossipInterval,
@@ -226,7 +277,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		}
 		err = peer.Join(cluster.DefaultReconnectInterval, cluster.DefaultReconnectTimeout)
 		if err != nil {
-			level.Warn(logger).Log("msg", "unable to join gossip mesh", "err", err)
+			level.Warn(logger).Log("msg", "unable to join gossip mesh while initializing cluster for high availability mode", "err", err)
 		}
 		go peer.Settle(context.Background(), cluster.DefaultGossipInterval)
 	}
@@ -260,13 +311,13 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 	return am
 }
 
-func (am *MultitenantAlertmanager) starting(ctx context.Context) error {
+func (am *MultitenantAlertmanager) starting(_ context.Context) error {
 	// Load initial set of all configurations before polling for new ones.
 	am.syncConfigs(am.loadAllConfigs())
 	return nil
 }
 
-func (am *MultitenantAlertmanager) iteration(ctx context.Context) error {
+func (am *MultitenantAlertmanager) iteration(_ context.Context) error {
 	err := am.updateConfigs()
 	if err != nil {
 		level.Warn(am.logger).Log("msg", "error updating configs", "err", err)
@@ -284,7 +335,7 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 	}
 	am.alertmanagersMtx.Unlock()
 	if am.peer != nil { // Tests don't setup any peer.
-		err := am.peer.Leave(am.cfg.PeerTimeout)
+		err := am.peer.Leave(am.cfg.Cluster.PeerTimeout)
 		if err != nil {
 			level.Warn(am.logger).Log("msg", "failed to leave the cluster", "err", err)
 		}
@@ -454,7 +505,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		DataDir:     am.cfg.DataDir,
 		Logger:      util.Logger,
 		Peer:        am.peer,
-		PeerTimeout: am.cfg.PeerTimeout,
+		PeerTimeout: am.cfg.Cluster.PeerTimeout,
 		Retention:   am.cfg.Retention,
 		ExternalURL: am.cfg.ExternalURL.URL,
 	}, reg)

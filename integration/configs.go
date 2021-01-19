@@ -94,6 +94,14 @@ var (
 		}
 	}
 
+	AlertmanagerClusterFlags = func(peers string) map[string]string {
+		return map[string]string{
+			"-alertmanager.cluster.listen-address": "0.0.0.0:9094", // This is the default, but let's be explicit.
+			"-alertmanager.cluster.peers":          peers,
+			"-alertmanager.cluster.peer-timeout":   "2s",
+		}
+	}
+
 	AlertmanagerLocalFlags = func() map[string]string {
 		return map[string]string{
 			"-alertmanager.storage.type":       "local",

@@ -7,6 +7,7 @@ This is the list of organisations that are using Cortex in **production environm
 * [Buoyant](https://buoyant.io/)
 * [DigitalOcean](https://www.digitalocean.com/)
 * [Electronic Arts](https://www.ea.com/)
+* [Etsy](https://www.etsy.com/)
 * [EverQuote](https://everquote.com/)
 * [GoJek](https://www.gojek.io/)
 * [GrafanaLabs](https://grafana.com/)

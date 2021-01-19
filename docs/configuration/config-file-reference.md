@@ -1485,19 +1485,19 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
 
-# Listen address for cluster.
+# Deprecated. Use -alertmanager.cluster.listen-address instead.
 # CLI flag: -cluster.listen-address
 [cluster_bind_address: <string> | default = "0.0.0.0:9094"]
 
-# Explicit address to advertise in cluster.
+# Deprecated. Use -alertmanager.cluster.advertise-address instead.
 # CLI flag: -cluster.advertise-address
 [cluster_advertise_address: <string> | default = ""]
 
-# Initial peers (may be repeated).
+# Deprecated. Use -alertmanager.cluster.peers instead.
 # CLI flag: -cluster.peer
 [peers: <list of string> | default = []]
 
-# Time to wait between peers to send notifications.
+# Deprecated. Use -alertmanager.cluster.peer-timeout instead.
 # CLI flag: -cluster.peer-timeout
 [peer_timeout: <duration> | default = 15s]
 
@@ -1646,6 +1646,24 @@ storage:
     # Path at which alertmanager configurations are stored.
     # CLI flag: -alertmanager.storage.local.path
     [path: <string> | default = ""]
+
+cluster:
+  # Listen address and port for the cluster. Not specifying this flag disables
+  # high-availability mode.
+  # CLI flag: -alertmanager.cluster.listen-address
+  [listen_address: <string> | default = "0.0.0.0:9094"]
+
+  # Explicit address or hostname to advertise in cluster.
+  # CLI flag: -alertmanager.cluster.advertise-address
+  [advertise_address: <string> | default = ""]
+
+  # Comma-separated list of initial peers.
+  # CLI flag: -alertmanager.cluster.peers
+  [peers: <string> | default = ""]
+
+  # Time to wait between peers to send notifications.
+  # CLI flag: -alertmanager.cluster.peer-timeout
+  [peer_timeout: <duration> | default = 15s]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -3087,6 +3105,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Prometheus label to look for in samples to identify a Prometheus HA replica.
 # CLI flag: -distributor.ha-tracker.replica
 [ha_replica_label: <string> | default = "__replica__"]
+
+# Maximum number of clusters that HA tracker will keep track of for single user.
+# 0 to disable the limit.
+# CLI flag: -distributor.ha-tracker.max-clusters
+[ha_max_clusters: <int> | default = 0]
 
 # This flag can be used to specify label names that to drop during sample
 # ingestion within the distributor and can be repeated in order to drop multiple

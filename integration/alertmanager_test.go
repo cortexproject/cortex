@@ -206,3 +206,82 @@ func TestAlertmanagerClustering(t *testing.T) {
 		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(2)), "alertmanager_cluster_members"))
 	}
 }
+
+func TestAlertmanagerSharding(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-alertmanager.storage.s3.buckets"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	client, err := s3.NewS3ObjectClient(s3.S3Config{
+		Endpoint:         minio.HTTPEndpoint(),
+		S3ForcePathStyle: true,
+		Insecure:         true,
+		BucketNames:      flags["-alertmanager.storage.s3.buckets"],
+		AccessKeyID:      e2edb.MinioAccessKey,
+		SecretAccessKey:  e2edb.MinioSecretKey,
+	})
+	require.NoError(t, err)
+
+	// Create and upload Alertmanager configurations.
+	for i := 1; i <= 30; i++ {
+		user := fmt.Sprintf("user-%d", i)
+		desc := alerts.AlertConfigDesc{
+			RawConfig: simpleAlertmanagerConfig,
+			User:      user,
+			Templates: []*alerts.TemplateDesc{},
+		}
+
+		d, err := desc.Marshal()
+		require.NoError(t, err)
+		err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+		require.NoError(t, err)
+	}
+
+	// 3 instances, 30 configurations and a replication factor of 2.
+	flags = mergeFlags(flags, AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), 2))
+
+	// Wait for the Alertmanagers to start.
+	alertmanager1 := e2ecortex.NewAlertmanager("alertmanager-1", flags, "")
+	alertmanager2 := e2ecortex.NewAlertmanager("alertmanager-2", flags, "")
+	alertmanager3 := e2ecortex.NewAlertmanager("alertmanager-3", flags, "")
+
+	alertmanagers := e2ecortex.NewCompositeCortexService(alertmanager1, alertmanager2, alertmanager3)
+
+	// Start Alertmanager instances.
+	for _, am := range alertmanagers.Instances() {
+		require.NoError(t, s.StartAndWaitReady(am))
+	}
+
+	for _, am := range alertmanagers.Instances() {
+		require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(3), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "alertmanager"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"),
+		)))
+
+		// We expect every instance to discover every configuration but only own a subset of them.
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(30)), "cortex_alertmanager_tenants_discovered"))
+		// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
+		require.NoError(t, am.WaitSumMetrics(e2e.Greater(float64(0)), "cortex_alertmanager_tenants_owned"))
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(384)), "cortex_ring_tokens_total"))
+	}
+
+	var totalTenants int
+	for _, am := range alertmanagers.Instances() {
+		values, err := am.SumMetrics([]string{"cortex_alertmanager_tenants_owned"})
+		require.NoError(t, err)
+
+		tenants := int(e2e.SumValues(values))
+		totalTenants += tenants
+	}
+
+	// The total number of tenants across all instances is: total alertmanager configs * replication factor.
+	// In this case: 30 * 2
+	require.Equal(t, 60, totalTenants)
+}

@@ -91,7 +91,7 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 	if sp != nil {
 		sp.LogFields(otlog.String("event", "util.ParseProtoRequest[start reading]"))
 	}
-	body, err := decompressRequest(ctx, reader, expectedSize, maxSize, compression, sp)
+	body, err := decompressRequest(reader, expectedSize, maxSize, compression, sp)
 	if err != nil {
 		return err
 	}
@@ -115,9 +115,9 @@ func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSi
 	return nil
 }
 
-func decompressRequest(ctx context.Context, reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
+func decompressRequest(reader io.Reader, expectedSize, maxSize int, compression CompressionType, sp opentracing.Span) (body []byte, err error) {
 	defer func() {
-		if len(body) > maxSize {
+		if err != nil && len(body) > maxSize {
 			err = fmt.Errorf(messageSizeLargerErrFmt, len(body), maxSize)
 		}
 	}()
@@ -142,11 +142,12 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 	if expectedSize > 0 {
 		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
+	reader = io.LimitReader(reader, int64(maxSize)+1)
 	switch compression {
 	case NoCompression:
 		// Read from LimitReader with limit max+1. So if the underlying
 		// reader is over limit, the result will be bigger than max.
-		_, err = buf.ReadFrom(io.LimitReader(reader, int64(maxSize)+1))
+		_, err = buf.ReadFrom(reader)
 		body = buf.Bytes()
 	case RawSnappy:
 		_, err = buf.ReadFrom(reader)
@@ -191,7 +192,7 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression Compres
 func tryBufferFromReader(reader io.Reader) (*bytes.Buffer, bool) {
 	if bufReader, ok := reader.(interface {
 		BytesBuffer() *bytes.Buffer
-	}); ok {
+	}); ok && bufReader != nil {
 		return bufReader.BytesBuffer(), true
 	}
 	return nil, false

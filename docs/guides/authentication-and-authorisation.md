@@ -43,4 +43,4 @@ label and use its value as `X-Scope-OrgID` header when proxying the timeseries t
 This can help to run Cortex in a trusted environment where you want to separate your metrics
 into distinct namespaces by some criteria (e.g. teams, applications, etc).
 
-Be advised that **cortex-tenant** is a third-party comminity project and it's not maintained by Cortex team.
+Be advised that **cortex-tenant** is a third-party community project and it's not maintained by Cortex team.

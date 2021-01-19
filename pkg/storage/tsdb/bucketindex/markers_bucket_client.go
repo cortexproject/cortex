@@ -119,7 +119,7 @@ func (b *globalMarkersBucket) WithExpectedErrs(fn objstore.IsOpFailureExpectedFu
 	return b
 }
 
-// ReaderWithExpectedErrs implements objstore.InstrumentedBucket.
+// ReaderWithExpectedErrs implements objstore.InstrumentedBucketReader.
 func (b *globalMarkersBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
 	if ib, ok := b.parent.(objstore.InstrumentedBucketReader); ok {
 		return ib.ReaderWithExpectedErrs(fn)

@@ -1,5 +1,5 @@
 # Days without any activity until an issue is labeled as stale
-daysUntilStale: 60
+daysUntilStale: 90
 
 # Days after having the stale label that the issue will be closed
 daysUntilClose: 15

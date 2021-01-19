@@ -74,16 +74,12 @@ receivers:
     annotations: {}	
 `
 
-	cortexRulerEvalTimeConfigYaml = `groups:
+	cortexRulerEvalStaleNanConfigYaml = `groups:
 - name: rule
   interval: 1s
   rules:
-  - record: time_eval
-    alert: ""
-    expr: time()
-    for: 0s
-    labels: {}
-    annotations: {}	
+  - record: stale_nan_eval
+    expr: a_sometimes_stale_nan_series * 2
 `
 )
 
@@ -95,6 +91,14 @@ var (
 			"-alertmanager.configs.poll-interval": "1s",
 			"-alertmanager.web.external-url":      "http://localhost/api/prom",
 			"-api.response-compression-enabled":   "true",
+		}
+	}
+
+	AlertmanagerClusterFlags = func(peers string) map[string]string {
+		return map[string]string{
+			"-alertmanager.cluster.listen-address": "0.0.0.0:9094", // This is the default, but let's be explicit.
+			"-alertmanager.cluster.peers":          peers,
+			"-alertmanager.cluster.peer-timeout":   "2s",
 		}
 	}
 

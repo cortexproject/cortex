@@ -122,7 +122,7 @@ func TestBucketWithGlobalMarkers_ShouldWorkCorrectlyWithBucketMetrics(t *testing
 		"thanos_objstore_bucket_operation_failures_total",
 	))
 
-	reader, err = userBkt.WithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, "does-not-exist")
+	reader, err = userBkt.ReaderWithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, "does-not-exist")
 	require.Error(t, err)
 	require.Nil(t, reader)
 	assert.True(t, bkt.IsObjNotFoundErr(err))

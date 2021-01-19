@@ -41,4 +41,6 @@ It can be placed between Prometheus and Cortex and will search for a predefined
 label and use its value as `X-Scope-OrgID` header when proxying the timeseries to Cortex.
 
 This can help to run Cortex in a trusted environment where you want to separate your metrics
-into distinct namespaces by some criteria (teams, applications etc)
+into distinct namespaces by some criteria (e.g. teams, applications, etc).
+
+Be advised that **cortex-tenant** is a third-party comminity project and it's not maintained by Cortex team.

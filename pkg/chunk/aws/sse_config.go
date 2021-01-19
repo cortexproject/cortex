@@ -3,6 +3,9 @@ package aws
 import (
 	"encoding/base64"
 	"encoding/json"
+	"flag"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 
 	"github.com/pkg/errors"
 )
@@ -18,18 +21,33 @@ const (
 	sseS3Type = "AES256"
 )
 
-// SSEEncryptionConfig configures server side encryption (SSE)
-type SSEEncryptionConfig struct {
+// SSEParsedConfig configures server side encryption (SSE)
+// struct used internally to configure AWS S3
+type SSEParsedConfig struct {
 	ServerSideEncryption string
 	KMSKeyID             *string
 	KMSEncryptionContext *string
 }
 
-// NewSSEEncryptionConfig creates a struct to configure server side encryption (SSE)
-func NewSSEEncryptionConfig(sseType string, kmsKeyID *string, kmsEncryptionContext map[string]string) (*SSEEncryptionConfig, error) {
+// SSEConfig configures S3 server side encryption
+// struct that is going to receive user input (through config file or CLI)
+type SSEConfig struct {
+	Type                 string     `yaml:"type"`
+	KMSKeyID             string     `yaml:"kms_key_id"`
+	KMSEncryptionContext chunk.Tags `yaml:"kms_encryption_context"`
+}
+
+func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Type, prefix+"type", "", "Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported")
+	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")
+	f.Var(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "KMS Encryption Context used for object encryption")
+}
+
+// NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
+func NewSSEParsedConfig(sseType string, kmsKeyID *string, kmsEncryptionContext map[string]string) (*SSEParsedConfig, error) {
 	switch sseType {
 	case SSES3:
-		return &SSEEncryptionConfig{
+		return &SSEParsedConfig{
 			ServerSideEncryption: sseS3Type,
 		}, nil
 	case SSEKMS:
@@ -42,7 +60,7 @@ func NewSSEEncryptionConfig(sseType string, kmsKeyID *string, kmsEncryptionConte
 			return nil, errors.Wrap(err, "failed to parse KMS encryption context")
 		}
 
-		return &SSEEncryptionConfig{
+		return &SSEParsedConfig{
 			ServerSideEncryption: sseKMSType,
 			KMSKeyID:             kmsKeyID,
 			KMSEncryptionContext: parsedKMSEncryptionContext,

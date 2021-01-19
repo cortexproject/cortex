@@ -1237,8 +1237,8 @@ storage:
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # Enable AWS Server Side Encryption [Deprecated: Use sse-config instead. if
-    # s3.sse-encryption is enabled, it assumes sse-config SSE-S3 type]
+    # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
+    # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
     # CLI flag: -ruler.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
 
@@ -1261,17 +1261,17 @@ storage:
     # CLI flag: -ruler.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
-    sse_config:
+    sse:
       # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-      # CLI flag: -ruler.storage.s3.sse-config.type
+      # CLI flag: -ruler.storage.s3.sse.type
       [type: <string> | default = ""]
 
       # KMS Key ID used to encrypt objects in S3
-      # CLI flag: -ruler.storage.s3.sse-config.kms-key-id
+      # CLI flag: -ruler.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
       # KMS Encryption Context used for object encryption
-      # CLI flag: -ruler.storage.s3.sse-config.kms-encryption-context
+      # CLI flag: -ruler.storage.s3.sse.kms-encryption-context
       [kms_encryption_context: <map of string to string> | default = ]
 
   swift:
@@ -1633,8 +1633,8 @@ storage:
     # CLI flag: -alertmanager.storage.s3.insecure
     [insecure: <boolean> | default = false]
 
-    # Enable AWS Server Side Encryption [Deprecated: Use sse-config instead. if
-    # s3.sse-encryption is enabled, it assumes sse-config SSE-S3 type]
+    # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
+    # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
     # CLI flag: -alertmanager.storage.s3.sse-encryption
     [sse_encryption: <boolean> | default = false]
 
@@ -1657,17 +1657,17 @@ storage:
     # CLI flag: -alertmanager.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
-    sse_config:
+    sse:
       # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-      # CLI flag: -alertmanager.storage.s3.sse-config.type
+      # CLI flag: -alertmanager.storage.s3.sse.type
       [type: <string> | default = ""]
 
       # KMS Key ID used to encrypt objects in S3
-      # CLI flag: -alertmanager.storage.s3.sse-config.kms-key-id
+      # CLI flag: -alertmanager.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
       # KMS Encryption Context used for object encryption
-      # CLI flag: -alertmanager.storage.s3.sse-config.kms-encryption-context
+      # CLI flag: -alertmanager.storage.s3.sse.kms-encryption-context
       [kms_encryption_context: <map of string to string> | default = ]
 
   local:
@@ -2134,8 +2134,8 @@ aws:
   # CLI flag: -s3.insecure
   [insecure: <boolean> | default = false]
 
-  # Enable AWS Server Side Encryption [Deprecated: Use sse-config instead. if
-  # s3.sse-encryption is enabled, it assumes sse-config SSE-S3 type]
+  # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
+  # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
   # CLI flag: -s3.sse-encryption
   [sse_encryption: <boolean> | default = false]
 
@@ -2158,17 +2158,17 @@ aws:
   # CLI flag: -s3.signature-version
   [signature_version: <string> | default = "v4"]
 
-  sse_config:
+  sse:
     # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-    # CLI flag: -s3.sse-config.type
+    # CLI flag: -s3.sse.type
     [type: <string> | default = ""]
 
     # KMS Key ID used to encrypt objects in S3
-    # CLI flag: -s3.sse-config.kms-key-id
+    # CLI flag: -s3.sse.kms-key-id
     [kms_key_id: <string> | default = ""]
 
     # KMS Encryption Context used for object encryption
-    # CLI flag: -s3.sse-config.kms-encryption-context
+    # CLI flag: -s3.sse.kms-encryption-context
     [kms_encryption_context: <map of string to string> | default = ]
 
 azure:

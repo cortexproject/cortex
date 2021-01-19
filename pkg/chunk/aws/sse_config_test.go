@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewSSEEncryptionConfig(t *testing.T) {
+func TestNewSSEParsedConfig(t *testing.T) {
 	kmsKeyID := "test"
 	kmsEncryptionContext := map[string]string{
 		"a": "bc",
@@ -23,7 +23,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 	tests := []struct {
 		name        string
 		params      params
-		expected    *SSEEncryptionConfig
+		expected    *SSEParsedConfig
 		expectedErr error
 	}{
 		{
@@ -31,7 +31,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 			params: params{
 				sseType: SSES3,
 			},
-			expected: &SSEEncryptionConfig{
+			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseS3Type,
 			},
 		},
@@ -41,7 +41,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 				sseType:  SSEKMS,
 				kmsKeyID: &kmsKeyID,
 			},
-			expected: &SSEEncryptionConfig{
+			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
 				KMSKeyID:             &kmsKeyID,
 			},
@@ -53,7 +53,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 				kmsKeyID:             &kmsKeyID,
 				kmsEncryptionContext: kmsEncryptionContext,
 			},
-			expected: &SSEEncryptionConfig{
+			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
 				KMSKeyID:             &kmsKeyID,
 				KMSEncryptionContext: &parsedKMSEncryptionContext,
@@ -66,7 +66,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 				kmsKeyID:             &kmsKeyID,
 				kmsEncryptionContext: kmsEncryptionContext,
 			},
-			expected: &SSEEncryptionConfig{
+			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
 				KMSKeyID:             &kmsKeyID,
 				KMSEncryptionContext: &parsedKMSEncryptionContext,
@@ -91,7 +91,7 @@ func TestNewSSEEncryptionConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := NewSSEEncryptionConfig(tt.params.sseType, tt.params.kmsKeyID, tt.params.kmsEncryptionContext)
+			result, err := NewSSEParsedConfig(tt.params.sseType, tt.params.kmsKeyID, tt.params.kmsEncryptionContext)
 			if tt.expectedErr != nil {
 				assert.Equal(t, tt.expectedErr.Error(), err.Error())
 			}

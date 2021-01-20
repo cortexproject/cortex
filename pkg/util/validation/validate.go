@@ -33,7 +33,7 @@ const (
 	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
 	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
 	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
-	errTooManyLabels      = "series has too many label names (actual: %d, limit: %d) series: '%s'"
+	errTooManyLabels      = "series has too many labels (actual: %d, limit: %d) series: '%s'"
 	errTooOld             = "sample for '%s' has timestamp too old: %d"
 	errTooNew             = "sample for '%s' has timestamp too new: %d"
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"

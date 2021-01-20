@@ -94,7 +94,7 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, `foo{bar="baz", blip="blop"}`, 3, 2),
+			httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, 3, 2, `foo{bar="baz", blip="blop"}`),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"},

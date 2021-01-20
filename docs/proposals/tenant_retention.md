@@ -34,7 +34,7 @@ We propose to introduce just one new field `RetentionPeriodPerTenant` in the Lim
 
 `RetentionPeriodPerTenant` setting how long historical metric data retention period per-tenant. `0` is disable.
 
-As a runtime config, the settings is reload period (which defaults to 10 seconds), so we can update the settings onfly.
+Runtime config is reloaded periodically (defaults to 10 seconds), so we can update the retention settings on-the-fly.
 
 For each tenant, if a tenant-specific *runtime_config* value exists, it will be used directly, otherwise, if a default *limits_config* value exists, then the default value will be used; If neither exists, do nothing.
 

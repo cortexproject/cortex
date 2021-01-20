@@ -552,7 +552,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
-	subRing := d.ingestersRing.(ring.ReadRing)
+	subRing := d.ingestersRing
 
 	// Obtain a subring if required.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {

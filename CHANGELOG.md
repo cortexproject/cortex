@@ -59,6 +59,9 @@
 * [ENHANCEMENT] New /runtime_config endpoint that returns the defined runtime configuration in YAML format. The returned configuration includes overrides. #3639
 * [ENHANCEMENT] Query-frontend: included the parameter name failed to validate in HTTP 400 message. #3703
 * [ENHANCEMENT] Fail to startup Cortex if provided runtime config is invalid. #3707
+* [ENHANCEMENT] Distributor: change the error message returned when a received series has too many label values. The new message format has the series at the end and this plays better with Prometheus logs truncation. #3718
+  - From: `sample for '<series>' has <value> label names; limit <value>`
+  - To: `series has too many labels (actual: <value>, limit: <value>) series: '<series>'`
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
 * [BUGFIX] Memberlist: Entry in the ring should now not appear again after using "Forget" feature (unless it's still heartbeating). #3603
 * [BUGFIX] Ingester: do not close idle TSDBs while blocks shipping is in progress. #3630

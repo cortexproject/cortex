@@ -66,3 +66,4 @@ Currently experimental features are:
   - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Querier: tenant federation
+- Alertmanager: Sharding of tenants across multiple instances

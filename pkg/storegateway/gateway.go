@@ -163,7 +163,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		}
 
 		ringCfg := gatewayCfg.ShardingRing.ToRingConfig()
-		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, &BlocksReplicationStrategy{})
+		g.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 		if err != nil {
 			return nil, errors.Wrap(err, "create ring client")
 		}

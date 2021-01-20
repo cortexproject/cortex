@@ -29,11 +29,11 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=foo",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "cannot parse \"foo\" to a valid timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=bar",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "cannot parse \"bar\" to a valid timestamp"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"end\"; cannot parse \"bar\" to a valid timestamp"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=0",
@@ -41,7 +41,7 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=baz",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "cannot parse \"baz\" to a valid duration"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"step\"; cannot parse \"baz\" to a valid duration"),
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=-1",

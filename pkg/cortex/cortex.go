@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"net/http"
 	"os"
 	"reflect"
@@ -22,6 +21,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"

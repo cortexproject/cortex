@@ -117,11 +117,9 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		d.requestsInFlight.Wait()
-		return nil
-	}
+	<-ctx.Done()
+	d.requestsInFlight.Wait()
+	return nil
 }
 
 func (d *Distributor) stopping(_ error) error {
@@ -165,7 +163,7 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 		}()
 
-		reqUrl, err := url.Parse("http://" + path.Join(am.Addr, req.URL.Path))
+		reqURL, err := url.Parse("http://" + path.Join(am.Addr, req.URL.Path))
 		if err != nil {
 			return errors.Wrap(err, "creating alertmanager URL")
 		}
@@ -180,7 +178,7 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		newReq := req.Clone(localCtx)
 		newReq.RequestURI = ""
-		newReq.URL = reqUrl
+		newReq.URL = reqURL
 		if req.Body != nil {
 			newReq.Body = ioutil.NopCloser(bytes.NewReader(b.Bytes()))
 		}

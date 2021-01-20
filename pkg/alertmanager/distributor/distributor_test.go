@@ -118,12 +118,12 @@ func TestDistributor_ServeHTTP(t *testing.T) {
 
 			require.Equal(t, c.expectedTotalCalls, totalReqCount)
 
-			if c.expectedMetrics != "" {
-				// TODO(codesome): Not getting any metrics here. Investigate.
-				//test.Poll(t, time.Second, nil, func() interface{} {
-				//	return testutil.GatherAndCompare(reg, strings.NewReader(c.expectedMetrics), c.metricNames...)
-				//})
-			}
+			// TODO(codesome): Not getting any metrics here. Investigate.
+			//if c.expectedMetrics != "" {
+			//	test.Poll(t, time.Second, nil, func() interface{} {
+			//		return testutil.GatherAndCompare(reg, strings.NewReader(c.expectedMetrics), c.metricNames...)
+			//	})
+			//}
 		})
 	}
 

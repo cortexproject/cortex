@@ -3,7 +3,6 @@ package cortex
 import (
 	"flag"
 	"fmt"
-	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"os"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"

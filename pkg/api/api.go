@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"flag"
-	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"net/http"
 	"strings"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	am_distributor "github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"

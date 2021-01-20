@@ -496,6 +496,13 @@ ha_tracker:
 # CLI flag: -distributor.shard-by-all-labels
 [shard_by_all_labels: <boolean> | default = false]
 
+# Try writing to an additional ingester in the presence of an ingester not in
+# the ACTIVE state. It is useful to disable this along with
+# -ingester.unregister-on-shutdown=false in order to not spread samples to extra
+# ingesters during rolling restarts with consistent naming.
+# CLI flag: -distributor.extend-writes
+[extend_writes: <boolean> | default = true]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
@@ -628,13 +635,6 @@ lifecycler:
     # different availability zones.
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
-
-    # Try writing to an additional ingester in the presence of an ingester not
-    # in the ACTIVE state. It is useful to disable this along with
-    # -ingester.unregister-on-shutdown=false in order to not spread samples to
-    # extra ingesters during rolling restarts with consistent naming.
-    # CLI flag: -distributor.extend-writes
-    [extend_writes: <boolean> | default = true]
 
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens

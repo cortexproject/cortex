@@ -172,7 +172,6 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
-	t.Cfg.Distributor.ExtendWrites = t.Cfg.Ingester.LifecyclerConfig.RingConfig.ExtendWrites
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or

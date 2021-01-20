@@ -220,7 +220,7 @@ func (s *ConcreteService) NetworkEndpoint(port int) string {
 //
 // This method return correct endpoint for the service in any state.
 func (s *ConcreteService) NetworkEndpointFor(networkName string, port int) string {
-	return fmt.Sprintf("%s:%d", containerName(networkName, s.name), port)
+	return fmt.Sprintf("%s:%d", NetworkContainerHost(networkName, s.name), port)
 }
 
 func (s *ConcreteService) SetReadinessProbe(probe ReadinessProbe) {
@@ -240,12 +240,8 @@ func (s *ConcreteService) Ready() error {
 	return s.readiness.Ready(s)
 }
 
-func containerName(netName string, name string) string {
-	return fmt.Sprintf("%s-%s", netName, name)
-}
-
 func (s *ConcreteService) containerName() string {
-	return containerName(s.usedNetworkName, s.name)
+	return NetworkContainerHost(s.usedNetworkName, s.name)
 }
 
 func (s *ConcreteService) WaitForRunning() (err error) {
@@ -353,6 +349,17 @@ func (s *ConcreteService) Exec(command *Command) (string, string, error) {
 	err := cmd.Run()
 
 	return stdout.String(), stderr.String(), err
+}
+
+// NetworkContainerHost return the hostname of the container within the network. This is
+// the address a container should use to connect to other containers.
+func NetworkContainerHost(networkName, containerName string) string {
+	return fmt.Sprintf("%s-%s", networkName, containerName)
+}
+
+// NetworkContainerHostPort return the host:port address of a container within the network.
+func NetworkContainerHostPort(networkName, containerName string, port int) string {
+	return fmt.Sprintf("%s-%s:%d", networkName, containerName, port)
 }
 
 type Command struct {

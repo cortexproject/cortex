@@ -3,6 +3,8 @@ package ring
 import (
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type ReplicationStrategy interface {
@@ -61,6 +63,31 @@ func (s *defaultReplicationStrategy) Filter(ingesters []IngesterDesc, op Operati
 	}
 
 	return ingesters, len(ingesters) - minSuccess, nil
+}
+
+type ignoreUnhealthyInstancesReplicationStrategy struct{}
+
+func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
+	return &ignoreUnhealthyInstancesReplicationStrategy{}
+}
+
+func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []IngesterDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []IngesterDesc, maxFailures int, err error) {
+	now := time.Now()
+	// Filter out unhealthy instances.
+	for i := 0; i < len(instances); {
+		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
+			i++
+		} else {
+			instances = append(instances[:i], instances[i+1:]...)
+		}
+	}
+
+	// We need at least 1 healthy instance no matter what is the replication factor set to.
+	if len(instances) == 0 {
+		return nil, 0, errors.New("at least 1 healthy replica required, could only find 0")
+	}
+
+	return instances, len(instances) - 1, nil
 }
 
 func (r *Ring) IsHealthy(ingester *IngesterDesc, op Operation, now time.Time) bool {

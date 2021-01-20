@@ -257,7 +257,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -614,7 +614,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				SubringCacheDisabled: true,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck

@@ -280,7 +280,7 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, rulerReplicationStrategy{})
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}

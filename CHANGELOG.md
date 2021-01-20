@@ -10,17 +10,28 @@
   * `-bigtable.grpc-use-gzip-compression`: use `-bigtable.grpc-compression` instead
   * `-ingester.client.grpc-use-gzip-compression`: use `-ingester.client.grpc-compression` instead
   * `-querier.frontend-client.grpc-use-gzip-compression`: use `-querier.frontend-client.grpc-compression` instead
-* [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595
+* [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595 #3693
 * [CHANGE] Blocks storage: compactor is now required when running a Cortex cluster with the blocks storage, because it also keeps the bucket index updated. #3583
 * [CHANGE] Blocks storage: block deletion marks are now stored in a per-tenant global markers/ location too, other than within the block location. The compactor, at startup, will copy deletion marks from the block location to the global location. This migration is required only once, so you can safely disable it via `-compactor.block-deletion-marks-migration-enabled=false` once new compactor has successfully started once in your cluster. #3583
 * [CHANGE] OpenStack Swift: the default value for the `-ruler.storage.swift.container-name` and `-swift.container-name` config options has changed from `cortex` to empty string. If you were relying on the default value, you should set it back to `cortex`. #3660
 * [CHANGE] HA Tracker: configured replica label is now verified against label value length limit (`-validation.max-length-label-value`). #3668
+* [CHANGE] Alertmanager: Deprecated `-cluster.` CLI flags in favor of their `-alertmanager.cluster.` equivalent. The deprecated flags (and their respective YAML config options) are: #3677
+  * `-cluster.listen-address` in favor of `-alertmanager.cluster.listen-address`
+  * `-cluster.advertise-address` in favor of `-alertmanager.cluster.advertise-address`
+  * `-cluster.peer` in favor of `-alertmanager.cluster.peers`
+  * `-cluster.peer-timeout` in favor of `-alertmanager.cluster.peer-timeout`
 * [FEATURE] Querier: Queries can be federated across multiple tenants. The tenants IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` request header. This is an experimental feature, which can be enabled by setting `-tenant-federation.enabled=true` on all Cortex services. #3250
 * [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `<prefix>.s3.sse-encryption`, you should use the following config fields that have been added. #3651
   - `<prefix>.s3.sse.type`
   - `<prefix>.s3.sse.kms-key-id`
   - `<prefix>.s3.sse.kms-encryption-context`
-* [ENHANCEMENT] Blocks storage: introduced a per-tenant bucket index, periodically updated by the compactor, used to avoid full bucket scanning done by queriers, store-gateways and rulers. The bucket index is updated by the compactor during blocks cleanup, on every `-compactor.cleanup-interval`. #3553 #3555 #3561 #3583 #3625
+* [FEATURE] Alertmanager: introduced the experimental option `-alertmanager.sharding-enabled` to shard tenants across multiple Alertmanager instances. This feature is still under heavy development and its usage is discouraged. The following new metrics are exported by the Alertmanager: #3664
+  * `cortex_alertmanager_ring_check_errors_total`
+  * `cortex_alertmanager_sync_configs_total`
+  * `cortex_alertmanager_sync_configs_failed_total`
+  * `cortex_alertmanager_tenants_discovered`
+  * `cortex_alertmanager_tenants_owned`
+* [ENHANCEMENT] Blocks storage: introduced a per-tenant bucket index, periodically updated by the compactor, used to avoid full bucket scanning done by queriers, store-gateways and rulers. The bucket index is updated by the compactor during blocks cleanup, on every `-compactor.cleanup-interval`. #3553 #3555 #3561 #3583 #3625 #3711
 * [ENHANCEMENT] Blocks storage: introduced an option `-blocks-storage.bucket-store.bucket-index.enabled` to enable the usage of the bucket index in the querier, store-gateway and ruler. When enabled, the querier, store-gateway and ruler will use the bucket index to find a tenant's blocks instead of running the periodic bucket scan. The following new metrics are exported by the querier and ruler: #3614 #3625
   * `cortex_bucket_index_loads_total`
   * `cortex_bucket_index_load_failures_total`
@@ -49,6 +60,7 @@
 * [ENHANCEMENT] Disabled in-memory shuffle-sharding subring cache in the store-gateway, ruler and compactor. This should reduce the memory utilisation in these services when shuffle-sharding is enabled, without introducing a significantly increase CPU utilisation. #3601
 * [ENHANCEMENT] Shuffle sharding: optimised subring generation used by shuffle sharding. #3601
 * [ENHANCEMENT] New /runtime_config endpoint that returns the defined runtime configuration in YAML format. The returned configuration includes overrides. #3639
+* [ENHANCEMENT] Query-frontend: included the parameter name failed to validate in HTTP 400 message. #3703
 * [ENHANCEMENT] Fail to startup Cortex if provided runtime config is invalid. #3707
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
 * [BUGFIX] Memberlist: Entry in the ring should now not appear again after using "Forget" feature (unless it's still heartbeating). #3603

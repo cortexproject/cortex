@@ -21,6 +21,12 @@ const (
 	ringAutoForgetUnhealthyPeriods = 2
 )
 
+// RingOp is the operation used for distributing rule groups between rulers.
+var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+	// Only ACTIVE rulers get any rule groups. If instance is not ACTIVE, we need to find another ruler.
+	return s != ring.ACTIVE
+})
+
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the rulers ring. This config
 // is used to strip down the config to the minimum, and avoid confusion

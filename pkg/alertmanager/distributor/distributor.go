@@ -158,7 +158,7 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	callback := func(am ring.IngesterDesc) (retErr error) {
 		d.amSends.WithLabelValues(am.Addr).Inc()
 		defer func() {
-			if err != nil {
+			if retErr != nil {
 				d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			}
 		}()
@@ -185,7 +185,7 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		resp, err := d.client.Do(newReq)
 		defer func() {
-			if resp.Body == nil {
+			if err != nil || resp.Body == nil {
 				return
 			}
 			if err := resp.Body.Close(); err != nil {

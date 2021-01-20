@@ -670,6 +670,8 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
+	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.HTTPListenPort
+
 	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -727,6 +729,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Alertmanager.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	return t.MemberlistKV, nil
 }
@@ -833,7 +836,7 @@ func (t *Cortex) setupModuleManager() error {
 		TableManager:             {API},
 		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
 		Configs:                  {API},
-		AlertManager:             {API},
+		AlertManager:             {API, MemberlistKV},
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},

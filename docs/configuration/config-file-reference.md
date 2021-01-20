@@ -1485,21 +1485,79 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
 
-# Listen address for cluster.
+# Deprecated. Use -alertmanager.cluster.listen-address instead.
 # CLI flag: -cluster.listen-address
 [cluster_bind_address: <string> | default = "0.0.0.0:9094"]
 
-# Explicit address to advertise in cluster.
+# Deprecated. Use -alertmanager.cluster.advertise-address instead.
 # CLI flag: -cluster.advertise-address
 [cluster_advertise_address: <string> | default = ""]
 
-# Initial peers (may be repeated).
+# Deprecated. Use -alertmanager.cluster.peers instead.
 # CLI flag: -cluster.peer
 [peers: <list of string> | default = []]
 
-# Time to wait between peers to send notifications.
+# Deprecated. Use -alertmanager.cluster.peer-timeout instead.
 # CLI flag: -cluster.peer-timeout
 [peer_timeout: <duration> | default = 15s]
+
+# Shard tenants across multiple alertmanager instances.
+# CLI flag: -alertmanager.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+sharding_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -alertmanager.sharding-ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -alertmanager.sharding-ring.prefix
+    [prefix: <string> | default = "alertmanagers/"]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -alertmanager.sharding-ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -alertmanager.sharding-ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -alertmanager.sharding-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring.
+  # CLI flag: -alertmanager.sharding-ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
+
+  # The heartbeat timeout after which alertmanagers are considered unhealthy
+  # within the ring.
+  # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # The replication factor to use when sharding the alertmanager.
+  # CLI flag: -alertmanager.sharding-ring.replication-factor
+  [replication_factor: <int> | default = 3]
+
+  # Name of network interface to read address from.
+  # CLI flag: -alertmanager.sharding-ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback
@@ -1646,6 +1704,24 @@ storage:
     # Path at which alertmanager configurations are stored.
     # CLI flag: -alertmanager.storage.local.path
     [path: <string> | default = ""]
+
+cluster:
+  # Listen address and port for the cluster. Not specifying this flag disables
+  # high-availability mode.
+  # CLI flag: -alertmanager.cluster.listen-address
+  [listen_address: <string> | default = "0.0.0.0:9094"]
+
+  # Explicit address or hostname to advertise in cluster.
+  # CLI flag: -alertmanager.cluster.advertise-address
+  [advertise_address: <string> | default = ""]
+
+  # Comma-separated list of initial peers.
+  # CLI flag: -alertmanager.cluster.peers
+  [peers: <string> | default = ""]
+
+  # Time to wait between peers to send notifications.
+  # CLI flag: -alertmanager.cluster.peer-timeout
+  [peer_timeout: <duration> | default = 15s]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -2868,6 +2944,7 @@ grpc_client_config:
 The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>` used to reference this config block are:
 
 - _no prefix_
+- `alertmanager.sharding-ring`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
@@ -2915,6 +2992,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 The `consul_config` configures the consul client. The supported CLI flags `<prefix>` used to reference this config block are:
 
 - _no prefix_
+- `alertmanager.sharding-ring`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`

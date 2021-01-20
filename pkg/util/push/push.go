@@ -60,6 +60,7 @@ func handler(cfg distributor.Config,
 			}
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
-	})
 
+		w.WriteHeader(http.StatusNoContent)
+	})
 }

@@ -2843,3 +2843,33 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 		cortex_ingester_tsdb_compactions_total 1
 	`), "cortex_ingester_tsdb_compactions_total"))
 }
+
+func BenchmarkUserTSDB_getOldestUnshippedBlockTime(b *testing.B) {
+	const numShippedBlocks = 24
+
+	tmpDir, err := ioutil.TempDir("", "test")
+	require.NoError(b, err)
+	b.Cleanup(func() {
+		require.NoError(b, os.RemoveAll(tmpDir))
+	})
+
+	// Open a TSDB.
+	db, err := tsdb.Open(tmpDir, log.NewNopLogger(), nil, tsdb.DefaultOptions())
+	require.NoError(b, err)
+
+	// Mock a shipper meta file with some shipped blocks.
+	meta := &shipper.Meta{Version: shipper.MetaVersion1}
+	for i := 0; i < numShippedBlocks; i++ {
+		meta.Uploaded = append(meta.Uploaded, ulid.MustNew(uint64(i), nil))
+	}
+	require.NoError(b, shipper.WriteMetaFile(log.NewNopLogger(), db.Dir(), meta))
+
+	u := userTSDB{db: db}
+
+	for n := 0; n < b.N; n++ {
+		_, err := u.getOldestUnshippedBlockTime()
+		if err != nil {
+			b.Fatalf("unexpected error: %s", err.Error())
+		}
+	}
+}

@@ -78,9 +78,7 @@ func (cfg *Config) Validate() error {
 	}
 
 	if cfg.Backend == S3 {
-		if err := cfg.S3.Validate(); err != nil {
-			return err
-		}
+		return cfg.S3.Validate()
 	}
 
 	return nil

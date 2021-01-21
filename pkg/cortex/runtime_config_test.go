@@ -59,3 +59,41 @@ func TestLoadRuntimeConfig_ShouldLoadEmptyFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, &runtimeConfigValues{}, actual)
 }
+
+func TestLoadRuntimeConfig_ShouldReturnErrorOnMultipleDocumentsInTheConfig(t *testing.T) {
+	cases := []string{
+		`
+---
+---
+`, `
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+`, `
+---
+# This is an empty YAML.
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+`, `
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+---
+# This is an empty YAML.
+`,
+	}
+
+	for _, tc := range cases {
+		actual, err := loadRuntimeConfig(strings.NewReader(tc))
+		assert.Equal(t, errMultipleDocuments, err)
+		assert.Nil(t, actual)
+	}
+}

@@ -114,10 +114,12 @@ type MultitenantAlertmanagerConfig struct {
 }
 
 type ClusterConfig struct {
-	ListenAddr    string                 `yaml:"listen_address"`
-	AdvertiseAddr string                 `yaml:"advertise_address"`
-	Peers         flagext.StringSliceCSV `yaml:"peers"`
-	PeerTimeout   time.Duration          `yaml:"peer_timeout"`
+	ListenAddr       string                 `yaml:"listen_address"`
+	AdvertiseAddr    string                 `yaml:"advertise_address"`
+	Peers            flagext.StringSliceCSV `yaml:"peers"`
+	PeerTimeout      time.Duration          `yaml:"peer_timeout"`
+	GossipInterval   time.Duration          `yaml:"gossip_interval"`
+	PushPullInterval time.Duration          `yaml:"push_pull_interval"`
 }
 
 const (
@@ -158,6 +160,8 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"advertise-address", "", "Explicit address or hostname to advertise in cluster.")
 	f.Var(&cfg.Peers, prefix+"peers", "Comma-separated list of initial peers.")
 	f.DurationVar(&cfg.PeerTimeout, prefix+"peer-timeout", defaultPeerTimeout, "Time to wait between peers to send notifications.")
+	f.DurationVar(&cfg.GossipInterval, prefix+"gossip-interval", cluster.DefaultGossipInterval, "The interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across cluster more quickly at the expense of increased bandwidth usage.")
+	f.DurationVar(&cfg.PushPullInterval, prefix+"push-pull-interval", cluster.DefaultPushPullInterval, "The interval between gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.")
 }
 
 // SupportDeprecatedFlagset ensures we support the previous set of cluster flags that are now deprecated.
@@ -294,8 +298,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 			cfg.Cluster.AdvertiseAddr,
 			cfg.Cluster.Peers,
 			true,
-			cluster.DefaultPushPullInterval,
-			cluster.DefaultGossipInterval,
+			cfg.Cluster.PushPullInterval,
+			cfg.Cluster.GossipInterval,
 			cluster.DefaultTcpTimeout,
 			cluster.DefaultProbeTimeout,
 			cluster.DefaultProbeInterval,

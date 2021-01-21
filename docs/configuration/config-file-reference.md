@@ -1723,6 +1723,18 @@ cluster:
   # CLI flag: -alertmanager.cluster.peer-timeout
   [peer_timeout: <duration> | default = 15s]
 
+  # The interval between sending gossip messages. By lowering this value (more
+  # frequent) gossip messages are propagated across cluster more quickly at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.gossip-interval
+  [gossip_interval: <duration> | default = 200ms]
+
+  # The interval between gossip state syncs. Setting this interval lower (more
+  # frequent) will increase convergence speeds across larger clusters at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.push-pull-interval
+  [push_pull_interval: <duration> | default = 1m]
+
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]

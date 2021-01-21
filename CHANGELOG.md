@@ -59,6 +59,9 @@
 * [ENHANCEMENT] New /runtime_config endpoint that returns the defined runtime configuration in YAML format. The returned configuration includes overrides. #3639
 * [ENHANCEMENT] Query-frontend: included the parameter name failed to validate in HTTP 400 message. #3703
 * [ENHANCEMENT] Fail to startup Cortex if provided runtime config is invalid. #3707
+* [ENHANCEMENT] Alertmanager: Add flags to customize the cluster configuration: #3667
+  * `-alertmanager.cluster.gossip-interval`: The interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across cluster more quickly at the expense of increased bandwidth usage.
+  * `-alertmanager.cluster.push-pull-interval`: The interval between gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.
 * [ENHANCEMENT] Distributor: change the error message returned when a received series has too many label values. The new message format has the series at the end and this plays better with Prometheus logs truncation. #3718
   - From: `sample for '<series>' has <value> label names; limit <value>`
   - To: `series has too many labels (actual: <value>, limit: <value>) series: '<series>'`

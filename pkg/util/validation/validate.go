@@ -33,7 +33,7 @@ const (
 	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
 	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
 	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
-	errTooManyLabels      = "sample for '%s' has %d label names; limit %d"
+	errTooManyLabels      = "series has too many labels (actual: %d, limit: %d) series: '%s'"
 	errTooOld             = "sample for '%s' has timestamp too old: %d"
 	errTooNew             = "sample for '%s' has timestamp too new: %d"
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
@@ -132,7 +132,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []client.LabelA
 	numLabelNames := len(ls)
 	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, client.FromLabelAdaptersToMetric(ls).String(), numLabelNames, cfg.MaxLabelNamesPerSeries(userID))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, numLabelNames, cfg.MaxLabelNamesPerSeries(userID), client.FromLabelAdaptersToMetric(ls).String())
 	}
 
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)

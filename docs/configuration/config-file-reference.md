@@ -496,6 +496,13 @@ ha_tracker:
 # CLI flag: -distributor.shard-by-all-labels
 [shard_by_all_labels: <boolean> | default = false]
 
+# Try writing to an additional ingester in the presence of an ingester not in
+# the ACTIVE state. It is useful to disable this along with
+# -ingester.unregister-on-shutdown=false in order to not spread samples to extra
+# ingesters during rolling restarts with consistent naming.
+# CLI flag: -distributor.extend-writes
+[extend_writes: <boolean> | default = true]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
@@ -628,13 +635,6 @@ lifecycler:
     # different availability zones.
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
-
-    # Try writing to an additional ingester in the presence of an ingester not
-    # in the ACTIVE state. It is useful to disable this along with
-    # -ingester.unregister-on-shutdown=false in order to not spread samples to
-    # extra ingesters during rolling restarts with consistent naming.
-    # CLI flag: -distributor.extend-writes
-    [extend_writes: <boolean> | default = true]
 
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
@@ -1750,6 +1750,18 @@ cluster:
   # Time to wait between peers to send notifications.
   # CLI flag: -alertmanager.cluster.peer-timeout
   [peer_timeout: <duration> | default = 15s]
+
+  # The interval between sending gossip messages. By lowering this value (more
+  # frequent) gossip messages are propagated across cluster more quickly at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.gossip-interval
+  [gossip_interval: <duration> | default = 200ms]
+
+  # The interval between gossip state syncs. Setting this interval lower (more
+  # frequent) will increase convergence speeds across larger clusters at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.push-pull-interval
+  [push_pull_interval: <duration> | default = 1m]
 
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
@@ -3829,7 +3841,7 @@ bucket_store:
   # enabled), in order to look for changes (new blocks shipped by ingesters and
   # blocks deleted by retention or compaction).
   # CLI flag: -blocks-storage.bucket-store.sync-interval
-  [sync_interval: <duration> | default = 5m]
+  [sync_interval: <duration> | default = 15m]
 
   # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
   # allocations.

@@ -17,7 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -327,7 +326,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			flagext.DefaultValues(&ringCfg)
 			ringCfg.ReplicationFactor = testData.replicationFactor
 
-			r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, &storegateway.BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 			require.NoError(t, err)
 
 			limits := &blocksStoreLimitsMock{

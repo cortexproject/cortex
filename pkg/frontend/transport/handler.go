@@ -161,7 +161,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"method", r.Method,
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
-		"query_wall_time", stats.LoadWallTime(),
+		"query_wall_time_seconds", stats.LoadWallTime().Seconds(),
 	}, formatQueryString(queryString)...)
 
 	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)

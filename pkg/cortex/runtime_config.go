@@ -35,7 +35,7 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 		return nil, err
 	}
 
-	// Ensure the provided YAML config is not composed by multiple documents,
+	// Ensure the provided YAML config is not composed of multiple documents,
 	if err := decoder.Decode(&runtimeConfigValues{}); !errors.Is(err, io.EOF) {
 		return nil, errMultipleDocuments
 	}

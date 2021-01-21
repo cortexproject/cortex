@@ -1894,6 +1894,51 @@ func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
+func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer cleanup()
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	sampleTimestamp := int64(model.Now())
+
+	{
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, sampleTimestamp)
+		_, err = i.v2Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	db := i.getTSDB(userID)
+	lastUpdate := db.lastUpdate.Load()
+
+	// Wait until 1 second passes.
+	test.Poll(t, 1*time.Second, time.Now().Unix()+1, func() interface{} {
+		return time.Now().Unix()
+	})
+
+	// Push another sample to the same metric and timestamp, with different value. We expect to get error.
+	{
+		req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 1, sampleTimestamp)
+		_, err = i.v2Push(ctx, req)
+		require.Error(t, err)
+	}
+
+	// Make sure last update hasn't changed.
+	require.Equal(t, lastUpdate, db.lastUpdate.Load())
+}
+
 func TestIngester_flushing(t *testing.T) {
 	for name, tc := range map[string]struct {
 		setupIngester func(cfg *Config)

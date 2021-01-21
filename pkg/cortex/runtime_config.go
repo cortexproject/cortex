@@ -31,8 +31,7 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	decoder.SetStrict(true)
 
 	// Decode the first document. An empty document (EOF) is OK.
-	err := decoder.Decode(&overrides)
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err := decoder.Decode(&overrides); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 

@@ -142,11 +142,11 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 	if expectedSize > 0 {
 		buf.Grow(expectedSize + bytes.MinRead) // extra space guarantees no reallocation
 	}
+	// Read from LimitReader with limit max+1. So if the underlying
+	// reader is over limit, the result will be bigger than max.
 	reader = io.LimitReader(reader, int64(maxSize)+1)
 	switch compression {
 	case NoCompression:
-		// Read from LimitReader with limit max+1. So if the underlying
-		// reader is over limit, the result will be bigger than max.
 		_, err = buf.ReadFrom(reader)
 		body = buf.Bytes()
 	case RawSnappy:

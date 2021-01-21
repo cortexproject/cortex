@@ -146,14 +146,14 @@ func (om *Manager) loadConfig() error {
 	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
-		return err
+		return errors.Wrap(err, "read file")
 	}
 	hash := sha256.Sum256(buf)
 
 	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
 	if err != nil {
 		om.configLoadSuccess.Set(0)
-		return err
+		return errors.Wrap(err, "load file")
 	}
 	om.configLoadSuccess.Set(1)
 

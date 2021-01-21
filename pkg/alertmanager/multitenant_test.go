@@ -172,8 +172,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
-	// Test Delete User, ensure config is removed but alertmanager
-	// exists and is set to inactive
+	// Test Delete User, ensure config is removed and the resources are freed.
 	delete(mockStore.configs, "user3")
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
@@ -181,9 +180,8 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.False(t, exists)
 	require.Equal(t, "", currentConfig.RawConfig)
 
-	userAM, exists := am.alertmanagers["user3"]
-	require.True(t, exists)
-	require.False(t, userAM.IsActive())
+	_, exists = am.alertmanagers["user3"]
+	require.False(t, exists)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -206,9 +204,8 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
-	userAM, exists = am.alertmanagers["user3"]
+	_, exists = am.alertmanagers["user3"]
 	require.True(t, exists)
-	require.True(t, userAM.IsActive())
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -271,7 +268,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 		Templates: []*alerts.TemplateDesc{},
 	}
 
-	// Make the alertmanager pick it up, then pause it.
+	// Make the alertmanager pick it up.
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
@@ -307,11 +304,13 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 		verify404(ctx, t, am, "GET", metricURL)
 	}
 
-	// Pause alert manager.
-	am.alertmanagers["user1"].Pause()
+	// Remove the tenant's Alertmanager
+	delete(mockStore.configs, "user1")
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
 
 	{
-		// Request when user configuration is paused.
+		// Request when the alertmanager is gone
 		w := httptest.NewRecorder()
 		am.ServeHTTP(w, req.WithContext(ctx))
 
@@ -370,28 +369,32 @@ receivers:
 
 	resp := w.Result()
 
-	// It succeeds and the Alertmanager is started
+	// It succeeds and the Alertmanager is started.
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Len(t, am.alertmanagers, 1)
-	require.True(t, am.alertmanagers["user1"].IsActive())
+	_, exists := am.alertmanagers["user1"]
+	require.True(t, exists)
 
-	// Even after a poll it does not pause your Alertmanager
+	// Even after a poll...
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
-	require.True(t, am.alertmanagers["user1"].IsActive())
+	//  It does not remove the Alertmanager.
 	require.Len(t, am.alertmanagers, 1)
+	_, exists = am.alertmanagers["user1"]
+	require.True(t, exists)
 
-	// Pause the alertmanager
-	am.alertmanagers["user1"].Pause()
+	// Remove the Alertmanager configuration.
+	delete(mockStore.configs, "user1")
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
 
-	// Request when user configuration is paused.
+	// Even after removing it.. We start it again with the fallback configuration.
 	w = httptest.NewRecorder()
 	am.ServeHTTP(w, req.WithContext(ctx))
 
 	resp = w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
-	require.Equal(t, "the Alertmanager is not configured\n", string(body))
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {

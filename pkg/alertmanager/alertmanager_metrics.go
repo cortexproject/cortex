@@ -154,6 +154,10 @@ func (m *alertmanagerMetrics) addUserRegistry(user string, reg *prometheus.Regis
 	m.regs.AddUserRegistry(user, reg)
 }
 
+func (m *alertmanagerMetrics) removeUserRegistry(user string) {
+	m.regs.RemoveUserRegistry(user, true)
+}
+
 func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.alertsReceived
 	out <- m.alertsInvalid

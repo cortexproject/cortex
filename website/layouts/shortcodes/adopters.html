@@ -8,12 +8,11 @@
             <div class="col pb-5">
                 <p class="h2 companies text-center">Companies using Cortex</p>
             </div>
-        <div class="row logos">
+        <div class="adopters-logos">
             {{ range $adopter := sort $.Site.Data.adopters.adopters "name" }}
             {{ if $adopter.logo }}
-                <a class="col-lg-2 col-md-4 col-sm-6 adopter-img my-3"
-                 style="background-image: url({{ (printf "/logos/%s" $adopter.logo) | relURL }}); margin-left: auto; margin-right: auto;" 
-                 href="{{ $adopter.url }}" rel="nofollow" target="_blank" style="display: block;">
+                <a class="adopter-logo" href="{{ $adopter.url }}" rel="nofollow" target="_blank">
+                    <img src="{{ (printf "/logos/%s" $adopter.logo) | relURL }}" alt="{{ $adopter.name }}" />
                 </a>
             {{ end }}
             {{ end }}

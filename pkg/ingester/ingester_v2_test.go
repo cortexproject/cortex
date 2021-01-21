@@ -1884,6 +1884,47 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 
+func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig()
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Minute
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+
+	// Create ingester
+	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	require.NoError(t, err)
+	defer cleanup()
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	db, err := i.getOrCreateTSDB(userID, true)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+
+	// Run compaction and shipping.
+	i.compactBlocks(context.Background(), true)
+	i.shipBlocks(context.Background())
+
+	// Make sure we can close completely empty TSDB without problems.
+	require.Equal(t, tsdbIdleClosed, i.closeAndDeleteUserTSDBIfIdle(userID))
+
+	// Verify that it was closed.
+	db = i.getTSDB(userID)
+	require.Nil(t, db)
+
+	// And we can recreate it again, if needed.
+	db, err = i.getOrCreateTSDB(userID, true)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+}
+
 type shipperMock struct {
 	mock.Mock
 }

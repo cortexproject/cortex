@@ -108,6 +108,10 @@ type userTSDB struct {
 	// for statistics
 	ingestedAPISamples  *ewmaRate
 	ingestedRuleSamples *ewmaRate
+
+	// Cached shipped blocks.
+	shippedBlocksMtx sync.Mutex
+	shippedBlocks    map[ulid.ULID]struct{}
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -237,15 +241,10 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 		return deletable
 	}
 
-	shippedBlocks, err := u.getShippedBlocks()
-	if err != nil {
-		// If there is any issue with the shipper, we should be conservative and not delete anything.
-		level.Error(util.Logger).Log("msg", "failed to read shipper meta during deletion of blocks", "user", u.userID, "err", err)
-		return nil
-	}
+	shippedBlocks := u.getCachedShippedBlocks()
 
 	result := map[ulid.ULID]struct{}{}
-	for _, shippedID := range shippedBlocks {
+	for shippedID := range shippedBlocks {
 		if _, ok := deletable[shippedID]; ok {
 			result[shippedID] = struct{}{}
 		}
@@ -253,36 +252,47 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	return result
 }
 
-func (u *userTSDB) getShippedBlocks() ([]ulid.ULID, error) {
+// updateCachedShipperBlocks reads the shipper meta file and updates the cached shipped blocks.
+func (u *userTSDB) updateCachedShippedBlocks() error {
 	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
-	if err != nil {
-		return nil, err
+	if os.IsNotExist(err) {
+		// If the meta file doesn't exist it means the shipper hasn't run yet.
+		shipperMeta = &shipper.Meta{}
+	} else if err != nil {
+		return err
 	}
 
-	return shipperMeta.Uploaded, nil
+	// Build a map.
+	shippedBlocks := make(map[ulid.ULID]struct{}, len(shipperMeta.Uploaded))
+	for _, blockID := range shipperMeta.Uploaded {
+		shippedBlocks[blockID] = struct{}{}
+	}
+
+	// Cache it.
+	u.shippedBlocksMtx.Lock()
+	u.shippedBlocks = shippedBlocks
+	u.shippedBlocksMtx.Unlock()
+
+	return nil
+}
+
+// getCachedShippedBlocks returns the cached shipped blocks.
+func (u *userTSDB) getCachedShippedBlocks() map[ulid.ULID]struct{} {
+	u.shippedBlocksMtx.Lock()
+	defer u.shippedBlocksMtx.Unlock()
+
+	// It's safe to directly return the map because it's never updated in-place.
+	return u.shippedBlocks
 }
 
 // getOldestUnshippedBlockTime returns the unix timestamp with milliseconds precision of the oldest
 // TSDB block not shipped to the storage yet, or 0 if all blocks have been shipped.
-func (u *userTSDB) getOldestUnshippedBlockTime() (uint64, error) {
-	// Read the list of shipper blocks. If the shipper metadata file doesn't exist
-	// (eg. because the shipper hasn't run yet) we're considering it as if no block
-	// has been shipped.
-	shipped, err := u.getShippedBlocks()
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return 0, errors.Wrapf(err, "failed to read shipper meta")
-	}
-
-	shippedMap := make(map[ulid.ULID]bool, len(shipped))
-	for _, b := range shipped {
-		shippedMap[b] = true
-	}
-
-	// Find the oldest unshipped block.
+func (u *userTSDB) getOldestUnshippedBlockTime() uint64 {
+	shippedBlocks := u.getCachedShippedBlocks()
 	oldestTs := uint64(0)
 
 	for _, b := range u.Blocks() {
-		if shippedMap[b.Meta().ULID] {
+		if _, ok := shippedBlocks[b.Meta().ULID]; ok {
 			continue
 		}
 
@@ -291,7 +301,7 @@ func (u *userTSDB) getOldestUnshippedBlockTime() (uint64, error) {
 		}
 	}
 
-	return oldestTs, nil
+	return oldestTs
 }
 
 func (u *userTSDB) isIdle(now time.Time, idle time.Duration) bool {
@@ -320,9 +330,7 @@ func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) (tsdbCloseCheckRes
 	}
 
 	// Ensure that all blocks have been shipped.
-	if oldest, err := u.getOldestUnshippedBlockTime(); err != nil {
-		return tsdbCheckFailed, err
-	} else if oldest > 0 {
+	if oldest := u.getOldestUnshippedBlockTime(); oldest > 0 {
 		return tsdbNotShipped, nil
 	}
 
@@ -525,7 +533,7 @@ func (i *Ingester) startingV2(ctx context.Context) error {
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
 
-	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		shippingService := services.NewBasicService(nil, i.shipBlocksLoop, nil)
 		servs = append(servs, shippingService)
 	}
@@ -1303,7 +1311,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	// Create a new shipper for this database
-	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		userDB.shipper = shipper.New(
 			userLogger,
 			tsdbPromReg,
@@ -1314,6 +1322,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
 			true,  // Allow out of order uploads. It's fine in Cortex's context.
 		)
+
+		// Initialise the shipper blocks cache.
+		if err := userDB.updateCachedShippedBlocks(); err != nil {
+			level.Error(userLogger).Log("msg", "failed to update cached shipped blocks after shipper initialisation", "err", err)
+		}
 	}
 
 	i.TSDBState.tsdbMetrics.setRegistryForUser(userID, tsdbPromReg)
@@ -1477,7 +1490,7 @@ func (i *Ingester) getOldestUnshippedBlockMetric() float64 {
 
 	oldest := uint64(0)
 	for _, db := range i.TSDBState.dbs {
-		if ts, err := db.getOldestUnshippedBlockTime(); err == nil && (oldest == 0 || ts < oldest) {
+		if ts := db.getOldestUnshippedBlockTime(); oldest == 0 || ts < oldest {
 			oldest = ts
 		}
 	}
@@ -1486,7 +1499,10 @@ func (i *Ingester) getOldestUnshippedBlockMetric() float64 {
 }
 
 func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
-	shipTicker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.ShipInterval)
+	// We add a slight jitter to make sure that if the head compaction interval and ship interval are set to the same
+	// value they don't clash (if they both continuously run at the same exact time, the head compaction may not run
+	// because can't successfully cas the state).
+	shipTicker := time.NewTicker(util.DurationWithJitter(i.cfg.BlocksStorageConfig.TSDB.ShipInterval, 0.01))
 	defer shipTicker.Stop()
 
 	for {
@@ -1563,6 +1579,12 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
+		}
+
+		// The shipper meta file could be updated even if the Sync() returned an error,
+		// so it's safer to always update it.
+		if err := userDB.updateCachedShippedBlocks(); err != nil {
+			level.Error(util.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
 		}
 
 		return nil
@@ -1745,7 +1767,7 @@ func (i *Ingester) v2LifecyclerFlush() {
 	ctx := context.Background()
 
 	i.compactBlocks(ctx, true)
-	if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
+	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		i.shipBlocks(ctx)
 	}
 
@@ -1781,7 +1803,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, _ *http.Request) {
 			return
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.ShipInterval > 0 {
+		if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 			level.Info(util.Logger).Log("msg", "flushing TSDB blocks: triggering shipping")
 
 			select {

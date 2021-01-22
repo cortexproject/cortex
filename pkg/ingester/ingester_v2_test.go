@@ -2429,7 +2429,20 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	m := mockUserShipper(t, i)
-	m.On("Sync", mock.Anything).Return(0, nil)
+	m.On("Sync", mock.Anything).Return(0, nil).Run(func(_ mock.Arguments) {
+		db := i.getTSDB(userID)
+		if db != nil {
+			// Simulate shipper updating metadata file.
+			meta := &shipper.Meta{Version: shipper.MetaVersion1}
+
+			blocks := db.Blocks()
+			for _, b := range blocks {
+				meta.Uploaded = append(meta.Uploaded, b.Meta().ULID)
+			}
+
+			require.NoError(t, shipper.WriteMetaFile(util.Logger, db.db.Dir(), meta))
+		}
+	})
 
 	pushSingleSample(t, i)
 	i.v2UpdateActiveSeries()
@@ -2452,21 +2465,8 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		cortex_ingester_active_series{user="1"} 1
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
 
-	// Wait until idle TSDB is force-compacted, shipped, and eventually closed and removed.
+	// Wait until TSDB has been closed and removed.
 	test.Poll(t, 10*time.Second, 0, func() interface{} {
-		db := i.getTSDB(userID)
-		if db != nil {
-			// Simulate shipper updating metadata file.
-			meta := &shipper.Meta{Version: shipper.MetaVersion1}
-
-			blocks := db.Blocks()
-			for _, b := range blocks {
-				meta.Uploaded = append(meta.Uploaded, b.Meta().ULID)
-			}
-
-			require.NoError(t, shipper.WriteMetaFile(util.Logger, db.db.Dir(), meta))
-		}
-
 		i.userStatesMtx.Lock()
 		defer i.userStatesMtx.Unlock()
 		return len(i.TSDBState.dbs)
@@ -2700,6 +2700,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
 	}))
+	require.NoError(t, db.updateCachedShippedBlocks())
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(5); j < 6; j++ {
@@ -2727,6 +2728,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
 	}))
+	require.NoError(t, db.updateCachedShippedBlocks())
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(6); j < 7; j++ {
@@ -2842,34 +2844,4 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 		# TYPE cortex_ingester_tsdb_compactions_total counter
 		cortex_ingester_tsdb_compactions_total 1
 	`), "cortex_ingester_tsdb_compactions_total"))
-}
-
-func BenchmarkUserTSDB_getOldestUnshippedBlockTime(b *testing.B) {
-	const numShippedBlocks = 24
-
-	tmpDir, err := ioutil.TempDir("", "test")
-	require.NoError(b, err)
-	b.Cleanup(func() {
-		require.NoError(b, os.RemoveAll(tmpDir))
-	})
-
-	// Open a TSDB.
-	db, err := tsdb.Open(tmpDir, log.NewNopLogger(), nil, tsdb.DefaultOptions())
-	require.NoError(b, err)
-
-	// Mock a shipper meta file with some shipped blocks.
-	meta := &shipper.Meta{Version: shipper.MetaVersion1}
-	for i := 0; i < numShippedBlocks; i++ {
-		meta.Uploaded = append(meta.Uploaded, ulid.MustNew(uint64(i), nil))
-	}
-	require.NoError(b, shipper.WriteMetaFile(log.NewNopLogger(), db.Dir(), meta))
-
-	u := userTSDB{db: db}
-
-	for n := 0; n < b.N; n++ {
-		_, err := u.getOldestUnshippedBlockTime()
-		if err != nil {
-			b.Fatalf("unexpected error: %s", err.Error())
-		}
-	}
 }

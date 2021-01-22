@@ -112,27 +112,47 @@ func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimit
 		}
 		switch r.URL.Query().Get("mode") {
 		case "diff":
-			defaultLimitsObj, err := util.YAMLMarshalUnmarshal(defaultLimits)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
 			runtimeCfgObj, err := util.YAMLMarshalUnmarshal(runtimeConfig)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			limitsCfgObj, err := util.YAMLMarshalUnmarshal(runtimeCfgObj["overrides"])
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+			if runtimeCfgObj["overrides"] != nil {
+				defaultLimitsObj, err := util.YAMLMarshalUnmarshal(defaultLimits)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				limitsCfgObj, err := util.YAMLMarshalUnmarshal(runtimeCfgObj["overrides"])
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				limitsDiff, err := diffLimitsConfig(defaultLimitsObj, limitsCfgObj)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				runtimeCfgObj["overrides"] = limitsDiff
 			}
-			limitsDiff, err := diffLimitsConfig(defaultLimitsObj, limitsCfgObj)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+			if runtimeCfgObj["multi_kv_config"] != nil {
+				defaultMultiKVObj, err := util.YAMLMarshalUnmarshal(&kv.MultiRuntimeConfig{})
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				multiKVCfgObj, err := util.YAMLMarshalUnmarshal(runtimeCfgObj["multi_kv_config"])
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				multKVDiff, err := util.DiffConfig(defaultMultiKVObj, multiKVCfgObj)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				runtimeCfgObj["multi_kv_config"] = multKVDiff
 			}
-			runtimeCfgObj["overrides"] = limitsDiff
 			output = runtimeCfgObj
 		default:
 			output = runtimeConfig

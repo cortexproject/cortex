@@ -43,6 +43,10 @@ func DiffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
+		case nil:
+			if defaultValue != nil {
+				output[key] = v
+			}
 		case map[interface{}]interface{}:
 			defaultV, ok := defaultValue.(map[interface{}]interface{})
 			if !ok {

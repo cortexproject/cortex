@@ -532,7 +532,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := newIngesterMockWithTSDBStorageAndLimits(defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -653,7 +653,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := newIngesterMockWithTSDBStorageAndLimits(defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE

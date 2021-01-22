@@ -1575,16 +1575,19 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 		}
 		defer userDB.casState(activeShipping, active)
 
-		if uploaded, err := userDB.shipper.Sync(ctx); err != nil {
+		uploaded, err := userDB.shipper.Sync(ctx)
+		if err != nil {
 			level.Warn(util.Logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
 			level.Debug(util.Logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
 
 		// The shipper meta file could be updated even if the Sync() returned an error,
-		// so it's safer to always update it.
-		if err := userDB.updateCachedShippedBlocks(); err != nil {
-			level.Error(util.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
+		// so it's safer to update it each time at least a block has been uploaded.
+		if uploaded > 0 {
+			if err := userDB.updateCachedShippedBlocks(); err != nil {
+				level.Error(util.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
+			}
 		}
 
 		return nil

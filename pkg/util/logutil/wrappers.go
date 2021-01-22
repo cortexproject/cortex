@@ -3,9 +3,10 @@ package logutil
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/go-kit/kit/log"
 	"github.com/weaveworks/common/middleware"
+
+	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
 // WithUserID returns a Logger that has information about the current user in

@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cortexproject/cortex/pkg/util/logutil"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/util/logutil"
 )
 
 var (

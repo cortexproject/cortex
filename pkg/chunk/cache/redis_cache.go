@@ -3,9 +3,10 @@ package cache
 import (
 	"context"
 
-	"github.com/cortexproject/cortex/pkg/util/logutil"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+
+	"github.com/cortexproject/cortex/pkg/util/logutil"
 )
 
 // RedisCache type caches chunks in redis

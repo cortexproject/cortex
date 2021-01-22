@@ -3,10 +3,11 @@ package flagext
 import (
 	"flag"
 
-	"github.com/cortexproject/cortex/pkg/util/logutil"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/cortexproject/cortex/pkg/util/logutil"
 )
 
 // DeprecatedFlagsUsed is the metric that counts deprecated flags set.

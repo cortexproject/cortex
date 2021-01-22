@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+
 * [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `<prefix>.s3.sse-encryption`, you should use the following config fields that have been added. #3651
   - `<prefix>.s3.sse.type`
   - `<prefix>.s3.sse.kms-key-id`

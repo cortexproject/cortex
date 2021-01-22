@@ -2,11 +2,9 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"html/template"
 	"net/http"
 	"path"
-	"reflect"
 	"regexp"
 	"sync"
 
@@ -25,15 +23,12 @@ import (
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -118,111 +113,24 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	}
 }
 
-func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {
-	yamlBytes, err := yaml.Marshal(in)
-	if err != nil {
-		return nil, err
-	}
-
-	object := make(map[interface{}]interface{})
-	if err := yaml.Unmarshal(yamlBytes, object); err != nil {
-		return nil, err
-	}
-
-	return object, nil
-}
-
-func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
-
-	for key, value := range actualConfig {
-
-		defaultValue, ok := defaultConfig[key]
-		if !ok {
-			output[key] = value
-			continue
-		}
-
-		switch v := value.(type) {
-		case int:
-			defaultV, ok := defaultValue.(int)
-			if !ok || defaultV != v {
-				output[key] = v
-			}
-		case string:
-			defaultV, ok := defaultValue.(string)
-			if !ok || defaultV != v {
-				output[key] = v
-			}
-		case bool:
-			defaultV, ok := defaultValue.(bool)
-			if !ok || defaultV != v {
-				output[key] = v
-			}
-		case []interface{}:
-			defaultV, ok := defaultValue.([]interface{})
-			if !ok || !reflect.DeepEqual(defaultV, v) {
-				output[key] = v
-			}
-		case float64:
-			defaultV, ok := defaultValue.(float64)
-			if !ok || !reflect.DeepEqual(defaultV, v) {
-				output[key] = v
-			}
-		case map[interface{}]interface{}:
-			defaultV, ok := defaultValue.(map[interface{}]interface{})
-			if !ok {
-				output[key] = value
-			}
-			diff, err := diffConfig(defaultV, v)
-			if err != nil {
-				return nil, err
-			}
-			if len(diff) > 0 {
-				output[key] = diff
-			}
-		default:
-			return nil, fmt.Errorf("unsupported type %T", v)
-		}
-	}
-
-	return output, nil
-}
-
-func diffLimitsConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
-	for tenant, tenantValues := range actualConfig {
-		tenantValuesObj, err := yamlMarshalUnmarshal(tenantValues)
-		if err != nil {
-			return nil, err
-		}
-		tenantDiff, err := diffConfig(defaultConfig, tenantValuesObj)
-		if err != nil {
-			return nil, err
-		}
-		output[tenant] = tenantDiff
-	}
-	return output, nil
-}
-
 func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var output interface{}
 		switch r.URL.Query().Get("mode") {
 		case "diff":
-			defaultCfgObj, err := yamlMarshalUnmarshal(defaultCfg)
+			defaultCfgObj, err := util.YAMLMarshalUnmarshal(defaultCfg)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			actualCfgObj, err := yamlMarshalUnmarshal(actualCfg)
+			actualCfgObj, err := util.YAMLMarshalUnmarshal(actualCfg)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			diff, err := diffConfig(defaultCfgObj, actualCfgObj)
+			diff, err := util.DiffConfig(defaultCfgObj, actualCfgObj)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -235,45 +143,6 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 			output = actualCfg
 		}
 
-		util.WriteYAMLResponse(w, output)
-	}
-}
-
-func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var output interface{}
-		runtimeConfig := runtimeCfgManager.GetConfig()
-		if runtimeConfig == nil {
-			util.WriteTextResponse(w, "runtime config file doesn't exist")
-			return
-		}
-		switch r.URL.Query().Get("mode") {
-		case "diff":
-			defaultLimitsObj, err := yamlMarshalUnmarshal(defaultLimits)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			runtimeCfgObj, err := yamlMarshalUnmarshal(runtimeConfig)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			limitsCfgObj, err := yamlMarshalUnmarshal(runtimeCfgObj["overrides"])
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			limitsDiff, err := diffLimitsConfig(defaultLimitsObj, limitsCfgObj)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			runtimeCfgObj["overrides"] = limitsDiff
-			output = runtimeCfgObj
-		default:
-			output = runtimeConfig
-		}
 		util.WriteYAMLResponse(w, output)
 	}
 }

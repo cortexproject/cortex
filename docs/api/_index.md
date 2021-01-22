@@ -52,6 +52,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
 | [Alertmanager configs](#alertmanager-configs) | Alertmanager | `GET /multitenant_alertmanager/configs` |
+| [Alertmanager ring status](#alertmanager-ring-status) | Alertmanager | `GET /multitenant_alertmanager/ring` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
@@ -650,6 +651,7 @@ GET /status
 
 Displays a web page with the current status of the Alertmanager, including the Alertmanager cluster members.
 
+<<<<<<< HEAD
 ### Alertmanager configs
 
 ```
@@ -657,6 +659,15 @@ GET /multitenant_alertmanager/configs
 ```
 
 List all Alertmanager configurations that are currently loaded. This endpoint returns a YAML dictionary with all the Alertmanager configurations and `200` status code on success.
+=======
+### Alertmanager ring status
+
+```
+GET /multitenant_alertmanager/ring
+```
+
+Displays a web page with the Alertmanager hash ring status, including the state, healthy and last heartbeat time of each Alertmanager instance.
+>>>>>>> eb02c0dc3bd9c4010baa9c77b84647111b1a013b
 
 ### Alertmanager UI
 

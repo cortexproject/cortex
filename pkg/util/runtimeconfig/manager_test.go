@@ -111,7 +111,7 @@ func TestNewOverridesManager(t *testing.T) {
 	require.NotNil(t, overridesManager.GetConfig())
 }
 
-func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
+func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 	tempFile, err := ioutil.TempFile("", "test-validation")
 	require.NoError(t, err)
 	require.NoError(t, tempFile.Close())
@@ -195,7 +195,7 @@ func TestOverridesManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.NotNil(t, overridesManager.GetConfig())
 }
 
-func TestOverridesManager_ListenerChannel(t *testing.T) {
+func TestManager_ListenerChannel(t *testing.T) {
 	config, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
@@ -235,7 +235,7 @@ func TestOverridesManager_ListenerChannel(t *testing.T) {
 	}
 }
 
-func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
+func TestManager_StopClosesListenerChannels(t *testing.T) {
 	_, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
 	overridesManager, err := NewRuntimeConfigManager(overridesManagerConfig, nil)
@@ -253,4 +253,28 @@ func TestOverridesManager_StopClosesListenerChannels(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("channel not closed")
 	}
+}
+
+func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
+	// Create an invalid runtime config file.
+	tempFile, err := ioutil.TempFile("", "invalid-config")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.Remove(tempFile.Name()))
+	})
+
+	_, err = tempFile.Write([]byte("!invalid!"))
+	require.NoError(t, err)
+	require.NoError(t, tempFile.Close())
+
+	// Create the config manager and start it.
+	cfg := ManagerConfig{
+		ReloadPeriod: time.Second,
+		LoadPath:     tempFile.Name(),
+		Loader:       testLoadOverrides,
+	}
+
+	m, err := NewRuntimeConfigManager(cfg, nil)
+	require.NoError(t, err)
+	require.Error(t, services.StartAndAwaitRunning(context.Background(), m))
 }

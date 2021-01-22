@@ -2,6 +2,13 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Add api to list all tenant alertmanager configs and ruler rules. #3259
+   - `GET /multitenant_alertmanager/configs`
+   - `GET /ruler/rules`
+
+## 1.7.0 in progress
+
+* [CHANGE] FramedSnappy encoding support has been removed from Push and Remote Read APIs. This means Prometheus 1.6 support has been removed and the oldest Prometheus version supported in the remote write is 1.7. #3682
 * [CHANGE] Ruler: removed the flag `-ruler.evaluation-delay-duration-deprecated` which was deprecated in 1.4.0. Please use the `ruler_evaluation_delay_duration` per-tenant limit instead. #3693
 * [CHANGE] Removed the flags `-<prefix>.grpc-use-gzip-compression` which were deprecated in 1.3.0: #3693
   * `-query-scheduler.grpc-client-config.grpc-use-gzip-compression`: use `-query-scheduler.grpc-client-config.grpc-compression` instead
@@ -10,12 +17,27 @@
   * `-bigtable.grpc-use-gzip-compression`: use `-bigtable.grpc-compression` instead
   * `-ingester.client.grpc-use-gzip-compression`: use `-ingester.client.grpc-compression` instead
   * `-querier.frontend-client.grpc-use-gzip-compression`: use `-querier.frontend-client.grpc-compression` instead
-* [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595
+* [CHANGE] Querier: it's not required to set `-frontend.query-stats-enabled=true` in the querier anymore to enable query statistics logging in the query-frontend. The flag is now required to be configured only in the query-frontend and it will be propagated to the queriers. #3595 #3693
 * [CHANGE] Blocks storage: compactor is now required when running a Cortex cluster with the blocks storage, because it also keeps the bucket index updated. #3583
 * [CHANGE] Blocks storage: block deletion marks are now stored in a per-tenant global markers/ location too, other than within the block location. The compactor, at startup, will copy deletion marks from the block location to the global location. This migration is required only once, so you can safely disable it via `-compactor.block-deletion-marks-migration-enabled=false` once new compactor has successfully started once in your cluster. #3583
 * [CHANGE] OpenStack Swift: the default value for the `-ruler.storage.swift.container-name` and `-swift.container-name` config options has changed from `cortex` to empty string. If you were relying on the default value, you should set it back to `cortex`. #3660
+* [CHANGE] HA Tracker: configured replica label is now verified against label value length limit (`-validation.max-length-label-value`). #3668
+* [CHANGE] Distributor: `extend_writes` field in YAML configuration has moved from `lifecycler` (inside `ingester_config`) to `distributor_config`. This doesn't affect command line option `-distributor.extend-writes`, which stays the same. #3719
+* [CHANGE] Alertmanager: Deprecated `-cluster.` CLI flags in favor of their `-alertmanager.cluster.` equivalent. The deprecated flags (and their respective YAML config options) are: #3677
+  * `-cluster.listen-address` in favor of `-alertmanager.cluster.listen-address`
+  * `-cluster.advertise-address` in favor of `-alertmanager.cluster.advertise-address`
+  * `-cluster.peer` in favor of `-alertmanager.cluster.peers`
+  * `-cluster.peer-timeout` in favor of `-alertmanager.cluster.peer-timeout`
+* [CHANGE] Blocks storage: the default value of `-blocks-storage.bucket-store.sync-interval` has been changed from `5m` to `15m`. #3724
 * [FEATURE] Querier: Queries can be federated across multiple tenants. The tenants IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` request header. This is an experimental feature, which can be enabled by setting `-tenant-federation.enabled=true` on all Cortex services. #3250
-* [ENHANCEMENT] Blocks storage: introduced a per-tenant bucket index, periodically updated by the compactor, used to avoid full bucket scanning done by queriers, store-gateways and rulers. The bucket index is updated by the compactor during blocks cleanup, on every `-compactor.cleanup-interval`. #3553 #3555 #3561 #3583 #3625
+* [ENHANCEMENT] Allow specifying JAEGER_ENDPOINT instead of sampling server or local agent port. #3682
+* [FEATURE] Alertmanager: introduced the experimental option `-alertmanager.sharding-enabled` to shard tenants across multiple Alertmanager instances. This feature is still under heavy development and its usage is discouraged. The following new metrics are exported by the Alertmanager: #3664
+  * `cortex_alertmanager_ring_check_errors_total`
+  * `cortex_alertmanager_sync_configs_total`
+  * `cortex_alertmanager_sync_configs_failed_total`
+  * `cortex_alertmanager_tenants_discovered`
+  * `cortex_alertmanager_tenants_owned`
+* [ENHANCEMENT] Blocks storage: introduced a per-tenant bucket index, periodically updated by the compactor, used to avoid full bucket scanning done by queriers, store-gateways and rulers. The bucket index is updated by the compactor during blocks cleanup, on every `-compactor.cleanup-interval`. #3553 #3555 #3561 #3583 #3625 #3711 #3715
 * [ENHANCEMENT] Blocks storage: introduced an option `-blocks-storage.bucket-store.bucket-index.enabled` to enable the usage of the bucket index in the querier, store-gateway and ruler. When enabled, the querier, store-gateway and ruler will use the bucket index to find a tenant's blocks instead of running the periodic bucket scan. The following new metrics are exported by the querier and ruler: #3614 #3625
   * `cortex_bucket_index_loads_total`
   * `cortex_bucket_index_load_failures_total`
@@ -44,11 +66,15 @@
 * [ENHANCEMENT] Disabled in-memory shuffle-sharding subring cache in the store-gateway, ruler and compactor. This should reduce the memory utilisation in these services when shuffle-sharding is enabled, without introducing a significantly increase CPU utilisation. #3601
 * [ENHANCEMENT] Shuffle sharding: optimised subring generation used by shuffle sharding. #3601
 * [ENHANCEMENT] New /runtime_config endpoint that returns the defined runtime configuration in YAML format. The returned configuration includes overrides. #3639
+* [ENHANCEMENT] Query-frontend: included the parameter name failed to validate in HTTP 400 message. #3703
+* [ENHANCEMENT] Fail to startup Cortex if provided runtime config is invalid. #3707
+* [ENHANCEMENT] Alertmanager: Add flags to customize the cluster configuration: #3667
+  * `-alertmanager.cluster.gossip-interval`: The interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across cluster more quickly at the expense of increased bandwidth usage.
+  * `-alertmanager.cluster.push-pull-interval`: The interval between gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.
+* [ENHANCEMENT] Distributor: change the error message returned when a received series has too many label values. The new message format has the series at the end and this plays better with Prometheus logs truncation. #3718
+  - From: `sample for '<series>' has <value> label names; limit <value>`
+  - To: `series has too many labels (actual: <value>, limit: <value>) series: '<series>'`
 * [BUGFIX] Allow `-querier.max-query-lookback` use `y|w|d` suffix like deprecated `-store.max-look-back-period`. #3598
-* [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
-* [ENHANCEMENT] Add api to list all tenant alertmanager configs and ruler rules. #3259
-   - `GET /multitenant_alertmanager/configs`
-   - `GET /ruler/rules`
 * [BUGFIX] Memberlist: Entry in the ring should now not appear again after using "Forget" feature (unless it's still heartbeating). #3603
 * [BUGFIX] Ingester: do not close idle TSDBs while blocks shipping is in progress. #3630
 * [BUGFIX] Ingester: correctly update `cortex_ingester_memory_users` and `cortex_ingester_active_series` when a tenant's idle TSDB is closed, when running Cortex with the blocks storage. #3646
@@ -59,6 +85,9 @@
 * [BUGFIX] Query-Frontend: avoid creating many small sub-queries by discarding cache extents under 5 minutes #3653
 * [BUGFIX] Ruler: Ensure the stale markers generated for evaluated rules respect the configured `-ruler.evaluation-delay-duration`. This will avoid issues with samples with NaN be persisted with timestamps set ahead of the next rule evaluation. #3687
 * [BUGFIX] Alertmanager: don't serve HTTP requests until Alertmanager has fully started. Serving HTTP requests earlier may result in loss of configuration for the user. #3679
+* [BUGFIX] Do not log "failed to load config" if runtime config file is empty. #3706
+* [BUGFIX] Do not allow to use a runtime config file containing multiple YAML documents. #3706
+* [BUGFIX] Memberlist: fixed panic caused by race condition in `armon/go-metrics` used by memberlist client. #3724
 
 ## 1.6.0
 
@@ -108,6 +137,7 @@
   * `cortex_compactor_tenants_processing_failed`
 * [ENHANCEMENT] Added new experimental API endpoints: `POST /purger/delete_tenant` and `GET /purger/delete_tenant_status` for deleting all tenant data. Only works with blocks storage. Compactor removes blocks that belong to user marked for deletion. #3549 #3558
 * [ENHANCEMENT] Chunks storage: add option to use V2 signatures for S3 authentication. #3560
+* [ENHANCEMENT] HA Tracker: Added new limit `ha_max_clusters` to set the max number of clusters tracked for single user. This limit is disabled by default. #3668
 * [BUGFIX] Query-Frontend: `cortex_query_seconds_total` now return seconds not nanoseconds. #3589
 * [BUGFIX] Blocks storage ingester: fixed some cases leading to a TSDB WAL corruption after a partial write to disk. #3423
 * [BUGFIX] Blocks storage: Fix the race between ingestion and `/flush` call resulting in overlapping blocks. #3422

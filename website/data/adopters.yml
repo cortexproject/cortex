@@ -2,16 +2,22 @@
 adopters:
 - name: Aspen Mesh
   url: https://aspenmesh.io/
-  logo: aspen-mesh.png
+  logo: aspen_mesh.png
+- name: AWS
+  url: https://aws.amazon.com/prometheus/
+  logo: AWS_logo_RGB.png
 - name: Buoyant
   url: https://buoyant.io/
   logo: buoyant.svg
 - name: DigitalOcean
   url: https://www.digitalocean.com/
-  logo: digitalocean.png
+  logo: digital_ocean.png
 - name: Electronic Arts
   url: https://www.ea.com/
   logo: ea.png
+- name: Etsy
+  url: https://www.etsy.com/
+  logo: etsy.svg
 - name: EverQuote
   url: https://www.everquote.com/
   logo: everquote.png
@@ -32,7 +38,7 @@ adopters:
   logo: platform9.svg
 - name: REWE Digital
   url: https://rewe-digital.com/
-  logo: rewe.png
+  logo: rewe_digital.png
 - name: SysEleven
   url: https://www.syseleven.de/
   logo: syseleven.png

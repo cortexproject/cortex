@@ -387,7 +387,7 @@ blocks_storage:
     # enabled), in order to look for changes (new blocks shipped by ingesters
     # and blocks deleted by retention or compaction).
     # CLI flag: -blocks-storage.bucket-store.sync-interval
-    [sync_interval: <duration> | default = 5m]
+    [sync_interval: <duration> | default = 15m]
 
     # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
     # allocations.

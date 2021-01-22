@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -12,7 +13,7 @@ import (
 // Given limits are usually loaded via a config file, and that
 // a configmap is limited to 1MB, we need to minimise the limits file.
 // One way to do it is via YAML anchors.
-func TestLoadingAnchoredRuntimeYAML(t *testing.T) {
+func TestLoadRuntimeConfig_ShouldLoadAnchoredYAML(t *testing.T) {
 	yamlFile := strings.NewReader(`
 overrides:
   '1234': &id001
@@ -48,4 +49,51 @@ overrides:
 	require.Equal(t, limits, *loadedLimits["1234"])
 	require.Equal(t, limits, *loadedLimits["1235"])
 	require.Equal(t, limits, *loadedLimits["1236"])
+}
+
+func TestLoadRuntimeConfig_ShouldLoadEmptyFile(t *testing.T) {
+	yamlFile := strings.NewReader(`
+# This is an empty YAML.
+`)
+	actual, err := loadRuntimeConfig(yamlFile)
+	require.NoError(t, err)
+	assert.Equal(t, &runtimeConfigValues{}, actual)
+}
+
+func TestLoadRuntimeConfig_ShouldReturnErrorOnMultipleDocumentsInTheConfig(t *testing.T) {
+	cases := []string{
+		`
+---
+---
+`, `
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+`, `
+---
+# This is an empty YAML.
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+`, `
+---
+overrides:
+  '1234':
+    ingestion_burst_size: 123
+---
+# This is an empty YAML.
+`,
+	}
+
+	for _, tc := range cases {
+		actual, err := loadRuntimeConfig(strings.NewReader(tc))
+		assert.Equal(t, errMultipleDocuments, err)
+		assert.Nil(t, actual)
+	}
 }

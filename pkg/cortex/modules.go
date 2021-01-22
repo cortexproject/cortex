@@ -172,7 +172,6 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
-	t.Cfg.Distributor.ExtendWrites = t.Cfg.Ingester.LifecyclerConfig.RingConfig.ExtendWrites
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -671,6 +670,8 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
+	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.HTTPListenPort
+
 	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, util.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
@@ -728,6 +729,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Alertmanager.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	return t.MemberlistKV, nil
 }
@@ -834,7 +836,7 @@ func (t *Cortex) setupModuleManager() error {
 		TableManager:             {API},
 		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
 		Configs:                  {API},
-		AlertManager:             {API},
+		AlertManager:             {API, MemberlistKV},
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},

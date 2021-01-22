@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -234,13 +235,14 @@ receivers:
 	defer os.RemoveAll(tempDir)
 
 	// Create the Multitenant Alertmanager.
-	am := createMultitenantAlertmanager(&MultitenantAlertmanagerConfig{
-		ExternalURL: externalURL,
-		DataDir:     tempDir,
-	}, nil, nil, mockStore, log.NewNopLogger(), nil)
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
 	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
 
-	err = am.updateConfigs()
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
 	router := mux.NewRouter()
@@ -261,8 +263,4 @@ receivers:
 	require.Len(t, am.alertmanagers, 2)
 	require.True(t, am.alertmanagers["user1"].IsActive())
 	require.True(t, am.alertmanagers["user2"].IsActive())
-
-	// Pause the alertmanager
-	am.alertmanagers["user1"].Stop()
-	am.alertmanagers["user2"].Stop()
 }

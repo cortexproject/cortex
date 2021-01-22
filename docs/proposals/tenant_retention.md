@@ -30,9 +30,9 @@ Using the "overrides" mechanism (part of runtime config) already allows for per-
 
 ### retention period field
 
-We propose to introduce just one new field `RetentionPeriodPerTenant` in the Limits struct(defined at pkg/util/validation/limits.go).
+We propose to introduce just one new field `RetentionPeriod` in the Limits struct(defined at pkg/util/validation/limits.go).
 
-`RetentionPeriodPerTenant` setting how long historical metric data retention period per-tenant. `0` is disable.
+`RetentionPeriod` setting how long historical metric data retention period per-tenant. `0` is disable.
 
 Runtime config is reloaded periodically (defaults to 10 seconds), so we can update the retention settings on-the-fly.
 
@@ -40,6 +40,6 @@ For each tenant, if a tenant-specific *runtime_config* value exists, it will be 
 
 ### Implementation
 
-A BlocksCleaner within the Compactor run periodically(which defaults to 1 hour) and the retention logic will insert into it. The logic should compare retention value to block `maxTime` and blocks that match `maxTime < now - retention` will be marked for delete.
+A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block `maxTime` and blocks that match `maxTime < now - retention` will be marked for delete.
 
 Blocks deletion is not immediate, but follows a two steps process. See [soft-and-hard-blocks-deletion](https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion)

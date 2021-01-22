@@ -11,7 +11,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d
 	github.com/alicebob/miniredis v2.5.0+incompatible
-	github.com/armon/go-metrics v0.3.3
+	github.com/armon/go-metrics v0.3.6
 	github.com/aws/aws-sdk-go v1.35.31
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0

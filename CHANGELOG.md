@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+
+## 1.7.0 in progress
+
 * [CHANGE] FramedSnappy encoding support has been removed from Push and Remote Read APIs. This means Prometheus 1.6 support has been removed and the oldest Prometheus version supported in the remote write is 1.7. #3682
 * [CHANGE] Ruler: removed the flag `-ruler.evaluation-delay-duration-deprecated` which was deprecated in 1.4.0. Please use the `ruler_evaluation_delay_duration` per-tenant limit instead. #3693
 * [CHANGE] Removed the flags `-<prefix>.grpc-use-gzip-compression` which were deprecated in 1.3.0: #3693
@@ -85,6 +88,7 @@
 * [BUGFIX] Alertmanager: don't serve HTTP requests until Alertmanager has fully started. Serving HTTP requests earlier may result in loss of configuration for the user. #3679
 * [BUGFIX] Do not log "failed to load config" if runtime config file is empty. #3706
 * [BUGFIX] Do not allow to use a runtime config file containing multiple YAML documents. #3706
+* [BUGFIX] Memberlist: fixed panic caused by race condition in `armon/go-metrics` used by memberlist client. #3724
 
 ## 1.6.0
 

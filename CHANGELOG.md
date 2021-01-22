@@ -1,7 +1,10 @@
 # Changelog
 
 ## master / unreleased
-
+* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `<prefix>.s3.sse-encryption`, you should use the following config fields that have been added. #3651
+  - `<prefix>.s3.sse.type`
+  - `<prefix>.s3.sse.kms-key-id`
+  - `<prefix>.s3.sse.kms-encryption-context`
 
 ## 1.7.0 in progress
 
@@ -27,10 +30,6 @@
   * `-cluster.peer-timeout` in favor of `-alertmanager.cluster.peer-timeout`
 * [CHANGE] Blocks storage: the default value of `-blocks-storage.bucket-store.sync-interval` has been changed from `5m` to `15m`. #3724
 * [FEATURE] Querier: Queries can be federated across multiple tenants. The tenants IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` request header. This is an experimental feature, which can be enabled by setting `-tenant-federation.enabled=true` on all Cortex services. #3250
-* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `<prefix>.s3.sse-encryption`, you should use the following config fields that have been added. #3651
-  - `<prefix>.s3.sse.type`
-  - `<prefix>.s3.sse.kms-key-id`
-  - `<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Alertmanager: introduced the experimental option `-alertmanager.sharding-enabled` to shard tenants across multiple Alertmanager instances. This feature is still under heavy development and its usage is discouraged. The following new metrics are exported by the Alertmanager: #3664
   * `cortex_alertmanager_ring_check_errors_total`
   * `cortex_alertmanager_sync_configs_total`

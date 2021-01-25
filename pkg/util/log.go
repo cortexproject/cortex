@@ -1,8 +1,6 @@
 package util
 
 import (
-	"context"
-	"fmt"
 	"os"
 
 	"github.com/go-kit/kit/log"
@@ -11,12 +9,13 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 
-	"github.com/cortexproject/cortex/pkg/util/logutil"
+	logutil "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
 	// Logger is a shared go-kit logger.
 	// TODO: Change all components to take a non-global logger via their constructors.
+	// Deprecated and moved to `pkg/util/log`. Prefer accepting a non-global logger as an argument.
 	Logger = logutil.Logger
 
 	logMessages = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -94,45 +93,4 @@ func (pl *PrometheusLogger) Log(kv ...interface{}) error {
 	}
 	logMessages.WithLabelValues(l).Inc()
 	return nil
-}
-
-// WithContext returns a Logger that has information about the current user in
-// its details.
-//
-// e.g.
-//   log := util.WithContext(ctx)
-//   log.Errorf("Could not chunk chunks: %v", err)
-func WithContext(ctx context.Context, l log.Logger) log.Logger {
-	return logutil.WithContext(ctx, l)
-}
-
-// WithUserID returns a Logger that has information about the current user in
-// its details.
-func WithUserID(userID string, l log.Logger) log.Logger {
-	return logutil.WithUserID(userID, l)
-}
-
-// WithTraceID returns a Logger that has information about the traceID in
-// its details.
-func WithTraceID(traceID string, l log.Logger) log.Logger {
-	return logutil.WithTraceID(traceID, l)
-}
-
-// WithSourceIPs returns a Logger that has information about the source IPs in
-// its details.
-func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
-	return log.With(l, "sourceIPs", sourceIPs)
-}
-
-// CheckFatal prints an error and exits with error code 1 if err is non-nil
-func CheckFatal(location string, err error) {
-	if err != nil {
-		logger := level.Error(Logger)
-		if location != "" {
-			logger = log.With(logger, "msg", "error "+location)
-		}
-		// %+v gets the stack trace from errors using github.com/pkg/errors
-		logger.Log("err", fmt.Sprintf("%+v", err))
-		os.Exit(1)
-	}
 }

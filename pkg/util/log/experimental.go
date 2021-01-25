@@ -1,4 +1,4 @@
-package logutil
+package log
 
 import (
 	"github.com/go-kit/kit/log/level"

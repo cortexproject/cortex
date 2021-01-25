@@ -171,6 +171,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      cfg.LookbackDelta,
+		EnableAtModifier:   true,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},

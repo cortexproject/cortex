@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -226,13 +228,20 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool {
+func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
 		if v == noStoreValue {
 			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
+	}
+
+	// If the @ modifier time is <= the query range end, then
+	// it is safe to cache since we cache the result even if the start
+	// and end were in the future.
+	if atModifierAfterEnd(req) {
+		return false
 	}
 
 	if s.cacheGenNumberLoader == nil {
@@ -257,6 +266,44 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, r Response) bool 
 	return true
 }
 
+func atModifierAfterEnd(r Request) bool {
+	query := r.GetQuery()
+	if !strings.Contains(query, "@") {
+		return false
+	}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		// We are being pessimistic in such cases.
+		return true
+	}
+
+	end := r.GetEnd()
+	atModAfterEnd := false
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch e := n.(type) {
+		case *parser.VectorSelector:
+			if e.Timestamp != nil && *e.Timestamp > end {
+				atModAfterEnd = true
+				return errors.New("at modifier after end")
+			}
+		case *parser.MatrixSelector:
+			ts := e.VectorSelector.(*parser.VectorSelector).Timestamp
+			if ts != nil && *ts > end {
+				atModAfterEnd = true
+				return errors.New("at modifier after end")
+			}
+		case *parser.SubqueryExpr:
+			if e.Timestamp != nil && *e.Timestamp > end {
+				atModAfterEnd = true
+				return errors.New("at modifier after end")
+			}
+		}
+		return nil
+	})
+
+	return atModAfterEnd
+}
+
 func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
 	for _, hv := range r.GetHeaders() {
 		if hv.GetName() != headerName {
@@ -275,7 +322,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	if !s.shouldCacheResponse(ctx, response) {
+	if !s.shouldCacheResponse(ctx, r, response) {
 		return response, []Extent{}, nil
 	}
 
@@ -315,7 +362,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	for _, reqResp := range reqResps {
 		responses = append(responses, reqResp.Response)
-		if !s.shouldCacheResponse(ctx, reqResp.Response) {
+		if !s.shouldCacheResponse(ctx, r, reqResp.Response) {
 			continue
 		}
 		extent, err := toExtent(ctx, reqResp.Request, s.extractor.ResponseWithoutHeaders(reqResp.Response))

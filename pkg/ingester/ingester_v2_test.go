@@ -2117,9 +2117,7 @@ func TestIngester_flushing(t *testing.T) {
 				require.Equal(t, 23*time.Hour.Milliseconds(), blocks[0].Meta().MinTime)
 				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[0].Meta().MaxTime) // Block maxt is exclusive.
 
-				// Even though we added 24*time.Hour.Milliseconds()+1, the Head compaction
-				// will leave Head's mint to 24*time.Hour.Milliseconds(). Hence the block mint.
-				require.Equal(t, 24*time.Hour.Milliseconds(), blocks[1].Meta().MinTime)
+				require.Equal(t, 24*time.Hour.Milliseconds()+1, blocks[1].Meta().MinTime)
 				require.Equal(t, 26*time.Hour.Milliseconds(), blocks[1].Meta().MaxTime)
 
 				require.Equal(t, 50*time.Hour.Milliseconds()+1, blocks[2].Meta().MaxTime) // Block maxt is exclusive.

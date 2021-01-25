@@ -3,6 +3,9 @@
 ## master / unreleased
 
 * [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
+* [ENHANCEMENT] Prometheus upgraded. #3739
+  * `@` modifier in PromQL.
+  * Avoid unnecessary `runtime.GC()` during compactions.
 
 ## 1.7.0 in progress
 

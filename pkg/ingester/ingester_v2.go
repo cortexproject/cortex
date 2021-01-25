@@ -1501,7 +1501,7 @@ func (i *Ingester) getOldestUnshippedBlockMetric() float64 {
 func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 	// We add a slight jitter to make sure that if the head compaction interval and ship interval are set to the same
 	// value they don't clash (if they both continuously run at the same exact time, the head compaction may not run
-	// because can't successfully cas the state).
+	// because can't successfully change the state).
 	shipTicker := time.NewTicker(util.DurationWithJitter(i.cfg.BlocksStorageConfig.TSDB.ShipInterval, 0.01))
 	defer shipTicker.Stop()
 
@@ -1584,6 +1584,9 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 
 		// The shipper meta file could be updated even if the Sync() returned an error,
 		// so it's safer to update it each time at least a block has been uploaded.
+		// Moreover, the shipper meta file could be updated even if no blocks are uploaded
+		// (eg. blocks removed due to retention) but doesn't cause any harm not updating
+		// the cached list of blocks in such case, so we're not handling it.
 		if uploaded > 0 {
 			if err := userDB.updateCachedShippedBlocks(); err != nil {
 				level.Error(util.Logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -21,7 +21,6 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -285,7 +284,7 @@ func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
-func (d *Distributor) tokenForLabels(userID string, labels []client.LabelAdapter) (uint32, error) {
+func (d *Distributor) tokenForLabels(userID string, labels []ingester_client.LabelAdapter) (uint32, error) {
 	if d.cfg.ShardByAllLabels {
 		return shardByAllLabels(userID, labels), nil
 	}
@@ -307,28 +306,28 @@ func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 
 
 func shardByMetricName(userID string, metricName string) uint32 {
 	h := shardByUser(userID)
-	h = client.HashAdd32(h, metricName)
+	h = ingester_client.HashAdd32(h, metricName)
 	return h
 }
 
 func shardByUser(userID string) uint32 {
-	h := client.HashNew32()
-	h = client.HashAdd32(h, userID)
+	h := ingester_client.HashNew32()
+	h = ingester_client.HashAdd32(h, userID)
 	return h
 }
 
 // This function generates different values for different order of same labels.
-func shardByAllLabels(userID string, labels []client.LabelAdapter) uint32 {
+func shardByAllLabels(userID string, labels []ingester_client.LabelAdapter) uint32 {
 	h := shardByUser(userID)
 	for _, label := range labels {
-		h = client.HashAdd32(h, label.Name)
-		h = client.HashAdd32(h, label.Value)
+		h = ingester_client.HashAdd32(h, label.Name)
+		h = ingester_client.HashAdd32(h, label.Value)
 	}
 	return h
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.
-func removeLabel(labelName string, labels *[]client.LabelAdapter) {
+func removeLabel(labelName string, labels *[]ingester_client.LabelAdapter) {
 	for i := 0; i < len(*labels); i++ {
 		pair := (*labels)[i]
 		if pair.Name == labelName {
@@ -366,14 +365,14 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
-func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (client.PreallocTimeseries, error) {
+func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, userID string) (ingester_client.PreallocTimeseries, error) {
 	labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, d.cfg.SkipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
 	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
-	samples := make([]client.Sample, 0, len(ts.Samples))
+	samples := make([]ingester_client.Sample, 0, len(ts.Samples))
 	for _, s := range ts.Samples {
 		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
 			return emptyPreallocSeries, err
@@ -381,8 +380,8 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 		samples = append(samples, s)
 	}
 
-	return client.PreallocTimeseries{
-			TimeSeries: &client.TimeSeries{
+	return ingester_client.PreallocTimeseries{
+			TimeSeries: &ingester_client.TimeSeries{
 				Labels:  ts.Labels,
 				Samples: samples,
 			},
@@ -391,7 +390,7 @@ func (d *Distributor) validateSeries(ts ingester_client.PreallocTimeseries, user
 }
 
 // Push implements client.IngesterServer
-func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*client.WriteResponse, error) {
+func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteRequest) (*ingester_client.WriteResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -413,8 +412,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
-	validatedTimeseries := make([]client.PreallocTimeseries, 0, len(req.Timeseries))
-	validatedMetadata := make([]*client.MetricMetadata, 0, len(req.Metadata))
+	validatedTimeseries := make([]ingester_client.PreallocTimeseries, 0, len(req.Timeseries))
+	validatedMetadata := make([]*ingester_client.MetricMetadata, 0, len(req.Metadata))
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
@@ -424,7 +423,7 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
 		if err != nil {
 			// Ensure the request slice is reused if the series get deduped.
-			client.ReuseSlice(req.Timeseries)
+			ingester_client.ReuseSlice(req.Timeseries)
 
 			if errors.Is(err, replicasNotMatchError{}) {
 				// These samples have been deduped.
@@ -462,8 +461,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		}
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
-			l := relabel.Process(client.FromLabelAdaptersToLabels(ts.Labels), mrc...)
-			ts.Labels = client.FromLabelsToLabelAdapters(l)
+			l := relabel.Process(ingester_client.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			ts.Labels = ingester_client.FromLabelsToLabelAdapters(l)
 		}
 
 		// If we found both the cluster and replica labels, we only want to include the cluster label when
@@ -533,16 +532,16 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
 		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		client.ReuseSlice(req.Timeseries)
+		ingester_client.ReuseSlice(req.Timeseries)
 
-		return &client.WriteResponse{}, firstPartialErr
+		return &ingester_client.WriteResponse{}, firstPartialErr
 	}
 
 	now := time.Now()
 	totalN := validatedSamples + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
-		client.ReuseSlice(req.Timeseries)
+		ingester_client.ReuseSlice(req.Timeseries)
 
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
@@ -567,8 +566,8 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 	}
 
 	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.IngesterDesc, indexes []int) error {
-		timeseries := make([]client.PreallocTimeseries, 0, len(indexes))
-		var metadata []*client.MetricMetadata
+		timeseries := make([]ingester_client.PreallocTimeseries, 0, len(indexes))
+		var metadata []*ingester_client.MetricMetadata
 
 		for _, i := range indexes {
 			if i >= initialMetadataIndex {
@@ -590,14 +589,14 @@ func (d *Distributor) Push(ctx context.Context, req *client.WriteRequest) (*clie
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
-	}, func() { client.ReuseSlice(req.Timeseries) })
+	}, func() { ingester_client.ReuseSlice(req.Timeseries) })
 	if err != nil {
 		return nil, err
 	}
-	return &client.WriteResponse{}, firstPartialErr
+	return &ingester_client.WriteResponse{}, firstPartialErr
 }
 
-func sortLabelsIfNeeded(labels []client.LabelAdapter) {
+func sortLabelsIfNeeded(labels []ingester_client.LabelAdapter) {
 	// no need to run sort.Slice, if labels are already sorted, which is most of the time.
 	// we can avoid extra memory allocations (mostly interface-related) this way.
 	sorted := true
@@ -619,14 +618,14 @@ func sortLabelsIfNeeded(labels []client.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []client.PreallocTimeseries, metadata []*client.MetricMetadata, source client.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, timeseries []ingester_client.PreallocTimeseries, metadata []*ingester_client.MetricMetadata, source ingester_client.WriteRequest_SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
 	c := h.(ingester_client.IngesterClient)
 
-	req := client.WriteRequest{
+	req := ingester_client.WriteRequest{
 		Timeseries: timeseries,
 		Metadata:   metadata,
 		Source:     source,
@@ -650,7 +649,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.IngesterDesc, time
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
-func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, ingester_client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
 	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.IngesterDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
@@ -668,12 +667,12 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 		return nil, err
 	}
 
-	req := &client.LabelValuesRequest{
+	req := &ingester_client.LabelValuesRequest{
 		LabelName:        string(labelName),
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 	}
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})
 	if err != nil {
@@ -682,7 +681,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
-		for _, v := range resp.(*client.LabelValuesResponse).LabelValues {
+		for _, v := range resp.(*ingester_client.LabelValuesResponse).LabelValues {
 			valueSet[v] = struct{}{}
 		}
 	}
@@ -705,11 +704,11 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 		return nil, err
 	}
 
-	req := &client.LabelNamesRequest{
+	req := &ingester_client.LabelNamesRequest{
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 	}
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.LabelNames(ctx, req)
 	})
 	if err != nil {
@@ -718,7 +717,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
-		for _, v := range resp.(*client.LabelNamesResponse).LabelNames {
+		for _, v := range resp.(*ingester_client.LabelNamesResponse).LabelNames {
 			valueSet[v] = struct{}{}
 		}
 	}
@@ -745,7 +744,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.MetricsForLabelMatchers(ctx, req)
 	})
 	if err != nil {
@@ -754,7 +753,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 	metrics := map[model.Fingerprint]model.Metric{}
 	for _, resp := range resps {
-		ms := ingester_client.FromMetricsForLabelMatchersResponse(resp.(*client.MetricsForLabelMatchersResponse))
+		ms := ingester_client.FromMetricsForLabelMatchersResponse(resp.(*ingester_client.MetricsForLabelMatchersResponse))
 		for _, m := range ms {
 			metrics[m.Fingerprint()] = m
 		}
@@ -778,7 +777,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 
 	req := &ingester_client.MetricsMetadataRequest{}
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
 	if err != nil {
@@ -788,7 +787,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 	result := []scrape.MetricMetadata{}
 	dedupTracker := map[ingester_client.MetricMetadata]struct{}{}
 	for _, resp := range resps {
-		r := resp.(*client.MetricsMetadataResponse)
+		r := resp.(*ingester_client.MetricsMetadataResponse)
 		for _, m := range r.Metadata {
 			// Given we look across all ingesters - dedup the metadata.
 			_, ok := dedupTracker[*m]
@@ -801,7 +800,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 				Metric: m.MetricFamilyName,
 				Help:   m.Help,
 				Unit:   m.Unit,
-				Type:   client.MetricMetadataMetricTypeToMetricType(m.GetType()),
+				Type:   ingester_client.MetricMetadataMetricTypeToMetricType(m.GetType()),
 			})
 		}
 	}
@@ -819,8 +818,8 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	// Make sure we get a successful response from all of them.
 	replicationSet.MaxErrors = 0
 
-	req := &client.UserStatsRequest{}
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client client.IngesterClient) (interface{}, error) {
+	req := &ingester_client.UserStatsRequest{}
+	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {
@@ -829,7 +828,7 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 
 	totalStats := &UserStats{}
 	for _, resp := range resps {
-		r := resp.(*client.UserStatsResponse)
+		r := resp.(*ingester_client.UserStatsResponse)
 		totalStats.IngestionRate += r.IngestionRate
 		totalStats.APIIngestionRate += r.ApiIngestionRate
 		totalStats.RuleIngestionRate += r.RuleIngestionRate
@@ -854,7 +853,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	// Add up by user, across all responses from ingesters
 	perUserTotals := make(map[string]UserStats)
 
-	req := &client.UserStatsRequest{}
+	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
 	// Not using d.ForReplicationSet(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)

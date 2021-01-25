@@ -7,6 +7,7 @@
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.
   * Prevent compaction loop in TSDB on data gap.
+* [ENHANCEMENT] Return server side performance metrics for query-frontend (using Server-timing header). #3685
 
 ## 1.7.0 in progress
 

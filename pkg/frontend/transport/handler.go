@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
+	ServiceTimingHeaderName   = "Server-Timing"
 )
 
 var (
@@ -112,6 +114,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hs := w.Header()
 	for h, vs := range resp.Header {
 		hs[h] = vs
+	}
+
+	if f.cfg.QueryStatsEnabled {
+		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
 	w.WriteHeader(resp.StatusCode)
@@ -200,4 +206,18 @@ func writeError(w http.ResponseWriter, err error) {
 		}
 	}
 	server.WriteError(w, err)
+}
+
+func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {
+	if stats != nil {
+		parts := make([]string, 0)
+		parts = append(parts, statsValue("querier_wall_time", stats.LoadWallTime()))
+		parts = append(parts, statsValue("response_time", queryResponseTime))
+		headers.Set(ServiceTimingHeaderName, strings.Join(parts, ", "))
+	}
+}
+
+func statsValue(name string, d time.Duration) string {
+	durationInMs := strconv.FormatFloat(float64(d)/float64(time.Millisecond), 'f', -1, 64)
+	return name + ";dur=" + durationInMs
 }

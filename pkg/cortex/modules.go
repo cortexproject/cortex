@@ -77,6 +77,7 @@ const (
 	BlocksPurger             string = "blocks-purger"
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
+	TenantFederation         string = "tenant-federation"
 	All                      string = "all"
 )
 
@@ -198,19 +199,19 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	var queryable prom_storage.SampleAndChunkQueryable
-	queryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
-
-	// Enable merge querier if multi tenant query federation is enabled
-	if t.Cfg.TenantFederation.Enabled {
-		queryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(queryable))
-	}
-
-	t.QuerierQueryable = queryable
+	t.QuerierQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer)
 
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
+	return nil, nil
+}
+
+// Enable merge querier if multi tenant query federation is enabled
+func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
+	if t.Cfg.TenantFederation.Enabled {
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable))
+	}
 	return nil, nil
 }
 
@@ -812,6 +813,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(BlocksPurger, t.initBlocksPurger, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(TenantFederation, t.initTenantFederation, modules.UserInvisibleModule)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -828,7 +830,7 @@ func (t *Cortex) setupModuleManager() error {
 		IngesterService:          {Overrides, Store, RuntimeConfig, MemberlistKV},
 		Flusher:                  {Store, API},
 		Queryable:                {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
-		Querier:                  {Queryable},
+		Querier:                  {TenantFederation},
 		StoreQueryable:           {Overrides, Store, MemberlistKV},
 		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
 		QueryFrontend:            {QueryFrontendTripperware},
@@ -842,6 +844,7 @@ func (t *Cortex) setupModuleManager() error {
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
 		BlocksPurger:             {Store, API},
 		Purger:                   {ChunksPurger, BlocksPurger},
+		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {

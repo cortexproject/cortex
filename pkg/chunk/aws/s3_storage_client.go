@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +23,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -72,6 +76,7 @@ type S3Config struct {
 	SSEEncryption    bool       `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig `yaml:"http_config"`
 	SignatureVersion string     `yaml:"signature_version"`
+	SessionToken     string     `yaml:"session_token"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -205,12 +210,46 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		s3Config = s3Config.WithRegion(cfg.Region)
 	}
 
+	role := os.Getenv("AWS_ROLE_ARN")
+
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
-		return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+		if role != "" {
+			sess, err := session.NewSession(s3Config)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "failed to create new s3 session")
+			}
+			awsSTS := sts.New(sess)
+			webIndentityToken, err := ioutil.ReadFile(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+			if err != nil {
+				return nil, nil, err
+			}
+			token := string(webIndentityToken)
+			sessName := strconv.FormatInt(time.Now().UnixNano(), 10)
+			role := os.Getenv("AWS_ROLE_ARN")
+			req, sessCred := awsSTS.AssumeRoleWithWebIdentityRequest(
+				&sts.AssumeRoleWithWebIdentityInput{
+					RoleSessionName:  &sessName,
+					WebIdentityToken: &token,
+					RoleArn:          &role,
+				},
+			)
+			err = req.Send()
+			if err != nil {
+				return nil, nil, err
+			}
+			cfg.AccessKeyID = aws.StringValue(sessCred.Credentials.AccessKeyId)
+			cfg.SecretAccessKey = aws.StringValue(sessCred.Credentials.SecretAccessKey)
+			cfg.SessionToken = aws.StringValue(sessCred.Credentials.SessionToken)
+		} else {
+			return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+		}
 	}
 
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" && cfg.SessionToken != "" {
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey, cfg.SessionToken)
+		s3Config = s3Config.WithCredentials(creds)
+	} else if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
 		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey, "")
 		s3Config = s3Config.WithCredentials(creds)
 	}

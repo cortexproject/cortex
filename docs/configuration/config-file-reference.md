@@ -1233,6 +1233,10 @@ storage:
     # CLI flag: -ruler.storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
 
+    # AWS Session Token
+    # CLI flag: -ruler.storage.s3.session-token
+    [session_token: <string> | default = ""]
+
     # Disable https on s3 connection.
     # CLI flag: -ruler.storage.s3.insecure
     [insecure: <boolean> | default = false]
@@ -1672,6 +1676,10 @@ storage:
     # AWS Secret Access Key
     # CLI flag: -alertmanager.storage.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
+
+    # AWS Session Token
+    # CLI flag: -ruler.storage.s3.session-token
+    [session_token: <string> | default = ""]
 
     # Disable https on s3 connection.
     # CLI flag: -alertmanager.storage.s3.insecure

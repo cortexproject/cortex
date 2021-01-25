@@ -767,7 +767,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *client.WriteRequest) (*clien
 	}
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
-	db.setLastUpdate(time.Now())
+	// If only invalid samples are pushed, don't change "last update", as TSDB was not modified.
+	if succeededSamplesCount > 0 {
+		db.setLastUpdate(time.Now())
+	}
 
 	// Increment metrics only if the samples have been successfully committed.
 	// If the code didn't reach this point, it means that we returned an error

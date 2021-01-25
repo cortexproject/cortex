@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
 
 ## 1.7.0 in progress
 

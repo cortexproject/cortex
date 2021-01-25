@@ -1678,7 +1678,7 @@ storage:
     [secret_access_key: <string> | default = ""]
 
     # AWS Session Token
-    # CLI flag: -ruler.storage.s3.session-token
+    # CLI flag: -alertmanager.storage.s3.session-token
     [session_token: <string> | default = ""]
 
     # Disable https on s3 connection.

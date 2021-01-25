@@ -1877,9 +1877,8 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 
 	// Create ingester
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 	require.NoError(t, err)
-	defer cleanup()
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
@@ -1925,9 +1924,8 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	// Create ingester
-	i, cleanup, err := newIngesterMockWithTSDBStorage(cfg, nil)
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 	require.NoError(t, err)
-	defer cleanup()
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck

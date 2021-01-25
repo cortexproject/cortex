@@ -104,7 +104,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "", "AWS Secret Access Key")
-        f.StringVar(&cfg.SessionToken, prefix+"s3.session-token", "", "AWS session token")
+	f.StringVar(&cfg.SessionToken, prefix+"s3.session-token", "", "AWS session token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AES256 AWS Server Side Encryption")
 
@@ -214,7 +214,8 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	role := os.Getenv("AWS_ROLE_ARN")
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
-		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" {
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" || 
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey == "" {
 		if role != "" {
 			sess, err := session.NewSession(s3Config)
 			if err != nil {
@@ -227,7 +228,6 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 			}
 			token := string(webIndentityToken)
 			sessName := strconv.FormatInt(time.Now().UnixNano(), 10)
-			role := os.Getenv("AWS_ROLE_ARN")
 			req, sessCred := awsSTS.AssumeRoleWithWebIdentityRequest(
 				&sts.AssumeRoleWithWebIdentityInput{
 					RoleSessionName:  &sessName,

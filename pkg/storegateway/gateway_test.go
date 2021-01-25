@@ -223,8 +223,8 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 	numUsers := 2
 	numBlocks := numUsers * 12
 	now := time.Now()
-	require.NoError(t, mockTSDB(path.Join(storageDir, "user-1"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
-	require.NoError(t, mockTSDB(path.Join(storageDir, "user-2"), 24, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000))
+	mockTSDB(t, path.Join(storageDir, "user-1"), 24, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
+	mockTSDB(t, path.Join(storageDir, "user-2"), 24, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
 
 	// Write the bucket index.
 	for _, userID := range []string{"user-1", "user-2"} {
@@ -647,8 +647,8 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	minT := now.Add(-1*time.Hour).Unix() * 1000
 	maxT := now.Unix() * 1000
 	step := (maxT - minT) / int64(numSeries)
-	require.NoError(t, mockTSDB(path.Join(storageDir, userID), numSeries, minT, maxT))
-	require.NoError(t, mockTSDB(path.Join(storageDir, userID), numSeries, minT, maxT))
+	mockTSDB(t, path.Join(storageDir, userID), numSeries, 0, minT, maxT)
+	mockTSDB(t, path.Join(storageDir, userID), numSeries, 0, minT, maxT)
 
 	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
@@ -761,7 +761,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 	now := time.Now()
 	minT := now.Add(-1*time.Hour).Unix() * 1000
 	maxT := now.Unix() * 1000
-	require.NoError(t, mockTSDB(path.Join(storageDir, userID), chunksQueried, minT, maxT))
+	mockTSDB(t, path.Join(storageDir, userID), chunksQueried, 0, minT, maxT)
 
 	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
@@ -839,13 +839,13 @@ func mockStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 
 // mockTSDB create 1+ TSDB blocks storing numSeries of series, each series
 // with 1 sample and its timestamp evenly distributed between minT and maxT.
-func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
+// If numBlocks > 0, then it uses numSeries only to find the distribution of
+// samples.
+func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int64) {
 	// Create a new TSDB on a temporary directory. The blocks
 	// will be then snapshotted to the input dir.
 	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 	defer os.RemoveAll(tempDir) //nolint:errcheck
 
 	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
@@ -853,34 +853,36 @@ func mockTSDB(dir string, numSeries int, minT, maxT int64) error {
 		MaxBlockDuration:  2 * time.Hour.Milliseconds(),
 		RetentionDuration: 15 * 24 * time.Hour.Milliseconds(),
 	})
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
 	db.DisableCompactions()
 
 	step := (maxT - minT) / int64(numSeries)
-	for i := 0; i < numSeries; i++ {
+	addSample := func(i int) {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
 		app := db.Appender(context.Background())
-		if _, err := app.Add(lbls, minT+(step*int64(i)), float64(i)); err != nil {
-			return err
+		_, err := app.Add(lbls, minT+(step*int64(i)), float64(i))
+		require.NoError(t, err)
+		require.NoError(t, app.Commit())
+		require.NoError(t, db.Compact())
+	}
+	if numBlocks > 0 {
+		i := 0
+		// Snapshot adds another block. Hence numBlocks-1.
+		for len(db.Blocks()) < numBlocks-1 {
+			addSample(i)
+			i++
 		}
-		if err := app.Commit(); err != nil {
-			return err
-		}
-
-		if err := db.Compact(); err != nil {
-			return err
+	} else {
+		for i := 0; i < numSeries; i++ {
+			addSample(i)
 		}
 	}
 
-	if err := db.Snapshot(dir, true); err != nil {
-		return err
-	}
+	require.NoError(t, db.Snapshot(dir, true))
 
-	return db.Close()
+	require.NoError(t, db.Close())
 }
 
 func generateSortedTokens(numTokens int) ring.Tokens {

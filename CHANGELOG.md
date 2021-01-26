@@ -7,6 +7,7 @@
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.
   * Prevent compaction loop in TSDB on data gap.
+* [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 
 ## 1.7.0 in progress
 

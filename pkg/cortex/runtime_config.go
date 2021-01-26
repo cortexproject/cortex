@@ -85,77 +85,47 @@ func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-ch
 		return outCh
 	}
 }
-
-func diffLimitsConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
-	for tenant, tenantValues := range actualConfig {
-		tenantValuesObj, err := util.YAMLMarshalUnmarshal(tenantValues)
-		if err != nil {
-			return nil, err
-		}
-		tenantDiff, err := util.DiffConfig(defaultConfig, tenantValuesObj)
-		if err != nil {
-			return nil, err
-		}
-		output[tenant] = tenantDiff
-	}
-	return output, nil
-}
-
 func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var output interface{}
-		runtimeConfig := runtimeCfgManager.GetConfig()
-		if runtimeConfig == nil {
+		cfg, ok := runtimeCfgManager.GetConfig().(*runtimeConfigValues)
+		if !ok || cfg == nil {
 			util.WriteTextResponse(w, "runtime config file doesn't exist")
 			return
 		}
+
+		var output interface{}
 		switch r.URL.Query().Get("mode") {
 		case "diff":
-			runtimeCfgObj, err := util.YAMLMarshalUnmarshal(runtimeConfig)
+			// Default runtime config is just empty struct, but to make diff work,
+			// we set defaultLimits for every tenant that exists in runtime config.
+			defaultCfg := runtimeConfigValues{}
+			defaultCfg.TenantLimits = map[string]*validation.Limits{}
+			for k, v := range cfg.TenantLimits {
+				if v != nil {
+					defaultCfg.TenantLimits[k] = &defaultLimits
+				}
+			}
+
+			cfgYaml, err := util.YAMLMarshalUnmarshal(cfg)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			if runtimeCfgObj["overrides"] != nil {
-				defaultLimitsObj, err := util.YAMLMarshalUnmarshal(defaultLimits)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				limitsCfgObj, err := util.YAMLMarshalUnmarshal(runtimeCfgObj["overrides"])
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				limitsDiff, err := diffLimitsConfig(defaultLimitsObj, limitsCfgObj)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				runtimeCfgObj["overrides"] = limitsDiff
+
+			defaultCfgYaml, err := util.YAMLMarshalUnmarshal(defaultCfg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
-			if runtimeCfgObj["multi_kv_config"] != nil {
-				defaultMultiKVObj, err := util.YAMLMarshalUnmarshal(&kv.MultiRuntimeConfig{})
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				multiKVCfgObj, err := util.YAMLMarshalUnmarshal(runtimeCfgObj["multi_kv_config"])
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				multKVDiff, err := util.DiffConfig(defaultMultiKVObj, multiKVCfgObj)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				runtimeCfgObj["multi_kv_config"] = multKVDiff
+
+			output, err = util.DiffConfig(defaultCfgYaml, cfgYaml)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
-			output = runtimeCfgObj
+
 		default:
-			output = runtimeConfig
+			output = cfg
 		}
 		util.WriteYAMLResponse(w, output)
 	}

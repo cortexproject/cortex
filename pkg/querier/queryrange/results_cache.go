@@ -266,6 +266,8 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	return true
 }
 
+var errAtModifierAfterEnd = errors.New("at modifier after end")
+
 func atModifierAfterEnd(r Request) bool {
 	query := r.GetQuery()
 	if !strings.Contains(query, "@") {
@@ -284,18 +286,18 @@ func atModifierAfterEnd(r Request) bool {
 		case *parser.VectorSelector:
 			if e.Timestamp != nil && *e.Timestamp > end {
 				atModAfterEnd = true
-				return errors.New("at modifier after end")
+				return errAtModifierAfterEnd
 			}
 		case *parser.MatrixSelector:
 			ts := e.VectorSelector.(*parser.VectorSelector).Timestamp
 			if ts != nil && *ts > end {
 				atModAfterEnd = true
-				return errors.New("at modifier after end")
+				return errAtModifierAfterEnd
 			}
 		case *parser.SubqueryExpr:
 			if e.Timestamp != nil && *e.Timestamp > end {
 				atModAfterEnd = true
-				return errors.New("at modifier after end")
+				return errAtModifierAfterEnd
 			}
 		}
 		return nil

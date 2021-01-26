@@ -84,6 +84,7 @@
 * [BUGFIX] Alertmanager: don't serve HTTP requests until Alertmanager has fully started. Serving HTTP requests earlier may result in loss of configuration for the user. #3679
 * [BUGFIX] Do not log "failed to load config" if runtime config file is empty. #3706
 * [BUGFIX] Do not allow to use a runtime config file containing multiple YAML documents. #3706
+* [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 
 ## 1.6.0
 

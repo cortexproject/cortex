@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -196,13 +199,14 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	replica1 := "replica1"
 	replica2 := "replica2"
 
+	reg := prometheus.NewPedanticRegistry()
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Store: "inmemory"},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -224,6 +228,19 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	assert.NoError(t, err)
 	err = c.checkReplica(context.Background(), "user", "c2", replica1)
 	assert.NoError(t, err)
+
+	// We expect no CAS operation failures.
+	metrics, err := reg.Gather()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(0), util.GetSumOfHistogramSampleCount(metrics, "cortex_kv_request_duration_seconds", labels.Selector{
+		labels.MustNewMatcher(labels.MatchEqual, "operation", "CAS"),
+		labels.MustNewMatcher(labels.MatchRegexp, "status_code", "5.*"),
+	}))
+	assert.Greater(t, util.GetSumOfHistogramSampleCount(metrics, "cortex_kv_request_duration_seconds", labels.Selector{
+		labels.MustNewMatcher(labels.MatchEqual, "operation", "CAS"),
+		labels.MustNewMatcher(labels.MatchRegexp, "status_code", "2.*"),
+	}), uint64(0))
 }
 
 func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
@@ -231,13 +248,14 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	replica1 := "replica1"
 	replica2 := "replica2"
 
+	reg := prometheus.NewPedanticRegistry()
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Store: "inmemory"},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -259,7 +277,13 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	err = c.checkReplica(context.Background(), "user", "c2", replica1)
 	assert.NoError(t, err)
 
-	// Wait more than the timeout.
+	// Reject samples from replica 2 in each cluster.
+	err = c.checkReplica(context.Background(), "user", "c1", replica2)
+	assert.Error(t, err)
+	err = c.checkReplica(context.Background(), "user", "c2", replica2)
+	assert.Error(t, err)
+
+	// Wait more than the failover timeout.
 	mtime.NowForce(start.Add(1100 * time.Millisecond))
 
 	// Accept a sample from c1/replica2.
@@ -271,6 +295,19 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	assert.Error(t, err)
 	err = c.checkReplica(context.Background(), "user", "c2", replica1)
 	assert.NoError(t, err)
+
+	// We expect no CAS operation failures.
+	metrics, err := reg.Gather()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(0), util.GetSumOfHistogramSampleCount(metrics, "cortex_kv_request_duration_seconds", labels.Selector{
+		labels.MustNewMatcher(labels.MatchEqual, "operation", "CAS"),
+		labels.MustNewMatcher(labels.MatchRegexp, "status_code", "5.*"),
+	}))
+	assert.Greater(t, util.GetSumOfHistogramSampleCount(metrics, "cortex_kv_request_duration_seconds", labels.Selector{
+		labels.MustNewMatcher(labels.MatchEqual, "operation", "CAS"),
+		labels.MustNewMatcher(labels.MatchRegexp, "status_code", "2.*"),
+	}), uint64(0))
 }
 
 // Test that writes only happen every update timeout.

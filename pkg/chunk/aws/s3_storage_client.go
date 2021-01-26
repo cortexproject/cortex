@@ -212,16 +212,17 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	role := os.Getenv("AWS_ROLE_ARN")
-	webIdentityToken, err := ioutil.ReadFile(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
-	if err != nil {
-		return nil, nil, err
-	}
-	token := string(webIdentityToken)
+	webIdentityToken := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey == "" {
-		if role != "" && token != "" {
+		if role != "" && webIdentityToken != "" {
+			webIdentityReadToken, err := ioutil.ReadFile(webIdentityToken)
+			if err != nil {
+				return nil, nil, err
+			}
+			token := string(webIdentityReadToken)
 			sess, err := session.NewSession(s3Config)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "failed to create new s3 session")

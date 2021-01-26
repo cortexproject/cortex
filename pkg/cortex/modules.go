@@ -491,7 +491,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 			Reg:              prometheus.DefaultRegisterer,
 			MaxSamples:       t.Cfg.Querier.MaxSamples,
 			Timeout:          t.Cfg.Querier.Timeout,
-			EnableAtModifier: true,
+			EnableAtModifier: t.Cfg.Querier.AtModifierEnabled,
 			NoStepSubqueryIntervalFn: func(int64) int64 {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},

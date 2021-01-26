@@ -87,6 +87,7 @@ pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.p
 pkg/storegateway/storegatewaypb/gateway.pb.go: pkg/storegateway/storegatewaypb/gateway.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
+pkg/alertmanager/alertmanager.pb.go: pkg/alertmanager/alertmanager.proto
 
 all: $(UPTODATE_FILES)
 test: protos

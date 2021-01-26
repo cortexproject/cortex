@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package alertmanagerpb;
+
+option go_package = "alertmanagerpb";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// Alertmanager interface exposed to the Alertmanager Distributor
+service Alertmanager {
+  rpc HandleWrite(WriteRequest) returns(WriteResponse) {};
+}
+
+message WriteRequest {
+  string UserID = 1;
+  httpgrpc.HTTPRequest httpRequest = 2;
+}
+
+message WriteResponse {
+  Status status = 1;
+  string error = 2;
+  httpgrpc.HTTPResponse httpResponse = 3;
+}
+
+enum Status {
+  OK = 0;
+  ERROR = 1;
+  SHUTTING_DOWN = 2;
+}

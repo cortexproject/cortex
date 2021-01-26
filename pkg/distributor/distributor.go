@@ -149,7 +149,7 @@ type Distributor struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-// Config contains the configuration require to
+// Config contains the configuration required to
 // create a Distributor
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`

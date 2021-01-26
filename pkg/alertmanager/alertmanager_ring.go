@@ -21,6 +21,10 @@ const (
 	// RingNameForServer is the name of the ring used by the alertmanager server.
 	RingNameForServer = "alertmanager"
 
+	// RingNameForClient is the name of the ring used by the alertmanager client (we need
+	// a different name to avoid clashing Prometheus metrics when running in single-binary).
+	RingNameForClient = "alertmanager-client"
+
 	// RingNumTokens is a safe default instead of exposing to config option to the user
 	// in order to simplify the config.
 	RingNumTokens = 128
@@ -77,7 +81,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), rfprefix+"instance-interface-names", "Name of network interface to read address from.")
 	f.StringVar(&cfg.InstanceAddr, rfprefix+"instance-addr", "", "IP address to advertise in the ring.")
-	f.IntVar(&cfg.InstancePort, rfprefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.http-listen-port).")
+	f.IntVar(&cfg.InstancePort, rfprefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, rfprefix+"instance-id", hostname, "Instance ID to register in the ring.")
 
 	cfg.RingCheckPeriod = 5 * time.Second

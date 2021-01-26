@@ -212,22 +212,25 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 	}
 
 	role := os.Getenv("AWS_ROLE_ARN")
+	webIdentityToken, err := ioutil.ReadFile(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+	token := string(webIdentityToken)
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||
-		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" || 
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey != "" ||
 		cfg.AccessKeyID == "" && cfg.SecretAccessKey == "" {
-		if role != "" {
+		if role != "" && token != "" {
 			sess, err := session.NewSession(s3Config)
 			if err != nil {
 				return nil, nil, errors.Wrap(err, "failed to create new s3 session")
 			}
 			awsSTS := sts.New(sess)
-			webIndentityToken, err := ioutil.ReadFile(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
 			if err != nil {
 				return nil, nil, err
 			}
-			token := string(webIndentityToken)
-			sessName := strconv.FormatInt(time.Now().UnixNano(), 10)
+			sessName := cfg.SessionToken
+			if sessName == "" {
+				sessName = strconv.FormatInt(time.Now().UnixNano(), 10)
+			}
 			req, sessCred := awsSTS.AssumeRoleWithWebIdentityRequest(
 				&sts.AssumeRoleWithWebIdentityInput{
 					RoleSessionName:  &sessName,

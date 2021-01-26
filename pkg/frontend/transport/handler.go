@@ -22,7 +22,7 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -148,7 +148,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"time_taken", queryResponseTime.String(),
 	}, formatQueryString(queryString)...)
 
-	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
@@ -170,7 +170,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"query_wall_time_seconds", stats.LoadWallTime().Seconds(),
 	}, formatQueryString(queryString)...)
 
-	level.Info(util.WithContext(r.Context(), f.log)).Log(logMessage...)
+	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {
@@ -180,7 +180,7 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	// Ensure the form has been parsed so all the parameters are present
 	err := r.ParseForm()
 	if err != nil {
-		level.Warn(util.WithContext(r.Context(), f.log)).Log("msg", "unable to parse request form", "err", err)
+		level.Warn(util_log.WithContext(r.Context(), f.log)).Log("msg", "unable to parse request form", "err", err)
 		return nil
 	}
 

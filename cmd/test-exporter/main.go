@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/testexporter/correctness"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -31,17 +32,17 @@ func main() {
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	if trace, err := tracing.NewFromEnv("test-exporter"); err != nil {
-		level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
+		level.Error(log.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
 	} else {
 		defer trace.Close()
 	}
 
 	server, err := server.New(serverConfig)
-	util.CheckFatal("initializing server", err)
+	log.CheckFatal("initializing server", err)
 	defer server.Shutdown()
 
 	runner, err := correctness.NewRunner(runnerConfig)
-	util.CheckFatal("initializing runner", err)
+	log.CheckFatal("initializing runner", err)
 	defer runner.Stop()
 
 	runner.Add(correctness.NewSimpleTestCase("now_seconds", func(t time.Time) float64 {
@@ -66,5 +67,5 @@ func main() {
 
 	prometheus.MustRegister(runner)
 	err = server.Run()
-	util.CheckFatal("running server", err)
+	log.CheckFatal("running server", err)
 }

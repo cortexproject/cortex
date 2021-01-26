@@ -213,6 +213,9 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 
 	role := os.Getenv("AWS_ROLE_ARN")
 	webIdentityToken, err := ioutil.ReadFile(os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+	if err != nil {
+		return nil, nil, err
+	}
 	token := string(webIdentityToken)
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey == "" ||

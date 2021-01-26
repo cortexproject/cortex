@@ -25,7 +25,7 @@ service Ingester {
   rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 }
 
-service Distributor {
+service PushOnlyIngester {
   rpc Push(WriteRequest) returns (WriteResponse) {};
 }
 

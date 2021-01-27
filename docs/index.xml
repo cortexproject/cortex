@@ -5764,7 +5764,7 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;/ul>
 &lt;p>For more information, please check out the &lt;a href="/docs/chunks-storage/">Chunks storage&lt;/a> documentation.&lt;/p>
 &lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
-&lt;p>The blocks storage is based on &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/">Prometheus TSDB&lt;/a>: it stores each tenant&amp;rsquo;s time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by few files storing the chunks and the block index.&lt;/p>
+&lt;p>The blocks storage is based on &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/">Prometheus TSDB&lt;/a>: it stores each tenant&amp;rsquo;s time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by a few files storing the chunks and the block index.&lt;/p>
 &lt;p>The TSDB chunk files contain the samples for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.&lt;/p>
 &lt;p>The blocks storage doesn&amp;rsquo;t require a dedicated storage backend for the index. The only requirement is an object store for the Block files, which can be:&lt;/p>
 &lt;ul>

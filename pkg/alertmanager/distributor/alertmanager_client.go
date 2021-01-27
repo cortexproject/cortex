@@ -3,7 +3,6 @@ package distributor
 import (
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,12 +10,33 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/client"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-func newAlertmanagerClientFactory(cfg grpcclient.Config, tlsCfg tls.ClientConfig, reg prometheus.Registerer) client.PoolFactory {
+// AlertmanagerClient is the interface that should be implemented by any client used to read/write data to an alertmanager via GPRC.
+type AlertmanagerClient interface {
+	am_client.AlertmanagerClient
+
+	// RemoteAddress returns the address of the remote alertmanager and is used to uniquely
+	// identify an alertmanager instance.
+	RemoteAddress() string
+}
+
+func newAlertmanagerClientFactory(tlsCfg tls.ClientConfig, reg prometheus.Registerer) client.PoolFactory {
+	// We prefer sane defaults instead of exposing further config options.
+	//TODO: Figure out if these defaults make sense.
+	cfg := grpcclient.Config{
+		MaxRecvMsgSize:      100 << 20,
+		MaxSendMsgSize:      16 << 20,
+		GRPCCompression:     "",
+		RateLimit:           0,
+		RateLimitBurst:      0,
+		BackoffOnRatelimits: false,
+	}
+
 	rd := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:   "cortex",
 		Name:        "alertmanager_client_request_duration_seconds",
@@ -42,14 +62,14 @@ func dialAlertmanagerClient(cfg grpcclient.Config, tlsCfg tls.ClientConfig, addr
 	}
 
 	return &alertmanagerClient{
-		AlertmanagerClient: alertmanagerpb.NewAlertmanagerClient(conn),
+		AlertmanagerClient: am_client.NewAlertmanagerClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		conn:               conn,
 	}, nil
 }
 
 type alertmanagerClient struct {
-	alertmanagerpb.AlertmanagerClient
+	am_client.AlertmanagerClient
 	grpc_health_v1.HealthClient
 	conn *grpc.ClientConn
 }
@@ -66,17 +86,8 @@ func (c *alertmanagerClient) RemoteAddress() string {
 	return c.conn.Target()
 }
 
-func newAlertmanagerClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls.ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
-	// We prefer sane defaults instead of exposing further config options.
-	//TODO: Figure out if these defaults make sense.
-	clientCfg := grpcclient.Config{
-		MaxRecvMsgSize:      100 << 20,
-		MaxSendMsgSize:      16 << 20,
-		GRPCCompression:     "",
-		RateLimit:           0,
-		RateLimitBurst:      0,
-		BackoffOnRatelimits: false,
-	}
+func newAlertmanagerClientPool(discovery client.PoolServiceDiscovery, factory client.PoolFactory, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,
 		HealthCheckEnabled: true,
@@ -84,11 +95,10 @@ func newAlertmanagerClientPool(discovery client.PoolServiceDiscovery, tlsCfg tls
 	}
 
 	clientsCount := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Namespace:   "cortex",
-		Name:        "alertmanager_clients",
-		Help:        "The current number of alertmanager clients in the pool.",
-		ConstLabels: map[string]string{"client": "alertmanager-distributor"},
+		Namespace: "cortex",
+		Name:      "alertmanager_distributor_alertmanager_clients",
+		Help:      "The current number of alertmanager clients in the pool.",
 	})
 
-	return client.NewPool("alertmanager", poolCfg, discovery, newAlertmanagerClientFactory(clientCfg, tlsCfg, reg), clientsCount, logger)
+	return client.NewPool("alertmanager", poolCfg, discovery, factory, clientsCount, logger)
 }

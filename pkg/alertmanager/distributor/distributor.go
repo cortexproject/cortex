@@ -3,47 +3,36 @@ package distributor
 import (
 	"context"
 	"flag"
-	"go.uber.org/atomic"
+	"hash/fnv"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
-
-	"golang.org/x/sync/errgroup"
-
-	"github.com/cortexproject/cortex/pkg/util/tls"
-
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-
-	"github.com/cortexproject/cortex/pkg/alertmanager"
-
-	"github.com/weaveworks/common/httpgrpc/server"
-
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/services"
-
 	"github.com/go-kit/kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/user"
+
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/client"
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
-
-// AlertmanagerSet is the interface used to get the clients to write/read to a set of alertmanagers.
-type AlertmanagerSet interface {
-	services.Service
-
-	// GetClientsFor returns the alertmanager clients that should be used to
-	// write/read to a particular set of alertmanagers for a given user.
-	GetClientsFor(userID string) ([]AlertmanagerClient, error)
-}
 
 // Config contains the configuration required to
 // create a Distributor
 type Config struct {
 	RemoteTimeout      time.Duration    `yaml:"remote_timeout"`
 	AlertmanagerClient tls.ClientConfig `yaml:"alertmanager_client"`
+
+	// For testing and for extending the ingester by adding calls to the client
+	AlertmanagerClientFactory client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -59,7 +48,9 @@ type Distributor struct {
 	cfg              Config
 	requestsInFlight sync.WaitGroup
 
-	alertmanagers AlertmanagerSet
+	alertmanagerRing ring.ReadRing
+	alertmanagerPool *client.Pool
+	replication      int
 
 	// Manager for subservices (AlertmanagerSet)
 	subservices        *services.Manager
@@ -74,9 +65,13 @@ type Distributor struct {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, amConfig alertmanager.MultitenantAlertmanagerConfig, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func New(cfg Config, alertmanagersRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
+	}
+
+	if cfg.AlertmanagerClientFactory == nil {
+		cfg.AlertmanagerClientFactory = newAlertmanagerClientFactory(cfg.AlertmanagerClient, reg)
 	}
 
 	d = &Distributor{
@@ -84,36 +79,14 @@ func New(cfg Config, amConfig alertmanager.MultitenantAlertmanagerConfig, logger
 		logger: logger,
 	}
 
-	// Initialize the alertmanager ring.
-	amRingCfg := amConfig.ShardingRing.ToRingConfig()
-	alertmanagerssRingBackend, err := kv.NewClient(
-		amRingCfg.KVStore,
-		ring.GetCodec(),
-		kv.RegistererWithKVName(reg, "distributor-alertmanager"),
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create alertmanager ring backend")
-	}
+	d.alertmanagerRing = alertmanagersRing
+	d.alertmanagerPool = newAlertmanagerClientPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClientFactory, logger, reg)
+	d.replication = alertmanagersRing.ReplicationFactor()
 
-	alertmanagersRing, err := ring.NewWithStoreClientAndStrategy(amRingCfg, alertmanager.RingNameForClient, alertmanager.RingKey, alertmanagerssRingBackend, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create alertmanager ring client")
-	}
-
-	if reg != nil {
-		reg.MustRegister(alertmanagersRing)
-	}
-
-	alertmanagers, err := newAlertmanagerReplicationSet(alertmanagersRing, cfg.AlertmanagerClient, logger, reg)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create alertmanager set")
-	}
-
-	d.alertmanagers = alertmanagers
 	d.initMetrics(reg)
 	d.replicationFactor.Set(float64(alertmanagersRing.ReplicationFactor()))
 
-	d.subservices, err = services.NewManager(alertmanagers)
+	d.subservices, err = services.NewManager(alertmanagersRing, d.alertmanagerPool)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +134,7 @@ func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
-func (d *Distributor) ServeHTTPAsGRPC(w http.ResponseWriter, r *http.Request) {
+func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) {
 	//TODO: Initialise tracing here.
 
 	d.requestsInFlight.Add(1)
@@ -173,156 +146,101 @@ func (d *Distributor) ServeHTTPAsGRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := server.HTTPRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	clients, err := d.alertmanagers.GetClientsFor(userID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var (
-		//TODO: This is probably not the right context
-		g, gCtx  = errgroup.WithContext(r.Context())
-		sucesses atomic.Int32
-	)
-	for _, cl := range clients {
-		// Change variables scope since it will be used in a goroutine.
-		c := cl
-		g.Go(func() error {
-			resp, err := c.HandleWrite(gCtx, &alertmanagerpb.WriteRequest{
-				UserID:      userID,
-				HttpRequest: req,
-			})
-
-			if err != nil {
-				return errors.Wrapf(err, "failed to proxy request to alertmanager #{c.RemoteAddress()}")
-			}
-			if resp.GetStatus() == alertmanagerpb.OK {
-				sucesses.Inc()
-			}
-
-			return nil
-		})
+	if r.Method == http.MethodGet {
+		d.doRead(userID, w, r)
+	} else {
+		d.doWrite(userID, w, r)
 	}
 }
 
-//
-//// ServeHTTP forwards the requests to the appropriate alertmanagers.
-//func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-//	d.requestsInFlight.Add(1)
-//	defer d.requestsInFlight.Done()
-//
-//	userID, err := tenant.TenantID(req.Context())
-//	if err != nil {
-//		http.Error(w, err.Error(), http.StatusUnauthorized)
-//		return
-//	}
-//	level.Debug(d.logger).Log("msg", "alertmanager distributor request", "path", req.URL.Path, "user", userID)
-//	d.receivedRequests.WithLabelValues(userID).Inc()
-//	// TODO: Add some limits.
-//
-//	// TODO(codesome): Do any validation here so that AMs don't send any 4xx.
-//	// This is tricky because some AM might not have the user and some might have.
-//
-//	// http.Request.Clone() does not do a deep copy, hence copying the body.
-//	// https://github.com/golang/go/issues/36095#issuecomment-568239806.
-//	var b bytes.Buffer
-//	if req.Body != nil {
-//		if _, err := b.ReadFrom(req.Body); err != nil {
-//			level.Error(d.logger).Log("msg", "Error reading request body", "user", userID, "err", err)
-//			w.WriteHeader(http.StatusBadRequest)
-//			return
-//		}
-//		req.Body = ioutil.NopCloser(&b)
-//	}
-//
-//	callback := func(am ring.IngesterDesc) (retErr error) {
-//		d.amSends.WithLabelValues(am.Addr).Inc()
-//		defer func() {
-//			if retErr != nil {
-//				d.amSendFailures.WithLabelValues(am.Addr).Inc()
-//			}
-//		}()
-//
-//		reqURL, err := url.Parse("http://" + path.Join(am.Addr, req.URL.Path))
-//		if err != nil {
-//			return errors.Wrap(err, "creating alertmanager URL")
-//		}
-//
-//		// Use a background context to make sure all alertmanagers get alerts even if we return early.
-//		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-//		defer cancel()
-//		localCtx = user.InjectOrgID(localCtx, userID)
-//		if sp := opentracing.SpanFromContext(req.Context()); sp != nil {
-//			localCtx = opentracing.ContextWithSpan(localCtx, sp)
-//		}
-//
-//		newReq := req.Clone(localCtx)
-//		newReq.RequestURI = ""
-//		newReq.URL = reqURL
-//		if req.Body != nil {
-//			newReq.Body = ioutil.NopCloser(bytes.NewReader(b.Bytes()))
-//		}
-//
-//		resp, err := d.client.Do(newReq)
-//		defer func() {
-//			if err != nil || resp.Body == nil {
-//				return
-//			}
-//			if err := resp.Body.Close(); err != nil {
-//				level.Error(d.logger).Log("msg", "Error closing alertmanager response body", "user", userID, "err", err)
-//			}
-//		}()
-//
-//		if err != nil {
-//			return err
-//		}
-//
-//		if resp.StatusCode/100 != 2 {
-//			return &amReqError{status: resp.StatusCode}
-//		}
-//
-//		return nil
-//	}
-//
-//	if strings.HasPrefix(req.URL.Path, d.alertmanagerHTTPPrefix) {
-//		// Only requests with alertmanager prefix are for tenant specific alertmanger.
-//		// Hence we only shard them.
-//		key := shardByUser(userID)
-//		err = ring.DoBatch(req.Context(), ring.Write, d.amRing, []uint32{key}, func(am ring.IngesterDesc, _ []int) error {
-//			return callback(am)
-//		}, func() {})
-//	} else {
-//		// TODO(codesome): other modules would be sending the config change, etc,
-//		// to all alertmanagers right now. Change it to send to _one_ distributor.
-//		// It could be just a config change and no code changes required.
-//		err = ring.DoAll(req.Context(), d.amRing, callback, func() {})
-//	}
-//
-//	if err == nil {
-//		w.WriteHeader(http.StatusOK)
-//		return
-//	}
-//	if amErr, ok := err.(*amReqError); ok {
-//		w.WriteHeader(amErr.status)
-//		return
-//	}
-//	level.Error(d.logger).Log("msg", "Error forwarding requests to alertmanager", "user", userID, "err", err)
-//	w.WriteHeader(http.StatusInternalServerError)
-//}
-//
-//type amReqError struct {
-//	status int
-//}
-//
-//func (e amReqError) Error() string {
-//	if e.status != 0 {
-//		return fmt.Sprintf("status code %d", e.status)
-//	}
-//	return ""
-//}
+func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request) {
+	source := util.GetSourceIPsFromOutgoingCtx(r.Context())
+
+	err := ring.DoBatch(r.Context(), ring.Write, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
+		// Use a background context to make sure all alertmanagers get the request even if we return early.
+		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+		defer cancel()
+		localCtx = user.InjectOrgID(localCtx, userID)
+		if sp := opentracing.SpanFromContext(r.Context()); sp != nil {
+			localCtx = opentracing.ContextWithSpan(localCtx, sp)
+		}
+		// Get clientIP(s) from Context and add it to localCtx
+		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
+
+		resp, err := d.doRequest(localCtx, am, userID, r)
+		if err != nil {
+			return err
+		}
+
+		if resp.GetStatus() != am_client.OK {
+			return errors.New("alertmanager grpc request not ok")
+		}
+
+		return nil
+	}, func() {})
+
+	if err == nil {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request) {
+	key := shardByUser(userID)
+	replicationSet, err := d.alertmanagerRing.Get(key, ring.Read, nil, nil, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+	}
+
+	// Until we have a mechanism to combine the results from multiple alertmanagers,
+	// we forward the request to only only of the alertmanagers.
+	resp, err := d.doRequest(r.Context(), replicationSet.Ingesters[0], userID, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	if resp.GetStatus() != am_client.OK {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	if int(resp.HttpResponse.Code) != http.StatusOK {
+		w.WriteHeader(int(resp.HttpResponse.Code))
+		return
+	}
+
+	_, err = w.Write(resp.HttpResponse.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, userID string, r *http.Request) (*am_client.Response, error) {
+	c, err := d.alertmanagerPool.GetClientFor(am.Addr)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
+	}
+
+	req, err := server.HTTPRequest(r)
+	if err != nil {
+		return nil, errors.Wrap(err, "create server HTTPRequest")
+	}
+
+	amClient := c.(AlertmanagerClient)
+	resp, err := amClient.HandleRequest(ctx, &am_client.Request{
+		UserID:      userID,
+		HttpRequest: req,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to proxy request to alertmanager %s", amClient.RemoteAddress())
+	}
+
+	return resp, err
+}
+
+func shardByUser(userID string) uint32 {
+	ringHasher := fnv.New32a()
+	// Hasher never returns err.
+	_, _ = ringHasher.Write([]byte(userID))
+	return ringHasher.Sum32()
+}

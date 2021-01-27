@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -232,6 +233,7 @@ type MultitenantAlertmanager struct {
 	// Ring used for sharding alertmanager instances.
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
+	distributor    *distributor.Distributor
 
 	// Subservices manager (ring, lifecycler)
 	subservices        *services.Manager
@@ -265,7 +267,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg distributor.Config, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -331,10 +333,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		}
 	}
 
-	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, logger, registerer)
+	return createMultitenantAlertmanager(cfg, distCfg, fallbackConfig, peer, store, ringStore, logger, registerer)
 }
 
-func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg distributor.Config, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	am := &MultitenantAlertmanager{
 		cfg:                 cfg,
 		fallbackConfig:      string(fallbackConfig),
@@ -399,6 +401,8 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		if am.registry != nil {
 			am.registry.MustRegister(am.ring)
 		}
+
+		am.makeDistributor(distCfg, am.registry, logger)
 	}
 
 	if registerer != nil {
@@ -408,6 +412,21 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 	am.Service = services.NewBasicService(am.starting, am.run, am.stopping)
 
 	return am, nil
+}
+
+func (am *MultitenantAlertmanager) makeDistributor(distCfg distributor.Config, reg prometheus.Registerer, logger log.Logger) (err error) {
+	// Initialize the alertmanager ring for reading.
+	amRingCfg := am.cfg.ShardingRing.ToRingConfig()
+	alertmanagersRing, err := ring.NewWithStrategy(amRingCfg, RingNameForClient, RingKey, "alertmanager-distributor", reg, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	if err != nil {
+		return errors.Wrap(err, "failed to create alertmanager ring client for distributor")
+	}
+	if reg != nil {
+		reg.MustRegister(alertmanagersRing)
+	}
+
+	am.distributor, err = distributor.New(distCfg, alertmanagersRing, log.With(logger, "component", "AlertmanagerDistributor"), reg)
+	return nil
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
@@ -422,7 +441,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}()
 
 	if am.cfg.ShardingEnabled {
-		if am.subservices, err = services.NewManager(am.ringLifecycler, am.ring); err != nil {
+		if am.subservices, err = services.NewManager(am.ringLifecycler, am.ring, am.distributor); err != nil {
 			return errors.Wrap(err, "failed to start alertmanager's subservices")
 		}
 

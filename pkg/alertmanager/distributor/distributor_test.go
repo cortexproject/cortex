@@ -1,16 +1,20 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager"
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -20,17 +24,27 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
+)
+
+const (
+	// RingKey is the key under which we store the alertmanager ring in the KVStore.
+	RingKey = "alertmanager"
+
+	// RingNameForServer is the name of the ring used by the alertmanager server.
+	RingNameForServer = "alertmanager"
 )
 
 func TestDistributor_ServeHTTP(t *testing.T) {
-	amPrefix := "/alertmanager"
 	cases := []struct {
 		name               string
 		numAM, numHappyAM  int
 		replicationFactor  int
-		route              string
 		metricNames        []string
+		isRead             bool
 		expStatusCode      int
 		expectedTotalCalls int
 		expectedMetrics    string
@@ -40,7 +54,6 @@ func TestDistributor_ServeHTTP(t *testing.T) {
 			numAM:              4,
 			numHappyAM:         4,
 			replicationFactor:  3,
-			route:              amPrefix + "/api/v1/alerts",
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 3,
 			metricNames:        []string{"alertmanager_distributor_received_requests_total"},
@@ -54,7 +67,6 @@ func TestDistributor_ServeHTTP(t *testing.T) {
 			numAM:              1,
 			numHappyAM:         1,
 			replicationFactor:  3,
-			route:              amPrefix + "/api/v1/alerts",
 			expStatusCode:      http.StatusInternalServerError,
 			expectedTotalCalls: 0,
 		}, {
@@ -62,61 +74,70 @@ func TestDistributor_ServeHTTP(t *testing.T) {
 			numAM:              5,
 			numHappyAM:         2, // Though we have 2 happy, it will hit 2 unhappy AM.
 			replicationFactor:  3,
-			route:              amPrefix + "/api/v1/alerts",
 			expStatusCode:      http.StatusInternalServerError,
 			expectedTotalCalls: 3,
 		}, {
-			name:               "Request without AM prefix is sent to all AM",
+			name:               "Read is sent to only 1 AM",
 			numAM:              5,
 			numHappyAM:         5,
 			replicationFactor:  3,
-			route:              "/not_am_prefix/foo",
+			isRead:             true,
 			expStatusCode:      http.StatusOK,
-			expectedTotalCalls: 5,
+			expectedTotalCalls: 1,
 		},
 	}
 
+	route := "/alertmanager/api/v1/alerts"
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d, ams, _, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor, amPrefix)
+			d, ams, _, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor)
 			t.Cleanup(cleanup)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
-			url := "http://127.0.0.1:9999" + c.route
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+			url := "http://127.0.0.1:9999" + route
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte{1, 2, 3, 4}))
 			require.NoError(t, err)
+			if c.isRead {
+				req.Method = http.MethodGet
+			}
+			req.RequestURI = url
 
 			w := httptest.NewRecorder()
-			d.ServeHTTP(w, req)
+			d.DistributeRequest(w, req)
 			resp := w.Result()
 
 			require.Equal(t, c.expStatusCode, resp.StatusCode)
 
-			totalReqCount := 0
-			for _, a := range ams {
-				routesReceived := len(a.receivedRequests)
-				if routesReceived == 0 {
-					// This AM did not receive any requests.
-					continue
+			// Since the response is sent as soon as the quorum is reached, when we
+			// reach this point the 3rd AM may not have received the request yet.
+			// To avoid flaky test we retry until we hit the desired state within a reasonable timeout.
+			test.Poll(t, time.Second, true, func() interface{} {
+				totalReqCount := 0
+				for _, a := range ams {
+					routesReceived := len(a.receivedRequests)
+					if routesReceived == 0 {
+						// This AM did not receive any requests.
+						continue
+					}
+
+					require.Equal(t, 1, routesReceived)
+					routeMap, ok := a.receivedRequests[route]
+					require.True(t, ok)
+
+					// The status could be something other than overall
+					// expected status because of quorum logic.
+					reqCount := 0
+					for _, count := range routeMap {
+						reqCount += count
+					}
+					// AM should not get duplicate requests.
+					require.Equal(t, 1, reqCount)
+					totalReqCount += reqCount
 				}
 
-				require.Equal(t, 1, routesReceived)
-				routeMap, ok := a.receivedRequests[c.route]
-				require.True(t, ok)
-
-				// The status could be something other than overall
-				// expected status because of quorum logic.
-				reqCount := 0
-				for _, count := range routeMap {
-					reqCount += count
-				}
-				// AM should not get duplicate requests.
-				require.Equal(t, 1, reqCount)
-				totalReqCount += reqCount
-			}
-
-			require.Equal(t, c.expectedTotalCalls, totalReqCount)
+				return c.expectedTotalCalls == totalReqCount
+			})
 
 			// TODO(codesome): Not getting any metrics here. Investigate.
 			//if c.expectedMetrics != "" {
@@ -129,7 +150,7 @@ func TestDistributor_ServeHTTP(t *testing.T) {
 
 }
 
-func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, amPrefix string) (*Distributor, []*mockAlertmanager, *prometheus.Registry, func()) {
+func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distributor, []*mockAlertmanager, *prometheus.Registry, func()) {
 	ams := []*mockAlertmanager{}
 	for i := 0; i < numHappyAM; i++ {
 		ams = append(ams, newMockAlertmanager(t, i, true))
@@ -140,6 +161,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, amPrefix st
 
 	// Use a real ring with a mock KV store to test ring RF logic.
 	amDescs := map[string]ring.IngesterDesc{}
+	amByAddr := map[string]*mockAlertmanager{}
 	for i, a := range ams {
 		amDescs[a.myAddr] = ring.IngesterDesc{
 			Addr:                a.myAddr,
@@ -149,10 +171,11 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, amPrefix st
 			RegisteredTimestamp: time.Now().Add(-2 * time.Hour).Unix(),
 			Tokens:              []uint32{uint32((math.MaxUint32 / numAM) * i)},
 		}
+		amByAddr[a.myAddr] = ams[i]
 	}
 
 	kvStore := consul.NewInMemoryClient(ring.GetCodec())
-	err := kvStore.CAS(context.Background(), alertmanager.RingKey,
+	err := kvStore.CAS(context.Background(), RingKey,
 		func(_ interface{}) (interface{}, bool, error) {
 			return &ring.Desc{
 				Ingesters: amDescs,
@@ -167,14 +190,19 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, amPrefix st
 		},
 		HeartbeatTimeout:  60 * time.Minute,
 		ReplicationFactor: replicationFactor,
-	}, alertmanager.RingNameForServer, alertmanager.RingKey, nil)
+	}, RingNameForServer, RingKey, nil)
 	require.NoError(t, err)
 
 	var distributorCfg Config
 	flagext.DefaultValues(&distributorCfg)
 
+	factory := func(addr string) (ring_client.PoolClient, error) {
+		return amByAddr[addr], nil
+	}
+	distributorCfg.AlertmanagerClientFactory = factory
+
 	reg := prometheus.NewRegistry()
-	d, err := New(distributorCfg, amPrefix, amRing, amRing, reg, util.Logger)
+	d, err := New(distributorCfg, amRing, util.Logger, reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
@@ -185,51 +213,58 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, amPrefix st
 	return d, ams, reg, func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
 		for _, a := range ams {
-			a.close()
+			require.NoError(t, a.Close())
 		}
 	}
 }
 
 type mockAlertmanager struct {
+	am_client.AlertmanagerClient
+	grpc_health_v1.HealthClient
 	t *testing.T
 	// receivedRequests is map of route -> statusCode -> number of requests.
 	receivedRequests map[string]map[int]int
 	myAddr           string
 	happy            bool
-	server           *http.Server
 }
 
 func newMockAlertmanager(t *testing.T, idx int, happy bool) *mockAlertmanager {
-	am := &mockAlertmanager{
+	return &mockAlertmanager{
 		t:                t,
 		receivedRequests: make(map[string]map[int]int),
 		myAddr:           fmt.Sprintf("127.0.0.1:%05d", 10000+idx),
 		happy:            happy,
 	}
-	am.server = &http.Server{Addr: am.myAddr, Handler: am}
-	go func() {
-		require.Equal(t, http.ErrServerClosed, am.server.ListenAndServe())
-	}()
-	return am
 }
 
-func (am *mockAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	m, ok := am.receivedRequests[req.URL.Path]
+func (am *mockAlertmanager) HandleRequest(_ context.Context, in *am_client.Request, _ ...grpc.CallOption) (*am_client.Response, error) {
+	u, err := url.Parse(in.HttpRequest.Url)
+	require.NoError(am.t, err)
+	path := u.Path
+	m, ok := am.receivedRequests[path]
 	if !ok {
 		m = make(map[int]int)
-		am.receivedRequests[req.URL.Path] = m
+		am.receivedRequests[path] = m
 	}
 
 	if am.happy {
 		m[http.StatusOK]++
-		w.WriteHeader(http.StatusOK)
-		return
+		return &am_client.Response{
+			Status: am_client.OK,
+			HttpResponse: &httpgrpc.HTTPResponse{
+				Code: http.StatusOK,
+			},
+		}, nil
 	}
 
 	m[http.StatusInternalServerError]++
-	w.WriteHeader(http.StatusInternalServerError)
+	return nil, errors.New("StatusInternalServerError")
 }
 
-func (am *mockAlertmanager) close() {
-	require.NoError(am.t, am.server.Close())
+func (am *mockAlertmanager) Close() error {
+	return nil
+}
+
+func (am *mockAlertmanager) RemoteAddress() string {
+	return am.myAddr
 }

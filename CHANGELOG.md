@@ -13,6 +13,7 @@
   * Prevent compaction loop in TSDB on data gap.
 * [ENHANCEMENT] Return server side performance metrics for query-frontend (using Server-timing header). #3685
 * [ENHANCEMENT] Runtime Config: Add a `mode` query parameter for the runtime config endpoint. `/runtime_config?mode=diff` now shows the YAML runtime configuration with all values that differ from the defaults. #3700
+* [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 
 ## 1.7.0 in progress

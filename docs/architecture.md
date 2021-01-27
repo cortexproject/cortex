@@ -152,9 +152,9 @@ Incoming series are not immediately written to the storage but kept in memory an
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
 - **`PENDING`**<br />
-  The ingester has just started. While in this state, the ingester doesn't receive neither write and read requests, and could be waiting for time series data transfer from another ingester if running the chunks storage and the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) is enabled.
+  The ingester has just started. While in this state, the ingester doesn't receive write or read requests, and could be waiting for time series data transfer from another ingester if running the chunks storage and the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) is enabled.
 - **`JOINING`**<br />
-  The ingester is starting up and joining the ring. While in this state the ingester doesn't receive neither write and read requests. The ingester will join the ring using tokens received by a leaving ingester as part of the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) process (if enabled), otherwise it could load tokens from disk (if `-ingester.tokens-file-path` is configured) or generate a set of new random ones. Finally, the ingester optionally observes the ring for tokens conflicts and then, once any conflict is resolved, will move to `ACTIVE` state.
+  The ingester is starting up and joining the ring. While in this state the ingester doesn't receive write or read requests. The ingester will join the ring using tokens received by a leaving ingester as part of the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) process (if enabled), otherwise it could load tokens from disk (if `-ingester.tokens-file-path` is configured) or generate a set of new random ones. Finally, the ingester optionally observes the ring for tokens conflicts and then, once any conflict is resolved, will move to `ACTIVE` state.
 - **`ACTIVE`**<br />
   The ingester is up and running. While in this state the ingester can receive both write and read requests.
 - **`LEAVING`**<br />

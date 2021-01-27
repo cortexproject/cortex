@@ -29,6 +29,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -246,7 +248,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	d := &Distributor{
 		cfg:                  cfg,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, util.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log.Logger),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
@@ -457,7 +459,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = util.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+			latestSampleTimestampMs = math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {

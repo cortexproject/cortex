@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Version is set via build flag -ldflags -X main.Version
@@ -163,7 +164,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	t, err := cortex.New(cfg)
-	util.CheckFatal("initializing cortex", err)
+	log.CheckFatal("initializing cortex", err)
 
 	if printModules {
 		allDeps := t.ModuleManager.DependenciesForModule(cortex.All)
@@ -189,7 +190,7 @@ func main() {
 	err = t.Run()
 
 	runtime.KeepAlive(ballast)
-	util.CheckFatal("running cortex", err)
+	log.CheckFatal("running cortex", err)
 }
 
 // Parse -config.file and -config.expand-env option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.

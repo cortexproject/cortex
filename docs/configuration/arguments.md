@@ -422,7 +422,7 @@ multi_kv_config:
 
 When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
 
-The `/runtime_config` endpoint returns the runtime configuration, including the overrides.
+The `/runtime_config` endpoint returns the whole runtime configuration, including the overrides. In case you want to get only the non-default values of the configuration you can pass the `mode` parameter with the `diff` value.
 
 ## Ingester, Distributor & Querier limits.
 

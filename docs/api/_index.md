@@ -117,7 +117,7 @@ Displays the configuration currently applied to Cortex (in YAML format), includi
 GET /config?mode=diff
 ```
 
-Displays the configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the  default values.
+Displays the configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the default values.
 
 ```
 GET /config?mode=defaults
@@ -132,6 +132,14 @@ GET /runtime_config
 ```
 
 Displays the runtime configuration currently applied to Cortex (in YAML format), including default values. Please be aware that the endpoint will be only available if Cortex is configured with the `-runtime-config.file` option.
+
+#### Different modes
+
+```
+GET /runtime_config?mode=diff
+```
+
+Displays the runtime configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the default values.
 
 ### Services status
 

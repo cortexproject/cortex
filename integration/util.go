@@ -61,6 +61,15 @@ func getServerTLSFlags() map[string]string {
 	}
 }
 
+func getServerHTTPTLSFlags() map[string]string {
+	return map[string]string{
+		"-server.http-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.http-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.http-tls-client-auth": "RequireAndVerifyClientCert",
+		"-server.http-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
+	}
+}
+
 func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
 	return map[string]string{
 		"-" + prefix + ".tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, clientCertFile),

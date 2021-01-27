@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -18,6 +19,22 @@ import (
 )
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
+
+// BasicAuth configures basic authentication for HTTP clients.
+type BasicAuth struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+func (cfg *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Username, prefix+"username", "", "Username that will be set basic authentication in requests.")
+	f.StringVar(&cfg.Password, prefix+"password", "", "Password that will be set for basic authentication in requests.")
+}
+
+// IsZero returns false if basic authentication isn't enabled.
+func (b BasicAuth) IsZero() bool {
+	return b.Username == "" && b.Password == ""
+}
 
 // WriteJSONResponse writes some JSON as a HTTP response.
 func WriteJSONResponse(w http.ResponseWriter, v interface{}) {

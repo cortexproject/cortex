@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"go.uber.org/atomic"
 	"net/http"
 	"sync"
 	"time"
@@ -60,7 +61,7 @@ type Distributor struct {
 
 	alertmanagers AlertmanagerSet
 
-	// Manager for subservices (AM Ring)
+	// Manager for subservices (AlertmanagerSet)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
@@ -73,7 +74,7 @@ type Distributor struct {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, amConfig alertmanager.MultitenantAlertmanagerConfig, ringService services.Service, r prometheus.Registerer, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func New(cfg Config, amConfig alertmanager.MultitenantAlertmanagerConfig, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -109,10 +110,10 @@ func New(cfg Config, amConfig alertmanager.MultitenantAlertmanagerConfig, ringSe
 	}
 
 	d.alertmanagers = alertmanagers
-	d.initMetrics(r)
+	d.initMetrics(reg)
 	d.replicationFactor.Set(float64(alertmanagersRing.ReplicationFactor()))
 
-	d.subservices, err = services.NewManager(ringService)
+	d.subservices, err = services.NewManager(alertmanagers)
 	if err != nil {
 		return nil, err
 	}
@@ -187,12 +188,11 @@ func (d *Distributor) ServeHTTPAsGRPC(w http.ResponseWriter, r *http.Request) {
 	var (
 		//TODO: This is probably not the right context
 		g, gCtx  = errgroup.WithContext(r.Context())
-		mtx      = sync.Mutex{}
-		sucesses int
+		sucesses atomic.Int32
 	)
-	for _, c := range clients {
+	for _, cl := range clients {
 		// Change variables scope since it will be used in a goroutine.
-		c := c
+		c := cl
 		g.Go(func() error {
 			resp, err := c.HandleWrite(gCtx, &alertmanagerpb.WriteRequest{
 				UserID:      userID,
@@ -203,9 +203,7 @@ func (d *Distributor) ServeHTTPAsGRPC(w http.ResponseWriter, r *http.Request) {
 				return errors.Wrapf(err, "failed to proxy request to alertmanager #{c.RemoteAddress()}")
 			}
 			if resp.GetStatus() == alertmanagerpb.OK {
-				mtx.Lock()
-				sucesses++
-				mtx.Unlock()
+				sucesses.Inc()
 			}
 
 			return nil

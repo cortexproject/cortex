@@ -30,7 +30,7 @@ type AlertmanagerClient interface {
 type alertmanagerReplicationSet struct {
 	services.Service
 
-	alertmanagersRing *ring.Ring
+	alertmanagersRing ring.ReadRing
 	clientsPool       *client.Pool
 
 	// Subservices manager
@@ -45,7 +45,7 @@ func newAlertmanagerReplicationSet(alertmanagersRing *ring.Ring, tlsCfg tls.Clie
 	}
 
 	var err error
-	s.subservices, err = services.NewManager(s.alertmanagersRing, s.clientsPool)
+	s.subservices, err = services.NewManager(alertmanagersRing, s.clientsPool)
 	if err != nil {
 
 		return nil, err

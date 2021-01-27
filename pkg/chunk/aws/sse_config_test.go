@@ -9,16 +9,13 @@ import (
 
 func TestNewSSEParsedConfig(t *testing.T) {
 	kmsKeyID := "test"
-	kmsEncryptionContext := map[string]string{
-		"a": "bc",
-		"b": "cd",
-	}
+	kmsEncryptionContext := `{"a": "bc", "b": "cd"}`
 	parsedKMSEncryptionContext := "eyJhIjoiYmMiLCJiIjoiY2QifQ=="
 
 	type params struct {
 		sseType              string
-		kmsKeyID             *string
-		kmsEncryptionContext map[string]string
+		kmsKeyID             string
+		kmsEncryptionContext string
 	}
 	tests := []struct {
 		name        string
@@ -39,7 +36,7 @@ func TestNewSSEParsedConfig(t *testing.T) {
 			name: "Test SSE encryption with SSEKMS type without context",
 			params: params{
 				sseType:  SSEKMS,
-				kmsKeyID: &kmsKeyID,
+				kmsKeyID: kmsKeyID,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
@@ -50,7 +47,7 @@ func TestNewSSEParsedConfig(t *testing.T) {
 			name: "Test SSE encryption with SSEKMS type with context",
 			params: params{
 				sseType:              SSEKMS,
-				kmsKeyID:             &kmsKeyID,
+				kmsKeyID:             kmsKeyID,
 				kmsEncryptionContext: kmsEncryptionContext,
 			},
 			expected: &SSEParsedConfig{
@@ -60,20 +57,7 @@ func TestNewSSEParsedConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "Test SSE encryption with SSEKMS type with context",
-			params: params{
-				sseType:              SSEKMS,
-				kmsKeyID:             &kmsKeyID,
-				kmsEncryptionContext: kmsEncryptionContext,
-			},
-			expected: &SSEParsedConfig{
-				ServerSideEncryption: sseKMSType,
-				KMSKeyID:             &kmsKeyID,
-				KMSEncryptionContext: &parsedKMSEncryptionContext,
-			},
-		},
-		{
-			name: "Test invalid SEE type",
+			name: "Test invalid SSE type",
 			params: params{
 				sseType: "invalid",
 			},
@@ -83,7 +67,7 @@ func TestNewSSEParsedConfig(t *testing.T) {
 			name: "Test SSE encryption with SSEKMS type without KMS Key ID",
 			params: params{
 				sseType:  SSEKMS,
-				kmsKeyID: nil,
+				kmsKeyID: "",
 			},
 			expectedErr: errors.New("KMS key id must be passed when SSE-KMS encryption is selected"),
 		},

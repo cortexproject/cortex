@@ -160,12 +160,12 @@ func NewS3ObjectClient(cfg S3Config) (*S3ObjectClient, error) {
 
 func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	if cfg.SSEConfig.Type != "" {
-		return NewSSEParsedConfig(cfg.SSEConfig.Type, &cfg.SSEConfig.KMSKeyID, cfg.SSEConfig.KMSEncryptionContext)
+		return NewSSEParsedConfig(cfg.SSEConfig.Type, cfg.SSEConfig.KMSKeyID, cfg.SSEConfig.KMSEncryptionContext)
 	}
 
 	// deprecated, but if used it assumes SSE-S3 type
 	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(SSES3, nil, nil)
+		return NewSSEParsedConfig(SSES3, "", "")
 	}
 
 	return nil, nil

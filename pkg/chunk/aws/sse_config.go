@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-
 	"github.com/pkg/errors"
 )
 
@@ -32,27 +30,27 @@ type SSEParsedConfig struct {
 // SSEConfig configures S3 server side encryption
 // struct that is going to receive user input (through config file or CLI)
 type SSEConfig struct {
-	Type                 string     `yaml:"type"`
-	KMSKeyID             string     `yaml:"kms_key_id"`
-	KMSEncryptionContext chunk.Tags `yaml:"kms_encryption_context"`
+	Type                 string `yaml:"type"`
+	KMSKeyID             string `yaml:"kms_key_id"`
+	KMSEncryptionContext string `yaml:"kms_encryption_context"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Type, prefix+"type", "", "Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported")
 	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")
-	f.Var(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "KMS Encryption Context used for object encryption")
+	f.StringVar(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "", "KMS Encryption Context used for object encryption. It expects a JSON as a string.")
 }
 
 // NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
-func NewSSEParsedConfig(sseType string, kmsKeyID *string, kmsEncryptionContext map[string]string) (*SSEParsedConfig, error) {
+func NewSSEParsedConfig(sseType string, kmsKeyID string, kmsEncryptionContext string) (*SSEParsedConfig, error) {
 	switch sseType {
 	case SSES3:
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseS3Type,
 		}, nil
 	case SSEKMS:
-		if kmsKeyID == nil {
+		if kmsKeyID == "" {
 			return nil, errors.New("KMS key id must be passed when SSE-KMS encryption is selected")
 		}
 
@@ -63,7 +61,7 @@ func NewSSEParsedConfig(sseType string, kmsKeyID *string, kmsEncryptionContext m
 
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseKMSType,
-			KMSKeyID:             kmsKeyID,
+			KMSKeyID:             &kmsKeyID,
 			KMSEncryptionContext: parsedKMSEncryptionContext,
 		}, nil
 	default:
@@ -71,12 +69,12 @@ func NewSSEParsedConfig(sseType string, kmsKeyID *string, kmsEncryptionContext m
 	}
 }
 
-func parseKMSEncryptionContext(kmsEncryptionContext map[string]string) (*string, error) {
-	if kmsEncryptionContext == nil {
+func parseKMSEncryptionContext(kmsEncryptionContext string) (*string, error) {
+	if kmsEncryptionContext == "" {
 		return nil, nil
 	}
 
-	jsonKMSEncryptionContext, err := json.Marshal(kmsEncryptionContext)
+	jsonKMSEncryptionContext, err := json.Marshal(json.RawMessage(kmsEncryptionContext))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal KMS encryption context")
 	}

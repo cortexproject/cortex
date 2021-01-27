@@ -37,6 +37,7 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
+- S3 Server Side Encryption (SSE) using KMS.
 - Azure blob storage.
 - Zone awareness based replication.
 - Shuffle sharding (both read and write path).

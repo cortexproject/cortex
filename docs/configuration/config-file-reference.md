@@ -1270,9 +1270,10 @@ storage:
       # CLI flag: -ruler.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
-      # KMS Encryption Context used for object encryption
+      # KMS Encryption Context used for object encryption. It expects a JSON as
+      # a string.
       # CLI flag: -ruler.storage.s3.sse.kms-encryption-context
-      [kms_encryption_context: <map of string to string> | default = ]
+      [kms_encryption_context: <string> | default = ""]
 
   swift:
     # OpenStack Swift authentication API version. 0 to autodetect.
@@ -1724,9 +1725,10 @@ storage:
       # CLI flag: -alertmanager.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
-      # KMS Encryption Context used for object encryption
+      # KMS Encryption Context used for object encryption. It expects a JSON as
+      # a string.
       # CLI flag: -alertmanager.storage.s3.sse.kms-encryption-context
-      [kms_encryption_context: <map of string to string> | default = ]
+      [kms_encryption_context: <string> | default = ""]
 
   local:
     # Path at which alertmanager configurations are stored.
@@ -2255,9 +2257,10 @@ aws:
     # CLI flag: -s3.sse.kms-key-id
     [kms_key_id: <string> | default = ""]
 
-    # KMS Encryption Context used for object encryption
+    # KMS Encryption Context used for object encryption. It expects a JSON as a
+    # string.
     # CLI flag: -s3.sse.kms-encryption-context
-    [kms_encryption_context: <map of string to string> | default = ]
+    [kms_encryption_context: <string> | default = ""]
 
 azure:
   # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,

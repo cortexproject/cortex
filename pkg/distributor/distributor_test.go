@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -832,6 +833,57 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	}
 }
 
+func TestDistributor_Push_LabelNameValidation(t *testing.T) {
+	inputLabels := labels.Labels{
+		{Name: model.MetricNameLabel, Value: "foo"},
+		{Name: "999.illegal", Value: "baz"},
+	}
+	tests := map[string]struct {
+		inputLabels                labels.Labels
+		skipLabelNameValidationCfg bool
+		skipLabelNameValidationReq bool
+		errExpected                bool
+		errMessage                 string
+	}{
+		"label name validation is on by default": {
+			inputLabels: inputLabels,
+			errExpected: true,
+			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
+		},
+		"label name validation can be skipped via config": {
+			inputLabels:                inputLabels,
+			skipLabelNameValidationCfg: true,
+			errExpected:                false,
+		},
+		"label name validation can be skipped via WriteRequest parameter": {
+			inputLabels:                inputLabels,
+			skipLabelNameValidationReq: true,
+			errExpected:                false,
+		},
+	}
+
+	for testName, tc := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ds, _, _ := prepare(t, prepConfig{
+				numIngesters:            2,
+				happyIngesters:          2,
+				numDistributors:         1,
+				shuffleShardSize:        1,
+				skipLabelNameValidation: tc.skipLabelNameValidationCfg,
+			})
+			req := mockWriteRequest(tc.inputLabels, 42, 100000)
+			req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
+			_, err := ds[0].Push(ctx, req)
+			if tc.errExpected {
+				fromError, _ := status.FromError(err)
+				assert.Equal(t, tc.errMessage, fromError.Message())
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
 func TestSlowQueries(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
@@ -1072,6 +1124,7 @@ type prepConfig struct {
 	shuffleShardSize             int
 	limits                       *validation.Limits
 	numDistributors              int
+	skipLabelNameValidation      bool
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring) {
@@ -1150,6 +1203,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.InstanceID = strconv.Itoa(i)
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
+		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle

@@ -33,6 +33,8 @@ func Handler(cfg distributor.Config, sourceIPs *middleware.SourceIPExtractor, pu
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		req.SkipLabelNameValidation = false
 		if req.Source == 0 {
 			req.Source = client.API
 		}

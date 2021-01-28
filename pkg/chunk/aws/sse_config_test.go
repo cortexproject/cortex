@@ -13,11 +13,6 @@ func TestNewSSEParsedConfig(t *testing.T) {
 	// compact form of kmsEncryptionContext
 	parsedKMSEncryptionContext := "eyJhIjoiYmMiLCJiIjoiY2QifQ=="
 
-	type params struct {
-		sseType              string
-		kmsKeyID             string
-		kmsEncryptionContext string
-	}
 	tests := []struct {
 		name        string
 		params      SSEConfig

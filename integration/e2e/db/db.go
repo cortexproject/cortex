@@ -3,6 +3,7 @@ package e2edb
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -19,11 +20,17 @@ const (
 
 // NewMinio returns minio server, used as a local replacement for S3.
 func NewMinio(port int, bktName string) *e2e.HTTPService {
+	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
+	commands := []string{
+		"curl -sSL --tlsv1.2 -O '%s/root.key'	-O '%s/root.cert'",
+		"mkdir -p /data/%s && minio server --address :%v --quiet /data",
+	}
+
 	m := e2e.NewHTTPService(
 		fmt.Sprintf("minio-%v", port),
 		images.Minio,
 		// Create the "cortex" bucket before starting minio
-		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf("mkdir -p /data/%s && minio server --address :%v --quiet /data", bktName, port)),
+		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(strings.Join(commands, " && "), minioKESGithubContent, minioKESGithubContent, bktName, port)),
 		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200, 200),
 		port,
 	)
@@ -32,6 +39,11 @@ func NewMinio(port int, bktName string) *e2e.HTTPService {
 		"MINIO_SECRET_KEY": MinioSecretKey,
 		"MINIO_BROWSER":    "off",
 		"ENABLE_HTTPS":     "0",
+		// https://docs.min.io/docs/minio-kms-quickstart-guide.html
+		"MINIO_KMS_KES_ENDPOINT":  "https://play.min.io:7373",
+		"MINIO_KMS_KES_KEY_FILE":  "root.key",
+		"MINIO_KMS_KES_CERT_FILE": "root.cert",
+		"MINIO_KMS_KES_KEY_NAME":  "my-minio-key",
 	})
 	return m
 }

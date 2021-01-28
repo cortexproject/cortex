@@ -3,6 +3,10 @@
 ## master / unreleased
 
 * [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
+* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651
+  - `-<prefix>.s3.sse.type`
+  - `-<prefix>.s3.sse.kms-key-id`
+  - `-<prefix>.s3.sse.kms-encryption-context`
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.

@@ -26,9 +26,9 @@ type BasicAuth struct {
 	Password string `yaml:"password"`
 }
 
-func (cfg *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Username, prefix+"username", "", "Username that will be set basic authentication in requests.")
-	f.StringVar(&cfg.Password, prefix+"password", "", "Password that will be set for basic authentication in requests.")
+func (b *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&b.Username, prefix+"username", "", "Username that will be set basic authentication in requests.")
+	f.StringVar(&b.Password, prefix+"password", "", "Password that will be set for basic authentication in requests.")
 }
 
 // IsZero returns false if basic authentication isn't enabled.

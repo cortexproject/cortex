@@ -2,6 +2,7 @@ package purger
 
 import (
 	"context"
+	"flag"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 )
+
+type TenantDeletionConfig struct {
+	EnableDeletionOfRuleGroups bool `yaml:"rule_groups_enabled"`
+}
+
+func (cfg *TenantDeletionConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.EnableDeletionOfRuleGroups, "tenant-deletion.rule-groups-enabled", false, "Enable deletion of rule groups when deleting tenant.")
+}
 
 type BlocksPurgerAPI struct {
 	bucketClient objstore.Bucket

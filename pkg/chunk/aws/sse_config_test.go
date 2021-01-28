@@ -10,6 +10,7 @@ import (
 func TestNewSSEParsedConfig(t *testing.T) {
 	kmsKeyID := "test"
 	kmsEncryptionContext := `{"a": "bc", "b": "cd"}`
+	// compact form of kmsEncryptionContext
 	parsedKMSEncryptionContext := "eyJhIjoiYmMiLCJiIjoiY2QifQ=="
 
 	type params struct {
@@ -19,14 +20,14 @@ func TestNewSSEParsedConfig(t *testing.T) {
 	}
 	tests := []struct {
 		name        string
-		params      params
+		params      SSEConfig
 		expected    *SSEParsedConfig
 		expectedErr error
 	}{
 		{
 			name: "Test SSE encryption with SSES3 type",
-			params: params{
-				sseType: SSES3,
+			params: SSEConfig{
+				Type: SSES3,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseS3Type,
@@ -34,9 +35,9 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without context",
-			params: params{
-				sseType:  SSEKMS,
-				kmsKeyID: kmsKeyID,
+			params: SSEConfig{
+				Type:     SSEKMS,
+				KMSKeyID: kmsKeyID,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
@@ -45,10 +46,10 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type with context",
-			params: params{
-				sseType:              SSEKMS,
-				kmsKeyID:             kmsKeyID,
-				kmsEncryptionContext: kmsEncryptionContext,
+			params: SSEConfig{
+				Type:                 SSEKMS,
+				KMSKeyID:             kmsKeyID,
+				KMSEncryptionContext: kmsEncryptionContext,
 			},
 			expected: &SSEParsedConfig{
 				ServerSideEncryption: sseKMSType,
@@ -58,24 +59,33 @@ func TestNewSSEParsedConfig(t *testing.T) {
 		},
 		{
 			name: "Test invalid SSE type",
-			params: params{
-				sseType: "invalid",
+			params: SSEConfig{
+				Type: "invalid",
 			},
 			expectedErr: errors.New("SSE type is empty or invalid"),
 		},
 		{
 			name: "Test SSE encryption with SSEKMS type without KMS Key ID",
-			params: params{
-				sseType:  SSEKMS,
-				kmsKeyID: "",
+			params: SSEConfig{
+				Type:     SSEKMS,
+				KMSKeyID: "",
 			},
 			expectedErr: errors.New("KMS key id must be passed when SSE-KMS encryption is selected"),
+		},
+		{
+			name: "Test SSE with invalid KMS encryption context JSON",
+			params: SSEConfig{
+				Type:                 SSEKMS,
+				KMSKeyID:             kmsKeyID,
+				KMSEncryptionContext: `INVALID_JSON`,
+			},
+			expectedErr: errors.New("failed to parse KMS encryption context: failed to marshal KMS encryption context: json: error calling MarshalJSON for type json.RawMessage: invalid character 'I' looking for beginning of value"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := NewSSEParsedConfig(tt.params.sseType, tt.params.kmsKeyID, tt.params.kmsEncryptionContext)
+			result, err := NewSSEParsedConfig(tt.params)
 			if tt.expectedErr != nil {
 				assert.Equal(t, tt.expectedErr.Error(), err.Error())
 			}

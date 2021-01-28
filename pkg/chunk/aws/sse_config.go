@@ -43,25 +43,25 @@ func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // NewSSEParsedConfig creates a struct to configure server side encryption (SSE)
-func NewSSEParsedConfig(sseType string, kmsKeyID string, kmsEncryptionContext string) (*SSEParsedConfig, error) {
-	switch sseType {
+func NewSSEParsedConfig(cfg SSEConfig) (*SSEParsedConfig, error) {
+	switch cfg.Type {
 	case SSES3:
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseS3Type,
 		}, nil
 	case SSEKMS:
-		if kmsKeyID == "" {
+		if cfg.KMSKeyID == "" {
 			return nil, errors.New("KMS key id must be passed when SSE-KMS encryption is selected")
 		}
 
-		parsedKMSEncryptionContext, err := parseKMSEncryptionContext(kmsEncryptionContext)
+		parsedKMSEncryptionContext, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to parse KMS encryption context")
 		}
 
 		return &SSEParsedConfig{
 			ServerSideEncryption: sseKMSType,
-			KMSKeyID:             &kmsKeyID,
+			KMSKeyID:             &cfg.KMSKeyID,
 			KMSEncryptionContext: parsedKMSEncryptionContext,
 		}, nil
 	default:
@@ -74,6 +74,7 @@ func parseKMSEncryptionContext(kmsEncryptionContext string) (*string, error) {
 		return nil, nil
 	}
 
+	// validates if kmsEncryptionContext is a valid JSON
 	jsonKMSEncryptionContext, err := json.Marshal(json.RawMessage(kmsEncryptionContext))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal KMS encryption context")

@@ -220,7 +220,8 @@ query_scheduler:
       [max_retries: <int> | default = 10]
 
     # Enable TLS in the GRPC client. This flag needs to be enabled when any
-    # other TLS flag is set.
+    # other TLS flag is set. If set to false, insecure connection to gRPC server
+    # will be used.
     # CLI flag: -query-scheduler.grpc-client-config.tls-enabled
     [tls_enabled: <boolean> | default = false]
 
@@ -958,7 +959,8 @@ grpc_client_config:
     [max_retries: <int> | default = 10]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set.
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
   # CLI flag: -frontend.grpc-client-config.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
@@ -1127,7 +1129,8 @@ ruler_client:
     [max_retries: <int> | default = 10]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set.
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
   # CLI flag: -ruler.client.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
@@ -2395,7 +2398,8 @@ bigtable:
       [max_retries: <int> | default = 10]
 
     # Enable TLS in the GRPC client. This flag needs to be enabled when any
-    # other TLS flag is set.
+    # other TLS flag is set. If set to false, insecure connection to gRPC server
+    # will be used.
     # CLI flag: -bigtable.tls-enabled
     [tls_enabled: <boolean> | default = true]
 
@@ -2943,7 +2947,8 @@ grpc_client_config:
     [max_retries: <int> | default = 10]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set.
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
   # CLI flag: -ingester.client.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
@@ -3049,7 +3054,8 @@ grpc_client_config:
     [max_retries: <int> | default = 10]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set.
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
   # CLI flag: -querier.frontend-client.tls-enabled
   [tls_enabled: <boolean> | default = false]
 

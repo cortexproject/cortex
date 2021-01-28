@@ -5096,7 +5096,33 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;li>Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.&lt;/li>
 &lt;li>Querier: Add support for querying both chunk store and blocks at the same time and test the support for querying both chunks and blocks from ingesters works correctly&lt;/li>
 &lt;li>Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/guides/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-chunks-storage-in-production/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
+&lt;li>Date: January 2021&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="retention-of-tenant-data">Retention of tenant data&lt;/h2>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Metric data is growing over time per-tenant, at the same time, the value of data decreases. We want to have a retention policy like prometheus does. In Cortex, data retention is typically achieved via a bucket policy. However, this has two main issues:&lt;/p>
+&lt;ol>
+&lt;li>Not every backend storage support bucket policies&lt;/li>
+&lt;li>Bucket policies don&amp;rsquo;t easily allow a per-tenant custom retention&lt;/li>
+&lt;/ol>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;h3 id="tenants">tenants&lt;/h3>
+&lt;p>When using blocks storage, Cortex stores tenant’s data in object store for long-term storage of blocks, tenant id as part of the object store path. We discover all tenants via scan the root dir of bucket.&lt;/p>
+&lt;h3 id="runtime-config">runtime config&lt;/h3>
+&lt;p>Using the &amp;ldquo;overrides&amp;rdquo; mechanism (part of runtime config) already allows for per-tenant settings. See &lt;a href="https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file">runtime-configuration-file&lt;/a> for more details. Using it for tenant retention would fit nicely. Admin could set per-tenant retention here, and also have a single global value for tenants that don&amp;rsquo;t have custom value set.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;h3 id="retention-period-field">retention period field&lt;/h3>
+&lt;p>We propose to introduce just one new field &lt;code>RetentionPeriod&lt;/code> in the Limits struct(defined at pkg/util/validation/limits.go).&lt;/p>
+&lt;p>&lt;code>RetentionPeriod&lt;/code> setting how long historical metric data retention period per-tenant. &lt;code>0&lt;/code> is disable.&lt;/p>
+&lt;p>Runtime config is reloaded periodically (defaults to 10 seconds), so we can update the retention settings on-the-fly.&lt;/p>
+&lt;p>For each tenant, if a tenant-specific &lt;em>runtime_config&lt;/em> value exists, it will be used directly, otherwise, if a default &lt;em>limits_config&lt;/em> value exists, then the default value will be used; If neither exists, do nothing.&lt;/p>
+&lt;h3 id="implementation">Implementation&lt;/h3>
+&lt;p>A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block &lt;code>maxTime&lt;/code> and blocks that match &lt;code>maxTime &amp;lt; now - retention&lt;/code> will be marked for delete.&lt;/p>
+&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/guides/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-chunks-storage-in-production/</guid><description>
 &lt;p>This document builds on the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and specifies the steps needed to get Cortex &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> into production.
 Ensure you have completed all the steps in the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and read about &lt;a href="/docs/architecture/">the Cortex architecture&lt;/a> before you start this one.&lt;/p>
 &lt;h2 id="1-pick-a-storage-backend">1. Pick a storage backend&lt;/h2>
@@ -9969,60 +9995,4 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;ul>
 &lt;li>Scanner supports only BigTable for chunks index backend, and cannot currently scan other databases.&lt;/li>
 &lt;li>Supports only chunks schema versions v9, v10 and v11&lt;/li>
-&lt;/ul></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
-&lt;p>For the v1.0 release, we want to provide the following guarantees:&lt;/p>
-&lt;h2 id="flags-config-and-minor-version-upgrades">Flags, Config and minor version upgrades&lt;/h2>
-&lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>cortex_deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>
-&lt;p>Similarly to flags, minor version upgrades using config files should &amp;ldquo;just work&amp;rdquo;. If we do need to change config, we will keep the old way working for two minor version. There will be a metric you can alert on for this too.&lt;/p>
-&lt;p>These guarantees don&amp;rsquo;t apply for &lt;a href="#experimental-features">experimental features&lt;/a>.&lt;/p>
-&lt;h2 id="reading-old-data">Reading old data&lt;/h2>
-&lt;p>The Cortex maintainers commit to ensuring future version of Cortex can read data written by versions up to two years old. In practice we expect to be able to read more, but this is our guarantee.&lt;/p>
-&lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
-&lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
-&lt;ul>
-&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
-&lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the &lt;em>blocks&lt;/em> storage engine when &lt;code>-querier.query-store-for-labels-enabled&lt;/code> is set.&lt;/li>
-&lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
-&lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
-&lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
-&lt;/ul>
-&lt;p>&lt;em>For more information, please refer to the &lt;a href="/docs/guides/limitations/">limitations&lt;/a> doc.&lt;/em>&lt;/p>
-&lt;h2 id="experimental-features">Experimental features&lt;/h2>
-&lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
-&lt;p>Currently experimental features are:&lt;/p>
-&lt;ul>
-&lt;li>S3 Server Side Encryption (SSE) using KMS.&lt;/li>
-&lt;li>Azure blob storage.&lt;/li>
-&lt;li>Zone awareness based replication.&lt;/li>
-&lt;li>Shuffle sharding (both read and write path).&lt;/li>
-&lt;li>Ruler API (to PUT rules).&lt;/li>
-&lt;li>Alertmanager API&lt;/li>
-&lt;li>Memcached client DNS-based service discovery.&lt;/li>
-&lt;li>Delete series APIs.&lt;/li>
-&lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
-&lt;li>gRPC Store.&lt;/li>
-&lt;li>Querier support for querying chunks and blocks store at the same time.&lt;/li>
-&lt;li>Tracking of active series and exporting them as metrics (&lt;code>-ingester.active-series-metrics-enabled&lt;/code> and related flags)&lt;/li>
-&lt;li>Shuffle-sharding of queriers in the query-frontend (i.e. use of &lt;code>-frontend.max-queriers-per-tenant&lt;/code> flag with non-zero value).&lt;/li>
-&lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
-&lt;li>TLS configuration in Etcd client.&lt;/li>
-&lt;li>Blocksconvert tools&lt;/li>
-&lt;li>OpenStack Swift storage support (both in blocks and chunks storage).&lt;/li>
-&lt;li>Metric relabeling in the distributor.&lt;/li>
-&lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
-&lt;li>Querying store for series, labels APIs (&lt;code>-querier.query-store-for-labels-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage: lazy mmap of block indexes in the store-gateway (&lt;code>-blocks-storage.bucket-store.index-header-lazy-loading-enabled&lt;/code>)&lt;/li>
-&lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
-&lt;li>Distributor: do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
-&lt;li>Ingester: close idle TSDB and remove them from local disk (&lt;code>-blocks-storage.tsdb.close-idle-tsdb-timeout&lt;/code>)&lt;/li>
-&lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
-&lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage bucket index
-&lt;ul>
-&lt;li>The bucket index support in the querier and store-gateway (enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code>) is experimental&lt;/li>
-&lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Querier: tenant federation&lt;/li>
-&lt;li>Alertmanager: Sharding of tenants across multiple instances&lt;/li>
 &lt;/ul></description></item></channel></rss>

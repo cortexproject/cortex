@@ -3114,17 +3114,24 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# The TLS certificate file path.
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# The TLS private key file path.
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# The trusted CA file path.
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.etcd.tls-server-name
+[tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
 # CLI flag: -<prefix>.etcd.tls-insecure-skip-verify

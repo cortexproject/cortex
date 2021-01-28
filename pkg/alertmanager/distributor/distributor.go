@@ -5,6 +5,7 @@ import (
 	"flag"
 	"hash/fnv"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,10 +14,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
-	am_client "github.com/cortexproject/cortex/pkg/alertmanager/client"
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -38,7 +40,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager-distributor.alertmanager-client", f)
-	f.DurationVar(&cfg.RemoteTimeout, "alertmanager-distributor.remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
+	f.DurationVar(&cfg.RemoteTimeout, "alertmanager.distributor.remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
 }
 
 // Distributor forwards requests to individual alertmanagers.
@@ -134,6 +136,18 @@ func (d *Distributor) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
+// IsPathSupported returns true if the given route is currently supported by the Distributor.
+// This will go away in future after we gradually add support for the entire API.
+func (d *Distributor) IsPathSupported(path string) bool {
+	// API can be found at https://petstore.swagger.io/?url=https://raw.githubusercontent.com/prometheus/alertmanager/master/api/v2/openapi.yaml.
+	return strings.HasSuffix(path, "/alerts") ||
+		strings.HasSuffix(path, "/alerts/groups")
+}
+
+// DistributeRequest shards the writes and returns as soon as the quorum is satisfied.
+// In case of reads, it proxies the request to one of the alertmanagers.
+// DistributeRequest assumes that the caller has verified IsPathSupported return
+// true for the route.
 func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) {
 	//TODO: Initialise tracing here.
 
@@ -146,6 +160,8 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	d.receivedRequests.WithLabelValues(userID).Inc()
+
 	if r.Method == http.MethodGet {
 		d.doRead(userID, w, r)
 	} else {
@@ -157,6 +173,8 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	source := util.GetSourceIPsFromOutgoingCtx(r.Context())
 
 	err := ring.DoBatch(r.Context(), ring.Write, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
+		d.amSends.WithLabelValues(am.Addr).Inc()
+
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 		defer cancel()
@@ -167,8 +185,9 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		resp, err := d.doRequest(localCtx, am, userID, r)
+		resp, err := d.doRequest(localCtx, am, r)
 		if err != nil {
+			d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			return err
 		}
 
@@ -181,41 +200,54 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 	if err == nil {
 		w.WriteHeader(http.StatusOK)
-	} else {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	d.respondFromError(err, w)
 }
 
 func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request) {
 	key := shardByUser(userID)
 	replicationSet, err := d.alertmanagerRing.Get(key, ring.Read, nil, nil, nil)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
-	resp, err := d.doRequest(r.Context(), replicationSet.Ingesters[0], userID, r)
+	amDesc := replicationSet.Ingesters[0]
+	d.amSends.WithLabelValues(amDesc.Addr).Inc()
+	resp, err := d.doRequest(r.Context(), amDesc, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
-	if resp.GetStatus() != am_client.OK {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-
-	if int(resp.HttpResponse.Code) != http.StatusOK {
-		w.WriteHeader(int(resp.HttpResponse.Code))
+		d.amSendFailures.WithLabelValues(amDesc.Addr).Inc()
+		d.respondFromError(err, w)
 		return
 	}
 
-	_, err = w.Write(resp.HttpResponse.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if resp.GetStatus() != am_client.OK {
+		http.Error(w, resp.Error, http.StatusInternalServerError)
+		return
 	}
+
+	http.Error(w, string(resp.HttpResponse.Body), int(resp.HttpResponse.Code))
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, userID string, r *http.Request) (*am_client.Response, error) {
+func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
+	httpResp, ok := httpgrpc.HTTPResponseFromError(errors.Cause(err))
+	if !ok {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for _, h := range httpResp.Headers {
+		for _, v := range h.Values {
+			w.Header().Add(h.Key, v)
+		}
+	}
+	http.Error(w, string(httpResp.Body), int(httpResp.Code))
+
+}
+
+func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request) (*am_client.Response, error) {
 	c, err := d.alertmanagerPool.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
@@ -228,7 +260,6 @@ func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, userI
 
 	amClient := c.(AlertmanagerClient)
 	resp, err := amClient.HandleRequest(ctx, &am_client.Request{
-		UserID:      userID,
 		HttpRequest: req,
 	})
 	if err != nil {

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package client;
+package alertmanagerpb;
 
 option go_package = "client";
 
@@ -16,7 +16,6 @@ service Alertmanager {
 }
 
 message Request {
-  string UserID = 1;
   httpgrpc.HTTPRequest httpRequest = 2;
 }
 

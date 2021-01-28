@@ -357,15 +357,3 @@ services:
       - 18014:18014
     volumes:
       - ./config:/cortex/config
-
-  alertmanager-distributor:
-    build:
-      context:    .
-      dockerfile: dev.dockerfile
-    image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18015 --headless=true --api-version=2 --accept-multiclient --continue -- -log.level=debug -config.file=./config/cortex.yaml -target=alertmanager-distributor -server.http-listen-port=8015 -server.grpc-listen-port=9015"]
-    ports:
-      - 8015:8015
-      - 18015:18015
-    volumes:
-      - ./config:/cortex/config

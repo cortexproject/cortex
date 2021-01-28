@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	am_client "github.com/cortexproject/cortex/pkg/alertmanager/client"
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -30,15 +30,13 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
+// Copied constants from alertmanager package to avoid circular imports.
 const (
-	// RingKey is the key under which we store the alertmanager ring in the KVStore.
-	RingKey = "alertmanager"
-
-	// RingNameForServer is the name of the ring used by the alertmanager server.
+	RingKey           = "alertmanager"
 	RingNameForServer = "alertmanager"
 )
 
-func TestDistributor_ServeHTTP(t *testing.T) {
+func TestDistributor_DistributeRequest(t *testing.T) {
 	cases := []struct {
 		name               string
 		numAM, numHappyAM  int
@@ -212,9 +210,6 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 
 	return d, ams, reg, func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
-		for _, a := range ams {
-			require.NoError(t, a.Close())
-		}
 	}
 }
 

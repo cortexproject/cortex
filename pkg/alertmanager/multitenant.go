@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"html/template"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,7 +23,11 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
+	am_client "github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -227,6 +233,8 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 // organizations.
 type MultitenantAlertmanager struct {
 	services.Service
+	am_client.AlertmanagerClient
+	grpc_health_v1.HealthClient
 
 	cfg *MultitenantAlertmanagerConfig
 
@@ -758,6 +766,59 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		return
 	}
 
+	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
+		am.distributor.DistributeRequest(w, req)
+		return
+	}
+
+	// If sharding is not enabled or Distributor does not support this path,
+	// it is a simple pass-through.
+	am.serveHTTP(w, req)
+}
+
+// HandleRequest serves the Alertmanager's web UI and API sent via gRPC.
+func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *am_client.Request) (*am_client.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, in.HttpRequest.Method, in.HttpRequest.Url, bytes.NewReader(in.HttpRequest.Body))
+	if err != nil {
+		return nil, err
+	}
+
+	w := httptest.NewRecorder()
+	am.serveHTTP(w, req)
+
+	// Convert http response to gRPC response.
+
+	var body []byte
+	httpResp := w.Result()
+	if httpResp.Body != nil {
+		body, err = ioutil.ReadAll(httpResp.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// All non 200 status are sent as errors.
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, httpgrpc.Errorf(httpResp.StatusCode, string(body))
+	}
+
+	headers := make([]*httpgrpc.Header, 0, len(httpResp.Header))
+	for k, v := range httpResp.Header {
+		headers = append(headers, &httpgrpc.Header{Key: k, Values: v})
+	}
+
+	return &am_client.Response{
+		Status: am_client.OK,
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code:    int32(httpResp.StatusCode),
+			Headers: headers,
+			Body:    body,
+		},
+	}, nil
+}
+
+// serveHTTP serves the Alertmanager's web UI and API.
+func (am *MultitenantAlertmanager) serveHTTP(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -794,6 +855,14 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
 }
 
+func (am *MultitenantAlertmanager) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	status := grpc_health_v1.HealthCheckResponse_SERVING
+	if am.State() != services.Running {
+		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+	}
+	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
+}
+
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
 	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
 	cfgDesc := alerts.ToProto("", nil, userID)
@@ -819,6 +888,11 @@ func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
 	return StatusHandler{
 		am: am,
 	}
+}
+
+// Close implements ring_client.PoolClient.
+func (am *MultitenantAlertmanager) Close() error {
+	return nil
 }
 
 // StatusHandler shows the status of the alertmanager.

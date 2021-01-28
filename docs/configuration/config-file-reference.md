@@ -164,6 +164,26 @@ alertmanager_distributor:
   # CLI flag: -alertmanager.distributor.remote-timeout
   [remote_timeout: <duration> | default = 2s]
 
+  alertmanager_client:
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
+    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
+    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
+
 runtime_config:
   # How often to check runtime config file.
   # CLI flag: -runtime-config.reload-period

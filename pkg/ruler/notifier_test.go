@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/dns"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestBuildNotifierConfig(t *testing.T) {
@@ -44,6 +46,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 									},
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 					},
 				},
@@ -71,6 +74,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 									Port:            0,
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 					},
 				},
@@ -102,6 +106,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 								},
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 						{
 							APIVersion: "v1",
@@ -113,6 +118,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 								},
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 					},
 				},
@@ -140,6 +146,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 									Port:            0,
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 						{
 							APIVersion: "v1",
@@ -153,13 +160,14 @@ func TestBuildNotifierConfig(t *testing.T) {
 									Port:            0,
 								},
 							},
+							HTTPClientConfig: config_util.HTTPClientConfig{BasicAuth: &config_util.BasicAuth{}},
 						},
 					},
 				},
 			},
 		},
 		{
-			name: "with Basic Authentication",
+			name: "with Basic Authentication URL",
 			cfg: &Config{
 				AlertmanagerURL: "http://marco:hunter2@alertmanager-0.default.svc.cluster.local/alertmanager",
 			},
@@ -169,6 +177,39 @@ func TestBuildNotifierConfig(t *testing.T) {
 						{
 							HTTPClientConfig: config_util.HTTPClientConfig{
 								BasicAuth: &config_util.BasicAuth{Username: "marco", Password: "hunter2"},
+							},
+							APIVersion: "v1",
+							Scheme:     "http",
+							PathPrefix: "/alertmanager",
+							ServiceDiscoveryConfigs: discovery.Configs{
+								discovery.StaticConfig{
+									{
+										Targets: []model.LabelSet{{"__address__": "alertmanager-0.default.svc.cluster.local"}},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "with Basic Authentication URL and Explicit",
+			cfg: &Config{
+				AlertmanagerURL: "http://marco:hunter2@alertmanager-0.default.svc.cluster.local/alertmanager",
+				NotifierConfig: NotifierConfig{
+					BasicAuth: util.BasicAuth{
+						Username: "jacob",
+						Password: "test",
+					},
+				},
+			},
+			ncfg: &config.Config{
+				AlertingConfig: config.AlertingConfig{
+					AlertmanagerConfigs: []*config.AlertmanagerConfig{
+						{
+							HTTPClientConfig: config_util.HTTPClientConfig{
+								BasicAuth: &config_util.BasicAuth{Username: "jacob", Password: "test"},
 							},
 							APIVersion: "v1",
 							Scheme:     "http",

@@ -1443,6 +1443,10 @@ alertmanager_client:
     # CLI flag: -ruler.alertmanager-client.tls-ca-path
     [tls_ca_path: <string> | default = ""]
 
+    # Override the expected name on the server certificate.
+    # CLI flag: -ruler.alertmanager-client.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
     # Skip validating server certificate.
     # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]

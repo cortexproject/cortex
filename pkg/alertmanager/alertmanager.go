@@ -279,6 +279,10 @@ func (am *Alertmanager) Stop() {
 
 	am.alerts.Close()
 	close(am.stop)
+}
+
+func (am *Alertmanager) StopAndWait() {
+	am.Stop()
 	am.wg.Wait()
 }
 

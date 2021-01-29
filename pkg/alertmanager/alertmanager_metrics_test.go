@@ -267,7 +267,12 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 	alertmanagerMetrics.addUserRegistry("user2", populateAlertmanager(10))
 	alertmanagerMetrics.addUserRegistry("user3", populateAlertmanager(100))
 
-	// Assertion before removal.
+	// In this test, we assert that metrics are "soft deleted" per the registry removal.
+	// In practice, this means several things:
+	// a) counters of removed registries are not reset.
+	// b) gauges of removed registries are removed.
+	// c) histograms/summaries (as these are just counters) are not reset.
+	// Instead of just asserting a few of these metrics we go for the whole payload to ensure our tests are sensitive to change and avoid regressions.
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 						# HELP cortex_alertmanager_alerts How many alerts by state.
         	            # TYPE cortex_alertmanager_alerts gauge

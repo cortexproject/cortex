@@ -522,7 +522,7 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
 	for _, am := range am.alertmanagers {
-		am.Stop()
+		am.StopAndWait()
 	}
 	am.alertmanagersMtx.Unlock()
 	if am.peer != nil { // Tests don't setup any peer.
@@ -607,7 +607,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 	for userID, userAM := range am.alertmanagers {
 		if _, exists := cfgs[userID]; !exists {
 			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", userID)
-			go userAM.Stop()
+			userAM.Stop()
 			delete(am.alertmanagers, userID)
 			delete(am.cfgs, userID)
 			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(userID)
@@ -621,9 +621,6 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
 func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
-	am.alertmanagersMtx.Lock()
-	existing, hasExisting := am.alertmanagers[cfg.User]
-	am.alertmanagersMtx.Unlock()
 	var userAmConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
@@ -640,6 +637,10 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 	}
 
 	level.Debug(am.logger).Log("msg", "setting config", "user", cfg.User)
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	existing, hasExisting := am.alertmanagers[cfg.User]
 
 	rawCfg := cfg.RawConfig
 	if cfg.RawConfig == "" {
@@ -693,9 +694,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
 		if err != nil {
 			return err
 		}
-		am.alertmanagersMtx.Lock()
 		am.alertmanagers[cfg.User] = newAM
-		am.alertmanagersMtx.Unlock()
 	} else if am.cfgs[cfg.User].RawConfig != cfg.RawConfig || hasTemplateChanges {
 		level.Info(am.logger).Log("msg", "updating new per-tenant alertmanager", "user", cfg.User)
 		// If the config changed, apply the new one.

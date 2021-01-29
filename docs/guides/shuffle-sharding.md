@@ -29,6 +29,8 @@ The idea is to assign each tenant a shard composed by a subset of the Cortex ser
 - An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.
 - A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it's statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.
 
+Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.
+
 ### Low overlapping instances probability
 
 For example, given a Cortex cluster running **50 ingesters** and assigning **each tenant 4** out of 50 ingesters, shuffling instances between each tenant, we get **230K possible combinations**.

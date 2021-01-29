@@ -14,6 +14,7 @@
   * Prevent compaction loop in TSDB on data gap.
 * [ENHANCEMENT] Return server side performance metrics for query-frontend (using Server-timing header). #3685
 * [ENHANCEMENT] Runtime Config: Add a `mode` query parameter for the runtime config endpoint. `/runtime_config?mode=diff` now shows the YAML runtime configuration with all values that differ from the defaults. #3700
+* [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 

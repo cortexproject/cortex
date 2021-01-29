@@ -15,16 +15,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	tls2 "github.com/cortexproject/cortex/pkg/util/tls"
+	cortex_tls "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints   []string          `yaml:"endpoints"`
-	DialTimeout time.Duration     `yaml:"dial_timeout"`
-	MaxRetries  int               `yaml:"max_retries"`
-	EnableTLS   bool              `yaml:"tls_enabled"`
-	TLS         tls2.ClientConfig `yaml:",inline"`
+	Endpoints   []string                `yaml:"endpoints"`
+	DialTimeout time.Duration           `yaml:"dial_timeout"`
+	MaxRetries  int                     `yaml:"max_retries"`
+	EnableTLS   bool                    `yaml:"tls_enabled"`
+	TLS         cortex_tls.ClientConfig `yaml:",inline"`
 }
 
 // Client implements ring.KVClient for etcd.

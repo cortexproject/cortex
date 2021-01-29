@@ -67,7 +67,7 @@ func (c *storeGatewayClient) RemoteAddress() string {
 	return c.conn.Target()
 }
 
-func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
+func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConfig ClientConfig, logger log.Logger, reg prometheus.Registerer) *client.Pool {
 	// We prefer sane defaults instead of exposing further config options.
 	clientCfg := grpcclient.Config{
 		MaxRecvMsgSize:      100 << 20,
@@ -76,8 +76,8 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, tlsCfg Cli
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,
-		TLSEnabled:          tlsCfg.TLSEnabled,
-		TLS:                 tlsCfg.TLS,
+		TLSEnabled:          clientConfig.TLSEnabled,
+		TLS:                 clientConfig.TLS,
 	}
 	poolCfg := client.PoolConfig{
 		CheckInterval:      time.Minute,

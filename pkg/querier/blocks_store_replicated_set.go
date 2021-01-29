@@ -36,13 +36,13 @@ func newBlocksStoreReplicationSet(
 	storesRing *ring.Ring,
 	shardingStrategy string,
 	limits BlocksStoreLimits,
-	tlsCfg ClientConfig,
+	clientConfig ClientConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
 		storesRing:       storesRing,
-		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), tlsCfg, logger, reg),
+		clientsPool:      newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
 		shardingStrategy: shardingStrategy,
 		limits:           limits,
 	}

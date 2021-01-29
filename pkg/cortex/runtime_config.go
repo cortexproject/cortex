@@ -45,6 +45,8 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
+// tenantLimitsFromRuntimeConfig returns a function that translates tenant IDs to
+// specific limits for that tenant if configured, nil otherwise
 func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
 	if c == nil {
 		return nil
@@ -57,6 +59,33 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 
 		return cfg.TenantLimits[userID]
 	}
+}
+
+// tenantLimitsRuntimeConfigChannel returns a channel that emits a mapping of all
+// tenant specific overrides as it is updated via runtime configuration
+func tenantLimitsRuntimeConfigChannel(manager *runtimeconfig.Manager) <-chan map[string]*validation.Limits {
+	if manager == nil {
+		return nil
+	}
+
+	outCh := make(chan map[string]*validation.Limits, 1)
+
+	// push initial config to the channel
+	val := manager.GetConfig()
+	if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+		outCh <- cfg.TenantLimits
+	}
+
+	ch := manager.CreateListenerChannel(1)
+	go func() {
+		for val := range ch {
+			if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+				outCh <- cfg.TenantLimits
+			}
+		}
+	}()
+
+	return outCh
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {

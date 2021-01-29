@@ -71,11 +71,20 @@ func getServerHTTPTLSFlags() map[string]string {
 }
 
 func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
-	return map[string]string{
+	return getTLSFlagsWithPrefix(prefix, "ingester.client", false)
+}
+
+func getTLSFlagsWithPrefix(prefix string, servername string, http bool) map[string]string {
+	flags := map[string]string{
 		"-" + prefix + ".tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, clientCertFile),
 		"-" + prefix + ".tls-key-path":    filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
 		"-" + prefix + ".tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
-		"-" + prefix + ".tls-server-name": "ingester.client",
-		"-" + prefix + ".tls-enabled":     "true",
+		"-" + prefix + ".tls-server-name": servername,
 	}
+
+	if !http {
+		flags["-"+prefix+".tls-enabled"] = "true"
+	}
+
+	return flags
 }

@@ -398,7 +398,7 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 		map[string]string{
 			"-ruler.alertmanager-url": "https://" + am1.HTTPEndpoint(),
 		},
-		getClientTLSFlagsWithPrefix("ruler.alertmanager-client"),
+		getTLSFlagsWithPrefix("ruler.alertmanager-client", "alertmanager", true),
 	)
 
 	// Start Ruler.

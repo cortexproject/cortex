@@ -28,8 +28,8 @@ type NotifierConfig struct {
 }
 
 func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager.client", f)
-	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager.client.", f)
+	cfg.TLS.RegisterFlagsWithPrefix("ruler.alertmanager-client", f)
+	cfg.BasicAuth.RegisterFlagsWithPrefix("ruler.alertmanager-client.", f)
 }
 
 // rulerNotifier bundles a notifier.Manager together with an associated
@@ -186,7 +186,7 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 	}
 
 	// Override URL basic authentication configs with hard coded config values if present
-	if !rulerConfig.NotifierConfig.BasicAuth.IsZero() {
+	if rulerConfig.NotifierConfig.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
 			Username: rulerConfig.NotifierConfig.BasicAuth.Username,
 			Password: config_util.Secret(rulerConfig.NotifierConfig.BasicAuth.Password),

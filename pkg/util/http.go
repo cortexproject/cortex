@@ -27,12 +27,12 @@ type BasicAuth struct {
 }
 
 func (b *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&b.Username, prefix+"username", "", "Username that will be set basic authentication in requests.")
-	f.StringVar(&b.Password, prefix+"password", "", "Password that will be set for basic authentication in requests.")
+	f.StringVar(&b.Username, prefix+"username", "", "HTTP Basic authentication username. It overrides the username set in the URL (if any).")
+	f.StringVar(&b.Password, prefix+"password", "", "HTTP Basic authentication password. It overrides the password set in the URL (if any).")
 }
 
-// IsZero returns false if basic authentication isn't enabled.
-func (b BasicAuth) IsZero() bool {
+// IsEnabled returns false if basic authentication isn't enabled.
+func (b BasicAuth) IsEnabled() bool {
 	return b.Username == "" && b.Password == ""
 }
 

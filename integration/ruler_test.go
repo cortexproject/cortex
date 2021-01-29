@@ -374,7 +374,7 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 	require.NoError(t, cert.WriteCertificate(
 		&x509.Certificate{
 			Subject:     pkix.Name{CommonName: "server"},
-			DNSNames:    []string{"ruler.alertmanager.client"},
+			DNSNames:    []string{"ruler.alertmanager-client"},
 			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		},
 		filepath.Join(s.SharedDir(), serverCertFile),
@@ -398,7 +398,7 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 		map[string]string{
 			"-ruler.alertmanager-url": "https://" + am1.HTTPEndpoint(),
 		},
-		getClientTLSFlagsWithPrefix("ruler.alertmanager.client"),
+		getClientTLSFlagsWithPrefix("ruler.alertmanager-client"),
 	)
 
 	// Start Ruler.

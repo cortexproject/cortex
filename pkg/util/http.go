@@ -33,7 +33,7 @@ func (b *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // IsEnabled returns false if basic authentication isn't enabled.
 func (b BasicAuth) IsEnabled() bool {
-	return b.Username == "" && b.Password == ""
+	return b.Username != "" || b.Password != ""
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.

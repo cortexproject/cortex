@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -75,7 +76,7 @@ func (m *mockAlertStore) DeleteAlertConfig(_ context.Context, _ string) error {
 	return fmt.Errorf("not implemented")
 }
 
-func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
+func mockAlertmanagerConfig(t *testing.T) (*MultitenantAlertmanagerConfig, distributor.Config) {
 	t.Helper()
 
 	externalURL := flagext.URLValue{}
@@ -99,7 +100,10 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
 	cfg.PollInterval = time.Minute
 
-	return cfg
+	distCfg := distributor.Config{}
+	flagext.DefaultValues(&distCfg)
+
+	return cfg, distCfg
 }
 
 func TestLoadAllConfigs(t *testing.T) {
@@ -119,8 +123,8 @@ func TestLoadAllConfigs(t *testing.T) {
 	}
 
 	reg := prometheus.NewPedanticRegistry()
-	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	cfg, distCfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, distCfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Ensure the configs are synced correctly
@@ -220,18 +224,18 @@ func TestLoadAllConfigs(t *testing.T) {
 }
 
 func TestAlertmanager_NoExternalURL(t *testing.T) {
-	amConfig := mockAlertmanagerConfig(t)
+	amConfig, distCfg := mockAlertmanagerConfig(t)
 	amConfig.ExternalURL = flagext.URLValue{} // no external URL
 
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
-	_, err := NewMultitenantAlertmanager(amConfig, log.NewNopLogger(), reg)
+	_, err := NewMultitenantAlertmanager(amConfig, distCfg, log.NewNopLogger(), reg)
 
 	require.EqualError(t, err, "unable to create Alertmanager because the external URL has not been configured")
 }
 
 func TestAlertmanager_ServeHTTP(t *testing.T) {
-	amConfig := mockAlertmanagerConfig(t)
+	amConfig, distCfg := mockAlertmanagerConfig(t)
 	mockStore := &mockAlertStore{
 		configs: map[string]alerts.AlertConfigDesc{},
 	}
@@ -244,7 +248,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
@@ -331,7 +335,7 @@ func verify404(ctx context.Context, t *testing.T, am *MultitenantAlertmanager, m
 }
 
 func TestAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
-	amConfig := mockAlertmanagerConfig(t)
+	amConfig, distCfg := mockAlertmanagerConfig(t)
 	mockStore := &mockAlertStore{
 		configs: map[string]alerts.AlertConfigDesc{},
 	}
@@ -354,7 +358,7 @@ receivers:
 	amConfig.ExternalURL = externalURL
 
 	// Create the Multitenant Alertmanager.
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, nil, log.NewNopLogger(), nil)
+	am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	am.fallbackConfig = fallbackCfg
 
@@ -434,7 +438,7 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			amConfig := mockAlertmanagerConfig(t)
+			amConfig, distCfg := mockAlertmanagerConfig(t)
 			amConfig.ShardingEnabled = true
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			mockStore := &mockAlertStore{
@@ -450,7 +454,7 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 				}))
 			}
 
-			am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+			am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -562,7 +566,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 				instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
 				instanceID := fmt.Sprintf("alertmanager-%d", i)
 
-				amConfig := mockAlertmanagerConfig(t)
+				amConfig, distCfg := mockAlertmanagerConfig(t)
 				amConfig.ShardingRing.ReplicationFactor = tt.replicationFactor
 				amConfig.ShardingRing.InstanceID = instanceID
 				amConfig.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
@@ -575,7 +579,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 				}
 
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -722,7 +726,7 @@ func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			amConfig := mockAlertmanagerConfig(t)
+			amConfig, distCfg := mockAlertmanagerConfig(t)
 			amConfig.ShardingEnabled = true
 			amConfig.ShardingRing.RingCheckPeriod = 100 * time.Millisecond
 			amConfig.PollInterval = time.Hour // Don't trigger the periodic check.
@@ -733,7 +737,7 @@ func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			}
 
 			reg := prometheus.NewPedanticRegistry()
-			am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+			am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 
 			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
@@ -778,7 +782,7 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	const unhealthyInstanceID = "alertmanager-bad-1"
 	const heartbeatTimeout = time.Minute
 	ctx := context.Background()
-	amConfig := mockAlertmanagerConfig(t)
+	amConfig, distCfg := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true
 	amConfig.ShardingRing.HeartbeatPeriod = 100 * time.Millisecond
 	amConfig.ShardingRing.HeartbeatTimeout = heartbeatTimeout
@@ -788,7 +792,7 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 		configs: map[string]alerts.AlertConfigDesc{},
 	}
 
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+	am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
@@ -815,7 +819,7 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 
 func TestAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	ctx := context.Background()
-	amConfig := mockAlertmanagerConfig(t)
+	amConfig, distCfg := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	mockStore := &mockAlertStore{
@@ -823,7 +827,7 @@ func TestAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 		WithListErr: fmt.Errorf("a fetch list failure"),
 	}
 
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+	am, err := createMultitenantAlertmanager(amConfig, distCfg, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 

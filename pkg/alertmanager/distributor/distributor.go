@@ -1,9 +1,11 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"hash/fnv"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -18,7 +20,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
-	am_client "github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -32,9 +34,6 @@ import (
 type Config struct {
 	RemoteTimeout      time.Duration    `yaml:"remote_timeout"`
 	AlertmanagerClient tls.ClientConfig `yaml:"alertmanager_client"`
-
-	// For testing and for extending the ingester by adding calls to the client
-	AlertmanagerClientFactory client.PoolFactory `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -50,11 +49,11 @@ type Distributor struct {
 	cfg              Config
 	requestsInFlight sync.WaitGroup
 
-	alertmanagerRing ring.ReadRing
-	alertmanagerPool *client.Pool
-	replication      int
+	alertmanagerRing          ring.ReadRing
+	alertmanagerClientFactory AlertmanagerClientFactory
+	replication               int
 
-	// Manager for subservices (AlertmanagerSet)
+	// Manager for subservices (Alertmanager Ring)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
@@ -67,28 +66,27 @@ type Distributor struct {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, alertmanagersRing *ring.Ring, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientFactory AlertmanagerClientFactory, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	if cfg.AlertmanagerClientFactory == nil {
-		cfg.AlertmanagerClientFactory = newAlertmanagerClientFactory(cfg.AlertmanagerClient, reg)
+	if alertmanagerClientFactory == nil {
+		alertmanagerClientFactory = newPooledAlertmanagerClientFactory(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClient, logger, reg)
 	}
 
 	d = &Distributor{
-		cfg:    cfg,
-		logger: logger,
+		cfg:                       cfg,
+		logger:                    logger,
+		alertmanagerRing:          alertmanagersRing,
+		alertmanagerClientFactory: alertmanagerClientFactory,
+		replication:               alertmanagersRing.ReplicationFactor(),
 	}
-
-	d.alertmanagerRing = alertmanagersRing
-	d.alertmanagerPool = newAlertmanagerClientPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClientFactory, logger, reg)
-	d.replication = alertmanagersRing.ReplicationFactor()
 
 	d.initMetrics(reg)
 	d.replicationFactor.Set(float64(alertmanagersRing.ReplicationFactor()))
 
-	d.subservices, err = services.NewManager(alertmanagersRing, d.alertmanagerPool)
+	d.subservices, err = services.NewManager(alertmanagersRing)
 	if err != nil {
 		return nil, err
 	}
@@ -101,24 +99,20 @@ func New(cfg Config, alertmanagersRing *ring.Ring, logger log.Logger, reg promet
 
 func (d *Distributor) initMetrics(r prometheus.Registerer) {
 	d.receivedRequests = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "alertmanager_distributor_received_requests_total",
-		Help:      "The total number of requests received.",
+		Name: "cortex_alertmanager_distributor_received_requests_total",
+		Help: "The total number of requests received.",
 	}, []string{"user"})
 	d.amSends = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "alertmanager_distributor_alertmanager_send_total",
-		Help:      "The total number of requests sent to alertmanager.",
+		Name: "cortex_alertmanager_distributor_alertmanager_send_total",
+		Help: "The total number of requests sent to alertmanager.",
 	}, []string{"ingester"})
 	d.amSendFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "alertmanager_distributor_alertmanager_send_failures_total",
-		Help:      "The total number of requests failed to send to alertmanager.",
+		Name: "cortex_alertmanager_distributor_alertmanager_send_failures_total",
+		Help: "The total number of requests failed to send to alertmanager.",
 	}, []string{"ingester"})
 	d.replicationFactor = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Namespace: "cortex",
-		Name:      "alertmanager_distributor_replication_factor",
-		Help:      "The configured replication factor.",
+		Name: "cortex_alertmanager_distributor_replication_factor",
+		Help: "The configured replication factor.",
 	})
 }
 
@@ -137,7 +131,7 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 // IsPathSupported returns true if the given route is currently supported by the Distributor.
-// This will go away in future after we gradually add support for the entire API.
+// TODO: This will go away in future after we gradually add support for the entire API.
 func (d *Distributor) IsPathSupported(path string) bool {
 	// API can be found at https://petstore.swagger.io/?url=https://raw.githubusercontent.com/prometheus/alertmanager/master/api/v2/openapi.yaml.
 	return strings.HasSuffix(path, "/alerts") ||
@@ -172,7 +166,16 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request) {
 	source := util.GetSourceIPsFromOutgoingCtx(r.Context())
 
-	err := ring.DoBatch(r.Context(), ring.Write, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
+	var body []byte
+	var err error
+	if r.Body != nil {
+		body, err = ioutil.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}
+
+	err = ring.DoBatch(r.Context(), ring.Write, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
 		d.amSends.WithLabelValues(am.Addr).Inc()
 
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
@@ -185,13 +188,18 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		resp, err := d.doRequest(localCtx, am, r)
+		// http.Request.Clone() does not do a deep copy, hence copying the body.
+		// https://github.com/golang/go/issues/36095.
+		rClone := r.Clone(r.Context())
+		rClone.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+		resp, err := d.doRequest(localCtx, am, rClone)
 		if err != nil {
 			d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			return err
 		}
 
-		if resp.GetStatus() != am_client.OK {
+		if resp.GetStatus() != alertmanagerpb.OK {
 			return errors.New("alertmanager grpc request not ok")
 		}
 
@@ -224,7 +232,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if resp.GetStatus() != am_client.OK {
+	if resp.GetStatus() != alertmanagerpb.OK {
 		http.Error(w, resp.Error, http.StatusInternalServerError)
 		return
 	}
@@ -247,8 +255,8 @@ func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
 
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request) (*am_client.Response, error) {
-	c, err := d.alertmanagerPool.GetClientFor(am.Addr)
+func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request) (*alertmanagerpb.Response, error) {
+	amClient, err := d.alertmanagerClientFactory.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
 	}
@@ -258,8 +266,7 @@ func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *ht
 		return nil, errors.Wrap(err, "create server HTTPRequest")
 	}
 
-	amClient := c.(AlertmanagerClient)
-	resp, err := amClient.HandleRequest(ctx, &am_client.Request{
+	resp, err := amClient.HandleRequest(ctx, &alertmanagerpb.Request{
 		HttpRequest: req,
 	})
 	if err != nil {

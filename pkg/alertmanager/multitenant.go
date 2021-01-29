@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	am_client "github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -233,7 +233,7 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 // organizations.
 type MultitenantAlertmanager struct {
 	services.Service
-	am_client.AlertmanagerClient
+	alertmanagerpb.AlertmanagerClient
 	grpc_health_v1.HealthClient
 
 	cfg *MultitenantAlertmanagerConfig
@@ -410,7 +410,9 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg d
 			am.registry.MustRegister(am.ring)
 		}
 
-		am.makeDistributor(distCfg, am.registry, logger)
+		if err := am.makeDistributor(distCfg, am.registry, logger); err != nil {
+			return nil, errors.Wrap(err, "make distributor")
+		}
 	}
 
 	if registerer != nil {
@@ -433,8 +435,8 @@ func (am *MultitenantAlertmanager) makeDistributor(distCfg distributor.Config, r
 		reg.MustRegister(alertmanagersRing)
 	}
 
-	am.distributor, err = distributor.New(distCfg, alertmanagersRing, log.With(logger, "component", "AlertmanagerDistributor"), reg)
-	return nil
+	am.distributor, err = distributor.New(distCfg, alertmanagersRing, nil, log.With(logger, "component", "AlertmanagerDistributor"), reg)
+	return err
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
@@ -777,7 +779,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 }
 
 // HandleRequest serves the Alertmanager's web UI and API sent via gRPC.
-func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *am_client.Request) (*am_client.Response, error) {
+func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *alertmanagerpb.Request) (*alertmanagerpb.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, in.HttpRequest.Method, in.HttpRequest.Url, bytes.NewReader(in.HttpRequest.Body))
 	if err != nil {
 		return nil, err
@@ -807,8 +809,8 @@ func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *am_cli
 		headers = append(headers, &httpgrpc.Header{Key: k, Values: v})
 	}
 
-	return &am_client.Response{
-		Status: am_client.OK,
+	return &alertmanagerpb.Response{
+		Status: alertmanagerpb.OK,
 		HttpResponse: &httpgrpc.HTTPResponse{
 			Code:    int32(httpResp.StatusCode),
 			Headers: headers,

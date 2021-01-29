@@ -23,6 +23,10 @@ The rule of thumb is that a production system shouldn't have the `file-max` ulim
 
 The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
+### Ensure bucket index is enabled
+
+The bucket index reduces the number of API calls to the storage bucket and, when enabled, the querier is up and running immediately after the startup (no need to run an initial bucket scan). Ensure [bucket index](./bucket-index.md) is enabled for the querier.
+
 ### Avoid querying non compacted blocks
 
 When running Cortex blocks storage cluster at scale, querying non compacted blocks may be inefficient for two reasons:
@@ -58,6 +62,10 @@ Given these assumptions, in the worst case scenario it would take up to 6h and 4
 ### Ensure caching is enabled
 
 The store-gateway heavily relies on caching both to speed up the queries and to reduce the number of API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
+
+### Ensure bucket index is enabled
+
+The bucket index reduces the number of API calls to the storage bucket and the startup time of the store-gateway. Ensure [bucket index](./bucket-index.md) is enabled for the store-gateway.
 
 ### Ensure a high number of max open file descriptors
 

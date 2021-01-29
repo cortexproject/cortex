@@ -573,6 +573,7 @@ through the following config parameters:&lt;/p>
 &lt;li>An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.&lt;/li>
 &lt;li>A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it&amp;rsquo;s statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.&lt;/li>
 &lt;/ul>
+&lt;p>Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.&lt;/p>
 &lt;h3 id="low-overlapping-instances-probability">Low overlapping instances probability&lt;/h3>
 &lt;p>For example, given a Cortex cluster running &lt;strong>50 ingesters&lt;/strong> and assigning &lt;strong>each tenant 4&lt;/strong> out of 50 ingesters, shuffling instances between each tenant, we get &lt;strong>230K possible combinations&lt;/strong>.&lt;/p>
 &lt;p>Randomly picking two different tenants we have the:&lt;/p>

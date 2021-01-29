@@ -63,12 +63,10 @@ func getServerTLSFlags() map[string]string {
 
 func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
 	return map[string]string{
-		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, clientCertFile),
-		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
-		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, caCertFile),
-
-		// TODO: Remove this in the future to test if TLS verification works,
-		// this requires a TLSServerName flags to be specified
-		"-" + prefix + ".tls-insecure-skip-verify": "true",
+		"-" + prefix + ".tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, clientCertFile),
+		"-" + prefix + ".tls-key-path":    filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
+		"-" + prefix + ".tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
+		"-" + prefix + ".tls-server-name": "ingester.client",
+		"-" + prefix + ".tls-enabled":     "true",
 	}
 }

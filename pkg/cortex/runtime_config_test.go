@@ -44,7 +44,7 @@ overrides:
 		RulerMaxRuleGroupsPerTenant: 20,
 	}
 
-	loadedLimits := runtimeCfg.(*runtimeConfigValues).TenantLimits
+	loadedLimits := runtimeCfg.(*RuntimeConfigValues).TenantLimits
 	require.Equal(t, 3, len(loadedLimits))
 	require.Equal(t, limits, *loadedLimits["1234"])
 	require.Equal(t, limits, *loadedLimits["1235"])
@@ -57,7 +57,7 @@ func TestLoadRuntimeConfig_ShouldLoadEmptyFile(t *testing.T) {
 `)
 	actual, err := loadRuntimeConfig(yamlFile)
 	require.NoError(t, err)
-	assert.Equal(t, &runtimeConfigValues{}, actual)
+	assert.Equal(t, &RuntimeConfigValues{}, actual)
 }
 
 func TestLoadRuntimeConfig_ShouldReturnErrorOnMultipleDocumentsInTheConfig(t *testing.T) {

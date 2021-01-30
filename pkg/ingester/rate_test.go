@@ -26,7 +26,7 @@ func TestRate(t *testing.T) {
 	}
 	r := newEWMARate(0.2, time.Minute)
 
-	for i, tick := range ticks {
+	for _, tick := range ticks {
 		for e := 0; e < tick.events; e++ {
 			r.inc()
 		}
@@ -34,16 +34,14 @@ func TestRate(t *testing.T) {
 		// We cannot do double comparison, because double operations on different
 		// platforms may actually produce results that differ slightly.
 		// There are multiple issues about this in Go's github, eg: 18354 or 20319.
-		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate %d", i)
+		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate")
 	}
 
 	r = newEWMARate(0.2, time.Minute)
 
-	for i, tick := range ticks {
+	for _, tick := range ticks {
 		r.add(int64(tick.events))
 		r.tick()
-		if r.rate() != tick.want {
-			t.Fatalf("%d. unexpected rate: want %v, got %v", i, tick.want, r.rate())
-		}
+		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate")
 	}
 }

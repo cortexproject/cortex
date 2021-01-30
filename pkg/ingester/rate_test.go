@@ -3,6 +3,8 @@ package ingester
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRate(t *testing.T) {
@@ -19,8 +21,8 @@ func TestRate(t *testing.T) {
 		{0, 0.397312},
 		{0, 0.3178496},
 		{0, 0.25427968},
-		{0, 0.20342374400000002},
-		{0, 0.16273899520000001},
+		{0, 0.203423744},
+		{0, 0.1627389952},
 	}
 	r := newEWMARate(0.2, time.Minute)
 
@@ -29,9 +31,10 @@ func TestRate(t *testing.T) {
 			r.inc()
 		}
 		r.tick()
-		if r.rate() != tick.want {
-			t.Fatalf("%d. unexpected rate: want %v, got %v", i, tick.want, r.rate())
-		}
+		// We cannot do double comparison, because double operations on different
+		// platforms may actually produce results that differ slightly.
+		// There are multiple issues about this in Go's github, eg: 18354 or 20319.
+		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate %d", i)
 	}
 
 	r = newEWMARate(0.2, time.Minute)

@@ -105,6 +105,7 @@ func mkExtent(start, end int64) Extent {
 }
 
 func TestShouldCache(t *testing.T) {
+	maxCacheTime := int64(150 * 1000)
 	c := &resultsCache{logger: util.Logger, cacheGenNumberLoader: newMockCacheGenNumberLoader()}
 	for _, tc := range []struct {
 		name                   string
@@ -264,38 +265,74 @@ func TestShouldCache(t *testing.T) {
 			expected:               false,
 		},
 		{
-			name:     "@ modifier on vector selector, before end",
+			name:     "@ modifier on vector selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
-			name:     "@ modifier on vector selector, after end",
+			name:     "@ modifier on vector selector, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 127", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
-			name:     "@ modifier on matrix selector, before end",
+			name:     "@ modifier on vector selector, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 151", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on vector selector, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 151", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
-			name:     "@ modifier on matrix selector, after end",
+			name:     "@ modifier on matrix selector, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
-			name:     "@ modifier on subqueries, before end",
+			name:     "@ modifier on matrix selector, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on matrix selector, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
-			name:     "@ modifier on subqueries, after end",
+			name:     "@ modifier on subqueries, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},
@@ -303,7 +340,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
-				ret := c.shouldCacheResponse(ctx, tc.request, tc.input)
+				ret := c.shouldCacheResponse(ctx, tc.request, tc.input, maxCacheTime)
 				require.Equal(t, tc.expected, ret)
 			})
 		}

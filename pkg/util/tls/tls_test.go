@@ -171,9 +171,20 @@ func TestGetTLSConfig_CA(t *testing.T) {
 	assert.Contains(t, err.Error(), "error loading ca cert")
 }
 
-func TestGetTLSConfig_NoConfig(t *testing.T) {
-	c := &ClientConfig{}
+func TestGetTLSConfig_InsecureSkipVerify(t *testing.T) {
+	c := &ClientConfig{
+		InsecureSkipVerify: true,
+	}
 	tlsConfig, err := c.GetTLSConfig()
 	assert.NoError(t, err)
-	assert.Nil(t, tlsConfig)
+	assert.True(t, tlsConfig.InsecureSkipVerify)
+}
+
+func TestGetTLSConfig_ServerName(t *testing.T) {
+	c := &ClientConfig{
+		ServerName: "myserver.com",
+	}
+	tlsConfig, err := c.GetTLSConfig()
+	assert.NoError(t, err)
+	assert.Equal(t, "myserver.com", tlsConfig.ServerName)
 }

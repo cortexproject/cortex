@@ -14,25 +14,36 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestHandler_remoteWrite(t *testing.T) {
 	req := createRequest(t, createPrometheusRemoteWriteProtobuf(t))
 	resp := httptest.NewRecorder()
-	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, nil, verifyWriteRequestHandler(t, client.API))
+	handler := Handler(100000, nil, verifyWriteRequestHandler(t, client.API))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
 }
 
 func TestHandler_cortexWriteRequest(t *testing.T) {
-	req := createRequest(t, createCortexWriteRequestProtobuf(t))
+	req := createRequest(t, createCortexWriteRequestProtobuf(t, false))
 	resp := httptest.NewRecorder()
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(distributor.Config{MaxRecvMsgSize: 100000}, sourceIPs, verifyWriteRequestHandler(t, client.RULE))
+	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, client.RULE))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
+}
+
+func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
+	for _, req := range []*http.Request{
+		createRequest(t, createCortexWriteRequestProtobuf(t, true)),
+		createRequest(t, createCortexWriteRequestProtobuf(t, false)),
+	} {
+		resp := httptest.NewRecorder()
+		handler := Handler(100000, nil, verifyWriteRequestHandler(t, client.RULE))
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, 200, resp.Code)
+	}
 }
 
 func verifyWriteRequestHandler(t *testing.T, expectSource client.WriteRequest_SourceEnum) func(ctx context.Context, request *client.WriteRequest) (response *client.WriteResponse, err error) {
@@ -42,6 +53,7 @@ func verifyWriteRequestHandler(t *testing.T, expectSource client.WriteRequest_So
 		assert.Equal(t, "__name__", request.Timeseries[0].Labels[0].Name)
 		assert.Equal(t, "foo", request.Timeseries[0].Labels[0].Value)
 		assert.Equal(t, expectSource, request.Source)
+		assert.False(t, request.SkipLabelNameValidation)
 		return &client.WriteResponse{}, nil
 	}
 }
@@ -75,7 +87,7 @@ func createPrometheusRemoteWriteProtobuf(t *testing.T) []byte {
 	require.NoError(t, err)
 	return inoutBytes
 }
-func createCortexWriteRequestProtobuf(t *testing.T) []byte {
+func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool) []byte {
 	t.Helper()
 	ts := client.PreallocTimeseries{
 		TimeSeries: &client.TimeSeries{
@@ -88,8 +100,9 @@ func createCortexWriteRequestProtobuf(t *testing.T) []byte {
 		},
 	}
 	input := client.WriteRequest{
-		Timeseries: []client.PreallocTimeseries{ts},
-		Source:     client.RULE,
+		Timeseries:              []client.PreallocTimeseries{ts},
+		Source:                  client.RULE,
+		SkipLabelNameValidation: skipLabelNameValidation,
 	}
 	inoutBytes, err := input.Marshal()
 	require.NoError(t, err)

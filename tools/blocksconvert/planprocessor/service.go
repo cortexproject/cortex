@@ -37,7 +37,7 @@ type Config struct {
 	HeartbeatPeriod   time.Duration
 	SchedulerEndpoint string
 	NextPlanInterval  time.Duration
-	GrpcConfig        grpcclient.ConfigWithTLS
+	GrpcConfig        grpcclient.Config
 }
 
 func (cfg *Config) RegisterFlags(prefix string, f *flag.FlagSet) {

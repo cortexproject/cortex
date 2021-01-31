@@ -159,7 +159,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
 	t.RuntimeConfig = serv
-	t.API.RegisterRuntimeConfig(t.RuntimeConfig)
+	t.API.RegisterRuntimeConfig(runtimeConfigHandler(t.RuntimeConfig, t.Cfg.LimitsConfig))
 	return serv, err
 }
 

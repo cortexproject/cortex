@@ -23,8 +23,8 @@ import (
 )
 
 type NotifierConfig struct {
-	TLS       tls.ClientConfig `yaml:"tls"`
-	BasicAuth util.BasicAuth   `yaml:"basic_auth"`
+	TLS       tls.ClientConfig `yaml:",inline"`
+	BasicAuth util.BasicAuth   `yaml:",inline"`
 }
 
 func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
@@ -170,6 +170,7 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 				CertFile:           rulerConfig.NotifierConfig.TLS.CertPath,
 				KeyFile:            rulerConfig.NotifierConfig.TLS.KeyPath,
 				InsecureSkipVerify: rulerConfig.NotifierConfig.TLS.InsecureSkipVerify,
+				ServerName:         rulerConfig.NotifierConfig.TLS.ServerName,
 			},
 		},
 	}

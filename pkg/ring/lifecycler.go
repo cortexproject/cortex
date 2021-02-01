@@ -223,12 +223,16 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 	}
 
 	if len(i.getTokens()) == 0 {
-		return fmt.Errorf("this instance owns no tokens")
+		return errors.New("this instance owns no tokens")
+	}
+
+	if currState := i.GetState(); currState != ACTIVE {
+		return fmt.Errorf("this instance state is %s while %s is expected to be ready", currState, ACTIVE)
 	}
 
 	ringDesc, ok := desc.(*Desc)
 	if !ok || ringDesc == nil {
-		return fmt.Errorf("no ring returned from the KV store")
+		return errors.New("no ring returned from the KV store")
 	}
 
 	if err := ringDesc.Ready(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {

@@ -288,31 +288,90 @@ func (m *MockClient) WatchPrefix(ctx context.Context, prefix string, f func(stri
 	}
 }
 
-// Ensure a check ready returns error when consul returns a nil key and the ingester already holds keys. This happens if the ring key gets deleted
-func TestCheckReady(t *testing.T) {
+func TestLifecycler_CheckReady_TheInstanceIsNotInTheRingAtStartup(t *testing.T) {
+	ctx := context.Background()
+
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
-	ringConfig.KVStore.Mock = &MockClient{}
-
-	r, err := New(ringConfig, "ingester", IngesterRingKey, nil)
-	require.NoError(t, err)
-	require.NoError(t, r.StartAsync(context.Background()))
-	// This is very atypical, but if we used AwaitRunning, that would fail, because of how quickly service terminates ...
-	// by the time we check for Running state, it is already terminated, because mock ring has no WatchFunc, so it
-	// will just exit.
-	require.NoError(t, r.AwaitTerminated(context.Background()))
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
 	cfg := testLifecyclerConfig(ringConfig, "ring1")
-	cfg.MinReadyDuration = 1 * time.Nanosecond
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	cfg.MinReadyDuration = 0
+	cfg.JoinAfter = time.Second
+	cfg.ObservePeriod = 0
+
+	l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, l))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, l))
+	})
 
-	l1.setTokens(Tokens([]uint32{1}))
+	err = l.CheckReady(ctx)
+	require.EqualError(t, err, "this instance owns no tokens")
 
-	// Delete the ring key before checking ready
-	err = l1.CheckReady(context.Background())
-	require.Error(t, err)
+	// We expect the instance to switch to ACTIVE after JoinAfter period and the readiness check to succeed.
+	test.Poll(t, 2*time.Second, nil, func() interface{} {
+		return l.CheckReady(ctx)
+	})
+}
+
+func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing.T) {
+	ctx := context.Background()
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	// Start the lifecycler for the first time, join the ring immediately,
+	// shutdown but do not unregister from ring.
+	{
+		cfg := testLifecyclerConfig(ringConfig, "ring1")
+		cfg.MinReadyDuration = 0
+		cfg.JoinAfter = 0
+		cfg.ObservePeriod = 0
+		cfg.UnregisterOnShutdown = false
+
+		l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
+
+		// Wait until ready.
+		test.Poll(t, time.Second, nil, func() interface{} {
+			return l.CheckReady(ctx)
+		})
+
+		// Shutdown (will not unregister from ring).
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, l))
+	}
+
+	// Start the lifecycler for the second time time, join the ring after a short period.
+	{
+		cfg := testLifecyclerConfig(ringConfig, "ring1")
+		cfg.MinReadyDuration = 0
+		cfg.JoinAfter = time.Second
+		cfg.ObservePeriod = 0
+
+		l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(ctx, l))
+		})
+
+		// Wait until the init ring has been executed (previous tokens has been loaded from ring).
+		test.Poll(t, 2*time.Second, true, func() interface{} {
+			return len(l.getTokens()) > 0
+		})
+
+		err = l.CheckReady(ctx)
+		require.EqualError(t, err, "this instance state is LEAVING while ACTIVE is expected to be ready")
+
+		// We expect the instance to switch to ACTIVE after JoinAfter period and the readiness check to succeed.
+		test.Poll(t, 2*time.Second, nil, func() interface{} {
+			return l.CheckReady(ctx)
+		})
+	}
 }
 
 type noopFlushTransferer struct {

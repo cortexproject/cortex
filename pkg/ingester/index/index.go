@@ -246,7 +246,7 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 		})
 
 		// see if search didn't find fp which matches the condition which means we don't have to do anything.
-		if j == len(fingerprints.fps) {
+		if j < len(fingerprints.fps) && fingerprints.fps[j] == fp {
 			continue
 		}
 		fingerprints.fps = fingerprints.fps[:j+copy(fingerprints.fps[j:], fingerprints.fps[j+1:])]

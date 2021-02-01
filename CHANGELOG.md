@@ -17,6 +17,7 @@
 * [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
+* [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761
 
 ## 1.7.0 in progress
 

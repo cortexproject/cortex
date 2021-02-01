@@ -201,7 +201,7 @@ func TestWatchPrefix(t *testing.T) {
 				}
 				require.NoError(t, err)
 			}
-			fmt.Println("Generator finished in", time.Since(start))
+			t.Log("Generator finished in", time.Since(start))
 		}
 
 		go gen(prefix)
@@ -223,7 +223,7 @@ func TestWatchPrefix(t *testing.T) {
 				}
 			}
 		}
-		fmt.Println("Watching finished in", time.Since(start))
+		t.Log("Watching finished in", time.Since(start))
 
 		cancel() // stop all goroutines
 

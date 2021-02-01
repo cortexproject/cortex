@@ -269,7 +269,8 @@ func TestAlertmanagerSharding(t *testing.T) {
 		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(30)), "cortex_alertmanager_tenants_discovered"))
 		// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
 		require.NoError(t, am.WaitSumMetrics(e2e.Greater(float64(0)), "cortex_alertmanager_tenants_owned"))
-		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(384)), "cortex_ring_tokens_total"))
+		// 384 comes from the alertmanager ring and 384 comes from the distributor read ring.
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(768)), `cortex_ring_tokens_total`))
 	}
 
 	var totalTenants int

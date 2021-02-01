@@ -168,6 +168,10 @@ querier:
   [store_gateway_addresses: <string> | default = ""]
 
   store_gateway_client:
+    # Enable TLS for gRPC client connecting to store-gateway.
+    # CLI flag: -querier.store-gateway-client.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
     # Path to the client certificate file, which will be used for authenticating
     # with the server. Also requires the key path to be configured.
     # CLI flag: -querier.store-gateway-client.tls-cert-path
@@ -182,6 +186,10 @@ querier:
     # If not set, the host's root CA certificates are used.
     # CLI flag: -querier.store-gateway-client.tls-ca-path
     [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -querier.store-gateway-client.tls-server-name
+    [tls_server_name: <string> | default = ""]
 
     # Skip validating server certificate.
     # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
@@ -675,6 +683,17 @@ blocks_storage:
       # the querier (at query time).
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
+
+    # If enabled, store-gateway will lazy load an index-header only once
+    # required by a query.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+    [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+    # If index-header lazy loading is enabled and this setting is > 0, the
+    # store-gateway will offload unused index-headers after 'idle timeout'
+    # inactivity.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+    [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
 
   tsdb:
     # Local directory to store TSDBs in the ingesters.

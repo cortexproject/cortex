@@ -165,24 +165,36 @@ alertmanager_distributor:
   [remote_timeout: <duration> | default = 2s]
 
   alertmanager_client:
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
-    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-cert-path
-    [tls_cert_path: <string> | default = ""]
+    grpc_client_config:
+      # Enable TLS in the GRPC client. This flag needs to be enabled when any
+      # other TLS flag is set. If set to false, insecure connection to gRPC
+      # server will be used.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-enabled
+      [tls_enabled: <boolean> | default = false]
 
-    # Path to the key file for the client certificate. Also requires the client
-    # certificate to be configured.
-    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-key-path
-    [tls_key_path: <string> | default = ""]
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-cert-path
+      [tls_cert_path: <string> | default = ""]
 
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
-    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-ca-path
-    [tls_ca_path: <string> | default = ""]
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-key-path
+      [tls_key_path: <string> | default = ""]
 
-    # Skip validating server certificate.
-    # CLI flag: -alertmanager-distributor.alertmanager-client.tls-insecure-skip-verify
-    [tls_insecure_skip_verify: <boolean> | default = false]
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -alertmanager-distributor.alertmanager-client.tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
 
 runtime_config:
   # How often to check runtime config file.

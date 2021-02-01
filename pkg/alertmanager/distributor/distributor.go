@@ -26,14 +26,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config contains the configuration required to
 // create a Distributor
 type Config struct {
-	RemoteTimeout      time.Duration    `yaml:"remote_timeout"`
-	AlertmanagerClient tls.ClientConfig `yaml:"alertmanager_client"`
+	RemoteTimeout      time.Duration            `yaml:"remote_timeout"`
+	AlertmanagerClient AlertmanagerClientConfig `yaml:"alertmanager_client"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

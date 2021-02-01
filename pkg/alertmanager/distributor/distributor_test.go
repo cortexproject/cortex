@@ -224,7 +224,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
 	test.Poll(t, time.Second, numAM, func() interface{} {
-		return amRing.IngesterCount()
+		return amRing.InstancesCount()
 	})
 
 	return d, ams, reg, func() {

@@ -797,6 +797,7 @@ func mockGatewayConfig() Config {
 
 	cfg.ShardingRing.InstanceID = "test"
 	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
+	cfg.ShardingRing.WaitStabilityMinDuration = 0
 
 	return cfg
 }

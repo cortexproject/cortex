@@ -352,6 +352,28 @@ func (r *Ring) GetAll(op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
+// GetAllHealthy implements ReadRing.
+func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
+	}
+
+	instances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	for _, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op) {
+			instances = append(instances, instance)
+		}
+	}
+
+	return ReplicationSet{
+		Ingesters: instances,
+		MaxErrors: 0,
+	}, nil
+}
+
 // Describe implements prometheus.Collector.
 func (r *Ring) Describe(ch chan<- *prometheus.Desc) {
 	ch <- r.memberOwnershipDesc

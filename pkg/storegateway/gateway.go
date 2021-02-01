@@ -255,6 +255,22 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is ACTIVE in the ring")
+
+		// In the event of a cluster cold start or scale up of 2+ store-gateway instances at the same
+		// time, we may end up in a situation where each new store-gateway instance starts at a slightly
+		// different time and thus each one starts with on a different state of the ring. It's better
+		// to just wait the ring stability for a short time.
+		if g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
+			minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration
+			maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
+
+			level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
+			if err := ring.WaitRingStability(ctx, g.ring, ring.BlocksSync, minWaiting, maxWaiting); err != nil {
+				level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway")
+			} else {
+				level.Info(g.logger).Log("msg", "store-gateway ring topology is stable")
+			}
+		}
 	}
 
 	return nil

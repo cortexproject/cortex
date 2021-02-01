@@ -42,6 +42,10 @@ type RingConfig struct {
 	TokensFilePath       string        `yaml:"tokens_file_path"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 
+	// Wait ring stability.
+	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
+	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
+
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
@@ -71,6 +75,10 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, ringFlagsPrefix+"replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.TokensFilePath, ringFlagsPrefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, ringFlagsPrefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
+
+	// Wait stability flags.
+	f.DurationVar(&cfg.WaitStabilityMinDuration, ringFlagsPrefix+"wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
+	f.DurationVar(&cfg.WaitStabilityMaxDuration, ringFlagsPrefix+"wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the store-gateway ring keep changing after this period of time, the store-gateway will start anyway.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}

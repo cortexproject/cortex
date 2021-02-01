@@ -118,6 +118,8 @@ func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags
 			"-store-gateway.sharding-ring.store":              "consul",
 			"-store-gateway.sharding-ring.consul.hostname":    consulAddress,
 			"-store-gateway.sharding-ring.replication-factor": "1",
+			// Do not wait for ring stability to speed up integration tests.
+			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

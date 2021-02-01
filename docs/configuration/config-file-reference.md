@@ -244,6 +244,12 @@ query_scheduler:
       # CLI flag: -query-scheduler.grpc-client-config.backoff-retries
       [max_retries: <int> | default = 10]
 
+    # Enable TLS in the GRPC client. This flag needs to be enabled when any
+    # other TLS flag is set. If set to false, insecure connection to gRPC server
+    # will be used.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
     # Path to the client certificate file, which will be used for authenticating
     # with the server. Also requires the key path to be configured.
     # CLI flag: -query-scheduler.grpc-client-config.tls-cert-path
@@ -258,6 +264,10 @@ query_scheduler:
     # If not set, the host's root CA certificates are used.
     # CLI flag: -query-scheduler.grpc-client-config.tls-ca-path
     [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -query-scheduler.grpc-client-config.tls-server-name
+    [tls_server_name: <string> | default = ""]
 
     # Skip validating server certificate.
     # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
@@ -851,6 +861,10 @@ The `querier_config` configures the Cortex querier.
 [store_gateway_addresses: <string> | default = ""]
 
 store_gateway_client:
+  # Enable TLS for gRPC client connecting to store-gateway.
+  # CLI flag: -querier.store-gateway-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -querier.store-gateway-client.tls-cert-path
@@ -865,6 +879,10 @@ store_gateway_client:
   # not set, the host's root CA certificates are used.
   # CLI flag: -querier.store-gateway-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -querier.store-gateway-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
   # Skip validating server certificate.
   # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
@@ -965,6 +983,12 @@ grpc_client_config:
     # CLI flag: -frontend.grpc-client-config.backoff-retries
     [max_retries: <int> | default = 10]
 
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -frontend.grpc-client-config.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -frontend.grpc-client-config.tls-cert-path
@@ -979,6 +1003,10 @@ grpc_client_config:
   # not set, the host's root CA certificates are used.
   # CLI flag: -frontend.grpc-client-config.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -frontend.grpc-client-config.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
   # Skip validating server certificate.
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
@@ -1125,6 +1153,12 @@ ruler_client:
     # CLI flag: -ruler.client.backoff-retries
     [max_retries: <int> | default = 10]
 
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -ruler.client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -ruler.client.tls-cert-path
@@ -1139,6 +1173,10 @@ ruler_client:
   # not set, the host's root CA certificates are used.
   # CLI flag: -ruler.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -ruler.client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
   # Skip validating server certificate.
   # CLI flag: -ruler.client.tls-insecure-skip-verify
@@ -2384,6 +2422,35 @@ bigtable:
       # CLI flag: -bigtable.backoff-retries
       [max_retries: <int> | default = 10]
 
+    # Enable TLS in the GRPC client. This flag needs to be enabled when any
+    # other TLS flag is set. If set to false, insecure connection to gRPC server
+    # will be used.
+    # CLI flag: -bigtable.tls-enabled
+    [tls_enabled: <boolean> | default = true]
+
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
+    # CLI flag: -bigtable.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -bigtable.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
+    # CLI flag: -bigtable.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -bigtable.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -bigtable.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
+
   # If enabled, once a tables info is fetched, it is cached.
   # CLI flag: -bigtable.table-cache.enabled
   [table_cache_enabled: <boolean> | default = true]
@@ -2904,6 +2971,12 @@ grpc_client_config:
     # CLI flag: -ingester.client.backoff-retries
     [max_retries: <int> | default = 10]
 
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -ingester.client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -ingester.client.tls-cert-path
@@ -2918,6 +2991,10 @@ grpc_client_config:
   # not set, the host's root CA certificates are used.
   # CLI flag: -ingester.client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -ingester.client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
   # Skip validating server certificate.
   # CLI flag: -ingester.client.tls-insecure-skip-verify
@@ -3001,6 +3078,12 @@ grpc_client_config:
     # CLI flag: -querier.frontend-client.backoff-retries
     [max_retries: <int> | default = 10]
 
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -querier.frontend-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
   # CLI flag: -querier.frontend-client.tls-cert-path
@@ -3015,6 +3098,10 @@ grpc_client_config:
   # not set, the host's root CA certificates are used.
   # CLI flag: -querier.frontend-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -querier.frontend-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
@@ -3052,17 +3139,24 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# The TLS certificate file path.
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# The TLS private key file path.
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# The trusted CA file path.
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.etcd.tls-server-name
+[tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
 # CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
@@ -3683,6 +3777,10 @@ The `configstore_config` configures the config database storing rules and alerts
 # not set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.configs.tls-ca-path
 [tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.configs.tls-server-name
+[tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
 # CLI flag: -<prefix>.configs.tls-insecure-skip-verify

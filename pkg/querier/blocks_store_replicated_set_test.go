@@ -21,7 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
@@ -334,7 +333,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			}
 
 			reg := prometheus.NewPedanticRegistry()
-			s, err := newBlocksStoreReplicationSet(r, testData.shardingStrategy, limits, tls.ClientConfig{}, log.NewNopLogger(), reg)
+			s, err := newBlocksStoreReplicationSet(r, testData.shardingStrategy, limits, ClientConfig{}, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck

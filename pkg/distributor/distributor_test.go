@@ -1178,7 +1178,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
 	test.Poll(t, time.Second, cfg.numIngesters, func() interface{} {
-		return ingestersRing.IngesterCount()
+		return ingestersRing.InstancesCount()
 	})
 
 	factory := func(addr string) (ring_client.PoolClient, error) {

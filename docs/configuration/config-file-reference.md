@@ -4230,6 +4230,17 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
 
+  # If enabled, store-gateway will lazy load an index-header only once required
+  # by a query.
+  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+  [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+  # If index-header lazy loading is enabled and this setting is > 0, the
+  # store-gateway will offload unused index-headers after 'idle timeout'
+  # inactivity.
+  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+  [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir

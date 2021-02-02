@@ -237,7 +237,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 		}
 	}
 
-	if !isAtModifierCachable(req, maxCacheTime) {
+	if !s.isAtModifierCachable(req, maxCacheTime) {
 		return false
 	}
 
@@ -267,7 +267,7 @@ var errAtModifierAfterEnd = errors.New("at modifier after end")
 
 // isAtModifierCachable returns true if the @ modifier result
 // is safe to cache.
-func isAtModifierCachable(r Request, maxCacheTime int64) bool {
+func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	// There are 2 cases when @ modifier is not safe to cache:
 	//   1. When @ modifier points to time beyond the maxCacheTime.
 	//   2. If the @ modifier time is > the query range end while being
@@ -281,6 +281,7 @@ func isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
+		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
 		return false
 	}
 

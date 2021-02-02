@@ -8,6 +8,7 @@
   - `-<prefix>.s3.sse.type`
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
+* [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.

@@ -800,6 +800,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.query-store-for-labels-enabled
 [query_store_for_labels_enabled: <boolean> | default = false]
 
+# Enable the @ modifier in PromQL.
+# CLI flag: -querier.at-modifier-enabled
+[at_modifier_enabled: <boolean> | default = false]
+
 # The time after which a metric should be queried from storage and not just
 # ingesters. 0 means all queries are sent to store. When running the blocks
 # storage, if this option is enabled, the time range of the query sent to the

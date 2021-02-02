@@ -191,7 +191,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 			name: "with Basic Authentication URL and Explicit",
 			cfg: &Config{
 				AlertmanagerURL: "http://marco:hunter2@alertmanager-0.default.svc.cluster.local/alertmanager",
-				NotifierConfig: NotifierConfig{
+				Notifier: NotifierConfig{
 					BasicAuth: util.BasicAuth{
 						Username: "jacob",
 						Password: "test",

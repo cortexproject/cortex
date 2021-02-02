@@ -166,11 +166,11 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 		ServiceDiscoveryConfigs: sdConfig,
 		HTTPClientConfig: config_util.HTTPClientConfig{
 			TLSConfig: config_util.TLSConfig{
-				CAFile:             rulerConfig.NotifierConfig.TLS.CAPath,
-				CertFile:           rulerConfig.NotifierConfig.TLS.CertPath,
-				KeyFile:            rulerConfig.NotifierConfig.TLS.KeyPath,
-				InsecureSkipVerify: rulerConfig.NotifierConfig.TLS.InsecureSkipVerify,
-				ServerName:         rulerConfig.NotifierConfig.TLS.ServerName,
+				CAFile:             rulerConfig.Notifier.TLS.CAPath,
+				CertFile:           rulerConfig.Notifier.TLS.CertPath,
+				KeyFile:            rulerConfig.Notifier.TLS.KeyPath,
+				InsecureSkipVerify: rulerConfig.Notifier.TLS.InsecureSkipVerify,
+				ServerName:         rulerConfig.Notifier.TLS.ServerName,
 			},
 		},
 	}
@@ -187,10 +187,10 @@ func amConfigFromURL(rulerConfig *Config, url *url.URL, apiVersion config.Alertm
 	}
 
 	// Override URL basic authentication configs with hard coded config values if present
-	if rulerConfig.NotifierConfig.BasicAuth.IsEnabled() {
+	if rulerConfig.Notifier.BasicAuth.IsEnabled() {
 		amConfig.HTTPClientConfig.BasicAuth = &config_util.BasicAuth{
-			Username: rulerConfig.NotifierConfig.BasicAuth.Username,
-			Password: config_util.Secret(rulerConfig.NotifierConfig.BasicAuth.Password),
+			Username: rulerConfig.Notifier.BasicAuth.Username,
+			Password: config_util.Secret(rulerConfig.Notifier.BasicAuth.Password),
 		}
 	}
 

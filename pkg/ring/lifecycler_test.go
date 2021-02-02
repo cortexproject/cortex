@@ -54,7 +54,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig1.JoinAfter = 100 * time.Millisecond
 
-	lifecycler1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	lifecycler1, err := NewLifecycler(lifecyclerConfig1, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler1.HealthyInstancesCount())
 
@@ -71,7 +71,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 	lifecyclerConfig2.HeartbeatPeriod = 100 * time.Millisecond
 	lifecyclerConfig2.JoinAfter = 100 * time.Millisecond
 
-	lifecycler2, err := NewLifecycler(lifecyclerConfig2, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	lifecycler2, err := NewLifecycler(lifecyclerConfig2, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, lifecycler2.HealthyInstancesCount())
 
@@ -113,7 +113,7 @@ func TestLifecycler_ZonesCount(t *testing.T) {
 		cfg.JoinAfter = 100 * time.Millisecond
 		cfg.Zone = event.zone
 
-		lifecycler, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		lifecycler, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 		require.NoError(t, err)
 		assert.Equal(t, 0, lifecycler.ZonesCount())
 
@@ -181,13 +181,6 @@ func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
 	})
 }
 
-type nopFlushTransferer struct{}
-
-func (f *nopFlushTransferer) Flush() {}
-func (f *nopFlushTransferer) TransferOut(_ context.Context) error {
-	return nil
-}
-
 func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)
@@ -201,7 +194,7 @@ func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 
 	// Add an 'ingester' with normalised tokens.
 	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
-	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l1, err := NewLifecycler(lifecyclerConfig1, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
@@ -220,7 +213,7 @@ func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// Add a second ingester with the same settings, so it will think it has restarted
-	l2, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l2, err := NewLifecycler(lifecyclerConfig1, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
 
@@ -235,56 +228,63 @@ func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 	})
 }
 
-type MockClient struct {
-	ListFunc        func(ctx context.Context, prefix string) ([]string, error)
-	GetFunc         func(ctx context.Context, key string) (interface{}, error)
-	DeleteFunc      func(ctx context.Context, key string) error
-	CASFunc         func(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
-	WatchKeyFunc    func(ctx context.Context, key string, f func(interface{}) bool)
-	WatchPrefixFunc func(ctx context.Context, prefix string, f func(string, interface{}) bool)
-}
+func TestLifecycler_ShouldHandleDoNotUnregisterOnShutdown(t *testing.T) {
+	ctx := context.Background()
 
-func (m *MockClient) List(ctx context.Context, prefix string) ([]string, error) {
-	if m.ListFunc != nil {
-		return m.ListFunc(ctx, prefix)
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	cfg := testLifecyclerConfig(ringConfig, "ring1")
+	cfg.MinReadyDuration = 0
+	cfg.JoinAfter = 0
+	cfg.ObservePeriod = 0
+	cfg.UnregisterOnShutdown = false
+
+	var (
+		initialTokens       Tokens
+		initialRegisteredAt time.Time
+	)
+
+	// Start the lifecycler for the first time and the shutdown.
+	{
+		l, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
+
+		// Wait until ACTIVE.
+		test.Poll(t, time.Second, ACTIVE, func() interface{} {
+			return l.GetState()
+		})
+
+		initialTokens = l.getTokens()
+		initialRegisteredAt = l.getRegisteredAt()
+
+		// Shutdown (will not unregister from ring).
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, l))
 	}
 
-	return nil, nil
-}
+	// Wait a second because the instance registration timestamp has second precision
+	// and we need to wait until the next second to ensure the following assertion works as expected.
+	time.Sleep(time.Second)
 
-func (m *MockClient) Get(ctx context.Context, key string) (interface{}, error) {
-	if m.GetFunc != nil {
-		return m.GetFunc(ctx, key)
-	}
+	// Start the lifecycler for the second time time.
+	{
+		l, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(ctx, l))
+		})
 
-	return nil, nil
-}
+		// Wait until ACTIVE.
+		test.Poll(t, time.Second, ACTIVE, func() interface{} {
+			return l.GetState()
+		})
 
-func (m *MockClient) Delete(ctx context.Context, key string) error {
-	if m.DeleteFunc != nil {
-		return m.DeleteFunc(ctx, key)
-	}
-
-	return nil
-}
-
-func (m *MockClient) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	if m.CASFunc != nil {
-		return m.CASFunc(ctx, key, f)
-	}
-
-	return nil
-}
-
-func (m *MockClient) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	if m.WatchKeyFunc != nil {
-		m.WatchKeyFunc(ctx, key, f)
-	}
-}
-
-func (m *MockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
-	if m.WatchPrefixFunc != nil {
-		m.WatchPrefixFunc(ctx, prefix, f)
+		// Ensure instance data hasn't changed.
+		assert.Equal(t, initialTokens, l.getTokens())
+		assert.Equal(t, initialRegisteredAt.Unix(), l.getRegisteredAt().Unix())
 	}
 }
 
@@ -300,7 +300,7 @@ func TestLifecycler_CheckReady_TheInstanceIsNotInTheRingAtStartup(t *testing.T) 
 	cfg.JoinAfter = time.Second
 	cfg.ObservePeriod = 0
 
-	l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, l))
 	t.Cleanup(func() {
@@ -324,7 +324,8 @@ func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing
 	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
 
 	// Start the lifecycler for the first time, join the ring immediately,
-	// shutdown but do not unregister from ring.
+	// shutdown but do not unregister from ring. The instance will be left
+	// in the ring with the LEAVING state.
 	{
 		cfg := testLifecyclerConfig(ringConfig, "ring1")
 		cfg.MinReadyDuration = 0
@@ -332,7 +333,7 @@ func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing
 		cfg.ObservePeriod = 0
 		cfg.UnregisterOnShutdown = false
 
-		l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		l, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
 
@@ -352,7 +353,7 @@ func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing
 		cfg.JoinAfter = time.Second
 		cfg.ObservePeriod = 0
 
-		l, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+		l, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, l))
 		t.Cleanup(func() {
@@ -365,7 +366,7 @@ func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing
 		})
 
 		err = l.CheckReady(ctx)
-		require.EqualError(t, err, "this instance state is LEAVING while ACTIVE is expected to be ready")
+		require.EqualError(t, err, "this instance state is PENDING while ACTIVE is expected to be ready")
 
 		// We expect the instance to switch to ACTIVE after JoinAfter period and the readiness check to succeed.
 		test.Poll(t, 2*time.Second, nil, func() interface{} {
@@ -373,12 +374,6 @@ func TestLifecycler_CheckReady_TheInstanceIsAlreadyInTheRingAtStartup(t *testing
 		})
 	}
 }
-
-type noopFlushTransferer struct {
-}
-
-func (f *noopFlushTransferer) Flush()                                {}
-func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
 
 func TestTokensOnDisk(t *testing.T) {
 	var ringConfig Config
@@ -401,7 +396,7 @@ func TestTokensOnDisk(t *testing.T) {
 	lifecyclerConfig.TokensFilePath = tokenDir + "/tokens"
 
 	// Start first ingester.
-	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l1, err := NewLifecycler(lifecyclerConfig, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
@@ -425,7 +420,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 	// Start new ingester at same token directory.
 	lifecyclerConfig.ID = "ing2"
-	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l2, err := NewLifecycler(lifecyclerConfig, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
 	defer services.StopAndAwaitTerminated(context.Background(), l2) //nolint:errcheck
@@ -487,7 +482,7 @@ func TestJoinInLeavingState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l1, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
@@ -543,7 +538,7 @@ func TestJoinInJoiningState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l1, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 
@@ -600,7 +595,7 @@ func TestRestoreOfZoneWhenOverwritten(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	l1, err := NewLifecycler(cfg, NewNoopFlushTransferer(), "ingester", IngesterRingKey, true, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
 

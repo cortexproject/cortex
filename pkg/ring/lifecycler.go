@@ -400,11 +400,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	for {
 		select {
 		case <-autoJoinAfter:
-			level.Debug(log.Logger).Log("msg", "JoinAfter expired", "ring", i.RingName)
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
 			if i.GetState() == PENDING {
-				level.Info(log.Logger).Log("msg", "auto-joining cluster after timeout", "ring", i.RingName)
+				level.Info(log.Logger).Log("msg", "auto-joining cluster after timeout", "timeout", i.cfg.JoinAfter, "ring", i.RingName)
 
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
@@ -566,21 +565,13 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		// but we need to update the local state accordingly.
 		i.setRegisteredAt(instanceDesc.GetRegisteredAt())
 
-		// If the ingester is in the JOINING state this means it crashed due to
-		// a failed token transfer or some other reason during startup. We want
-		// to set it back to PENDING in order to start the lifecycle from the
-		// beginning.
-		if instanceDesc.State == JOINING {
-			level.Warn(log.Logger).Log("msg", "instance found in ring as JOINING, setting to PENDING",
-				"ring", i.RingName)
+		// The instance may already be in the ring with one of the following states:
+		// - JOINING: this means it crashed due to a failed token transfer or some other reason during startup.
+		// - LEAVING: this means it crashed while shutting down and unregister from ring on shutdown is disabled.
+		// In both cases, we want to set it back to PENDING in order to start the lifecycle from the beginning.
+		if instanceDesc.State == JOINING || instanceDesc.State == LEAVING {
+			level.Info(log.Logger).Log("msg", "instance already found in ring, changing state to PENDING", "state", instanceDesc.State, "ring", i.RingName)
 			instanceDesc.State = PENDING
-			return ringDesc, true, nil
-		}
-
-		// If the ingester failed to clean it's ring entry up in can leave it's state in LEAVING.
-		// Move it into ACTIVE to ensure the ingester joins the ring.
-		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
-			instanceDesc.State = ACTIVE
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
@@ -589,7 +580,12 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		i.setTokens(tokens)
 
 		level.Info(log.Logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
-		// we haven't modified the ring, don't try to store it.
+
+		// Update the ring if the instance has been changed.
+		if !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
 		return nil, true, nil
 	})
 
@@ -680,7 +676,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState IngesterState) er
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
 		if len(myTokens) > 0 {
-			level.Error(log.Logger).Log("msg", "tokens already exist for this instance - wasn't expecting any!", "num_tokens", len(myTokens), "ring", i.RingName)
+			level.Info(log.Logger).Log("msg", "tokens already exist for this instance in the ring", "num_tokens", len(myTokens), "ring", i.RingName)
 		}
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
@@ -750,7 +746,7 @@ func (i *Lifecycler) changeState(ctx context.Context, state IngesterState) error
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
 		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
+		return fmt.Errorf("changing instance state from %v -> %v is disallowed", currState, state)
 	}
 
 	level.Info(log.Logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)

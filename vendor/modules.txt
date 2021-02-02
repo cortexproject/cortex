@@ -324,7 +324,6 @@ github.com/klauspost/cpuid
 # github.com/konsorten/go-windows-terminal-sequences v1.0.3
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
-## explicit
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
 github.com/lann/ps
@@ -551,7 +550,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51
+# github.com/thanos-io/thanos v0.13.1-0.20210202083325-a24acb6073a2
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

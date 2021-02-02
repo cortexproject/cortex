@@ -11,9 +11,9 @@
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
 * [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
   * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
-  * `ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.
-  * `ruler.alertmanager-client.tls-ca-path`: File path to the CA file.
-  * `ruler.alertmanager-client.tls-cert-path`: File path to the TLS certificate.
+  * `-ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.
+  * `-ruler.alertmanager-client.tls-ca-path`: File path to the CA file.
+  * `-ruler.alertmanager-client.tls-cert-path`: File path to the TLS certificate.
   * `-ruler.alertmanager-client.tls-insecure-skip-verify`: Boolean to disable verifying the certificate.
   * `-ruler.alertmanager-client.tls-key-path`: File path to the TLS key certificate.
   * `-ruler.alertmanager-client.tls-server-name`: Expected name on the TLS certificate.
@@ -26,8 +26,15 @@
 * [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
+* [ENHANCEMENT] Blocks storage: added more configuration options to S3 client. #3775
+  * `-blocks-storage.s3.tls-handshake-timeout`: Maximum time to wait for a TLS handshake. 0 means no limit.
+  * `-blocks-storage.s3.expect-continue-timeout`: The time to wait for a server's first response headers after fully writing the request headers if the request has an Expect header. 0 to send the request body immediately.
+  * `-blocks-storage.s3.max-idle-connections`: Maximum number of idle (keep-alive) connections across all hosts. 0 means no limit.
+  * `-blocks-storage.s3.max-idle-connections-per-host`: Maximum number of idle (keep-alive) connections to keep per-host. If 0, a built-in default value is used.
+  * `-blocks-storage.s3.max-connections-per-host`: Maximum number of connections per host. 0 means no limit.
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761
+* [BUGFIX] Store-gateway: fixed a panic caused by a race condition when the index-header lazy loading is enabled. #3775
 
 ## 1.7.0 in progress
 

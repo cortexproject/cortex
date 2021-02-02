@@ -1430,6 +1430,40 @@ storage:
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
 
+alertmanager_client:
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -ruler.alertmanager-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # HTTP Basic authentication username. It overrides the username set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-username
+  [basic_auth_username: <string> | default = ""]
+
+  # HTTP Basic authentication password. It overrides the password set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-password
+  [basic_auth_password: <string> | default = ""]
+
 # Max time to tolerate outage for restoring "for" state of alert.
 # CLI flag: -ruler.for-outage-tolerance
 [for_outage_tolerance: <duration> | default = 1h]

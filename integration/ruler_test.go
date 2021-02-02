@@ -4,9 +4,12 @@ package integration
 
 import (
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"math"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
@@ -335,6 +339,85 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	//  Wait until we've discovered the alertmanagers.
 	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_prometheus_notifications_alertmanagers_discovered"}, e2e.WaitMissingMetrics))
+}
+
+func TestRulerAlertmanagerTLS(t *testing.T) {
+	var namespaceOne = "test_/encoded_+namespace/?"
+	ruleGroup := createTestRuleGroup(t)
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	dynamo := e2edb.NewDynamoDB()
+	minio := e2edb.NewMinio(9000, RulerFlags()["-ruler.storage.s3.buckets"])
+	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
+
+	// set the ca
+	cert := ca.New("Ruler/Alertmanager Test")
+
+	// Ensure the entire path of directories exist.
+	require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
+
+	require.NoError(t, cert.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
+
+	// server certificate
+	require.NoError(t, cert.WriteCertificate(
+		&x509.Certificate{
+			Subject:     pkix.Name{CommonName: "client"},
+			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		},
+		filepath.Join(s.SharedDir(), clientCertFile),
+		filepath.Join(s.SharedDir(), clientKeyFile),
+	))
+	require.NoError(t, cert.WriteCertificate(
+		&x509.Certificate{
+			Subject:     pkix.Name{CommonName: "server"},
+			DNSNames:    []string{"ruler.alertmanager-client"},
+			ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		},
+		filepath.Join(s.SharedDir(), serverCertFile),
+		filepath.Join(s.SharedDir(), serverKeyFile),
+	))
+
+	// Have at least one alertmanager configuration.
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
+
+	// Start Alertmanagers.
+	amFlags := mergeFlags(
+		AlertmanagerFlags(),
+		AlertmanagerLocalFlags(),
+		getServerHTTPTLSFlags(),
+	)
+	am1 := e2ecortex.NewAlertmanagerWithTLS("alertmanager1", amFlags, "")
+	require.NoError(t, s.StartAndWaitReady(am1))
+
+	// Connect the ruler to the Alertmanager
+	configOverrides := mergeFlags(
+		map[string]string{
+			"-ruler.alertmanager-url": "https://" + am1.HTTPEndpoint(),
+		},
+		getTLSFlagsWithPrefix("ruler.alertmanager-client", "alertmanager", true),
+	)
+
+	// Start Ruler.
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(), configOverrides), "")
+	require.NoError(t, s.StartAndWaitReady(ruler))
+
+	// Create a client with the ruler address configured
+	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	// Set the rule group into the ruler
+	require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceOne))
+
+	// Wait until the user manager is created
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+
+	//  Wait until we've discovered the alertmanagers.
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_notifications_alertmanagers_discovered"}, e2e.WaitMissingMetrics))
 }
 
 func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {

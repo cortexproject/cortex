@@ -9,6 +9,14 @@
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
+* [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
+  * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
+  * `ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.
+  * `ruler.alertmanager-client.tls-ca-path`: File path to the CA file.
+  * `ruler.alertmanager-client.tls-cert-path`: File path to the TLS certificate.
+  * `-ruler.alertmanager-client.tls-insecure-skip-verify`: Boolean to disable verifying the certificate.
+  * `-ruler.alertmanager-client.tls-key-path`: File path to the TLS key certificate.
+  * `-ruler.alertmanager-client.tls-server-name`: Expected name on the TLS certificate.
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.

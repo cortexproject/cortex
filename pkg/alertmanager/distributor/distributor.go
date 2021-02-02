@@ -1,9 +1,9 @@
 package distributor
 
 import (
-	"bytes"
 	"context"
 	"flag"
+	"github.com/go-kit/kit/log/level"
 	"hash/fnv"
 	"io/ioutil"
 	"net/http"
@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -27,6 +26,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
+
+// RingOp is the operation used for distributing tenants between alertmanagers.
+var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
+	return s != ring.ACTIVE
+})
 
 // Config contains the configuration required to
 // create a Distributor
@@ -48,9 +53,9 @@ type Distributor struct {
 	cfg              Config
 	requestsInFlight sync.WaitGroup
 
-	alertmanagerRing          ring.ReadRing
-	alertmanagerClientFactory AlertmanagerClientFactory
-	replication               int
+	alertmanagerRing        ring.ReadRing
+	alertmanagerClientsPool AlertmanagerClientsPool
+	replication             int
 
 	// Manager for subservices (Alertmanager Ring)
 	subservices        *services.Manager
@@ -65,21 +70,21 @@ type Distributor struct {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientFactory AlertmanagerClientFactory, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientsPool AlertmanagerClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	if alertmanagerClientFactory == nil {
-		alertmanagerClientFactory = newPooledAlertmanagerClientFactory(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClient, logger, reg)
+	if alertmanagerClientsPool == nil {
+		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClient, logger, reg)
 	}
 
 	d = &Distributor{
-		cfg:                       cfg,
-		logger:                    logger,
-		alertmanagerRing:          alertmanagersRing,
-		alertmanagerClientFactory: alertmanagerClientFactory,
-		replication:               alertmanagersRing.ReplicationFactor(),
+		cfg:                     cfg,
+		logger:                  logger,
+		alertmanagerRing:        alertmanagersRing,
+		alertmanagerClientsPool: alertmanagerClientsPool,
+		replication:             alertmanagersRing.ReplicationFactor(),
 	}
 
 	d.initMetrics(reg)
@@ -103,11 +108,11 @@ func (d *Distributor) initMetrics(r prometheus.Registerer) {
 	}, []string{"user"})
 	d.amSends = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_alertmanager_distributor_alertmanager_send_total",
-		Help: "The total number of requests sent to alertmanager.",
+		Help: "The total number of requests sent to the alertmanager.",
 	}, []string{"ingester"})
 	d.amSendFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_alertmanager_distributor_alertmanager_send_failures_total",
-		Help: "The total number of requests failed to send to alertmanager.",
+		Help: "The total number of requests sent to the alertmanager that failed.",
 	}, []string{"ingester"})
 	d.replicationFactor = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_alertmanager_distributor_replication_factor",
@@ -142,8 +147,6 @@ func (d *Distributor) IsPathSupported(path string) bool {
 // DistributeRequest assumes that the caller has verified IsPathSupported return
 // true for the route.
 func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) {
-	//TODO: Initialise tracing here.
-
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
@@ -170,11 +173,13 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	if r.Body != nil {
 		body, err = ioutil.ReadAll(r.Body)
 		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to read the request body during write", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 	}
 
-	err = ring.DoBatch(r.Context(), ring.Write, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
+	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
 		d.amSends.WithLabelValues(am.Addr).Inc()
 
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
@@ -187,12 +192,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		// http.Request.Clone() does not do a deep copy, hence copying the body.
-		// https://github.com/golang/go/issues/36095.
-		rClone := r.Clone(r.Context())
-		rClone.Body = ioutil.NopCloser(bytes.NewReader(body))
-
-		resp, err := d.doRequest(localCtx, am, rClone)
+		resp, err := d.doRequest(localCtx, am, r, body)
 		if err != nil {
 			d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			return err
@@ -215,16 +215,29 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request) {
 	key := shardByUser(userID)
-	replicationSet, err := d.alertmanagerRing.Get(key, ring.Read, nil, nil, nil)
+	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		level.Error(d.logger).Log("msg", "failed to get replication set from the ring", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
 	amDesc := replicationSet.Ingesters[0]
+
+	var body []byte
+	if r.Body != nil {
+		body, err = ioutil.ReadAll(r.Body)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to read the request body during reads", "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
+
 	d.amSends.WithLabelValues(amDesc.Addr).Inc()
-	resp, err := d.doRequest(r.Context(), amDesc, r)
+	resp, err := d.doRequest(r.Context(), amDesc, r, body)
 	if err != nil {
 		d.amSendFailures.WithLabelValues(amDesc.Addr).Inc()
 		d.respondFromError(err, w)
@@ -251,22 +264,21 @@ func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
 		}
 	}
 	http.Error(w, string(httpResp.Body), int(httpResp.Code))
-
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request) (*alertmanagerpb.Response, error) {
-	amClient, err := d.alertmanagerClientFactory.GetClientFor(am.Addr)
+func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request, requestBody []byte) (*alertmanagerpb.Response, error) {
+	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
 	}
 
-	req, err := server.HTTPRequest(r)
-	if err != nil {
-		return nil, errors.Wrap(err, "create server HTTPRequest")
-	}
-
 	resp, err := amClient.HandleRequest(ctx, &alertmanagerpb.Request{
-		HttpRequest: req,
+		HttpRequest: &httpgrpc.HTTPRequest{
+			Method:  r.Method,
+			Url:     r.RequestURI,
+			Body:    requestBody,
+			Headers: httpTogrpchttpHeaders(r.Header),
+		},
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to proxy request to alertmanager %s", amClient.RemoteAddress())
@@ -280,4 +292,15 @@ func shardByUser(userID string) uint32 {
 	// Hasher never returns err.
 	_, _ = ringHasher.Write([]byte(userID))
 	return ringHasher.Sum32()
+}
+
+func httpTogrpchttpHeaders(hs http.Header) []*httpgrpc.Header {
+	result := make([]*httpgrpc.Header, 0, len(hs))
+	for k, vs := range hs {
+		result = append(result, &httpgrpc.Header{
+			Key:    k,
+			Values: vs,
+		})
+	}
+	return result
 }

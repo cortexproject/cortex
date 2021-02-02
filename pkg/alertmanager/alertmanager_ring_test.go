@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
@@ -48,7 +49,7 @@ func TestIsHealthyForAlertmanagerOperations(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			actual := testData.instance.IsHealthy(RingOp, testData.timeout, time.Now())
+			actual := testData.instance.IsHealthy(distributor.RingOp, testData.timeout, time.Now())
 			assert.Equal(t, testData.expected, actual)
 		})
 	}

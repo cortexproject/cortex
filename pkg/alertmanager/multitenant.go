@@ -501,7 +501,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 	var ringLastState ring.ReplicationSet
 
 	if am.cfg.ShardingEnabled {
-		ringLastState, _ = am.ring.GetAllHealthy(RingOp)
+		ringLastState, _ = am.ring.GetAllHealthy(distributor.RingOp)
 		ringTicker := time.NewTicker(util.DurationWithJitter(am.cfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -521,7 +521,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := am.ring.GetAllHealthy(RingOp)
+			currRingState, _ := am.ring.GetAllHealthy(distributor.RingOp)
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
@@ -609,7 +609,7 @@ func (am *MultitenantAlertmanager) isConfigOwned(userID string) (bool, error) {
 	// Hasher never returns err.
 	_, _ = ringHasher.Write([]byte(userID))
 
-	alertmanagers, err := am.ring.Get(ringHasher.Sum32(), RingOp, nil, nil, nil)
+	alertmanagers, err := am.ring.Get(ringHasher.Sum32(), distributor.RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify config ownership")
 	}

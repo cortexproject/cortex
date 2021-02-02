@@ -65,7 +65,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
 				# TYPE cortex_alertmanager_distributor_received_requests_total counter
 				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to alertmanager.
+				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
 				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10001"} 1
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
@@ -96,12 +96,12 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
 				# TYPE cortex_alertmanager_distributor_received_requests_total counter
 				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to alertmanager.
+				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
 				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10003"} 1
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10004"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_failures_total The total number of requests failed to send to alertmanager.
+				# HELP cortex_alertmanager_distributor_alertmanager_send_failures_total The total number of requests sent to the alertmanager that failed.
 				# TYPE cortex_alertmanager_distributor_alertmanager_send_failures_total counter
 				cortex_alertmanager_distributor_alertmanager_send_failures_total{ingester="127.0.0.1:10003"} 1
 				cortex_alertmanager_distributor_alertmanager_send_failures_total{ingester="127.0.0.1:10004"} 1
@@ -119,7 +119,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
 				# TYPE cortex_alertmanager_distributor_received_requests_total counter
 				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to alertmanager.
+				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
 				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
 				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
 			`,
@@ -314,7 +314,7 @@ type mockAlertmanagerClientFactory struct {
 	alertmanagerByAddr map[string]*mockAlertmanager
 }
 
-func newMockAlertmanagerClientFactory(alertmanagerByAddr map[string]*mockAlertmanager) AlertmanagerClientFactory {
+func newMockAlertmanagerClientFactory(alertmanagerByAddr map[string]*mockAlertmanager) AlertmanagerClientsPool {
 	return &mockAlertmanagerClientFactory{alertmanagerByAddr: alertmanagerByAddr}
 }
 

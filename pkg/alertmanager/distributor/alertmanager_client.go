@@ -17,8 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-// AlertmanagerClientFactory is the interface used to get the clients for the given addresses.
-type AlertmanagerClientFactory interface {
+// AlertmanagerClientsPool is the interface used to get the clients for the given addresses.
+type AlertmanagerClientsPool interface {
 	// GetClientFor returns the alertmanager client for the given address.
 	GetClientFor(addr string) (AlertmanagerClient, error)
 }
@@ -32,7 +32,7 @@ type AlertmanagerClient interface {
 	RemoteAddress() string
 }
 
-// AlertmanagerClient is the configuration struct for the alertmanager client.
+// AlertmanagerClientConfig is the configuration struct for the alertmanager client.
 type AlertmanagerClientConfig struct {
 	// GRPCClientConfig is stripped down version of grpcclient.Config.
 	GRPCClientConfig grpcClientConfig `yaml:"grpc_client_config"`
@@ -50,11 +50,11 @@ func (cfg *AlertmanagerClientConfig) RegisterFlagsWithPrefix(prefix string, f *f
 	cfg.GRPCClientConfig.TLS.RegisterFlagsWithPrefix(prefix, f)
 }
 
-type PooledAlertmanagerClientFactory struct {
+type alertmanagerClientsPool struct {
 	pool *client.Pool
 }
 
-func newPooledAlertmanagerClientFactory(discovery client.PoolServiceDiscovery, amClientCfg AlertmanagerClientConfig, logger log.Logger, reg prometheus.Registerer) AlertmanagerClientFactory {
+func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientCfg AlertmanagerClientConfig, logger log.Logger, reg prometheus.Registerer) AlertmanagerClientsPool {
 	// We prefer sane defaults instead of exposing further config options.
 	// TODO: Figure out if these defaults make sense.
 	grpcCfg := grpcclient.Config{
@@ -92,10 +92,10 @@ func newPooledAlertmanagerClientFactory(discovery client.PoolServiceDiscovery, a
 		Help:      "The current number of alertmanager clients in the pool.",
 	})
 
-	return &PooledAlertmanagerClientFactory{pool: client.NewPool("alertmanager", poolCfg, discovery, factory, clientsCount, logger)}
+	return &alertmanagerClientsPool{pool: client.NewPool("alertmanager", poolCfg, discovery, factory, clientsCount, logger)}
 }
 
-func (f *PooledAlertmanagerClientFactory) GetClientFor(addr string) (AlertmanagerClient, error) {
+func (f *alertmanagerClientsPool) GetClientFor(addr string) (AlertmanagerClient, error) {
 	c, err := f.pool.GetClientFor(addr)
 	if err != nil {
 		return nil, err

@@ -78,14 +78,14 @@ func TestRingReplicationStrategy(t *testing.T) {
 			expectedError:     "at least 3 live replicas required, could only find 2",
 		},
 	} {
-		ingesters := []IngesterDesc{}
+		ingesters := []InstanceDesc{}
 		for i := 0; i < tc.liveIngesters; i++ {
-			ingesters = append(ingesters, IngesterDesc{
+			ingesters = append(ingesters, InstanceDesc{
 				Timestamp: time.Now().Unix(),
 			})
 		}
 		for i := 0; i < tc.deadIngesters; i++ {
-			ingesters = append(ingesters, IngesterDesc{})
+			ingesters = append(ingesters, InstanceDesc{})
 		}
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
@@ -140,14 +140,14 @@ func TestIgnoreUnhealthyInstancesReplicationStrategy(t *testing.T) {
 			expectedError:      "at least 1 healthy replica required, could only find 0",
 		},
 	} {
-		ingesters := []IngesterDesc{}
+		ingesters := []InstanceDesc{}
 		for i := 0; i < tc.liveIngesters; i++ {
-			ingesters = append(ingesters, IngesterDesc{
+			ingesters = append(ingesters, InstanceDesc{
 				Timestamp: time.Now().Unix(),
 			})
 		}
 		for i := 0; i < tc.deadIngesters; i++ {
-			ingesters = append(ingesters, IngesterDesc{})
+			ingesters = append(ingesters, InstanceDesc{})
 		}
 
 		t.Run(tc.name, func(t *testing.T) {

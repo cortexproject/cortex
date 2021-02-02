@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"flag"
-	"github.com/go-kit/kit/log/level"
 	"hash/fnv"
 	"io/ioutil"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -179,7 +179,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.IngesterDesc, _ []int) error {
+	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		d.amSends.WithLabelValues(am.Addr).Inc()
 
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
@@ -266,7 +266,7 @@ func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
 	http.Error(w, string(httpResp.Body), int(httpResp.Code))
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.IngesterDesc, r *http.Request, requestBody []byte) (*alertmanagerpb.Response, error) {
+func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, r *http.Request, requestBody []byte) (*alertmanagerpb.Response, error) {
 	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)

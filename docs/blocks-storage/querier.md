@@ -132,6 +132,10 @@ querier:
   # CLI flag: -querier.query-store-for-labels-enabled
   [query_store_for_labels_enabled: <boolean> | default = false]
 
+  # Enable the @ modifier in PromQL.
+  # CLI flag: -querier.at-modifier-enabled
+  [at_modifier_enabled: <boolean> | default = false]
+
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
   # storage, if this option is enabled, the time range of the query sent to the
@@ -683,6 +687,17 @@ blocks_storage:
       # the querier (at query time).
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
+
+    # If enabled, store-gateway will lazy load an index-header only once
+    # required by a query.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+    [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+    # If index-header lazy loading is enabled and this setting is > 0, the
+    # store-gateway will offload unused index-headers after 'idle timeout'
+    # inactivity.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+    [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
 
   tsdb:
     # Local directory to store TSDBs in the ingesters.

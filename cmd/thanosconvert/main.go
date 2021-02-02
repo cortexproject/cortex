@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"gopkg.in/yaml.v2"
 
@@ -37,8 +36,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	registry := prometheus.DefaultRegisterer
-
 	ctx := context.Background()
 
 	cfg := bucket.Config{}
@@ -54,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	converter, err := thanosconvert.NewThanosBlockConverter(ctx, cfg, dryRun, util.Logger, registry)
+	converter, err := thanosconvert.NewThanosBlockConverter(ctx, cfg, dryRun, util.Logger)
 	if err != nil {
 		level.Error(util.Logger).Log("msg", "failed to initialize", "err", err)
 		os.Exit(1)
@@ -63,7 +60,7 @@ func main() {
 	iterCtx := context.Background()
 	results, err := converter.Run(iterCtx)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "iterate blocks", "err", err)
+		level.Error(util.Logger).Log("msg", "error while iterating blocks", "err", err)
 		os.Exit(1)
 	}
 

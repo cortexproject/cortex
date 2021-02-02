@@ -3,18 +3,18 @@ package thanosconvert
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 // ThanosBlockConverter converts blocks written by Thanos to make them readable by Cortex
@@ -50,8 +50,8 @@ func (r *PerUserResults) AddUnchanged(blockID string) {
 type Results map[string]PerUserResults
 
 // NewThanosBlockConverter creates a ThanosBlockConverter
-func NewThanosBlockConverter(ctx context.Context, cfg bucket.Config, dryRun bool, logger log.Logger, reg prometheus.Registerer) (*ThanosBlockConverter, error) {
-	bkt, err := bucket.NewClient(ctx, cfg, "thanosconvert", logger, reg)
+func NewThanosBlockConverter(ctx context.Context, cfg bucket.Config, dryRun bool, logger log.Logger) (*ThanosBlockConverter, error) {
+	bkt, err := bucket.NewClient(ctx, cfg, "thanosconvert", logger, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -67,14 +67,10 @@ func NewThanosBlockConverter(ctx context.Context, cfg bucket.Config, dryRun bool
 func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 	results := make(Results)
 
-	// discover users in the bucket
-	var users []string
-	err := c.bkt.Iter(ctx, "", func(o string) error {
-		users = append(users, strings.TrimSuffix(o, "/"))
-		return nil
-	})
+	scanner := cortex_tsdb.NewUsersScanner(c.bkt, cortex_tsdb.AllUsers, c.logger)
+	users, _, err := scanner.ScanUsers(ctx)
 	if err != nil {
-		return results, err
+		return results, errors.Wrap(err, "error while scanning users")
 	}
 	level.Info(c.logger).Log("msg", "Scanned tenants")
 
@@ -91,15 +87,17 @@ func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (PerUserResults, error) {
 	results := PerUserResults{}
 
-	err := c.bkt.Iter(ctx, user, func(o string) error {
+	userBucketClient := bucket.NewUserBucketClient(user, c.bkt)
+	err := userBucketClient.Iter(ctx, "", func(o string) error {
 		// get block ID from path
-
-		parts := strings.Split(o, "/")
-		if len(parts) != 3 {
-			// this seems pretty bad, let's bail out
-			return errors.Errorf("couldn't parse bucket path %s as {user}/{block}/", o)
+		o = strings.TrimSuffix(o, "/")
+		blockULID, err := ulid.Parse(o)
+		if err != nil {
+			// this is not a block, skip it
+			return nil
 		}
-		blockID := parts[1]
+		blockID := blockULID.String()
+
 		level.Debug(c.logger).Log("msg", "Processing block", "block", blockID)
 
 		// retrieve meta.json
@@ -112,9 +110,7 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 			return nil
 		}
 
-		meta := &metadata.Meta{}
-		decoder := json.NewDecoder(r)
-		err = decoder.Decode(meta)
+		meta, err := metadata.Read(r)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "decode meta.json into metadata.Meta", "block", blockID, "meta_key", metaKey, "err", err.Error())
 			results.AddFailed(blockID)
@@ -130,7 +126,7 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 				level.Debug(c.logger).Log("msg", "Block requires changes, not uploading due to dry run", "block", blockID, "changes_required", strings.Join(changesRequired, ","))
 			} else {
 				level.Debug(c.logger).Log("msg", "Block requires changes, uploading new meta.json", "block", blockID, "changes_required", strings.Join(changesRequired, ","))
-				if err := c.uploadNewMeta(ctx, user, blockID, newMeta); err != nil {
+				if err := c.uploadNewMeta(ctx, userBucketClient, blockID, newMeta); err != nil {
 					level.Error(c.logger).Log("msg", "Update meta.json", "block", blockID, "meta_key", metaKey, "err", err.Error())
 					results.AddFailed(blockID)
 					return nil
@@ -150,16 +146,13 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 	return results, nil
 }
 
-func (c *ThanosBlockConverter) uploadNewMeta(ctx context.Context, user, blockID string, meta metadata.Meta) error {
-	key := fmt.Sprintf("%s/%s/meta.json", user, blockID)
-
+func (c *ThanosBlockConverter) uploadNewMeta(ctx context.Context, userBucketClient *bucket.UserBucketClient, blockID string, meta metadata.Meta) error {
 	var body bytes.Buffer
-	enc := json.NewEncoder(&body)
-	if err := enc.Encode(meta); err != nil {
+	if err := meta.Write(&body); err != nil {
 		return errors.Wrap(err, "encode json")
 	}
 
-	if err := c.bkt.Upload(ctx, key, &body); err != nil {
+	if err := userBucketClient.Upload(ctx, fmt.Sprintf("%s/meta.json", blockID), &body); err != nil {
 		return errors.Wrap(err, "upload to bucket")
 	}
 	return nil
@@ -174,7 +167,7 @@ func convertMetadata(meta metadata.Meta, expectedUser string) (metadata.Meta, []
 		// don't need to add to changesRequired, since the code below will notice lack of org id
 	}
 
-	org, ok := meta.Thanos.Labels["__org_id__"]
+	org, ok := meta.Thanos.Labels[cortex_tsdb.TenantIDExternalLabel]
 	if !ok {
 		changesRequired = append(changesRequired, "add __org_id__ label")
 	} else if org != expectedUser {
@@ -182,13 +175,13 @@ func convertMetadata(meta metadata.Meta, expectedUser string) (metadata.Meta, []
 	}
 
 	// remove __org_id__ so that we can see if there are any other labels
-	delete(meta.Thanos.Labels, "__org_id__")
+	delete(meta.Thanos.Labels, cortex_tsdb.TenantIDExternalLabel)
 	if len(meta.Thanos.Labels) > 0 {
 		changesRequired = append(changesRequired, "remove extra Thanos labels")
 	}
 
 	meta.Thanos.Labels = map[string]string{
-		"__org_id__": expectedUser,
+		cortex_tsdb.TenantIDExternalLabel: expectedUser,
 	}
 
 	return meta, changesRequired

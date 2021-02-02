@@ -6,16 +6,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"strings"
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/weaveworks/common/logging"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -24,6 +28,15 @@ func stringNotEmpty(v string) bool {
 }
 
 type fakeBucket map[string]map[string]metadata.Meta
+
+var (
+	block1                 = ulid.MustNew(1, nil).String()
+	block2                 = ulid.MustNew(2, nil).String()
+	block3                 = ulid.MustNew(3, nil).String()
+	blockWithGetFailure    = ulid.MustNew(1000, nil).String()
+	blockWithUploadFailure = ulid.MustNew(1001, nil).String()
+	blockWithMalformedMeta = ulid.MustNew(1002, nil).String()
+)
 
 func TestThanosBlockConverter(t *testing.T) {
 	tests := []struct {
@@ -56,16 +69,16 @@ func TestThanosBlockConverter(t *testing.T) {
 			name: "bucket fully converted is a noop",
 			bucketData: fakeBucket{
 				"user1": map[string]metadata.Meta{
-					"block1": CortexMeta("user1"),
-					"block2": CortexMeta("user1"),
-					"block3": CortexMeta("user1"),
+					block1: cortexMeta("user1"),
+					block2: cortexMeta("user1"),
+					block3: cortexMeta("user1"),
 				},
 				"user2": map[string]metadata.Meta{
-					"block1": CortexMeta("user2"),
-					"block2": CortexMeta("user2"),
+					block1: cortexMeta("user2"),
+					block2: cortexMeta("user2"),
 				},
 				"user3": map[string]metadata.Meta{
-					"block1": CortexMeta("user3"),
+					block1: cortexMeta("user3"),
 				},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
@@ -74,15 +87,15 @@ func TestThanosBlockConverter(t *testing.T) {
 
 				assert.Len(t, results["user1"].FailedBlocks, 0)
 				assert.Len(t, results["user1"].ConvertedBlocks, 0)
-				assert.ElementsMatch(t, results["user1"].UnchangedBlocks, []string{"block1", "block2", "block3"})
+				assert.ElementsMatch(t, results["user1"].UnchangedBlocks, []string{block1, block2, block3})
 
 				assert.Len(t, results["user2"].FailedBlocks, 0)
 				assert.Len(t, results["user2"].ConvertedBlocks, 0)
-				assert.ElementsMatch(t, results["user2"].UnchangedBlocks, []string{"block1", "block2"})
+				assert.ElementsMatch(t, results["user2"].UnchangedBlocks, []string{block1, block2})
 
 				assert.Len(t, results["user3"].FailedBlocks, 0)
 				assert.Len(t, results["user3"].ConvertedBlocks, 0)
-				assert.ElementsMatch(t, results["user3"].UnchangedBlocks, []string{"block1"})
+				assert.ElementsMatch(t, results["user3"].UnchangedBlocks, []string{block1})
 
 			},
 		},
@@ -90,31 +103,31 @@ func TestThanosBlockConverter(t *testing.T) {
 			name: "bucket with some blocks to convert",
 			bucketData: fakeBucket{
 				"user1": map[string]metadata.Meta{
-					"block1": CortexMeta("user1"),
-					"block2": ThanosMeta(),
-					"block3": CortexMeta("user1"),
+					block1: cortexMeta("user1"),
+					block2: thanosMeta(),
+					block3: cortexMeta("user1"),
 				},
 				"user2": map[string]metadata.Meta{
-					"block1": CortexMeta("user2"),
-					"block2": CortexMeta("user2"),
+					block1: cortexMeta("user2"),
+					block2: cortexMeta("user2"),
 				},
 				"user3": map[string]metadata.Meta{
-					"block1": ThanosMeta(),
+					block1: thanosMeta(),
 				},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				assert.Len(t, results, 3, "expected users in results")
 
 				assert.Len(t, results["user1"].FailedBlocks, 0)
-				assert.ElementsMatch(t, results["user1"].ConvertedBlocks, []string{"block2"})
-				assert.ElementsMatch(t, results["user1"].UnchangedBlocks, []string{"block1", "block3"})
+				assert.ElementsMatch(t, results["user1"].ConvertedBlocks, []string{block2})
+				assert.ElementsMatch(t, results["user1"].UnchangedBlocks, []string{block1, block3})
 
 				assert.Len(t, results["user2"].FailedBlocks, 0)
 				assert.Len(t, results["user2"].ConvertedBlocks, 0)
-				assert.ElementsMatch(t, results["user2"].UnchangedBlocks, []string{"block1", "block2"})
+				assert.ElementsMatch(t, results["user2"].UnchangedBlocks, []string{block1, block2})
 
 				assert.Len(t, results["user3"].FailedBlocks, 0)
-				assert.ElementsMatch(t, results["user3"].ConvertedBlocks, []string{"block1"})
+				assert.ElementsMatch(t, results["user3"].ConvertedBlocks, []string{block1})
 				assert.Len(t, results["user3"].UnchangedBlocks, 0)
 
 				bkt.AssertNumberOfCalls(t, "Upload", 2)
@@ -124,17 +137,17 @@ func TestThanosBlockConverter(t *testing.T) {
 			name: "bucket with failed blocks",
 			bucketData: fakeBucket{
 				"user1": map[string]metadata.Meta{
-					"block1":                 CortexMeta("user1"),
-					"block_with_get_failure": CortexMeta("user1"),
-					"block3":                 CortexMeta("user1"),
+					block1:              cortexMeta("user1"),
+					blockWithGetFailure: cortexMeta("user1"),
+					block3:              cortexMeta("user1"),
 				},
 				"user2": map[string]metadata.Meta{
-					"block1": CortexMeta("user2"),
-					"block2": CortexMeta("user2"),
+					block1: cortexMeta("user2"),
+					block2: cortexMeta("user2"),
 				},
 				"user3": map[string]metadata.Meta{
-					"block_with_upload_failure": ThanosMeta(),
-					"block_with_malformed_meta": ThanosMeta(),
+					blockWithUploadFailure: thanosMeta(),
+					blockWithMalformedMeta: thanosMeta(),
 				},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
@@ -149,10 +162,10 @@ func TestThanosBlockConverter(t *testing.T) {
 
 		t.Run(test.name, func(t *testing.T) {
 
-			bkt := MockBucket(test.bucketData)
+			bkt := mockBucket(test.bucketData)
 
 			converter := &ThanosBlockConverter{
-				logger: GetLogger(),
+				logger: getLogger(),
 				dryRun: false,
 				bkt:    bkt,
 			}
@@ -164,18 +177,24 @@ func TestThanosBlockConverter(t *testing.T) {
 	}
 }
 
-func CortexMeta(user string) metadata.Meta {
+func cortexMeta(user string) metadata.Meta {
 	return metadata.Meta{
+		BlockMeta: tsdb.BlockMeta{
+			Version: metadata.ThanosVersion1,
+		},
 		Thanos: metadata.Thanos{
 			Labels: map[string]string{
-				"__org_id__": user,
+				cortex_tsdb.TenantIDExternalLabel: user,
 			},
 		},
 	}
 }
 
-func ThanosMeta() metadata.Meta {
+func thanosMeta() metadata.Meta {
 	return metadata.Meta{
+		BlockMeta: tsdb.BlockMeta{
+			Version: metadata.ThanosVersion1,
+		},
 		Thanos: metadata.Thanos{
 			Labels: map[string]string{
 				"cluster": "foo",
@@ -184,7 +203,7 @@ func ThanosMeta() metadata.Meta {
 	}
 }
 
-func GetLogger() log.Logger {
+func getLogger() log.Logger {
 
 	l := logging.Level{}
 	if err := l.Set("info"); err != nil {
@@ -202,9 +221,13 @@ func GetLogger() log.Logger {
 	return logger
 }
 
-func MockBucket(data fakeBucket) *bucket.ClientMock {
+func mockBucket(data fakeBucket) *bucket.ClientMock {
 
 	bkt := bucket.ClientMock{}
+
+	// UsersScanner checks for deletion marks using Exist
+	bkt.On("Exists", mock.Anything, mock.Anything).Return(false, nil)
+
 	bkt.On("Iter", mock.Anything, "", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		// we're iterating over the top level users
 		f := args.Get(2).(func(string) error)
@@ -217,7 +240,7 @@ func MockBucket(data fakeBucket) *bucket.ClientMock {
 
 	bkt.On("Iter", mock.Anything, mock.MatchedBy(stringNotEmpty), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		// we're iterating over blocks within a user
-		user := args.String(1)
+		user := strings.TrimSuffix(args.String(1), "/")
 		f := args.Get(2).(func(string) error)
 		if _, ok := data[user]; !ok {
 			panic(fmt.Sprintf("key %s not found in fake bucket data", user))
@@ -239,16 +262,16 @@ func MockBucket(data fakeBucket) *bucket.ClientMock {
 			}
 			key := fmt.Sprintf("%s/%s/meta.json", user, block)
 			switch block {
-			case "block_with_get_failure":
+			case blockWithGetFailure:
 				bkt.On("Get", mock.Anything, key).Return(nil, errors.Errorf("test error in Get"))
-			case "block_with_malformed_meta":
+			case blockWithMalformedMeta:
 				bkt.On("Get", mock.Anything, key).Return(ioutil.NopCloser(bytes.NewBufferString("invalid json")), nil)
 			default:
 				bkt.On("Get", mock.Anything, key).Return(ioutil.NopCloser(&body), nil)
 			}
 
 			switch block {
-			case "block_with_upload_failure":
+			case blockWithUploadFailure:
 				bkt.On("Upload", mock.Anything, key, mock.Anything).Return(errors.Errorf("test error in Upload"))
 			default:
 				bkt.On("Upload", mock.Anything, key, mock.Anything).Return(nil)
@@ -273,14 +296,14 @@ func TestConvertMetadata(t *testing.T) {
 			in: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
 					},
 				},
 			},
 			out: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
 					},
 				},
 			},
@@ -297,7 +320,7 @@ func TestConvertMetadata(t *testing.T) {
 			out: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
 					},
 				},
 			},
@@ -309,16 +332,16 @@ func TestConvertMetadata(t *testing.T) {
 			in: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
-						"extra":      "label",
-						"cluster":    "foo",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
+						"extra":                           "label",
+						"cluster":                         "foo",
 					},
 				},
 			},
 			out: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
 					},
 				},
 			},
@@ -330,14 +353,14 @@ func TestConvertMetadata(t *testing.T) {
 			in: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "wrong_user",
+						cortex_tsdb.TenantIDExternalLabel: "wrong_user",
 					},
 				},
 			},
 			out: metadata.Meta{
 				Thanos: metadata.Thanos{
 					Labels: map[string]string{
-						"__org_id__": "user1",
+						cortex_tsdb.TenantIDExternalLabel: "user1",
 					},
 				},
 			},

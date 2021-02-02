@@ -18,6 +18,7 @@
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
+* [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761
 
 ## 1.7.0 in progress
 

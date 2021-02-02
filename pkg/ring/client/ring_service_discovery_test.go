@@ -20,6 +20,10 @@ func TestNewRingServiceDiscovery(t *testing.T) {
 			ringErr:     errors.New("mocked error"),
 			expectedErr: errors.New("mocked error"),
 		},
+		"empty ring": {
+			ringErr:       ring.ErrEmptyRing,
+			expectedAddrs: nil,
+		},
 		"empty replication set": {
 			ringReplicationSet: ring.ReplicationSet{
 				Ingesters: []ring.IngesterDesc{},

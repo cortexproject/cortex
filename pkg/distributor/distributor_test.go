@@ -1134,11 +1134,11 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
-	ingesterDescs := map[string]ring.IngesterDesc{}
+	ingesterDescs := map[string]ring.InstanceDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
 		addr := fmt.Sprintf("%d", i)
-		ingesterDescs[addr] = ring.IngesterDesc{
+		ingesterDescs[addr] = ring.InstanceDesc{
 			Addr:                addr,
 			Zone:                "",
 			State:               ring.ACTIVE,

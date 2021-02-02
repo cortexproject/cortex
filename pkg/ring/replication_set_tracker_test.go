@@ -8,13 +8,13 @@ import (
 )
 
 func TestDefaultResultTracker(t *testing.T) {
-	instance1 := IngesterDesc{Addr: "127.0.0.1"}
-	instance2 := IngesterDesc{Addr: "127.0.0.2"}
-	instance3 := IngesterDesc{Addr: "127.0.0.3"}
-	instance4 := IngesterDesc{Addr: "127.0.0.4"}
+	instance1 := InstanceDesc{Addr: "127.0.0.1"}
+	instance2 := InstanceDesc{Addr: "127.0.0.2"}
+	instance3 := InstanceDesc{Addr: "127.0.0.3"}
+	instance4 := InstanceDesc{Addr: "127.0.0.4"}
 
 	tests := map[string]struct {
-		instances []IngesterDesc
+		instances []InstanceDesc
 		maxErrors int
 		run       func(t *testing.T, tracker *defaultResultTracker)
 	}{
@@ -27,7 +27,7 @@ func TestDefaultResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed once all instances succeed on max errors = 0": {
-			instances: []IngesterDesc{instance1, instance2, instance3, instance4},
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
 			maxErrors: 0,
 			run: func(t *testing.T, tracker *defaultResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -51,7 +51,7 @@ func TestDefaultResultTracker(t *testing.T) {
 			},
 		},
 		"should fail on 1st failing instance on max errors = 0": {
-			instances: []IngesterDesc{instance1, instance2, instance3, instance4},
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
 			maxErrors: 0,
 			run: func(t *testing.T, tracker *defaultResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -67,7 +67,7 @@ func TestDefaultResultTracker(t *testing.T) {
 			},
 		},
 		"should fail on 2nd failing instance on max errors = 1": {
-			instances: []IngesterDesc{instance1, instance2, instance3, instance4},
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
 			maxErrors: 1,
 			run: func(t *testing.T, tracker *defaultResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -87,7 +87,7 @@ func TestDefaultResultTracker(t *testing.T) {
 			},
 		},
 		"should fail on 3rd failing instance on max errors = 2": {
-			instances: []IngesterDesc{instance1, instance2, instance3, instance4},
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
 			maxErrors: 2,
 			run: func(t *testing.T, tracker *defaultResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -120,15 +120,15 @@ func TestDefaultResultTracker(t *testing.T) {
 }
 
 func TestZoneAwareResultTracker(t *testing.T) {
-	instance1 := IngesterDesc{Addr: "127.0.0.1", Zone: "zone-a"}
-	instance2 := IngesterDesc{Addr: "127.0.0.2", Zone: "zone-a"}
-	instance3 := IngesterDesc{Addr: "127.0.0.3", Zone: "zone-b"}
-	instance4 := IngesterDesc{Addr: "127.0.0.4", Zone: "zone-b"}
-	instance5 := IngesterDesc{Addr: "127.0.0.5", Zone: "zone-c"}
-	instance6 := IngesterDesc{Addr: "127.0.0.6", Zone: "zone-c"}
+	instance1 := InstanceDesc{Addr: "127.0.0.1", Zone: "zone-a"}
+	instance2 := InstanceDesc{Addr: "127.0.0.2", Zone: "zone-a"}
+	instance3 := InstanceDesc{Addr: "127.0.0.3", Zone: "zone-b"}
+	instance4 := InstanceDesc{Addr: "127.0.0.4", Zone: "zone-b"}
+	instance5 := InstanceDesc{Addr: "127.0.0.5", Zone: "zone-c"}
+	instance6 := InstanceDesc{Addr: "127.0.0.6", Zone: "zone-c"}
 
 	tests := map[string]struct {
-		instances           []IngesterDesc
+		instances           []InstanceDesc
 		maxUnavailableZones int
 		run                 func(t *testing.T, tracker *zoneAwareResultTracker)
 	}{
@@ -141,7 +141,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed once all instances succeed on max unavailable zones = 0": {
-			instances:           []IngesterDesc{instance1, instance2, instance3},
+			instances:           []InstanceDesc{instance1, instance2, instance3},
 			maxUnavailableZones: 0,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -161,7 +161,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should fail on 1st failing instance on max unavailable zones = 0": {
-			instances:           []IngesterDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 0,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				assert.False(t, tracker.succeeded())
@@ -177,18 +177,18 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed on 2 failing instances within the same zone on max unavailable zones = 1": {
-			instances:           []IngesterDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 1,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track failing instances.
-				for _, instance := range []IngesterDesc{instance1, instance2} {
+				for _, instance := range []InstanceDesc{instance1, instance2} {
 					tracker.done(&instance, errors.New("test"))
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
 				}
 
 				// Track successful instances.
-				for _, instance := range []IngesterDesc{instance3, instance4, instance5} {
+				for _, instance := range []InstanceDesc{instance3, instance4, instance5} {
 					tracker.done(&instance, nil)
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
@@ -200,11 +200,11 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed as soon as the response has been successfully received from 'all zones - 1' on max unavailable zones = 1": {
-			instances:           []IngesterDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 1,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track successful instances.
-				for _, instance := range []IngesterDesc{instance1, instance2, instance3} {
+				for _, instance := range []InstanceDesc{instance1, instance2, instance3} {
 					tracker.done(&instance, nil)
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
@@ -216,11 +216,11 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed on failing instances within 2 zones on max unavailable zones = 2": {
-			instances:           []IngesterDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 2,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track failing instances.
-				for _, instance := range []IngesterDesc{instance1, instance2, instance3, instance4} {
+				for _, instance := range []InstanceDesc{instance1, instance2, instance3, instance4} {
 					tracker.done(&instance, errors.New("test"))
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
@@ -237,7 +237,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			},
 		},
 		"should succeed as soon as the response has been successfully received from 'all zones - 2' on max unavailable zones = 2": {
-			instances:           []IngesterDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
 			maxUnavailableZones: 2,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Zone-a

@@ -11,7 +11,7 @@ func TestNormalizationAndConflictResolution(t *testing.T) {
 	now := time.Now().Unix()
 
 	first := &Desc{
-		Ingesters: map[string]IngesterDesc{
+		Ingesters: map[string]InstanceDesc{
 			"Ing 1":   {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{50, 40, 40, 30}},
 			"Ing 2":   {Addr: "addr2", Timestamp: 123456, State: LEAVING, Tokens: []uint32{100, 5, 5, 100, 100, 200, 20, 10}},
 			"Ing 3":   {Addr: "addr3", Timestamp: now, State: LEFT, Tokens: []uint32{100, 200, 300}},
@@ -21,7 +21,7 @@ func TestNormalizationAndConflictResolution(t *testing.T) {
 	}
 
 	second := &Desc{
-		Ingesters: map[string]IngesterDesc{
+		Ingesters: map[string]InstanceDesc{
 			"Unknown": {
 				Timestamp: now + 10,
 				Tokens:    []uint32{1000, 2000},
@@ -39,7 +39,7 @@ func TestNormalizationAndConflictResolution(t *testing.T) {
 	}
 
 	assert.Equal(t, &Desc{
-		Ingesters: map[string]IngesterDesc{
+		Ingesters: map[string]InstanceDesc{
 			"Ing 1":   {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 			"Ing 2":   {Addr: "addr2", Timestamp: 123456, State: LEAVING, Tokens: []uint32{5, 10, 20, 100, 200}},
 			"Ing 3":   {Addr: "addr3", Timestamp: now, State: LEFT},
@@ -50,7 +50,7 @@ func TestNormalizationAndConflictResolution(t *testing.T) {
 
 	assert.Equal(t, &Desc{
 		// change ring is always normalized, "Unknown" ingester has lost two tokens: 100 from first ring (because of second ring), and 1000 (conflict resolution)
-		Ingesters: map[string]IngesterDesc{
+		Ingesters: map[string]InstanceDesc{
 			"Unknown": {Timestamp: now + 10, Tokens: []uint32{1000, 2000}},
 		},
 	}, changeRing)
@@ -75,7 +75,7 @@ func TestMerge(t *testing.T) {
 
 	firstRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -84,7 +84,7 @@ func TestMerge(t *testing.T) {
 
 	secondRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 3": {Addr: "addr3", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{150, 250, 350}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -93,7 +93,7 @@ func TestMerge(t *testing.T) {
 
 	thirdRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEAVING, Tokens: []uint32{30, 40, 50}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{150, 250, 350}},
 			},
@@ -102,7 +102,7 @@ func TestMerge(t *testing.T) {
 
 	expectedFirstSecondMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{150, 250, 350}},
@@ -112,7 +112,7 @@ func TestMerge(t *testing.T) {
 
 	expectedFirstSecondThirdMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEAVING, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{150, 250, 350}},
@@ -122,7 +122,7 @@ func TestMerge(t *testing.T) {
 
 	fourthRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEFT, Tokens: []uint32{30, 40, 50}},
 			},
 		}
@@ -130,7 +130,7 @@ func TestMerge(t *testing.T) {
 
 	expectedFirstSecondThirdFourthMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEFT, Tokens: nil},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{150, 250, 350}},
@@ -155,7 +155,7 @@ func TestMerge(t *testing.T) {
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		// when merging first into second ring, only "Ing 1" is new
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 			},
 		}, ch)
@@ -176,7 +176,7 @@ func TestMerge(t *testing.T) {
 		assert.Equal(t, expectedFirstSecondThirdFourthMerge(), out)
 		// entire fourth ring is the update -- but without tokens
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEFT, Tokens: nil},
 			},
 		}, ch)
@@ -188,7 +188,7 @@ func TestTokensTakeover(t *testing.T) {
 
 	first := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20}}, // partially migrated from Ing 3
 			},
@@ -197,7 +197,7 @@ func TestTokensTakeover(t *testing.T) {
 
 	second := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 5, State: LEAVING, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -206,7 +206,7 @@ func TestTokensTakeover(t *testing.T) {
 
 	merged := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 5, State: LEAVING, Tokens: []uint32{100, 200}},
@@ -218,7 +218,7 @@ func TestTokensTakeover(t *testing.T) {
 		our, ch := merge(first(), second())
 		assert.Equal(t, merged(), our)
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 5, State: LEAVING, Tokens: []uint32{100, 200}}, // change doesn't contain conflicted tokens
 			},
@@ -237,7 +237,7 @@ func TestTokensTakeover(t *testing.T) {
 
 		// change is different though
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 			},
 		}, ch)
@@ -249,7 +249,7 @@ func TestMergeLeft(t *testing.T) {
 
 	firstRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -258,7 +258,7 @@ func TestMergeLeft(t *testing.T) {
 
 	secondRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
 		}
@@ -266,7 +266,7 @@ func TestMergeLeft(t *testing.T) {
 
 	expectedFirstSecondMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT},
 			},
@@ -275,7 +275,7 @@ func TestMergeLeft(t *testing.T) {
 
 	thirdRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEAVING, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20, 100, 200}}, // from firstRing
 			},
@@ -284,7 +284,7 @@ func TestMergeLeft(t *testing.T) {
 
 	expectedFirstSecondThirdMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: LEAVING, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT},
 			},
@@ -295,7 +295,7 @@ func TestMergeLeft(t *testing.T) {
 		our, ch := merge(firstRing(), secondRing())
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT},
 			},
 		}, ch)
@@ -312,7 +312,7 @@ func TestMergeLeft(t *testing.T) {
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		// when merging first into second ring, only "Ing 1" is new
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 			},
 		}, ch)
@@ -334,7 +334,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 
 	firstRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEAVING, Tokens: []uint32{5, 10, 20, 100, 200}},
@@ -344,7 +344,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 
 	secondRing := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -353,7 +353,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 
 	expectedFirstSecondMerge := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
@@ -365,7 +365,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 		our, ch := mergeLocalCAS(firstRing(), secondRing(), now+3)
 		assert.Equal(t, expectedFirstSecondMerge(), our)
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
 			},
@@ -381,7 +381,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 	{ // commutativity is broken when deleting missing entries. But let's make sure we get reasonable results at least.
 		our, ch := mergeLocalCAS(secondRing(), firstRing(), now+3)
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEAVING},
@@ -389,7 +389,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 		}, our)
 
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEAVING},
 			},
 		}, ch)
@@ -401,7 +401,7 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 
 	ring1 := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEFT},
@@ -411,7 +411,7 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 
 	ring2 := func() *Desc {
 		return &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 			},
@@ -421,7 +421,7 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 	{
 		our, ch := mergeLocalCAS(ring1(), ring2(), now+10)
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				"Ing 3": {Addr: "addr3", Timestamp: now, State: LEFT},
@@ -429,7 +429,7 @@ func TestMergeMissingIntoLeft(t *testing.T) {
 		}, our)
 
 		assert.Equal(t, &Desc{
-			Ingesters: map[string]IngesterDesc{
+			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 10, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
 				// Ing 3 is not changed, it was already LEFT

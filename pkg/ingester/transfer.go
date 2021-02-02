@@ -372,7 +372,7 @@ func (i *Ingester) transferOut(ctx context.Context) error {
 }
 
 // findTargetIngester finds an ingester in PENDING state.
-func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.IngesterDesc, error) {
+func (i *Ingester) findTargetIngester(ctx context.Context) (*ring.InstanceDesc, error) {
 	ringDesc, err := i.lifecycler.KVStore.Get(ctx, i.lifecycler.RingKey)
 	if err != nil {
 		return nil, err

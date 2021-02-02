@@ -154,9 +154,9 @@ in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/ove
 
 ### Grafana Cloud
 
-To use Cortex as part of Grafana Cloud, sign up for [Grafana Cloud](https://grafana.com/cloud)
-by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
-as part of the Starter and Basic Hosted Grafana plans.
+The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016. Employing 6 out of 8 maintainers for Cortex enables [Grafana Labs](https://grafana.com/) to offer Cortex-as-a-service with exceptional performance and reliability. As the creators of [Grafana](https://grafana.com/oss/grafana/), [Loki](https://grafana.com/oss/loki/), and [Tempo](https://grafana.com/oss/tempo/), Grafana Labs can offer you the most wholistic Observability-as-a-Service stack out there.
+
+For further information see Grafana Cloud [documentation](https://grafana.com/docs/grafana-cloud/), [tutorials](https://grafana.com/tutorials/), [webinars](https://grafana.com/videos/), and [KubeCon talks](https://grafana.com/categories/cortex/). Get started today and [sign up here](https://grafana.com/products/cloud/).
 
 ### Amazon Managed Service for Prometheus (AMP)
 

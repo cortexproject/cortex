@@ -10,7 +10,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -23,7 +23,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, util.Logger)
+	mgr := newFrontendProcessor(cfg, nil, util_log.Logger)
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)

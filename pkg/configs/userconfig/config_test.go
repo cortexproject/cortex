@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var legacyRulesFile = `ALERT TestAlert
@@ -92,7 +92,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 		},
 		nil,
 		true,
-		log.With(util.Logger, "alert", "TestAlert"),
+		log.With(util_log.Logger, "alert", "TestAlert"),
 	)
 
 	for i, tc := range []struct {

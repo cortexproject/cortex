@@ -17,7 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
-// AlertmanagerClientsPool is the interface used to get the clients for the given addresses.
+// AlertmanagerClientsPool is the interface used to get the client from the pool for a specified address.
 type AlertmanagerClientsPool interface {
 	// GetClientFor returns the alertmanager client for the given address.
 	GetClientFor(addr string) (AlertmanagerClient, error)
@@ -34,20 +34,14 @@ type AlertmanagerClient interface {
 
 // AlertmanagerClientConfig is the configuration struct for the alertmanager client.
 type AlertmanagerClientConfig struct {
-	// GRPCClientConfig is stripped down version of grpcclient.Config.
-	GRPCClientConfig grpcClientConfig `yaml:"grpc_client_config"`
-}
-
-// grpcClientConfig is stripped down version of grpcclient.Config.
-type grpcClientConfig struct {
 	TLSEnabled bool             `yaml:"tls_enabled"`
 	TLS        tls.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *AlertmanagerClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.GRPCClientConfig.TLSEnabled, prefix+".tls-enabled", cfg.GRPCClientConfig.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
-	cfg.GRPCClientConfig.TLS.RegisterFlagsWithPrefix(prefix, f)
+	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type alertmanagerClientsPool struct {
@@ -64,8 +58,8 @@ func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientC
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,
-		TLSEnabled:          amClientCfg.GRPCClientConfig.TLSEnabled,
-		TLS:                 amClientCfg.GRPCClientConfig.TLS,
+		TLSEnabled:          amClientCfg.TLSEnabled,
+		TLS:                 amClientCfg.TLS,
 	}
 
 	rd := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{

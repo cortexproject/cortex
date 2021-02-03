@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -27,7 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-// RingOp is the operation used for distributing tenants between alertmanagers.
+// RingOp is the operation used for reading/writing to the alertmanagers.
 var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
 	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
 	return s != ring.ACTIVE
@@ -43,7 +44,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager-distributor.alertmanager-client", f)
-	f.DurationVar(&cfg.RemoteTimeout, "alertmanager.distributor.remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
+	f.DurationVar(&cfg.RemoteTimeout, "alertmanager-distributor.remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
 }
 
 // Distributor forwards requests to individual alertmanagers.
@@ -55,7 +56,6 @@ type Distributor struct {
 
 	alertmanagerRing        ring.ReadRing
 	alertmanagerClientsPool AlertmanagerClientsPool
-	replication             int
 
 	// Manager for subservices (Alertmanager Ring)
 	subservices        *services.Manager
@@ -84,7 +84,7 @@ func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientsPool Alert
 		logger:                  logger,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
-		replication:             alertmanagersRing.ReplicationFactor(),
+		//replication:             alertmanagersRing.ReplicationFactor(),
 	}
 
 	d.initMetrics(reg)
@@ -156,16 +156,18 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	logger := log.With(d.logger, "user", userID)
+
 	d.receivedRequests.WithLabelValues(userID).Inc()
 
 	if r.Method == http.MethodGet {
-		d.doRead(userID, w, r)
+		d.doRead(userID, w, r, logger)
 	} else {
-		d.doWrite(userID, w, r)
+		d.doWrite(userID, w, r, logger)
 	}
 }
 
-func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request) {
+func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	source := util.GetSourceIPsFromOutgoingCtx(r.Context())
 
 	var body []byte
@@ -173,12 +175,14 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	if r.Body != nil {
 		body, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to read the request body during write", "err", err)
+			level.Error(logger).Log("msg", "failed to read the request body during write", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	}
 
+	firstSuccessfulResponse := make(chan *alertmanagerpb.Response, 1)
+	grpcHeaders := httpTogrpchttpHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		d.amSends.WithLabelValues(am.Addr).Inc()
 
@@ -192,7 +196,12 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		resp, err := d.doRequest(localCtx, am, r, body)
+		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
+			Method:  r.Method,
+			Url:     r.RequestURI,
+			Body:    body,
+			Headers: grpcHeaders,
+		})
 		if err != nil {
 			d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			return err
@@ -202,22 +211,39 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			return errors.New("alertmanager grpc request not ok")
 		}
 
+		select {
+		case firstSuccessfulResponse <- resp:
+		default:
+		}
+
 		return nil
 	}, func() {})
 
 	if err == nil {
-		w.WriteHeader(http.StatusOK)
+		select {
+		case resp := <-firstSuccessfulResponse:
+			http.Error(w, string(resp.HttpResponse.Body), http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
 		return
 	}
 
-	d.respondFromError(err, w)
+	d.respondFromError(err, w, logger)
 }
 
-func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request) {
+func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	key := shardByUser(userID)
 	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
 	if err != nil {
-		level.Error(d.logger).Log("msg", "failed to get replication set from the ring", "err", err)
+		level.Error(logger).Log("msg", "failed to get replication set from the ring", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	req, err := server.HTTPRequest(r)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get grpc request from http request", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -225,22 +251,11 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
 	amDesc := replicationSet.Ingesters[0]
-
-	var body []byte
-	if r.Body != nil {
-		body, err = ioutil.ReadAll(r.Body)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to read the request body during reads", "err", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-	}
-
 	d.amSends.WithLabelValues(amDesc.Addr).Inc()
-	resp, err := d.doRequest(r.Context(), amDesc, r, body)
+	resp, err := d.doRequest(r.Context(), amDesc, req)
 	if err != nil {
 		d.amSendFailures.WithLabelValues(amDesc.Addr).Inc()
-		d.respondFromError(err, w)
+		d.respondFromError(err, w, logger)
 		return
 	}
 
@@ -252,10 +267,11 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 	http.Error(w, string(resp.HttpResponse.Body), int(resp.HttpResponse.Code))
 }
 
-func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
+func (d *Distributor) respondFromError(err error, w http.ResponseWriter, logger log.Logger) {
 	httpResp, ok := httpgrpc.HTTPResponseFromError(errors.Cause(err))
 	if !ok {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		level.Error(logger).Log("msg", "Failed to process the request to the alertmanager", "err", err)
+		http.Error(w, "Failed to process the request to the alertmanager", http.StatusInternalServerError)
 		return
 	}
 	for _, h := range httpResp.Headers {
@@ -266,19 +282,14 @@ func (d *Distributor) respondFromError(err error, w http.ResponseWriter) {
 	http.Error(w, string(httpResp.Body), int(httpResp.Code))
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, r *http.Request, requestBody []byte) (*alertmanagerpb.Response, error) {
+func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*alertmanagerpb.Response, error) {
 	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
 	}
 
 	resp, err := amClient.HandleRequest(ctx, &alertmanagerpb.Request{
-		HttpRequest: &httpgrpc.HTTPRequest{
-			Method:  r.Method,
-			Url:     r.RequestURI,
-			Body:    requestBody,
-			Headers: httpTogrpchttpHeaders(r.Header),
-		},
+		HttpRequest: req,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to proxy request to alertmanager %s", amClient.RemoteAddress())

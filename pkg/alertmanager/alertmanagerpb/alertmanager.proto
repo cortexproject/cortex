@@ -28,5 +28,4 @@ message Response {
 enum Status {
   OK = 0;
   ERROR = 1;
-  SHUTTING_DOWN = 2;
 }

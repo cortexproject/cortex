@@ -2542,7 +2542,7 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
-	req.Metadata = append(req.Metadata, &client.MetricMetadata{MetricFamilyName: "test", Help: fmt.Sprintf("a help for metric"), Unit: "", Type: client.COUNTER})
+	req.Metadata = append(req.Metadata, &client.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: client.COUNTER})
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }

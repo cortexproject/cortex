@@ -44,7 +44,11 @@ func InitLogger(cfg *server.Config) {
 	}
 
 	// when use util.Logger, skip 3 stack frames.
-	Logger = log.With(l, "caller", log.Caller(3))
+	logutil.Logger = log.With(l, "caller", log.Caller(3))
+
+	// Ensure the Logger is updated to point to the package logger
+	// TODO: Make this sane and use a single log global
+	Logger = logutil.Logger
 
 	// cfg.Log wraps log function, skip 4 stack frames to get caller information.
 	// this works in go 1.12, but doesn't work in versions earlier.

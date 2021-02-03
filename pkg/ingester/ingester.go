@@ -252,11 +252,11 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics, i.logger)
 	}
 
 	var err error
-	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer)
+	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer, i.logger)
 	if err != nil {
 		return errors.Wrap(err, "starting WAL")
 	}

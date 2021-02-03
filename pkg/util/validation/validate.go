@@ -61,6 +61,29 @@ const (
 	TooManyHAClusters = "too_many_ha_clusters"
 )
 
+// allDiscardedSampleReasons is used when cleaning up metrics for a user.
+var allDiscardedSampleReasons = []string{
+	missingMetricName,
+	invalidMetricName,
+	greaterThanMaxSampleAge,
+	maxLabelNamesPerSeries,
+	tooFarInFuture,
+	invalidLabel,
+	labelNameTooLong,
+	duplicateLabelNames,
+	labelsNotSorted,
+	labelValueTooLong,
+	RateLimited,
+	TooManyHAClusters,
+}
+
+var allDiscardedMetadataReasons = []string{
+	missingMetricName,
+	metricNameTooLong,
+	helpTooLong,
+	unitTooLong,
+}
+
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -237,4 +260,14 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 	}
 
 	return fmt.Sprintf("%s{%s}", metricName, strings.Join(labelStrings, ", "))
+}
+
+func DeletePerUserValidationMetrics(userID string) {
+	for _, reason := range allDiscardedSampleReasons {
+		DiscardedSamples.DeleteLabelValues(reason, userID)
+	}
+
+	for _, reason := range allDiscardedMetadataReasons {
+		DiscardedMetadata.DeleteLabelValues(reason, userID)
+	}
 }

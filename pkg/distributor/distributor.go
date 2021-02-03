@@ -114,14 +114,14 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+
+	inactiveUserTimeout    = 15 * time.Minute
+	metricsCleanupInterval = inactiveUserTimeout / 5
 )
 
 const (
 	typeSamples  = "samples"
 	typeMetadata = "metadata"
-
-	// Supported sharding strategies.
-
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -147,6 +147,8 @@ type Distributor struct {
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+
+	activeUsers *util.ActiveUsers
 }
 
 // Config contains the configuration require to
@@ -253,6 +255,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:            replicas,
+		activeUsers:          util.NewActiveUsers(),
 	}
 
 	subservices = append(subservices, d.ingesterPool)
@@ -273,12 +276,35 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-d.subservicesWatcher.Chan():
-		return errors.Wrap(err, "distributor subservice failed")
+	timer := time.NewTicker(metricsCleanupInterval)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
+			for _, userID := range inactiveUsers {
+				cleanupMetricsForUser(userID)
+			}
+			continue
+
+		case <-ctx.Done():
+			return nil
+
+		case err := <-d.subservicesWatcher.Chan():
+			return errors.Wrap(err, "distributor subservice failed")
+		}
 	}
+}
+
+func cleanupMetricsForUser(userID string) {
+	receivedSamples.DeleteLabelValues(userID)
+	receivedMetadata.DeleteLabelValues(userID)
+	incomingSamples.DeleteLabelValues(userID)
+	incomingMetadata.DeleteLabelValues(userID)
+	nonHASamples.DeleteLabelValues(userID)
+	// dedupedSamples.DeleteLabelValues(userID) // TODO: This needs "cluster" too :-(
+	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
 }
 
 // Called after distributor is asked to stop via StopAsync.
@@ -397,6 +423,10 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	if err != nil {
 		return nil, err
 	}
+
+	now := time.Now()
+	d.activeUsers.UpdateUserTimestamp(userID, now.UnixNano())
+
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 
 	var firstPartialErr error
@@ -540,7 +570,6 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 		return &ingester_client.WriteResponse{}, firstPartialErr
 	}
 
-	now := time.Now()
 	totalN := validatedSamples + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.

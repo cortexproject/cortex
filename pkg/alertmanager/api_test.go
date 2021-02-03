@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -126,7 +126,7 @@ template_files:
 
 	am := &MultitenantAlertmanager{
 		store:  noopAlertStore{},
-		logger: util.Logger,
+		logger: util_log.Logger,
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

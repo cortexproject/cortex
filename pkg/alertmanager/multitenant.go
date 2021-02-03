@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -712,7 +713,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	newAM, err := New(&Config{
 		UserID:      userID,
 		DataDir:     am.cfg.DataDir,
-		Logger:      util.Logger,
+		Logger:      util_log.Logger,
 		Peer:        am.peer,
 		PeerTimeout: am.cfg.Cluster.PeerTimeout,
 		Retention:   am.cfg.Retention,

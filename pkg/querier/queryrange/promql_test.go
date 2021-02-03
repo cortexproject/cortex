@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		Logger:             util.Logger,
+		Logger:             util_log.Logger,
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
 		ActiveQueryTracker: nil,

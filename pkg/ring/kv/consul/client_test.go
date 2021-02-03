@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func writeValuesToKV(client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
@@ -20,7 +20,7 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 	go func() {
 		defer close(ch)
 		for i := start; i <= end; i++ {
-			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
+			level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = client.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			time.Sleep(sleep)
 		}
@@ -91,7 +91,7 @@ func TestReset(t *testing.T) {
 	go func() {
 		defer close(ch)
 		for i := 0; i <= max; i++ {
-			level.Debug(util.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
+			level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = c.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			if i == 1 {
 				c.kv.(*mockKV).ResetIndex()
@@ -128,7 +128,7 @@ func observeValueForSomeTime(client *Client, key string, timeout time.Duration) 
 		if !ok {
 			return false
 		}
-		level.Debug(util.Logger).Log("ts", time.Now(), "msg", "observed value", "val", s)
+		level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "observed value", "val", s)
 		observed = append(observed, s)
 		return true
 	})

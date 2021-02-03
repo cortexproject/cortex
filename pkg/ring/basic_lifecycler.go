@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -194,7 +194,7 @@ func (l *BasicLifecycler) running(ctx context.Context) error {
 			f()
 
 		case <-ctx.Done():
-			level.Info(util.Logger).Log("msg", "ring lifecycler is shutting down", "ring", l.ringName)
+			level.Info(util_log.Logger).Log("msg", "ring lifecycler is shutting down", "ring", l.ringName)
 			return nil
 		}
 	}

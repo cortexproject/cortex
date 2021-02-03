@@ -34,7 +34,28 @@ import (
 var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
 	RingOp                = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
+
+	DefaultGrouperFactory = func(logger log.Logger, cfg Config, bkt objstore.Bucket, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
+		return compact.NewDefaultGrouper(
+			logger,
+			bkt,
+			false, // Do not accept malformed indexes
+			true,  // Enable vertical compaction
+			reg,
+			blocksMarkedForDeletion,
+			garbageCollectedBlocks)
+	}
 )
+
+// GrouperFactory builds and returns the grouper to be used to compact a tenant's blocks.
+type GrouperFactory func(
+	logger log.Logger,
+	cfg Config,
+	bkt objstore.Bucket,
+	reg prometheus.Registerer,
+	blocksMarkedForDeletion prometheus.Counter,
+	garbageCollectedBlocks prometheus.Counter,
+) compact.Grouper
 
 // Config holds the Compactor config.
 type Config struct {
@@ -66,6 +87,11 @@ type Config struct {
 	// it in tests.
 	retryMinBackoff time.Duration `yaml:"-"`
 	retryMaxBackoff time.Duration `yaml:"-"`
+
+	// Allow downstream projects to customise the blocks compactor.
+	BlocksGrouperFactory GrouperFactory    `yaml:"-"`
+	BlocksPlanner        compact.Planner   `yaml:"-"`
+	BlocksCompactor      compact.Compactor `yaml:"-"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -124,9 +150,10 @@ type Compactor struct {
 	// If empty, no users are disabled. If not empty, users in the map are disabled (not owned by this compactor).
 	disabledUsers map[string]struct{}
 
-	// Function that creates bucket client, TSDB planner and compactor using the context.
+	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error)
+	createBucketClient    func(ctx context.Context) (objstore.Bucket, error)
+	createBlocksCompactor func(ctx context.Context) (GrouperFactory, compact.Compactor, compact.Planner, error)
 
 	// Users scanner, used to discover users from the bucket.
 	usersScanner *cortex_tsdb.UsersScanner
@@ -135,8 +162,9 @@ type Compactor struct {
 	blocksCleaner *BlocksCleaner
 
 	// Underlying compactor and planner used to compact TSDB blocks.
-	tsdbCompactor tsdb.Compactor
-	tsdbPlanner   compact.Planner
+	blocksGrouperFactory GrouperFactory
+	blocksCompactor      compact.Compactor
+	blocksPlanner        compact.Planner
 
 	// Client used to run operations on the bucket storing blocks.
 	bucketClient objstore.Bucket
@@ -165,22 +193,37 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
-	createDependencies := func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error) {
-		bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
-		if err != nil {
-			return nil, nil, nil, errors.Wrap(err, "failed to create the bucket client")
-		}
-
-		compactor, err := tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		planner := compact.NewTSDBBasedPlanner(logger, compactorCfg.BlockRanges.ToMilliseconds())
-		return bucketClient, compactor, planner, nil
+	createBucketClient := func(ctx context.Context) (objstore.Bucket, error) {
+		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createDependencies)
+	createBlocksCompactor := func(ctx context.Context) (GrouperFactory, compact.Compactor, compact.Planner, error) {
+		var (
+			grouperFactory = compactorCfg.BlocksGrouperFactory
+			planner        = compactorCfg.BlocksPlanner
+			compactor      = compactorCfg.BlocksCompactor
+			err            error
+		)
+
+		if grouperFactory == nil {
+			grouperFactory = DefaultGrouperFactory
+		}
+
+		if compactor == nil {
+			compactor, err = tsdb.NewLeveledCompactor(ctx, registerer, logger, compactorCfg.BlockRanges.ToMilliseconds(), downsample.NewPool())
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		}
+
+		if planner == nil {
+			planner = compact.NewTSDBBasedPlanner(logger, compactorCfg.BlockRanges.ToMilliseconds())
+		}
+
+		return grouperFactory, compactor, planner, nil
+	}
+
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, createBucketClient, createBlocksCompactor)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -193,16 +236,18 @@ func newCompactor(
 	storageCfg cortex_tsdb.BlocksStorageConfig,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	createDependencies func(ctx context.Context) (objstore.Bucket, tsdb.Compactor, compact.Planner, error),
+	createBucketClient func(ctx context.Context) (objstore.Bucket, error),
+	createBlocksCompactor func(ctx context.Context) (GrouperFactory, compact.Compactor, compact.Planner, error),
 ) (*Compactor, error) {
 	c := &Compactor{
-		compactorCfg:       compactorCfg,
-		storageCfg:         storageCfg,
-		parentLogger:       logger,
-		logger:             log.With(logger, "component", "compactor"),
-		registerer:         registerer,
-		syncerMetrics:      newSyncerMetrics(registerer),
-		createDependencies: createDependencies,
+		compactorCfg:          compactorCfg,
+		storageCfg:            storageCfg,
+		parentLogger:          logger,
+		logger:                log.With(logger, "component", "compactor"),
+		registerer:            registerer,
+		syncerMetrics:         newSyncerMetrics(registerer),
+		createBucketClient:    createBucketClient,
+		createBlocksCompactor: createBlocksCompactor,
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -273,10 +318,16 @@ func newCompactor(
 func (c *Compactor) starting(ctx context.Context) error {
 	var err error
 
-	// Create bucket client and compactor.
-	c.bucketClient, c.tsdbCompactor, c.tsdbPlanner, err = c.createDependencies(ctx)
+	// Create bucket client.
+	c.bucketClient, err = c.createBucketClient(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to initialize compactor objects")
+		return errors.Wrap(err, "failed to create bucket client")
+	}
+
+	// Create blocks compactor dependencies.
+	c.blocksGrouperFactory, c.blocksCompactor, c.blocksPlanner, err = c.createBlocksCompactor(ctx)
+	if err != nil {
+		return errors.Wrap(err, "failed to initialize compactor dependencies")
 	}
 
 	// Wrap the bucket client to write block deletion marks in the global location too.
@@ -545,22 +596,12 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
-	grouper := compact.NewDefaultGrouper(
-		ulogger,
-		bucket,
-		false, // Do not accept malformed indexes
-		true,  // Enable vertical compaction
-		reg,
-		c.blocksMarkedForDeletion,
-		c.garbageCollectedBlocks,
-	)
-
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		grouper,
-		c.tsdbPlanner,
-		c.tsdbCompactor,
+		c.blocksGrouperFactory(ulogger, c.compactorCfg, bucket, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks),
+		c.blocksPlanner,
+		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,

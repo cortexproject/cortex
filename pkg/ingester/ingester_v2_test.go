@@ -1582,7 +1582,7 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
 
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer)
+	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer, log.NewNopLogger())
 	if err != nil {
 		return nil, err
 	}
@@ -1727,7 +1727,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
 
-			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil, log.NewNopLogger())
 			require.NoError(t, err)
 
 			startErr := services.StartAndAwaitRunning(context.Background(), ingester)
@@ -2192,7 +2192,7 @@ func TestIngester_ForFlush(t *testing.T) {
 
 	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
 	reg = prometheus.NewPedanticRegistry()
-	i, err = NewV2ForFlusher(i.cfg, reg)
+	i, err = NewV2ForFlusher(i.cfg, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 
@@ -2588,7 +2588,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil)
+	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
 

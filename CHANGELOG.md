@@ -33,6 +33,7 @@
   * `-blocks-storage.s3.max-idle-connections-per-host`: Maximum number of idle (keep-alive) connections to keep per-host. If 0, a built-in default value is used.
   * `-blocks-storage.s3.max-connections-per-host`: Maximum number of connections per host. 0 means no limit.
 * [ENHANCEMENT] Ingester: when tenant's TSDB is closed, Ingester now removes pushed metrics-metadata from memory, and removes metadata (`cortex_ingester_memory_metadata`, `cortex_ingester_memory_metadata_created_total`, `cortex_ingester_memory_metadata_removed_total`) and validation metrics (`cortex_discarded_samples_total`, `cortex_discarded_metadata_total`). #3782
+* [ENHANCEMENT] Distributor: cleanup metrics for inactive tenants. #3784
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

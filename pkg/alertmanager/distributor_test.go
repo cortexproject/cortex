@@ -1,4 +1,4 @@
-package distributor
+package alertmanager
 
 import (
 	"bytes"
@@ -18,8 +18,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 
@@ -30,12 +30,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-)
-
-// Copied constants from alertmanager package to avoid circular imports.
-const (
-	RingKey           = "alertmanager"
-	RingNameForServer = "alertmanager"
 )
 
 func TestDistributor_DistributeRequest(t *testing.T) {
@@ -214,18 +208,18 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 		ReplicationFactor: replicationFactor,
 	}, RingNameForServer, RingKey, nil)
 	require.NoError(t, err)
-
-	var distributorCfg Config
-	flagext.DefaultValues(&distributorCfg)
-
-	reg := prometheus.NewRegistry()
-	d, err := New(distributorCfg, amRing, newMockAlertmanagerClientFactory(amByAddr), util.Logger, reg)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
-
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), amRing))
 	test.Poll(t, time.Second, numAM, func() interface{} {
 		return amRing.InstancesCount()
 	})
+
+	cfg := &MultitenantAlertmanagerConfig{}
+	flagext.DefaultValues(cfg)
+
+	reg := prometheus.NewRegistry()
+	d, err := NewDistributor(cfg, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, reg)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
 	return d, ams, reg, func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
@@ -268,7 +262,6 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *alertmanagerpb.
 	if am.happy {
 		m[http.StatusOK]++
 		return &alertmanagerpb.Response{
-			Status: alertmanagerpb.OK,
 			HttpResponse: &httpgrpc.HTTPResponse{
 				Code: http.StatusOK,
 			},
@@ -314,14 +307,14 @@ type mockAlertmanagerClientFactory struct {
 	alertmanagerByAddr map[string]*mockAlertmanager
 }
 
-func newMockAlertmanagerClientFactory(alertmanagerByAddr map[string]*mockAlertmanager) AlertmanagerClientsPool {
+func newMockAlertmanagerClientFactory(alertmanagerByAddr map[string]*mockAlertmanager) ClientsPool {
 	return &mockAlertmanagerClientFactory{alertmanagerByAddr: alertmanagerByAddr}
 }
 
-func (f *mockAlertmanagerClientFactory) GetClientFor(addr string) (AlertmanagerClient, error) {
+func (f *mockAlertmanagerClientFactory) GetClientFor(addr string) (Client, error) {
 	c, ok := f.alertmanagerByAddr[addr]
 	if !ok {
 		return nil, errors.New("client not found")
 	}
-	return AlertmanagerClient(c), nil
+	return Client(c), nil
 }

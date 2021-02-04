@@ -1,14 +1,12 @@
-package distributor
+package alertmanager
 
 import (
 	"context"
-	"flag"
 	"hash/fnv"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -28,53 +26,25 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-// RingOp is the operation used for reading/writing to the alertmanagers.
-var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
-	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
-	return s != ring.ACTIVE
-})
-
-// Config contains the configuration required to
-// create a Distributor
-type Config struct {
-	RemoteTimeout      time.Duration            `yaml:"remote_timeout"`
-	AlertmanagerClient AlertmanagerClientConfig `yaml:"alertmanager_client"`
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager-distributor.alertmanager-client", f)
-	f.DurationVar(&cfg.RemoteTimeout, "alertmanager-distributor.remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
-}
-
 // Distributor forwards requests to individual alertmanagers.
 type Distributor struct {
 	services.Service
 
-	cfg              Config
+	cfg              *MultitenantAlertmanagerConfig
 	requestsInFlight sync.WaitGroup
 
 	alertmanagerRing        ring.ReadRing
-	alertmanagerClientsPool AlertmanagerClientsPool
-
-	// Manager for subservices (Alertmanager Ring)
-	subservices        *services.Manager
-	subservicesWatcher *services.FailureWatcher
+	alertmanagerClientsPool ClientsPool
 
 	logger log.Logger
 
-	receivedRequests  *prometheus.CounterVec
-	amSends           *prometheus.CounterVec
-	amSendFailures    *prometheus.CounterVec
-	replicationFactor prometheus.Gauge
+	receivedRequests *prometheus.CounterVec
+	amSends          *prometheus.CounterVec
+	amSendFailures   *prometheus.CounterVec
 }
 
-// New constructs a new Distributor
-func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientsPool AlertmanagerClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
-	if logger == nil {
-		logger = log.NewNopLogger()
-	}
-
+// NewDistributor constructs a new Distributor
+func NewDistributor(cfg *MultitenantAlertmanagerConfig, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if alertmanagerClientsPool == nil {
 		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClient, logger, reg)
 	}
@@ -84,44 +54,27 @@ func New(cfg Config, alertmanagersRing *ring.Ring, alertmanagerClientsPool Alert
 		logger:                  logger,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
-		//replication:             alertmanagersRing.ReplicationFactor(),
 	}
 
-	d.initMetrics(reg)
-	d.replicationFactor.Set(float64(alertmanagersRing.ReplicationFactor()))
-
-	d.subservices, err = services.NewManager(alertmanagersRing)
-	if err != nil {
-		return nil, err
-	}
-	d.subservicesWatcher = services.NewFailureWatcher()
-	d.subservicesWatcher.WatchManager(d.subservices)
+	d.receivedRequests = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_alertmanager_distributor_received_requests_total",
+		Help: "The total number of requests received.",
+	}, []string{"user"})
+	d.amSends = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_alertmanager_distributor_alertmanager_send_total",
+		Help: "The total number of requests sent to the alertmanager.",
+	}, []string{"ingester"})
+	d.amSendFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_alertmanager_distributor_alertmanager_send_failures_total",
+		Help: "The total number of requests sent to the alertmanager that failed.",
+	}, []string{"ingester"})
 
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 	return d, nil
 }
 
-func (d *Distributor) initMetrics(r prometheus.Registerer) {
-	d.receivedRequests = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_received_requests_total",
-		Help: "The total number of requests received.",
-	}, []string{"user"})
-	d.amSends = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_alertmanager_send_total",
-		Help: "The total number of requests sent to the alertmanager.",
-	}, []string{"ingester"})
-	d.amSendFailures = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_alertmanager_send_failures_total",
-		Help: "The total number of requests sent to the alertmanager that failed.",
-	}, []string{"ingester"})
-	d.replicationFactor = promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_alertmanager_distributor_replication_factor",
-		Help: "The configured replication factor.",
-	})
-}
-
 func (d *Distributor) starting(ctx context.Context) error {
-	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
+	return nil
 }
 
 func (d *Distributor) running(ctx context.Context) error {
@@ -131,11 +84,10 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) stopping(_ error) error {
-	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
+	return nil
 }
 
 // IsPathSupported returns true if the given route is currently supported by the Distributor.
-// TODO: This will go away in future after we gradually add support for the entire API.
 func (d *Distributor) IsPathSupported(path string) bool {
 	// API can be found at https://petstore.swagger.io/?url=https://raw.githubusercontent.com/prometheus/alertmanager/master/api/v2/openapi.yaml.
 	return strings.HasSuffix(path, "/alerts") ||
@@ -187,7 +139,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		d.amSends.WithLabelValues(am.Addr).Inc()
 
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
-		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.AlertmanagerClient.RemoteTimeout)
 		defer cancel()
 		localCtx = user.InjectOrgID(localCtx, userID)
 		if sp := opentracing.SpanFromContext(r.Context()); sp != nil {
@@ -207,8 +159,8 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			return err
 		}
 
-		if resp.GetStatus() != alertmanagerpb.OK {
-			return errors.New("alertmanager grpc request not ok")
+		if resp.HttpResponse.Code/100 != 2 {
+			return httpgrpc.ErrorFromHTTPResponse(resp.HttpResponse)
 		}
 
 		select {
@@ -219,17 +171,19 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		return nil
 	}, func() {})
 
-	if err == nil {
-		select {
-		case resp := <-firstSuccessfulResponse:
-			http.Error(w, string(resp.HttpResponse.Body), http.StatusOK)
-		default:
-			w.WriteHeader(http.StatusOK)
-		}
-		return
+	if err != nil {
+		d.respondFromError(err, w, logger)
 	}
 
-	d.respondFromError(err, w, logger)
+	select {
+	case resp := <-firstSuccessfulResponse:
+		d.respondFromGRPCHTTPResponse(w, resp.HttpResponse)
+	default:
+		// This should not happen, but we have this default case to prevent
+		// and bugs deadlocking at this point.
+		level.Warn(logger).Log("msg", "first successful response not available on nil error")
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
@@ -248,19 +202,16 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), d.cfg.AlertmanagerClient.RemoteTimeout)
+	defer cancel()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
 	amDesc := replicationSet.Ingesters[0]
 	d.amSends.WithLabelValues(amDesc.Addr).Inc()
-	resp, err := d.doRequest(r.Context(), amDesc, req)
+	resp, err := d.doRequest(ctx, amDesc, req)
 	if err != nil {
 		d.amSendFailures.WithLabelValues(amDesc.Addr).Inc()
 		d.respondFromError(err, w, logger)
-		return
-	}
-
-	if resp.GetStatus() != alertmanagerpb.OK {
-		http.Error(w, resp.Error, http.StatusInternalServerError)
 		return
 	}
 
@@ -274,6 +225,10 @@ func (d *Distributor) respondFromError(err error, w http.ResponseWriter, logger 
 		http.Error(w, "Failed to process the request to the alertmanager", http.StatusInternalServerError)
 		return
 	}
+	d.respondFromGRPCHTTPResponse(w, httpResp)
+}
+
+func (d *Distributor) respondFromGRPCHTTPResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPResponse) {
 	for _, h := range httpResp.Headers {
 		for _, v := range h.Values {
 			w.Header().Add(h.Key, v)

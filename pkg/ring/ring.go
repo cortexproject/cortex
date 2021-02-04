@@ -194,22 +194,18 @@ type subringCacheKey struct {
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
 func New(cfg Config, name, key string, reg prometheus.Registerer) (*Ring, error) {
-	return NewWithStrategy(cfg, name, key, name+"-ring", reg, NewDefaultReplicationStrategy())
-}
-
-func NewWithStrategy(cfg Config, name, key, regName string, reg prometheus.Registerer, strategy ReplicationStrategy) (*Ring, error) {
 	codec := GetCodec()
 	// Suffix all client names with "-ring" to denote this kv client is used by the ring
 	store, err := kv.NewClient(
 		cfg.KVStore,
 		codec,
-		kv.RegistererWithKVName(reg, regName),
+		kv.RegistererWithKVName(reg, name+"-ring"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewWithStoreClientAndStrategy(cfg, name, key, store, strategy)
+	return NewWithStoreClientAndStrategy(cfg, name, key, store, NewDefaultReplicationStrategy())
 }
 
 func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client, strategy ReplicationStrategy) (*Ring, error) {

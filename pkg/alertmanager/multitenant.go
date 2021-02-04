@@ -1,7 +1,6 @@
 package alertmanager
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"html/template"
 	"io/ioutil"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -23,13 +21,10 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/alertmanager/distributor"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -84,6 +79,12 @@ var (
 	statusTemplate *template.Template
 )
 
+// RingOp is the operation used for reading/writing to the alertmanagers.
+var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
+	return s != ring.ACTIVE
+})
+
 func init() {
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
 		"state": func(enabled bool) string {
@@ -118,6 +119,9 @@ type MultitenantAlertmanagerConfig struct {
 	Cluster ClusterConfig    `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
+
+	// For distributor.
+	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
 }
 
 type ClusterConfig struct {
@@ -155,6 +159,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
+
+	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
@@ -234,14 +240,13 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 type MultitenantAlertmanager struct {
 	services.Service
 	alertmanagerpb.AlertmanagerClient
-	grpc_health_v1.HealthClient
 
 	cfg *MultitenantAlertmanagerConfig
 
 	// Ring used for sharding alertmanager instances.
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
-	distributor    *distributor.Distributor
+	distributor    *Distributor
 
 	// Subservices manager (ring, lifecycler)
 	subservices        *services.Manager
@@ -266,6 +271,9 @@ type MultitenantAlertmanager struct {
 
 	peer *cluster.Peer
 
+	// For distributor.
+	grpcServer *server.Server
+
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
 	tenantsOwned      prometheus.Gauge
@@ -275,7 +283,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg distributor.Config, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -341,10 +349,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg dist
 		}
 	}
 
-	return createMultitenantAlertmanager(cfg, distCfg, fallbackConfig, peer, store, ringStore, logger, registerer)
+	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, logger, registerer)
 }
 
-func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg distributor.Config, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	am := &MultitenantAlertmanager{
 		cfg:                 cfg,
 		fallbackConfig:      string(fallbackConfig),
@@ -410,7 +418,9 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg d
 			am.registry.MustRegister(am.ring)
 		}
 
-		if err := am.makeDistributor(distCfg, am.registry, logger); err != nil {
+		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
+
+		if err := am.makeDistributor(cfg, am.registry, logger); err != nil {
 			return nil, errors.Wrap(err, "make distributor")
 		}
 	}
@@ -424,18 +434,16 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, distCfg d
 	return am, nil
 }
 
-func (am *MultitenantAlertmanager) makeDistributor(distCfg distributor.Config, reg prometheus.Registerer, logger log.Logger) (err error) {
-	// Initialize the alertmanager ring for reading.
-	amRingCfg := am.cfg.ShardingRing.ToRingConfig()
-	alertmanagersRing, err := ring.NewWithStrategy(amRingCfg, RingNameForClient, RingKey, "alertmanager-distributor", reg, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
-	if err != nil {
-		return errors.Wrap(err, "failed to create alertmanager ring client for distributor")
-	}
-	if reg != nil {
-		reg.MustRegister(alertmanagersRing)
-	}
+type handlerForGRPCServer struct {
+	am *MultitenantAlertmanager
+}
 
-	am.distributor, err = distributor.New(distCfg, alertmanagersRing, nil, log.With(logger, "component", "AlertmanagerDistributor"), reg)
+func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	h.am.serveHTTPHelper(w, req)
+}
+
+func (am *MultitenantAlertmanager) makeDistributor(cfg *MultitenantAlertmanagerConfig, reg prometheus.Registerer, logger log.Logger) (err error) {
+	am.distributor, err = NewDistributor(cfg, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), reg)
 	return err
 }
 
@@ -501,7 +509,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 	var ringLastState ring.ReplicationSet
 
 	if am.cfg.ShardingEnabled {
-		ringLastState, _ = am.ring.GetAllHealthy(distributor.RingOp)
+		ringLastState, _ = am.ring.GetAllHealthy(RingOp)
 		ringTicker := time.NewTicker(util.DurationWithJitter(am.cfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -521,7 +529,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := am.ring.GetAllHealthy(distributor.RingOp)
+			currRingState, _ := am.ring.GetAllHealthy(RingOp)
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
@@ -609,7 +617,7 @@ func (am *MultitenantAlertmanager) isConfigOwned(userID string) (bool, error) {
 	// Hasher never returns err.
 	_, _ = ringHasher.Write([]byte(userID))
 
-	alertmanagers, err := am.ring.Get(ringHasher.Sum32(), distributor.RingOp, nil, nil, nil)
+	alertmanagers, err := am.ring.Get(ringHasher.Sum32(), RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify config ownership")
 	}
@@ -772,53 +780,18 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 	// If sharding is not enabled or Distributor does not support this path,
-	// it is a simple pass-through.
-	am.serveHTTP(w, req)
+	// it is served by this instance.
+	am.serveHTTPHelper(w, req)
 }
 
 // HandleRequest serves the Alertmanager's web UI and API sent via gRPC.
 func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *alertmanagerpb.Request) (*alertmanagerpb.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, in.HttpRequest.Method, in.HttpRequest.Url, bytes.NewReader(in.HttpRequest.Body))
-	if err != nil {
-		return nil, err
-	}
-
-	w := httptest.NewRecorder()
-	am.serveHTTP(w, req)
-
-	// Convert http response to gRPC response.
-
-	var body []byte
-	httpResp := w.Result()
-	if httpResp.Body != nil {
-		body, err = ioutil.ReadAll(httpResp.Body)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// All non 200 status are sent as errors.
-	if httpResp.StatusCode != http.StatusOK {
-		return nil, httpgrpc.Errorf(httpResp.StatusCode, string(body))
-	}
-
-	headers := make([]*httpgrpc.Header, 0, len(httpResp.Header))
-	for k, v := range httpResp.Header {
-		headers = append(headers, &httpgrpc.Header{Key: k, Values: v})
-	}
-
-	return &alertmanagerpb.Response{
-		Status: alertmanagerpb.OK,
-		HttpResponse: &httpgrpc.HTTPResponse{
-			Code:    int32(httpResp.StatusCode),
-			Headers: headers,
-			Body:    body,
-		},
-	}, nil
+	resp, err := am.grpcServer.Handle(ctx, in.HttpRequest)
+	return &alertmanagerpb.Response{HttpResponse: resp}, err
 }
 
-// serveHTTP serves the Alertmanager's web UI and API.
-func (am *MultitenantAlertmanager) serveHTTP(w http.ResponseWriter, req *http.Request) {
+// serveHTTPHelper serves the Alertmanager's web UI and API.
+func (am *MultitenantAlertmanager) serveHTTPHelper(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -829,7 +802,6 @@ func (am *MultitenantAlertmanager) serveHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if ok {
-
 		userAM.mux.ServeHTTP(w, req)
 		return
 	}
@@ -848,14 +820,6 @@ func (am *MultitenantAlertmanager) serveHTTP(w http.ResponseWriter, req *http.Re
 
 	level.Debug(am.logger).Log("msg", "the Alertmanager has no configuration and no fallback specified", "user", userID)
 	http.Error(w, "the Alertmanager is not configured", http.StatusNotFound)
-}
-
-func (am *MultitenantAlertmanager) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
-	status := grpc_health_v1.HealthCheckResponse_SERVING
-	if am.State() != services.Running {
-		status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
-	}
-	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
@@ -883,11 +847,6 @@ func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
 	return StatusHandler{
 		am: am,
 	}
-}
-
-// Close implements ring_client.PoolClient.
-func (am *MultitenantAlertmanager) Close() error {
-	return nil
 }
 
 // StatusHandler shows the status of the alertmanager.

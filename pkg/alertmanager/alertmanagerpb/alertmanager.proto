@@ -16,16 +16,9 @@ service Alertmanager {
 }
 
 message Request {
-  httpgrpc.HTTPRequest httpRequest = 2;
+  httpgrpc.HTTPRequest httpRequest = 1;
 }
 
 message Response {
-  Status status = 1;
-  string error = 2;
   httpgrpc.HTTPResponse httpResponse = 3;
-}
-
-enum Status {
-  OK = 0;
-  ERROR = 1;
 }

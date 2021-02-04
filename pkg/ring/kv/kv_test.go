@@ -181,8 +181,8 @@ func TestWatchPrefix(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			defer wg.Done()
 
 			// start watching before we even start generating values. values will be buffered
@@ -193,7 +193,6 @@ func TestWatchPrefix(t *testing.T) {
 		}()
 
 		gen := func(p string) {
-			wg.Add(1)
 			defer wg.Done()
 
 			start := time.Now()
@@ -214,6 +213,7 @@ func TestWatchPrefix(t *testing.T) {
 			t.Log("Generator finished in", time.Since(start))
 		}
 
+		wg.Add(2)
 		go gen(prefix)
 		go gen(prefix2) // we don't want to see these keys reported
 

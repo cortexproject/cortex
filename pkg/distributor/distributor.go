@@ -170,6 +170,10 @@ type Config struct {
 	// for testing and for extending the ingester by adding calls to the client
 	IngesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
+	// when true the distributor does not validate the label name, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
+	SkipLabelNameValidation bool `yaml:"-"`
+
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
 }
@@ -492,7 +496,8 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 			return nil, err
 		}
 
-		validatedSeries, err := d.validateSeries(ts, userID, req.GetSkipLabelNameValidation())
+		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
+		validatedSeries, err := d.validateSeries(ts, userID, skipLabelNameValidation)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.

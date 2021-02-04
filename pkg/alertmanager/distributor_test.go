@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/test"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -33,19 +31,14 @@ import (
 )
 
 func TestDistributor_DistributeRequest(t *testing.T) {
-	reqTotal := "cortex_alertmanager_distributor_received_requests_total"
-	sendTotal := "cortex_alertmanager_distributor_alertmanager_send_total"
-	sendFailTotal := "cortex_alertmanager_distributor_alertmanager_send_failures_total"
-
 	cases := []struct {
-		name               string
-		numAM, numHappyAM  int
-		replicationFactor  int
-		metricNames        []string
-		isRead             bool
-		expStatusCode      int
-		expectedTotalCalls int
-		expectedMetrics    string
+		name                string
+		numAM, numHappyAM   int
+		replicationFactor   int
+		isRead              bool
+		expStatusCode       int
+		expectedTotalCalls  int
+		headersNotPreserved bool
 	}{
 		{
 			name:               "Simple AM request, all AM healthy",
@@ -54,30 +47,14 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			replicationFactor:  3,
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 3,
-			metricNames:        []string{reqTotal, sendTotal, sendFailTotal},
-			expectedMetrics: `
-				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
-				# TYPE cortex_alertmanager_distributor_received_requests_total counter
-				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
-				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10001"} 1
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10003"} 1
-			`,
 		}, {
-			name:               "Less than quorum AM available",
-			numAM:              1,
-			numHappyAM:         1,
-			replicationFactor:  3,
-			expStatusCode:      http.StatusInternalServerError,
-			expectedTotalCalls: 0,
-			metricNames:        []string{reqTotal, sendTotal, sendFailTotal},
-			expectedMetrics: `
-				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
-				# TYPE cortex_alertmanager_distributor_received_requests_total counter
-				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-			`,
+			name:                "Less than quorum AM available",
+			numAM:               1,
+			numHappyAM:          1,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusInternalServerError,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true, // There is nothing to preserve since it does not hit any AM.
 		}, {
 			name:               "Less than quorum AM succeed",
 			numAM:              5,
@@ -85,21 +62,6 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			replicationFactor:  3,
 			expStatusCode:      http.StatusInternalServerError,
 			expectedTotalCalls: 3,
-			metricNames:        []string{reqTotal, sendTotal, sendFailTotal},
-			expectedMetrics: `
-				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
-				# TYPE cortex_alertmanager_distributor_received_requests_total counter
-				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
-				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10003"} 1
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10004"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_failures_total The total number of requests sent to the alertmanager that failed.
-				# TYPE cortex_alertmanager_distributor_alertmanager_send_failures_total counter
-				cortex_alertmanager_distributor_alertmanager_send_failures_total{ingester="127.0.0.1:10003"} 1
-				cortex_alertmanager_distributor_alertmanager_send_failures_total{ingester="127.0.0.1:10004"} 1
-			`,
 		}, {
 			name:               "Read is sent to only 1 AM",
 			numAM:              5,
@@ -108,22 +70,13 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			isRead:             true,
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 1,
-			metricNames:        []string{reqTotal, sendTotal, sendFailTotal},
-			expectedMetrics: `
-				# HELP cortex_alertmanager_distributor_received_requests_total The total number of requests received.
-				# TYPE cortex_alertmanager_distributor_received_requests_total counter
-				cortex_alertmanager_distributor_received_requests_total{user="1"} 1
-				# HELP cortex_alertmanager_distributor_alertmanager_send_total The total number of requests sent to the alertmanager.
-				# TYPE cortex_alertmanager_distributor_alertmanager_send_total counter
-				cortex_alertmanager_distributor_alertmanager_send_total{ingester="127.0.0.1:10002"} 1
-			`,
 		},
 	}
 
 	route := "/alertmanager/api/v1/alerts"
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d, ams, reg, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor)
+			d, ams, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor)
 			t.Cleanup(cleanup)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
@@ -142,6 +95,18 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 
 			require.Equal(t, c.expStatusCode, resp.StatusCode)
 
+			if !c.headersNotPreserved {
+				// Making sure the headers are not altered.
+				contentType := []string{"it-is-ok"}
+				contentTypeOptions := []string{"ok-option-1", "ok-option-2"}
+				if resp.StatusCode != http.StatusOK {
+					contentType = []string{"it-is-not-ok"}
+					contentTypeOptions = []string{"not-ok-option-1", "not-ok-option-2"}
+				}
+				require.Equal(t, contentType, resp.Header.Values("Content-Type"))
+				require.Equal(t, contentTypeOptions, resp.Header.Values("X-Content-Type-Options"))
+			}
+
 			// Since the response is sent as soon as the quorum is reached, when we
 			// reach this point the 3rd AM may not have received the request yet.
 			// To avoid flaky test we retry until we hit the desired state within a reasonable timeout.
@@ -156,17 +121,12 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 
 				return c.expectedTotalCalls == totalReqCount
 			})
-
-			if c.expectedMetrics != "" {
-				err = testutil.GatherAndCompare(reg, strings.NewReader(c.expectedMetrics), c.metricNames...)
-				require.NoError(t, err)
-			}
 		})
 	}
 
 }
 
-func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distributor, []*mockAlertmanager, *prometheus.Registry, func()) {
+func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
 	for i := 0; i < numHappyAM; i++ {
 		ams = append(ams, newMockAlertmanager(t, i, true))
@@ -216,12 +176,11 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 	cfg := &MultitenantAlertmanagerConfig{}
 	flagext.DefaultValues(cfg)
 
-	reg := prometheus.NewRegistry()
-	d, err := NewDistributor(cfg, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, reg)
+	d, err := NewDistributor(cfg, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 
-	return d, ams, reg, func() {
+	return d, ams, func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), d))
 	}
 }
@@ -246,11 +205,11 @@ func newMockAlertmanager(t *testing.T, idx int, happy bool) *mockAlertmanager {
 	}
 }
 
-func (am *mockAlertmanager) HandleRequest(_ context.Context, in *alertmanagerpb.Request, _ ...grpc.CallOption) (*alertmanagerpb.Response, error) {
+func (am *mockAlertmanager) HandleRequest(_ context.Context, in *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
-	u, err := url.Parse(in.HttpRequest.Url)
+	u, err := url.Parse(in.Url)
 	require.NoError(am.t, err)
 	path := u.Path
 	m, ok := am.receivedRequests[path]
@@ -261,15 +220,33 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *alertmanagerpb.
 
 	if am.happy {
 		m[http.StatusOK]++
-		return &alertmanagerpb.Response{
-			HttpResponse: &httpgrpc.HTTPResponse{
-				Code: http.StatusOK,
+		return &httpgrpc.HTTPResponse{
+			Code: http.StatusOK,
+			Headers: []*httpgrpc.Header{
+				{
+					Key:    "Content-Type",
+					Values: []string{"it-is-ok"},
+				}, {
+					Key:    "X-Content-Type-Options",
+					Values: []string{"ok-option-1", "ok-option-2"},
+				},
 			},
 		}, nil
 	}
 
 	m[http.StatusInternalServerError]++
-	return nil, errors.New("StatusInternalServerError")
+	return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+		Code: http.StatusInternalServerError,
+		Headers: []*httpgrpc.Header{
+			{
+				Key:    "Content-Type",
+				Values: []string{"it-is-not-ok"},
+			}, {
+				Key:    "X-Content-Type-Options",
+				Values: []string{"not-ok-option-1", "not-ok-option-2"},
+			},
+		},
+	})
 }
 
 func (am *mockAlertmanager) requestsCount(route string) int {

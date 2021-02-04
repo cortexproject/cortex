@@ -21,14 +21,16 @@ const (
 	// RingNameForServer is the name of the ring used by the alertmanager server.
 	RingNameForServer = "alertmanager"
 
-	// RingNameForClient is the name of the ring used by the alertmanager client (we need
-	// a different name to avoid clashing Prometheus metrics when running in single-binary).
-	RingNameForClient = "alertmanager-client"
-
 	// RingNumTokens is a safe default instead of exposing to config option to the user
 	// in order to simplify the config.
 	RingNumTokens = 128
 )
+
+// RingOp is the operation used for reading/writing to the alertmanagers.
+var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
+	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
+	return s != ring.ACTIVE
+})
 
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the alertmanager ring. This config

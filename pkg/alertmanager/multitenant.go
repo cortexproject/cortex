@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/weaveworks/common/httpgrpc"
 	"hash/fnv"
 	"html/template"
 	"io/ioutil"
@@ -23,7 +24,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc/server"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -78,12 +78,6 @@ const (
 var (
 	statusTemplate *template.Template
 )
-
-// RingOp is the operation used for reading/writing to the alertmanagers.
-var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
-	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
-	return s != ring.ACTIVE
-})
 
 func init() {
 	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
@@ -239,7 +233,6 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 // organizations.
 type MultitenantAlertmanager struct {
 	services.Service
-	alertmanagerpb.AlertmanagerClient
 
 	cfg *MultitenantAlertmanagerConfig
 
@@ -420,8 +413,9 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 
 		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
 
-		if err := am.makeDistributor(cfg, am.registry, logger); err != nil {
-			return nil, errors.Wrap(err, "make distributor")
+		am.distributor, err = NewDistributor(cfg, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "create distributor")
 		}
 	}
 
@@ -440,11 +434,6 @@ type handlerForGRPCServer struct {
 
 func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.am.serveHTTPHelper(w, req)
-}
-
-func (am *MultitenantAlertmanager) makeDistributor(cfg *MultitenantAlertmanagerConfig, reg prometheus.Registerer, logger log.Logger) (err error) {
-	am.distributor, err = NewDistributor(cfg, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), reg)
-	return err
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
@@ -785,9 +774,8 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 }
 
 // HandleRequest serves the Alertmanager's web UI and API sent via gRPC.
-func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *alertmanagerpb.Request) (*alertmanagerpb.Response, error) {
-	resp, err := am.grpcServer.Handle(ctx, in.HttpRequest)
-	return &alertmanagerpb.Response{HttpResponse: resp}, err
+func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+	return am.grpcServer.Handle(ctx, in)
 }
 
 // serveHTTPHelper serves the Alertmanager's web UI and API.

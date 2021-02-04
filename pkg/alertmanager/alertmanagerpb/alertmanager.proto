@@ -12,13 +12,5 @@ option (gogoproto.unmarshaler_all) = true;
 
 // Alertmanager interface exposed to the Alertmanager Distributor
 service Alertmanager {
-  rpc HandleRequest(Request) returns(Response) {};
-}
-
-message Request {
-  httpgrpc.HTTPRequest httpRequest = 1;
-}
-
-message Response {
-  httpgrpc.HTTPResponse httpResponse = 3;
+  rpc HandleRequest(httpgrpc.HTTPRequest) returns(httpgrpc.HTTPResponse) {};
 }

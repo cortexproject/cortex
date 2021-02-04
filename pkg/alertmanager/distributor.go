@@ -4,6 +4,7 @@ import (
 	"context"
 	"hash/fnv"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,16 +14,13 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -37,10 +35,6 @@ type Distributor struct {
 	alertmanagerClientsPool ClientsPool
 
 	logger log.Logger
-
-	receivedRequests *prometheus.CounterVec
-	amSends          *prometheus.CounterVec
-	amSendFailures   *prometheus.CounterVec
 }
 
 // NewDistributor constructs a new Distributor
@@ -56,34 +50,13 @@ func NewDistributor(cfg *MultitenantAlertmanagerConfig, alertmanagersRing *ring.
 		alertmanagerClientsPool: alertmanagerClientsPool,
 	}
 
-	d.receivedRequests = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_received_requests_total",
-		Help: "The total number of requests received.",
-	}, []string{"user"})
-	d.amSends = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_alertmanager_send_total",
-		Help: "The total number of requests sent to the alertmanager.",
-	}, []string{"ingester"})
-	d.amSendFailures = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_alertmanager_distributor_alertmanager_send_failures_total",
-		Help: "The total number of requests sent to the alertmanager that failed.",
-	}, []string{"ingester"})
-
-	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
+	d.Service = services.NewBasicService(nil, d.running, nil)
 	return d, nil
-}
-
-func (d *Distributor) starting(ctx context.Context) error {
-	return nil
 }
 
 func (d *Distributor) running(ctx context.Context) error {
 	<-ctx.Done()
 	d.requestsInFlight.Wait()
-	return nil
-}
-
-func (d *Distributor) stopping(_ error) error {
 	return nil
 }
 
@@ -110,9 +83,7 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 
 	logger := log.With(d.logger, "user", userID)
 
-	d.receivedRequests.WithLabelValues(userID).Inc()
-
-	if r.Method == http.MethodGet {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		d.doRead(userID, w, r, logger)
 	} else {
 		d.doWrite(userID, w, r, logger)
@@ -120,8 +91,6 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 }
 
 func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
-	source := util.GetSourceIPsFromOutgoingCtx(r.Context())
-
 	var body []byte
 	var err error
 	if r.Body != nil {
@@ -133,11 +102,10 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	firstSuccessfulResponse := make(chan *alertmanagerpb.Response, 1)
+	var firstSuccessfulResponse *httpgrpc.HTTPResponse
+	var respMtx sync.Mutex
 	grpcHeaders := httpTogrpchttpHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
-		d.amSends.WithLabelValues(am.Addr).Inc()
-
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.AlertmanagerClient.RemoteTimeout)
 		defer cancel()
@@ -145,8 +113,6 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		if sp := opentracing.SpanFromContext(r.Context()); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
-		// Get clientIP(s) from Context and add it to localCtx
-		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
 			Method:  r.Method,
@@ -155,33 +121,31 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			Headers: grpcHeaders,
 		})
 		if err != nil {
-			d.amSendFailures.WithLabelValues(am.Addr).Inc()
 			return err
 		}
 
-		if resp.HttpResponse.Code/100 != 2 {
-			return httpgrpc.ErrorFromHTTPResponse(resp.HttpResponse)
+		if resp.Code/100 != 2 {
+			return httpgrpc.ErrorFromHTTPResponse(resp)
 		}
 
-		select {
-		case firstSuccessfulResponse <- resp:
-		default:
+		respMtx.Lock()
+		if firstSuccessfulResponse == nil {
+			firstSuccessfulResponse = resp
 		}
+		respMtx.Unlock()
 
 		return nil
 	}, func() {})
 
 	if err != nil {
-		d.respondFromError(err, w, logger)
+		respondFromError(err, w, logger)
 	}
 
-	select {
-	case resp := <-firstSuccessfulResponse:
-		d.respondFromGRPCHTTPResponse(w, resp.HttpResponse)
-	default:
-		// This should not happen, but we have this default case to prevent
-		// and bugs deadlocking at this point.
-		level.Warn(logger).Log("msg", "first successful response not available on nil error")
+	if firstSuccessfulResponse != nil {
+		respondFromHTTPGRPCResponse(w, firstSuccessfulResponse)
+	} else {
+		// This should not happen.
+		level.Warn(logger).Log("msg", "distributor did not receive response from alertmanager though no errors")
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -206,51 +170,43 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 	defer cancel()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
-	amDesc := replicationSet.Ingesters[0]
-	d.amSends.WithLabelValues(amDesc.Addr).Inc()
+	amDesc := replicationSet.Ingesters[rand.Intn(len(replicationSet.Ingesters))]
 	resp, err := d.doRequest(ctx, amDesc, req)
 	if err != nil {
-		d.amSendFailures.WithLabelValues(amDesc.Addr).Inc()
-		d.respondFromError(err, w, logger)
+		respondFromError(err, w, logger)
 		return
 	}
 
-	http.Error(w, string(resp.HttpResponse.Body), int(resp.HttpResponse.Code))
+	respondFromHTTPGRPCResponse(w, resp)
 }
 
-func (d *Distributor) respondFromError(err error, w http.ResponseWriter, logger log.Logger) {
+func respondFromError(err error, w http.ResponseWriter, logger log.Logger) {
 	httpResp, ok := httpgrpc.HTTPResponseFromError(errors.Cause(err))
 	if !ok {
-		level.Error(logger).Log("msg", "Failed to process the request to the alertmanager", "err", err)
+		level.Error(logger).Log("msg", "failed to process the request to the alertmanager", "err", err)
 		http.Error(w, "Failed to process the request to the alertmanager", http.StatusInternalServerError)
 		return
 	}
-	d.respondFromGRPCHTTPResponse(w, httpResp)
+	respondFromHTTPGRPCResponse(w, httpResp)
 }
 
-func (d *Distributor) respondFromGRPCHTTPResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPResponse) {
+func respondFromHTTPGRPCResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPResponse) {
 	for _, h := range httpResp.Headers {
 		for _, v := range h.Values {
 			w.Header().Add(h.Key, v)
 		}
 	}
-	http.Error(w, string(httpResp.Body), int(httpResp.Code))
+	w.WriteHeader(int(httpResp.Code))
+	w.Write(httpResp.Body)
 }
 
-func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*alertmanagerpb.Response, error) {
+func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get alertmanager from pool %s", am.Addr)
+		return nil, errors.Wrapf(err, "failed to get alertmanager client from pool (alertmanager address: %s)", am.Addr)
 	}
 
-	resp, err := amClient.HandleRequest(ctx, &alertmanagerpb.Request{
-		HttpRequest: req,
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to proxy request to alertmanager %s", amClient.RemoteAddress())
-	}
-
-	return resp, err
+	return amClient.HandleRequest(ctx, req)
 }
 
 func shardByUser(userID string) uint32 {

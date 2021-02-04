@@ -20,7 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
+	utillog "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func stringNotEmpty(v string) bool {
@@ -214,7 +214,7 @@ func getLogger() log.Logger {
 		panic(err)
 	}
 
-	logger, err := util.NewPrometheusLogger(l, f)
+	logger, err := utillog.NewPrometheusLogger(l, f)
 	if err != nil {
 		panic(err)
 	}

@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/tools/thanosconvert"
 )
 
@@ -36,7 +36,7 @@ func main() {
 	}
 	flag.Parse()
 
-	logger, err := util.NewPrometheusLogger(loglvl, logfmt)
+	logger, err := log.NewPrometheusLogger(loglvl, logfmt)
 	if err != nil {
 		fmt.Printf("failed to create logger: %v\n", err)
 		flag.Usage()

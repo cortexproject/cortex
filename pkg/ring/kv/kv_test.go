@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,7 +178,13 @@ func TestWatchPrefix(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
+
+		wg := sync.WaitGroup{}
+
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+
 			// start watching before we even start generating values. values will be buffered
 			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
 				observedKeysCh <- key
@@ -186,6 +193,8 @@ func TestWatchPrefix(t *testing.T) {
 		}()
 
 		gen := func(p string) {
+			defer wg.Done()
+
 			start := time.Now()
 			for i := 0; i < max && ctx.Err() == nil; i++ {
 				// Start with sleeping, so that watching client can see empty KV store at the beginning.
@@ -204,6 +213,7 @@ func TestWatchPrefix(t *testing.T) {
 			t.Log("Generator finished in", time.Since(start))
 		}
 
+		wg.Add(2)
 		go gen(prefix)
 		go gen(prefix2) // we don't want to see these keys reported
 
@@ -225,7 +235,9 @@ func TestWatchPrefix(t *testing.T) {
 		}
 		t.Log("Watching finished in", time.Since(start))
 
-		cancel() // stop all goroutines
+		// Stop all goroutines and wait until terminated.
+		cancel()
+		wg.Wait()
 
 		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {

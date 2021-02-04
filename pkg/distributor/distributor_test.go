@@ -840,6 +840,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 	tests := map[string]struct {
 		inputLabels                labels.Labels
+		skipLabelNameValidationCfg bool
 		skipLabelNameValidationReq bool
 		errExpected                bool
 		errMessage                 string
@@ -848,6 +849,11 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 			inputLabels: inputLabels,
 			errExpected: true,
 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
+		},
+		"label name validation can be skipped via config": {
+			inputLabels:                inputLabels,
+			skipLabelNameValidationCfg: true,
+			errExpected:                false,
 		},
 		"label name validation can be skipped via WriteRequest parameter": {
 			inputLabels:                inputLabels,
@@ -859,10 +865,11 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	for testName, tc := range tests {
 		t.Run(testName, func(t *testing.T) {
 			ds, _, _ := prepare(t, prepConfig{
-				numIngesters:     2,
-				happyIngesters:   2,
-				numDistributors:  1,
-				shuffleShardSize: 1,
+				numIngesters:            2,
+				happyIngesters:          2,
+				numDistributors:         1,
+				shuffleShardSize:        1,
+				skipLabelNameValidation: tc.skipLabelNameValidationCfg,
 			})
 			req := mockWriteRequest(tc.inputLabels, 42, 100000)
 			req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
@@ -1117,6 +1124,7 @@ type prepConfig struct {
 	shuffleShardSize             int
 	limits                       *validation.Limits
 	numDistributors              int
+	skipLabelNameValidation      bool
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring) {
@@ -1195,6 +1203,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.InstanceID = strconv.Itoa(i)
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
+		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle

@@ -108,7 +108,7 @@ func (m *fpMapper) maybeAddMapping(
 		mappedFP = m.nextMappedFP()
 		mappedFPs[ms] = mappedFP
 		level.Debug(m.logger).Log(
-			"msg", "ingerprint collision detected, mapping to new fingerprint",
+			"msg", "fingerprint collision detected, mapping to new fingerprint",
 			"old_fp", fp,
 			"new_fp", mappedFP,
 			"metric", collidingMetric,

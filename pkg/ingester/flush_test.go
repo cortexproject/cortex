@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
@@ -107,7 +108,7 @@ func createTestIngester(t *testing.T, cfg Config, store ChunkStore) *Ingester {
 	overrides, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, overrides, store, nil)
+	ing, err := New(cfg, client.Config{}, overrides, store, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
@@ -221,7 +222,7 @@ func TestIssue3139(t *testing.T) {
 	require.Equal(t, int64(1), st.errorsToGenerate.Load()) // no error was "consumed"
 
 	// Start new ingester, for flushing only
-	ing, err = NewForFlusher(cfg, st, nil, nil)
+	ing, err = NewForFlusher(cfg, st, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	t.Cleanup(func() {

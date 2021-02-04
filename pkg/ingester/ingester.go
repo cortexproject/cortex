@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
@@ -26,7 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/log"
+	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -124,6 +125,7 @@ type Ingester struct {
 	clientConfig client.Config
 
 	metrics *ingesterMetrics
+	logger  log.Logger
 
 	chunkStore         ChunkStore
 	lifecycler         *ring.Lifecycler
@@ -166,13 +168,13 @@ type ChunkStore interface {
 }
 
 // New constructs a new Ingester.
-func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
 
 	if cfg.BlocksStorageEnabled {
-		return NewV2(cfg, clientConfig, limits, registerer)
+		return NewV2(cfg, clientConfig, limits, registerer, logger)
 	}
 
 	if cfg.WALConfig.WALEnabled {
@@ -208,6 +210,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
 		usersMetadata:    map[string]*userMetricsMetadata{},
 		registerer:       registerer,
+		logger:           logger,
 	}
 
 	var err error
@@ -236,24 +239,24 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 
 func (i *Ingester) starting(ctx context.Context) error {
 	if i.cfg.WALConfig.Recover {
-		level.Info(log.Logger).Log("msg", "recovering from WAL")
+		level.Info(i.logger).Log("msg", "recovering from WAL")
 		start := time.Now()
 		if err := recoverFromWAL(i); err != nil {
-			level.Error(log.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+			level.Error(i.logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 			return errors.Wrap(err, "failed to recover from WAL")
 		}
 		elapsed := time.Since(start)
-		level.Info(log.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+		level.Info(i.logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 		i.metrics.walReplayDuration.Set(elapsed.Seconds())
 	}
 
 	// If the WAL recover happened, then the userStates would already be set.
 	if i.userStates == nil {
-		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics)
+		i.userStates = newUserStates(i.limiter, i.cfg, i.metrics, i.logger)
 	}
 
 	var err error
-	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer)
+	i.wal, err = newWAL(i.cfg.WALConfig, i.userStates.cp, i.registerer, i.logger)
 	if err != nil {
 		return errors.Wrap(err, "starting WAL")
 	}
@@ -284,9 +287,9 @@ func (i *Ingester) startFlushLoops() {
 // Compared to the 'New' method:
 //   * Always replays the WAL.
 //   * Does not start the lifecycler.
-func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer) (*Ingester, error) {
+func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	if cfg.BlocksStorageEnabled {
-		return NewV2ForFlusher(cfg, registerer)
+		return NewV2ForFlusher(cfg, registerer, logger)
 	}
 
 	i := &Ingester{
@@ -297,6 +300,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
 		wal:              &noopWAL{},
 		limits:           limits,
+		logger:           logger,
 	}
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
@@ -304,17 +308,17 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 }
 
 func (i *Ingester) startingForFlusher(ctx context.Context) error {
-	level.Info(log.Logger).Log("msg", "recovering from WAL")
+	level.Info(i.logger).Log("msg", "recovering from WAL")
 
 	// We recover from WAL always.
 	start := time.Now()
 	if err := recoverFromWAL(i); err != nil {
-		level.Error(log.Logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
+		level.Error(i.logger).Log("msg", "failed to recover from WAL", "time", time.Since(start).String())
 		return err
 	}
 	elapsed := time.Since(start)
 
-	level.Info(log.Logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
+	level.Info(i.logger).Log("msg", "recovery from WAL completed", "time", elapsed.String())
 	i.metrics.walReplayDuration.Set(elapsed.Seconds())
 
 	i.startFlushLoops()
@@ -606,7 +610,7 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 	// If we have any error with regard to metadata we just log and no-op.
 	// We consider metadata a best effort approach, errors here should not stop processing.
 	if firstMetadataErr != nil {
-		logger := log.WithContext(ctx, log.Logger)
+		logger := logutil.WithContext(ctx, i.logger)
 		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
 	}
 }
@@ -751,8 +755,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return i.v2QueryStream(req, stream)
 	}
 
-	log, ctx := spanlogger.New(stream.Context(), "QueryStream")
-	defer log.Finish()
+	spanLog, ctx := spanlogger.New(stream.Context(), "QueryStream")
+	defer spanLog.Finish()
 
 	from, through, matchers, err := client.FromQueryRequest(req)
 	if err != nil {
@@ -820,8 +824,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedChunks.Observe(float64(numChunks))
-	level.Debug(log).Log("streams", numSeries)
-	level.Debug(log).Log("chunks", numChunks)
+	level.Debug(spanLog).Log("streams", numSeries)
+	level.Debug(spanLog).Log("chunks", numChunks)
 	return err
 }
 

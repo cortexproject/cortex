@@ -391,7 +391,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.DistributorShardByAllLabels = t.Cfg.Distributor.ShardByAllLabels
 	t.tsdbIngesterConfig()
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -414,6 +414,7 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 		t.Store,
 		t.Overrides,
 		prometheus.DefaultRegisterer,
+		util_log.Logger,
 	)
 	if err != nil {
 		return

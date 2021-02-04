@@ -170,7 +170,7 @@ type Compactor struct {
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	createBucketClient     func(ctx context.Context) (objstore.Bucket, error)
+	bucketClientFactory    func(ctx context.Context) (objstore.Bucket, error)
 	blocksGrouperFactory   BlocksGrouperFactory
 	blocksCompactorFactory BlocksCompactorFactory
 
@@ -249,7 +249,7 @@ func newCompactor(
 		logger:                 log.With(logger, "component", "compactor"),
 		registerer:             registerer,
 		syncerMetrics:          newSyncerMetrics(registerer),
-		createBucketClient:     bucketClientFactory,
+		bucketClientFactory:    bucketClientFactory,
 		blocksGrouperFactory:   blocksGrouperFactory,
 		blocksCompactorFactory: blocksCompactorFactory,
 
@@ -323,7 +323,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	var err error
 
 	// Create bucket client.
-	c.bucketClient, err = c.createBucketClient(ctx)
+	c.bucketClient, err = c.bucketClientFactory(ctx)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket client")
 	}

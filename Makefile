@@ -182,7 +182,8 @@ lint:
 		./pkg/querier/queryrange/...
 	# Ensure packages that no longer use a global logger don't reintroduce it
 	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
-		./pkg/ingester/...
+		./pkg/ingester/... \
+		./pkg/flusher/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev

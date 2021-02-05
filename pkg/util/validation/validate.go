@@ -245,23 +245,10 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 	filter := map[string]string{"user": userID}
 
-	{
-		lbls, err := util.GetLabels(DiscardedSamples, filter)
-		if err != nil {
-			level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
-		}
-		for _, l := range lbls {
-			DiscardedSamples.Delete(l.Map())
-		}
+	if err := util.DeleteMatchingLabels(DiscardedSamples, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
 	}
-
-	{
-		lbls, err := util.GetLabels(DiscardedMetadata, filter)
-		if err != nil {
-			level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
-		}
-		for _, l := range lbls {
-			DiscardedMetadata.Delete(l.Map())
-		}
+	if err := util.DeleteMatchingLabels(DiscardedMetadata, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
 	}
 }

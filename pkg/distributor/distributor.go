@@ -306,15 +306,12 @@ func cleanupMetricsForUser(userID string) {
 	nonHASamples.DeleteLabelValues(userID)
 	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
 
-	lbls, err := util.GetLabels(dedupedSamples, map[string]string{"user": userID})
-	if err != nil {
+	if err := util.DeleteMatchingLabels(dedupedSamples, map[string]string{"user": userID}); err != nil {
 		level.Warn(log.Logger).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
-	}
-	for _, ls := range lbls {
-		dedupedSamples.Delete(ls.Map())
 	}
 
 	validation.DeletePerUserValidationMetrics(userID, log.Logger)
+	cleanupHATrackerMetricsForUser(userID, log.Logger)
 }
 
 // Called after distributor is asked to stop via StopAsync.

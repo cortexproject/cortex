@@ -524,6 +524,8 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 - **`dnssrvnoa+`**<br />
   The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local`
 
+If **no prefix** is provided, the provided IP or hostname will be used straightaway without pre-resolving it.
+
 ## Logging of IP of reverse proxy
 
 If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.

@@ -96,6 +96,9 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	if r.Body != nil {
 		body, err = ioutil.ReadAll(r.Body)
 		if err != nil {
+			if err.Error() == "http: request body too large\n" {
+				http.Error(w, "Request body too large", http.StatusBadRequest)
+			}
 			level.Error(logger).Log("msg", "failed to read the request body during write", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -110,9 +113,8 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.AlertmanagerClient.RemoteTimeout)
 		defer cancel()
 		localCtx = user.InjectOrgID(localCtx, userID)
-		if sp := opentracing.SpanFromContext(r.Context()); sp != nil {
-			localCtx = opentracing.ContextWithSpan(localCtx, sp)
-		}
+		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "DistributeRequest.doWrite")
+		defer sp.Finish()
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
 			Method:  r.Method,
@@ -141,8 +143,12 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		respondFromError(err, w, logger)
 	}
 
-	if firstSuccessfulResponse != nil {
-		respondFromHTTPGRPCResponse(w, firstSuccessfulResponse)
+	respMtx.Lock() // Another request might be ongoing after quorum.
+	resp := firstSuccessfulResponse
+	respMtx.Unlock()
+
+	if resp != nil {
+		respondFromHTTPGRPCResponse(w, resp)
 	} else {
 		// This should not happen.
 		level.Error(logger).Log("msg", "distributor did not receive response from alertmanager though no errors")
@@ -168,6 +174,9 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 
 	ctx, cancel := context.WithTimeout(r.Context(), d.cfg.AlertmanagerClient.RemoteTimeout)
 	defer cancel()
+
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "DistributeRequest.doRead")
+	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
 	amDesc := replicationSet.Ingesters[rand.Intn(len(replicationSet.Ingesters))]
@@ -197,7 +206,7 @@ func respondFromHTTPGRPCResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPR
 		}
 	}
 	w.WriteHeader(int(httpResp.Code))
-	w.Write(httpResp.Body)
+	w.Write(httpResp.Body) //nolint
 }
 
 func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {

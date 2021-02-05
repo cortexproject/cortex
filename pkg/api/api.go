@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -158,7 +159,7 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, amCfg alertmanager.MultitenantAlertmanagerConfig, target, apiEnabled bool) {
 	alertmanagerpb.RegisterAlertmanagerServer(a.server.GRPC, am)
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
@@ -168,21 +169,21 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	a.RegisterRoute("/multitenant_alertmanager/ring", http.HandlerFunc(am.RingHandler), false, "GET", "POST")
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
-	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
+	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, util.NewMaxBytesHandler(am, amCfg.MaxRecvMsgSize), true)
 	level.Debug(a.logger).Log("msg", "api: registering alertmanager", "path_prefix", a.cfg.AlertmanagerHTTPPrefix)
 
 	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
 	// the component routed API.
 	if target {
 		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
-		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
+		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, util.NewMaxBytesHandler(am, amCfg.MaxRecvMsgSize), true)
 	}
 
 	// MultiTenant Alertmanager Experimental API routes
 	if apiEnabled {
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
-		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+		a.RegisterRoute("/api/v1/alerts", util.NewMaxBytesHandler(http.HandlerFunc(am.GetUserConfig), amCfg.MaxRecvMsgSize), true, "GET")
+		a.RegisterRoute("/api/v1/alerts", util.NewMaxBytesHandler(http.HandlerFunc(am.SetUserConfig), amCfg.MaxRecvMsgSize), true, "POST")
+		a.RegisterRoute("/api/v1/alerts", util.NewMaxBytesHandler(http.HandlerFunc(am.DeleteUserConfig), amCfg.MaxRecvMsgSize), true, "DELETE")
 	}
 }
 

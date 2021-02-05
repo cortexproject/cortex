@@ -486,7 +486,7 @@ ha_tracker:
       [mirror_timeout: <duration> | default = 2s]
 
 # remote_write API max receive message size (bytes).
-# CLI flag: -distributor.max-recv-msg-size
+# CLI flag: -distributor.max-recv-body-size
 [max_recv_msg_size: <int> | default = 104857600]
 
 # Timeout for downstream ingesters.
@@ -1541,6 +1541,10 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # How frequently to poll Cortex configs
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
+
+# Max receive http body size (bytes).
+# CLI flag: -alertmanager.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 16777216]
 
 # Deprecated. Use -alertmanager.cluster.listen-address instead.
 # CLI flag: -cluster.listen-address

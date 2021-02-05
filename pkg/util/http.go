@@ -218,3 +218,24 @@ func SerializeProtoResponse(w http.ResponseWriter, resp proto.Message, compressi
 	}
 	return nil
 }
+
+type MaxBytesHandler struct {
+	h        http.Handler
+	maxBytes int64
+}
+
+// NewMaxBytesHandler returns a MaxBytesHandler.
+// If maxBytes<0, then the max bytes is not used and the passed handler is returned back.
+func NewMaxBytesHandler(h http.Handler, maxBytes int64) http.Handler {
+	if maxBytes < 0 {
+		return h
+	}
+	return &MaxBytesHandler{h: h, maxBytes: maxBytes}
+}
+
+func (h *MaxBytesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxBytes)
+	if h.h != nil {
+		h.h.ServeHTTP(w, r)
+	}
+}

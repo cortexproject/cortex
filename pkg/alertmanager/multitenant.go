@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/weaveworks/common/httpgrpc"
 	"hash/fnv"
 	"html/template"
 	"io/ioutil"
@@ -22,6 +21,7 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
@@ -92,10 +92,11 @@ func init() {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir      string           `yaml:"data_dir"`
-	Retention    time.Duration    `yaml:"retention"`
-	ExternalURL  flagext.URLValue `yaml:"external_url"`
-	PollInterval time.Duration    `yaml:"poll_interval"`
+	DataDir        string           `yaml:"data_dir"`
+	Retention      time.Duration    `yaml:"retention"`
+	ExternalURL    flagext.URLValue `yaml:"external_url"`
+	PollInterval   time.Duration    `yaml:"poll_interval"`
+	MaxRecvMsgSize int64            `yaml:"max_recv_msg_size"`
 
 	DeprecatedClusterBindAddr      string              `yaml:"cluster_bind_address"`
 	DeprecatedClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
@@ -136,6 +137,7 @@ const (
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "alertmanager.storage.path", "data/", "Base path for data storage.")
 	f.DurationVar(&cfg.Retention, "alertmanager.storage.retention", 5*24*time.Hour, "How long to keep data for.")
+	f.Int64Var(&cfg.MaxRecvMsgSize, "alertmanager.max-recv-msg-size", 16<<20, "Max receive http body size (bytes).")
 
 	f.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 

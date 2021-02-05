@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"html/template"
+	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -156,4 +158,62 @@ func (b bytesBuffered) Close() error {
 
 func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 	return b.Buffer
+}
+
+func TestMaxBytesHandler(t *testing.T) {
+	cases := []struct {
+		inpBody       []byte
+		maxSize       int64
+		expBody       string
+		expStatusCode int
+	}{
+		{
+			inpBody:       []byte{1, 2, 3, 4},
+			maxSize:       4,
+			expBody:       "all is well",
+			expStatusCode: http.StatusOK,
+		}, {
+			inpBody:       []byte{1, 2, 3, 4},
+			maxSize:       3,
+			expBody:       "http: request body too large\n",
+			expStatusCode: http.StatusBadRequest,
+		}, {
+			inpBody:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+			maxSize:       -1,
+			expBody:       "all is well",
+			expStatusCode: http.StatusOK,
+		}, {
+			inpBody:       []byte{1},
+			maxSize:       0,
+			expBody:       "http: request body too large\n",
+			expStatusCode: http.StatusBadRequest,
+		},
+	}
+	for _, c := range cases {
+		req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1/all-is-well", bytes.NewReader(c.inpBody))
+		assert.NoError(t, err)
+
+		h := util.NewMaxBytesHandler(&mockHandler{}, c.maxSize)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		assert.Equal(t, c.expStatusCode, w.Code)
+
+		b, err := ioutil.ReadAll(w.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, c.expBody, string(b))
+	}
+}
+
+type mockHandler struct {
+	http.Handler
+}
+
+func (mockHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	_, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Write([]byte("all is well")) //nolint
 }

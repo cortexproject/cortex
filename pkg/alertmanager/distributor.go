@@ -145,8 +145,8 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		respondFromHTTPGRPCResponse(w, firstSuccessfulResponse)
 	} else {
 		// This should not happen.
-		level.Warn(logger).Log("msg", "distributor did not receive response from alertmanager though no errors")
-		w.WriteHeader(http.StatusOK)
+		level.Error(logger).Log("msg", "distributor did not receive response from alertmanager though no errors")
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 

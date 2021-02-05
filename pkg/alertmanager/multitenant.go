@@ -237,9 +237,15 @@ type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
 	// Ring used for sharding alertmanager instances.
+	// When sharding is disabled, the flow is:
+	//   ServeHTTP() -> serveRequest()
+	// When sharding is enabled:
+	//   ServeHTTP() -> distributor.DistributeRequest() -> (sends to other AM or even the current)
+	//     -> HandleRequest() (gRPC call) -> grpcServer() -> handlerForGRPCServer.ServeHTTP() -> serveRequest().
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
 	distributor    *Distributor
+	grpcServer     *server.Server
 
 	// Subservices manager (ring, lifecycler)
 	subservices        *services.Manager
@@ -265,7 +271,6 @@ type MultitenantAlertmanager struct {
 	peer *cluster.Peer
 
 	// For distributor.
-	grpcServer *server.Server
 
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
@@ -428,12 +433,14 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 	return am, nil
 }
 
+// handlerForGRPCServer acts as a handler for gRPC server to serve
+// the serveRequest() via the standard ServeHTTP.
 type handlerForGRPCServer struct {
 	am *MultitenantAlertmanager
 }
 
 func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	h.am.serveHTTPHelper(w, req)
+	h.am.serveRequest(w, req)
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
@@ -770,16 +777,16 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 
 	// If sharding is not enabled or Distributor does not support this path,
 	// it is served by this instance.
-	am.serveHTTPHelper(w, req)
+	am.serveRequest(w, req)
 }
 
-// HandleRequest serves the Alertmanager's web UI and API sent via gRPC.
+// HandleRequest implements gRPC Alertmanager service, which receives request from AlertManager-Distributor.
 func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	return am.grpcServer.Handle(ctx, in)
 }
 
-// serveHTTPHelper serves the Alertmanager's web UI and API.
-func (am *MultitenantAlertmanager) serveHTTPHelper(w http.ResponseWriter, req *http.Request) {
+// serveRequest serves the Alertmanager's web UI and API.
+func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)

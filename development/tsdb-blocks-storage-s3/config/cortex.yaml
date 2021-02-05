@@ -88,7 +88,7 @@ alertmanager:
   enable_api: true
   sharding_enabled: true
   sharding_ring:
-    replication_factor: 1
+    replication_factor: 3
     heartbeat_period: 5s
     heartbeat_timeout: 15s
     kvstore:

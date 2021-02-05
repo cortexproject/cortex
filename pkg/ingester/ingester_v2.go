@@ -1752,7 +1752,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	i.deleteUserMetadata(userID)
 	i.metrics.deletePerUserMetrics(userID)
 
-	validation.DeletePerUserValidationMetrics(userID)
+	validation.DeletePerUserValidationMetrics(userID, i.logger)
 
 	// And delete local data.
 	if err := os.RemoveAll(dir); err != nil {

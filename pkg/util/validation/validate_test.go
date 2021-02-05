@@ -13,6 +13,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type validateLabelsCfg struct {
@@ -126,7 +127,7 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 
-	DeletePerUserValidationMetrics(userID)
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
 
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
@@ -191,7 +192,7 @@ func TestValidateMetadata(t *testing.T) {
 			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_metadata_total"))
 
-	DeletePerUserValidationMetrics(userID)
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
 
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.

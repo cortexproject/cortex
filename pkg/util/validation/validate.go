@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -14,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -242,13 +242,13 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 	return fmt.Sprintf("%s{%s}", metricName, strings.Join(labelStrings, ", "))
 }
 
-func DeletePerUserValidationMetrics(userID string) {
+func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 	filter := map[string]string{"user": userID}
 
 	{
 		lbls, err := util.GetLabels(DiscardedSamples, filter)
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+			level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
 		}
 		for _, l := range lbls {
 			DiscardedSamples.Delete(l.Map())
@@ -258,7 +258,7 @@ func DeletePerUserValidationMetrics(userID string) {
 	{
 		lbls, err := util.GetLabels(DiscardedMetadata, filter)
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
+			level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
 		}
 		for _, l := range lbls {
 			DiscardedMetadata.Delete(l.Map())

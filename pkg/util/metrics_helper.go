@@ -702,6 +702,8 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	return sum
 }
 
+// GetLables returns list of label combinations used by this collector at the time of call.
+// This can be used to find and delete unused metrics.
 func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
 	ch := make(chan prometheus.Metric, 128)
 
@@ -711,10 +713,9 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 	}()
 
 	errs := tsdb_errors.NewMulti()
-
 	var result []labels.Labels
-
 	dtoMetric := &dto.Metric{}
+
 nextMetric:
 	for m := range ch {
 		err := m.Write(dtoMetric)

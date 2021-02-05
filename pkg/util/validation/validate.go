@@ -6,12 +6,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -60,29 +63,6 @@ const (
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
 )
-
-// allDiscardedSampleReasons is used when cleaning up metrics for a user.
-var allDiscardedSampleReasons = []string{
-	missingMetricName,
-	invalidMetricName,
-	greaterThanMaxSampleAge,
-	maxLabelNamesPerSeries,
-	tooFarInFuture,
-	invalidLabel,
-	labelNameTooLong,
-	duplicateLabelNames,
-	labelsNotSorted,
-	labelValueTooLong,
-	RateLimited,
-	TooManyHAClusters,
-}
-
-var allDiscardedMetadataReasons = []string{
-	missingMetricName,
-	metricNameTooLong,
-	helpTooLong,
-	unitTooLong,
-}
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = prometheus.NewCounterVec(
@@ -263,11 +243,25 @@ func formatLabelSet(ls []client.LabelAdapter) string {
 }
 
 func DeletePerUserValidationMetrics(userID string) {
-	for _, reason := range allDiscardedSampleReasons {
-		DiscardedSamples.DeleteLabelValues(reason, userID)
+	filter := map[string]string{"user": userID}
+
+	{
+		lbls, err := util.GetLabels(DiscardedSamples, filter)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+		}
+		for _, l := range lbls {
+			DiscardedSamples.Delete(l.Map())
+		}
 	}
 
-	for _, reason := range allDiscardedMetadataReasons {
-		DiscardedMetadata.DeleteLabelValues(reason, userID)
+	{
+		lbls, err := util.GetLabels(DiscardedMetadata, filter)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
+		}
+		for _, l := range lbls {
+			DiscardedMetadata.Delete(l.Map())
+		}
 	}
 }

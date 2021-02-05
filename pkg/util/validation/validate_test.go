@@ -111,6 +111,8 @@ func TestValidateLabels(t *testing.T) {
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
+	DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
+
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
@@ -120,6 +122,8 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
 			cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
 			cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
+
+			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 
 	DeletePerUserValidationMetrics(userID)
@@ -127,6 +131,7 @@ func TestValidateLabels(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 }
 
@@ -173,6 +178,8 @@ func TestValidateMetadata(t *testing.T) {
 		})
 	}
 
+	DiscardedMetadata.WithLabelValues("random reason", "different user").Inc()
+
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
 			# TYPE cortex_discarded_metadata_total counter
@@ -180,6 +187,8 @@ func TestValidateMetadata(t *testing.T) {
 			cortex_discarded_metadata_total{reason="metric_name_too_long",user="testUser"} 1
 			cortex_discarded_metadata_total{reason="missing_metric_name",user="testUser"} 1
 			cortex_discarded_metadata_total{reason="unit_too_long",user="testUser"} 1
+
+			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_metadata_total"))
 
 	DeletePerUserValidationMetrics(userID)
@@ -187,6 +196,7 @@ func TestValidateMetadata(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
 			# TYPE cortex_discarded_metadata_total counter
+			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_metadata_total"))
 }
 

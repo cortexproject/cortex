@@ -266,6 +266,95 @@ func TestDistributor_Push(t *testing.T) {
 	}
 }
 
+func TestDistributor_MetricsCleanup(t *testing.T) {
+	receivedSamples.Reset()
+	receivedMetadata.Reset()
+	incomingSamples.Reset()
+	incomingMetadata.Reset()
+	nonHASamples.Reset()
+	dedupedSamples.Reset()
+	latestSeenSampleTimestampPerUser.Reset()
+
+	metrics := []string{
+		"cortex_distributor_received_samples_total",
+		"cortex_distributor_received_metadata_total",
+		"cortex_distributor_deduped_samples_total",
+		"cortex_distributor_samples_in_total",
+		"cortex_distributor_metadata_in_total",
+		"cortex_distributor_non_ha_samples_received_total",
+		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+	}
+
+	receivedSamples.WithLabelValues("userA").Add(5)
+	receivedSamples.WithLabelValues("userB").Add(10)
+	receivedMetadata.WithLabelValues("userA").Add(5)
+	receivedMetadata.WithLabelValues("userB").Add(10)
+	incomingSamples.WithLabelValues("userA").Add(5)
+	incomingMetadata.WithLabelValues("userA").Add(5)
+	nonHASamples.WithLabelValues("userA").Add(5)
+	dedupedSamples.WithLabelValues("userA", "cluster1").Inc() // We cannot clean this metric
+	latestSeenSampleTimestampPerUser.WithLabelValues("userA").Set(1111)
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
+		# TYPE cortex_distributor_deduped_samples_total counter
+		cortex_distributor_deduped_samples_total{cluster="cluster1",user="userA"} 1
+
+		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+		cortex_distributor_latest_seen_sample_timestamp_seconds{user="userA"} 1111
+
+		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# TYPE cortex_distributor_metadata_in_total counter
+		cortex_distributor_metadata_in_total{user="userA"} 5
+
+		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
+		# TYPE cortex_distributor_non_ha_samples_received_total counter
+		cortex_distributor_non_ha_samples_received_total{user="userA"} 5
+
+		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
+		# TYPE cortex_distributor_received_metadata_total counter
+		cortex_distributor_received_metadata_total{user="userA"} 5
+		cortex_distributor_received_metadata_total{user="userB"} 10
+
+		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_total counter
+		cortex_distributor_received_samples_total{user="userA"} 5
+		cortex_distributor_received_samples_total{user="userB"} 10
+
+		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
+		# TYPE cortex_distributor_samples_in_total counter
+		cortex_distributor_samples_in_total{user="userA"} 5
+`), metrics...))
+
+	cleanupMetricsForUser("userA")
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
+		# TYPE cortex_distributor_deduped_samples_total counter
+
+		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+
+		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# TYPE cortex_distributor_metadata_in_total counter
+
+		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
+		# TYPE cortex_distributor_non_ha_samples_received_total counter
+
+		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
+		# TYPE cortex_distributor_received_metadata_total counter
+		cortex_distributor_received_metadata_total{user="userB"} 10
+
+		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_total counter
+		cortex_distributor_received_samples_total{user="userB"} 10
+
+		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
+		# TYPE cortex_distributor_samples_in_total counter
+`), metrics...))
+}
+
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		samples       int

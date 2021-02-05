@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -332,12 +333,26 @@ func findHALabels(replicaLabel, clusterLabel string, labels []client.LabelAdapte
 
 	for _, pair = range labels {
 		if pair.Name == replicaLabel {
-			replica = string(pair.Value)
+			replica = pair.Value
 		}
 		if pair.Name == clusterLabel {
-			cluster = string(pair.Value)
+			cluster = pair.Value
 		}
 	}
 
 	return cluster, replica
+}
+
+func cleanupHATrackerMetricsForUser(userID string, logger log.Logger) {
+	filter := map[string]string{"user": userID}
+
+	if err := util.DeleteMatchingLabels(electedReplicaChanges, filter); err != nil {
+		level.Warn(logger).Log("msg", "failed to remove cortex_ha_tracker_elected_replica_changes_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(electedReplicaTimestamp, filter); err != nil {
+		level.Warn(logger).Log("msg", "failed to remove cortex_ha_tracker_elected_replica_timestamp_seconds metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(kvCASCalls, filter); err != nil {
+		level.Warn(logger).Log("msg", "failed to remove cortex_ha_tracker_kv_store_cas_total metric for user", "user", userID, "err", err)
+	}
 }

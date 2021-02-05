@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -276,12 +277,12 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	timer := time.NewTicker(metricsCleanupInterval)
-	defer timer.Stop()
+	metricsCleanupTimer := time.NewTicker(metricsCleanupInterval)
+	defer metricsCleanupTimer.Stop()
 
 	for {
 		select {
-		case <-timer.C:
+		case <-metricsCleanupTimer.C:
 			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
 			for _, userID := range inactiveUsers {
 				cleanupMetricsForUser(userID)
@@ -303,8 +304,17 @@ func cleanupMetricsForUser(userID string) {
 	incomingSamples.DeleteLabelValues(userID)
 	incomingMetadata.DeleteLabelValues(userID)
 	nonHASamples.DeleteLabelValues(userID)
-	// dedupedSamples.DeleteLabelValues(userID) // TODO: This needs "cluster" too :-(
 	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
+
+	lbls, err := util.GetLabels(dedupedSamples, map[string]string{"user": userID})
+	if err != nil {
+		level.Warn(log.Logger).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+	}
+	for _, ls := range lbls {
+		dedupedSamples.Delete(ls.Map())
+	}
+
+	validation.DeletePerUserValidationMetrics(userID, log.Logger)
 }
 
 // Called after distributor is asked to stop via StopAsync.

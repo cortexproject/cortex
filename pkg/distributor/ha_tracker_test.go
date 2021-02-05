@@ -3,11 +3,13 @@ package distributor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
@@ -638,4 +640,62 @@ type trackerLimits struct {
 
 func (l trackerLimits) MaxHAClusters(_ string) int {
 	return l.maxClusters
+}
+
+func TestHATracker_MetricsCleanup(t *testing.T) {
+	electedReplicaChanges.Reset()
+	electedReplicaTimestamp.Reset()
+	kvCASCalls.Reset()
+
+	metrics := []string{
+		"cortex_ha_tracker_elected_replica_changes_total",
+		"cortex_ha_tracker_elected_replica_timestamp_seconds",
+		"cortex_ha_tracker_kv_store_cas_total",
+	}
+
+	electedReplicaChanges.WithLabelValues("userA", "cluster1").Add(5)
+	electedReplicaChanges.WithLabelValues("userA", "cluster2").Add(8)
+	electedReplicaChanges.WithLabelValues("userB", "cluster").Add(10)
+	electedReplicaTimestamp.WithLabelValues("userA", "cluster1").Add(5)
+	electedReplicaTimestamp.WithLabelValues("userA", "cluster2").Add(8)
+	electedReplicaTimestamp.WithLabelValues("userB", "cluster").Add(10)
+	kvCASCalls.WithLabelValues("userA", "cluster1").Add(5)
+	kvCASCalls.WithLabelValues("userA", "cluster2").Add(8)
+	kvCASCalls.WithLabelValues("userB", "cluster").Add(10)
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
+		# TYPE cortex_ha_tracker_elected_replica_changes_total counter
+		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster",user="userB"} 10
+		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster1",user="userA"} 5
+		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster2",user="userA"} 8
+
+		# HELP cortex_ha_tracker_elected_replica_timestamp_seconds The timestamp stored for the currently elected replica, from the KVStore.
+		# TYPE cortex_ha_tracker_elected_replica_timestamp_seconds gauge
+		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster",user="userB"} 10
+		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster1",user="userA"} 5
+		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster2",user="userA"} 8
+		
+		# HELP cortex_ha_tracker_kv_store_cas_total The total number of CAS calls to the KV store for a user ID/cluster.
+		# TYPE cortex_ha_tracker_kv_store_cas_total counter
+		cortex_ha_tracker_kv_store_cas_total{cluster="cluster",user="userB"} 10
+		cortex_ha_tracker_kv_store_cas_total{cluster="cluster1",user="userA"} 5
+		cortex_ha_tracker_kv_store_cas_total{cluster="cluster2",user="userA"} 8
+	`), metrics...))
+
+	cleanupMetricsForUser("userA")
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
+		# TYPE cortex_ha_tracker_elected_replica_changes_total counter
+		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster",user="userB"} 10
+
+		# HELP cortex_ha_tracker_elected_replica_timestamp_seconds The timestamp stored for the currently elected replica, from the KVStore.
+		# TYPE cortex_ha_tracker_elected_replica_timestamp_seconds gauge
+		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster",user="userB"} 10
+
+		# HELP cortex_ha_tracker_kv_store_cas_total The total number of CAS calls to the KV store for a user ID/cluster.
+		# TYPE cortex_ha_tracker_kv_store_cas_total counter
+		cortex_ha_tracker_kv_store_cas_total{cluster="cluster",user="userB"} 10
+	`), metrics...))
 }

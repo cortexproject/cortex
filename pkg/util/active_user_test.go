@@ -62,6 +62,8 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 		latest := latestTS.Load()
 		require.True(t, latest > previousLatest)
 
+		previousLatest = latest
+
 		purged := as.PurgeInactiveUsers(latest)
 		require.NotEmpty(t, purged)
 	}

@@ -223,6 +223,9 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)
+	}
+
+	if m.memMetadataRemovedTotal != nil {
 		m.memSeriesRemovedTotal.DeleteLabelValues(userID)
 	}
 }

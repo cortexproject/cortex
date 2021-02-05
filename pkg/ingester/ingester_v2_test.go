@@ -1803,7 +1803,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 		return i.lifecycler.GetState()
 	})
 
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 	i.compactBlocks(context.Background(), true)
 	i.shipBlocks(context.Background())
 
@@ -1818,7 +1818,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	db.lastDeletionMarkCheck.Store(0)
 
 	// After writing tenant deletion mark,
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 	i.compactBlocks(context.Background(), true)
 	i.shipBlocks(context.Background())
 
@@ -1975,7 +1975,7 @@ func TestIngester_flushing(t *testing.T) {
 				cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
 			},
 			action: func(t *testing.T, i *Ingester, reg *prometheus.Registry) {
-				pushSingleSample(t, i)
+				pushSingleSampleWithMetadata(t, i)
 
 				// Nothing shipped yet.
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -2005,7 +2005,7 @@ func TestIngester_flushing(t *testing.T) {
 			},
 
 			action: func(t *testing.T, i *Ingester, reg *prometheus.Registry) {
-				pushSingleSample(t, i)
+				pushSingleSampleWithMetadata(t, i)
 
 				// Nothing shipped yet.
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -2031,7 +2031,7 @@ func TestIngester_flushing(t *testing.T) {
 			},
 
 			action: func(t *testing.T, i *Ingester, reg *prometheus.Registry) {
-				pushSingleSample(t, i)
+				pushSingleSampleWithMetadata(t, i)
 
 				// Nothing shipped yet.
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -2178,7 +2178,7 @@ func TestIngester_ForFlush(t *testing.T) {
 	})
 
 	// Push some data.
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 
 	// Stop ingester.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
@@ -2355,7 +2355,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 
 	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, false)
@@ -2393,7 +2393,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
 	// Pushing another sample still works.
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 	verifyCompactedHead(t, i, false)
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
@@ -2437,8 +2437,11 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 	i.v2UpdateActiveSeries()
+
+	metricsToCheck := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
+		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total"}
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -2456,7 +2459,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_active_series Number of currently active series per user.
 		# TYPE cortex_ingester_active_series gauge
 		cortex_ingester_active_series{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
+
+		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+		# TYPE cortex_ingester_memory_metadata gauge
+		cortex_ingester_memory_metadata 1
+
+		# HELP cortex_ingester_memory_metadata_created_total The total number of metadata that were created per user
+		# TYPE cortex_ingester_memory_metadata_created_total counter
+		cortex_ingester_memory_metadata_created_total{user="1"} 1
+    `), metricsToCheck...))
 
 	// Wait until TSDB has been closed and removed.
 	test.Poll(t, 10*time.Second, 0, func() interface{} {
@@ -2482,10 +2493,14 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 		# HELP cortex_ingester_active_series Number of currently active series per user.
 		# TYPE cortex_ingester_active_series gauge
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
+
+		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+		# TYPE cortex_ingester_memory_metadata gauge
+		cortex_ingester_memory_metadata 0
+    `), metricsToCheck...))
 
 	// Pushing another sample will recreate TSDB.
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 	i.v2UpdateActiveSeries()
 
 	// User is back.
@@ -2505,7 +2520,15 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# HELP cortex_ingester_active_series Number of currently active series per user.
 		# TYPE cortex_ingester_active_series gauge
 		cortex_ingester_active_series{user="1"} 1
-    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series"))
+
+		# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+		# TYPE cortex_ingester_memory_metadata gauge
+		cortex_ingester_memory_metadata 1
+
+		# HELP cortex_ingester_memory_metadata_created_total The total number of metadata that were created per user
+		# TYPE cortex_ingester_memory_metadata_created_total counter
+		cortex_ingester_memory_metadata_created_total{user="1"} 1
+    `), metricsToCheck...))
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
@@ -2516,9 +2539,10 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 	require.Equal(t, expected, h.NumSeries() == 0)
 }
 
-func pushSingleSample(t *testing.T, i *Ingester) {
+func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req, _, _ := mockWriteRequest(labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	req.Metadata = append(req.Metadata, &client.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: client.COUNTER})
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }
@@ -2623,7 +2647,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	})
 
 	// Push some data.
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 
 	db := i.getTSDB(userID)
 	require.NotNil(t, db)
@@ -2761,7 +2785,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	})
 
 	// Push a sample, it should succeed.
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 
 	// We mock a flushing by setting the boolean.
 	db := i.getTSDB(userID)
@@ -2776,7 +2800,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 
 	// Ingestion is successful after a flush.
 	require.True(t, db.casState(forceCompacting, active))
-	pushSingleSample(t, i)
+	pushSingleSampleWithMetadata(t, i)
 }
 
 func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
@@ -2796,7 +2820,7 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 
 	// Push few samples.
 	for j := 0; j < 5; j++ {
-		pushSingleSample(t, i)
+		pushSingleSampleWithMetadata(t, i)
 	}
 
 	// Verifying that compaction won't happen when a request is in flight.

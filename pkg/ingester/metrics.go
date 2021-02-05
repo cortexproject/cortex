@@ -216,6 +216,20 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 	return m
 }
 
+func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
+	m.memMetadataCreatedTotal.DeleteLabelValues(userID)
+	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
+	m.activeSeriesPerUser.DeleteLabelValues(userID)
+
+	if m.memSeriesCreatedTotal != nil {
+		m.memSeriesCreatedTotal.DeleteLabelValues(userID)
+	}
+
+	if m.memSeriesRemovedTotal != nil {
+		m.memSeriesRemovedTotal.DeleteLabelValues(userID)
+	}
+}
+
 // TSDB metrics collector. Each tenant has its own registry, that TSDB code uses.
 type tsdbMetrics struct {
 	// Metrics aggregated from Thanos shipper.

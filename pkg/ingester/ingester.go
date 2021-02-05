@@ -652,6 +652,19 @@ func (i *Ingester) getUserMetadata(userID string) *userMetricsMetadata {
 	return i.usersMetadata[userID]
 }
 
+func (i *Ingester) deleteUserMetadata(userID string) {
+	i.usersMetadataMtx.Lock()
+	um := i.usersMetadata[userID]
+	delete(i.usersMetadata, userID)
+	i.usersMetadataMtx.Unlock()
+
+	if um != nil {
+		// We need call purge to update i.metrics.memMetadata correctly (it counts number of metrics with metadata in memory).
+		// Passing zero time means purge everything.
+		um.purge(time.Time{})
+	}
+}
+
 func (i *Ingester) getUsersWithMetadata() []string {
 	i.usersMetadataMtx.RLock()
 	defer i.usersMetadataMtx.RUnlock()

@@ -1747,8 +1747,12 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	i.userStatesMtx.Unlock()
 
 	i.metrics.memUsers.Dec()
-	i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 	i.TSDBState.tsdbMetrics.removeRegistryForUser(userID)
+
+	i.deleteUserMetadata(userID)
+	i.metrics.deletePerUserMetrics(userID)
+
+	validation.DeletePerUserValidationMetrics(userID, i.logger)
 
 	// And delete local data.
 	if err := os.RemoveAll(dir); err != nil {

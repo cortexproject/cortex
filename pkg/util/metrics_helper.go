@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -699,4 +700,45 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	}
 
 	return sum
+}
+
+// GetLables returns list of label combinations used by this collector at the time of call.
+// This can be used to find and delete unused metrics.
+func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
+	ch := make(chan prometheus.Metric, 128)
+
+	go func() {
+		defer close(ch)
+		c.Collect(ch)
+	}()
+
+	errs := tsdb_errors.NewMulti()
+	var result []labels.Labels
+	dtoMetric := &dto.Metric{}
+
+nextMetric:
+	for m := range ch {
+		err := m.Write(dtoMetric)
+		if err != nil {
+			errs.Add(err)
+			// We cannot return here, to avoid blocking goroutine calling c.Collect()
+			continue
+		}
+
+		lbls := labels.NewBuilder(nil)
+		for _, lp := range dtoMetric.Label {
+			n := lp.GetName()
+			v := lp.GetValue()
+
+			filterValue, ok := filter[n]
+			if ok && filterValue != v {
+				continue nextMetric
+			}
+
+			lbls.Set(lp.GetName(), lp.GetValue())
+		}
+		result = append(result, lbls.Labels())
+	}
+
+	return result, errs.Err()
 }

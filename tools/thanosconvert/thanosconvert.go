@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -26,14 +26,6 @@ type ThanosBlockConverter struct {
 
 type PerUserResults struct {
 	FailedBlocks, ConvertedBlocks, UnchangedBlocks []string
-}
-
-func NewPerUserResults() PerUserResults {
-	return PerUserResults{
-		FailedBlocks:    []string{},
-		ConvertedBlocks: []string{},
-		UnchangedBlocks: []string{},
-	}
 }
 
 func (r *PerUserResults) AddFailed(blockID string) {
@@ -72,7 +64,7 @@ func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 	if err != nil {
 		return results, errors.Wrap(err, "error while scanning users")
 	}
-	level.Info(c.logger).Log("msg", "Scanned tenants")
+	level.Info(c.logger).Log("msg", "Scanned users")
 
 	for _, u := range users {
 		r, err := c.convertUser(ctx, u)
@@ -89,52 +81,40 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 
 	userBucketClient := bucket.NewUserBucketClient(user, c.bkt)
 	err := userBucketClient.Iter(ctx, "", func(o string) error {
-		// get block ID from path
-		o = strings.TrimSuffix(o, "/")
-		blockULID, err := ulid.Parse(o)
-		if err != nil {
-			// this is not a block, skip it
+		blockID, ok := block.IsBlockDir(o)
+		if !ok {
+			// not a block
 			return nil
 		}
-		blockID := blockULID.String()
-
-		level.Debug(c.logger).Log("msg", "Processing block", "block", blockID)
 
 		// retrieve meta.json
 
-		metaKey := fmt.Sprintf("%s/%s/meta.json", user, blockID)
-		r, err := c.bkt.Get(ctx, metaKey)
+		meta, err := block.DownloadMeta(ctx, c.logger, userBucketClient, blockID)
 		if err != nil {
-			level.Error(c.logger).Log("msg", "Get meta.json", "block", blockID, "meta_key", metaKey, "err", err.Error())
-			results.AddFailed(blockID)
-			return nil
-		}
-
-		meta, err := metadata.Read(r)
-		if err != nil {
-			level.Error(c.logger).Log("msg", "decode meta.json into metadata.Meta", "block", blockID, "meta_key", metaKey, "err", err.Error())
-			results.AddFailed(blockID)
+			level.Error(c.logger).Log("msg", "download block meta", "block", blockID.String(), "err", err.Error())
+			results.AddFailed(blockID.String())
 			return nil
 		}
 
 		// convert and upload if appropriate
 
-		newMeta, changesRequired := convertMetadata(*meta, user)
+		newMeta, changesRequired := convertMetadata(meta, user)
 
 		if len(changesRequired) > 0 {
 			if c.dryRun {
-				level.Debug(c.logger).Log("msg", "Block requires changes, not uploading due to dry run", "block", blockID, "changes_required", strings.Join(changesRequired, ","))
+				level.Info(c.logger).Log("msg", "Block requires changes (dry-run)", "block", blockID.String(), "changes_required", strings.Join(changesRequired, ","))
 			} else {
-				level.Debug(c.logger).Log("msg", "Block requires changes, uploading new meta.json", "block", blockID, "changes_required", strings.Join(changesRequired, ","))
-				if err := c.uploadNewMeta(ctx, userBucketClient, blockID, newMeta); err != nil {
-					level.Error(c.logger).Log("msg", "Update meta.json", "block", blockID, "meta_key", metaKey, "err", err.Error())
-					results.AddFailed(blockID)
+				level.Info(c.logger).Log("msg", "Block requires changes, uploading new meta.json", "block", blockID.String(), "changes_required", strings.Join(changesRequired, ","))
+				if err := c.uploadNewMeta(ctx, userBucketClient, blockID.String(), newMeta); err != nil {
+					level.Error(c.logger).Log("msg", "Update meta.json", "block", blockID.String(), "err", err.Error())
+					results.AddFailed(blockID.String())
 					return nil
 				}
 			}
-			results.AddConverted(blockID)
+			results.AddConverted(blockID.String())
 		} else {
-			results.AddUnchanged(blockID)
+			level.Info(c.logger).Log("msg", "Block doesn't need changes", "block", blockID.String())
+			results.AddUnchanged(blockID.String())
 		}
 
 		return nil
@@ -162,7 +142,6 @@ func convertMetadata(meta metadata.Meta, expectedUser string) (metadata.Meta, []
 	var changesRequired []string
 
 	if meta.Thanos.Labels == nil {
-		// TODO: no "thanos" entry could mean this block is corrupt - should we bail out instead?
 		meta.Thanos.Labels = map[string]string{}
 		// don't need to add to changesRequired, since the code below will notice lack of org id
 	}

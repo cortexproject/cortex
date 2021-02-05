@@ -17,16 +17,17 @@ import (
 	"github.com/cortexproject/cortex/tools/thanosconvert"
 )
 
-var (
-	configFilename string
-	dryRun         bool
-)
-
 func main() {
+	var (
+		configFilename string
+		dryRun         bool
+		cfg            bucket.Config
+	)
 
 	logfmt, loglvl := logging.Format{}, logging.Level{}
 	logfmt.RegisterFlags(flag.CommandLine)
 	loglvl.RegisterFlags(flag.CommandLine)
+	cfg.RegisterFlags(flag.CommandLine)
 	flag.StringVar(&configFilename, "config", "", "Path to bucket config YAML")
 	flag.BoolVar(&dryRun, "dry-run", false, "Don't make changes; only report what needs to be done")
 	flag.Usage = func() {
@@ -43,26 +44,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	if configFilename == "" {
-		fmt.Fprintf(flag.CommandLine.Output(), "Error: -config flag is required\n\n")
+	if configFilename != "" {
+		buf, err := ioutil.ReadFile(configFilename)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to load config file", "err", err, "filename", configFilename)
+			os.Exit(1)
+		}
+		err = yaml.UnmarshalStrict(buf, &cfg)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to parse config", "err", err)
+			os.Exit(1)
+		}
+	}
+
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(flag.CommandLine.Output(), "Error: Bucket config is invalid. Error: %v\n\n", err)
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
-
-	cfg := bucket.Config{}
-
-	buf, err := ioutil.ReadFile(configFilename)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to load config file", "err", err, "filename", configFilename)
-		os.Exit(1)
-	}
-	err = yaml.UnmarshalStrict(buf, &cfg)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to parse config", "err", err)
-		os.Exit(1)
-	}
 
 	converter, err := thanosconvert.NewThanosBlockConverter(ctx, cfg, dryRun, logger)
 	if err != nil {

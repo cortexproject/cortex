@@ -30,9 +30,9 @@ For each block copied/uploaded to the Cortex bucket, there are a few changes req
 
 `thanosconvert` can iterate over a Cortex bucket and make sure that each `meta.json` has the correct `thanos` > `labels` layout.
 
-⚠️  `thanosconvert` will modify files in the bucket you specify. It's recommended that you have backups or enable object versioning before running this tool.
+⚠ Warning ⚠ `thanosconvert` will modify files in the bucket you specify. It's recommended that you have backups or enable object versioning before running this tool.
 
-To run `thanosconvert`, you need to provide a YAML file with bucket configuration in the same format as the [blocks storage bucket configuration](../configuration/config-file-reference.md#blocks_storage_config). For example, for s3:
+To run `thanosconvert`, you need to provide it with the bucket configuration in the same format as the [blocks storage bucket configuration](../configuration/config-file-reference.md#blocks_storage_config).
 ```yaml
 # bucket-config.yaml
 backend: s3

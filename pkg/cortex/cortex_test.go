@@ -94,3 +94,46 @@ func TestCortex(t *testing.T) {
 	// check that compactor is configured which is not part of Target=All
 	require.NotNil(t, serviceMap[Compactor])
 }
+
+func TestConfigValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		getTestConfig func() *Config
+		expectedError bool
+	}{
+		{
+			name: "should pass validation if the http prefix is empty",
+			getTestConfig: func() *Config {
+				return newDefaultConfig()
+			},
+			expectedError: false,
+		},
+		{
+			name: "should pass validation if the http prefix starts with /",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.HTTPPrefix = "/test"
+				return configuration
+			},
+			expectedError: false,
+		},
+		{
+			name: "should fail if validation is not empty or starts with /",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.HTTPPrefix = "test"
+				return configuration
+			},
+			expectedError: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.getTestConfig().Validate(nil)
+			if tc.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

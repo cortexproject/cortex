@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -171,6 +172,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 func (c *Config) Validate(log log.Logger) error {
 	if err := c.validateYAMLEmptyNodes(); err != nil {
 		return err
+	}
+
+	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
+		return errors.New("http_prefix should be empty or start with /")
 	}
 
 	if err := c.Schema.Validate(); err != nil {

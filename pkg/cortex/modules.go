@@ -172,20 +172,20 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initOverridesExporter() (services.Service, error) {
-	cfgChan := tenantLimitsRuntimeConfigChannel(t.RuntimeConfig)
-	if cfgChan == nil {
+	supplier := tenantLimitsRuntimeConfigFunc(t.RuntimeConfig)
+	if t.Cfg.isModuleEnabled(OverridesExporter) && supplier == nil {
 		// This target isn't enabled by default ("all") and requires runtime configuration
 		// to work. Fail if it can't be setup correctly since the user explicitly wanted this
 		// target to run.
-		return nil, errors.New("runtime configuration not available for overrides exporter")
+		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
 	}
 
-	// the overrides exporter reads updates to runtime configuration from a channel as
-	// the runtime override configuration is reloaded periodically and thus needs to
-	// be managed as a service.
-	exporter := validation.NewOverridesExporter(cfgChan)
+	exporter := validation.NewOverridesExporter(supplier)
 	prometheus.MustRegister(exporter)
-	return exporter, nil
+
+	// the overrides exporter has no state and reads overrides for runtime configuration each time it
+	// is collected so there is no need to return any service
+	return nil, nil
 }
 
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {

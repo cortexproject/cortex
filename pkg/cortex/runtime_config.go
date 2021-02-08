@@ -51,41 +51,33 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 	if c == nil {
 		return nil
 	}
+
+	supplier := tenantLimitsRuntimeConfigFunc(c)
 	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
+		tenantLimits := supplier()
+		if tenantLimits == nil {
 			return nil
 		}
 
-		return cfg.TenantLimits[userID]
+		return tenantLimits[userID]
 	}
 }
 
-// tenantLimitsRuntimeConfigChannel returns a channel that emits a mapping of all
+// tenantLimitsRuntimeConfigFunc returns a function that returns a mapping of all
 // tenant specific overrides as it is updated via runtime configuration
-func tenantLimitsRuntimeConfigChannel(manager *runtimeconfig.Manager) <-chan map[string]*validation.Limits {
+func tenantLimitsRuntimeConfigFunc(manager *runtimeconfig.Manager) func() map[string]*validation.Limits {
 	if manager == nil {
 		return nil
 	}
 
-	outCh := make(chan map[string]*validation.Limits, 1)
-
-	// push initial config to the channel
-	val := manager.GetConfig()
-	if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
-		outCh <- cfg.TenantLimits
-	}
-
-	ch := manager.CreateListenerChannel(1)
-	go func() {
-		for val := range ch {
-			if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
-				outCh <- cfg.TenantLimits
-			}
+	return func() map[string]*validation.Limits {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return cfg.TenantLimits
 		}
-	}()
 
-	return outCh
+		return nil
+	}
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {

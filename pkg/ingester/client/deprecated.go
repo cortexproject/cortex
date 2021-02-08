@@ -1,3 +1,4 @@
+//nolint // Ignore all warnings in this file. We keep the naming as-is for backwards compatibility with existing code.
 package client
 
 import (

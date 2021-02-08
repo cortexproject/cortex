@@ -18,7 +18,7 @@ func TestJsoniterMarshal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `[98.765,"12345"]`, string(out))
 
-	out, err = json.Marshal(Sample{Value: math.NaN(), TimestampMs: math.MinInt64})
+	_, err = json.Marshal(Sample{Value: math.NaN(), TimestampMs: math.MinInt64})
 	require.EqualError(t, err, "test sample")
 
 	// If not testing, we get normal output.

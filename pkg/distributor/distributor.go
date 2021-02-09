@@ -219,13 +219,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	replicas, err := newClusterTracker(cfg.HATrackerConfig, limits, reg)
+	clusterTracker, err := newClusterTracker(cfg.HATrackerConfig, limits, reg, log.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	subservices := []services.Service(nil)
-	subservices = append(subservices, replicas)
+	subservices = append(subservices, clusterTracker)
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -255,7 +255,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:            replicas,
+		HATracker:            clusterTracker,
 		activeUsers:          util.NewActiveUsers(),
 	}
 
@@ -286,6 +286,7 @@ func (d *Distributor) running(ctx context.Context) error {
 			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
 			for _, userID := range inactiveUsers {
 				cleanupMetricsForUser(userID)
+				d.HATracker.cleanupHATrackerMetricsForUser(userID)
 			}
 			continue
 
@@ -311,7 +312,6 @@ func cleanupMetricsForUser(userID string) {
 	}
 
 	validation.DeletePerUserValidationMetrics(userID, log.Logger)
-	cleanupHATrackerMetricsForUser(userID, log.Logger)
 }
 
 // Called after distributor is asked to stop via StopAsync.

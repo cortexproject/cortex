@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -142,7 +143,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeout:          time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -172,7 +173,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -208,7 +209,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, reg)
+	}, trackerLimits{maxClusters: 100}, reg, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -257,7 +258,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, reg)
+	}, trackerLimits{maxClusters: 100}, reg, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -327,7 +328,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -388,7 +389,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil)
+	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -471,7 +472,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeout:          testData.updateTimeout,
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
-			}, trackerLimits{maxClusters: 100}, nil)
+			}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -575,7 +576,7 @@ func TestHAClustersLimit(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, limits, nil)
+	}, limits, nil, util_log.Logger)
 
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), t1))
@@ -643,9 +644,9 @@ func (l trackerLimits) MaxHAClusters(_ string) int {
 }
 
 func TestHATracker_MetricsCleanup(t *testing.T) {
-	electedReplicaChanges.Reset()
-	electedReplicaTimestamp.Reset()
-	kvCASCalls.Reset()
+	reg := prometheus.NewPedanticRegistry()
+	tr, err := newClusterTracker(HATrackerConfig{EnableHATracker: false}, nil, reg, util_log.Logger)
+	require.NoError(t, err)
 
 	metrics := []string{
 		"cortex_ha_tracker_elected_replica_changes_total",
@@ -653,17 +654,17 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		"cortex_ha_tracker_kv_store_cas_total",
 	}
 
-	electedReplicaChanges.WithLabelValues("userA", "cluster1").Add(5)
-	electedReplicaChanges.WithLabelValues("userA", "cluster2").Add(8)
-	electedReplicaChanges.WithLabelValues("userB", "cluster").Add(10)
-	electedReplicaTimestamp.WithLabelValues("userA", "cluster1").Add(5)
-	electedReplicaTimestamp.WithLabelValues("userA", "cluster2").Add(8)
-	electedReplicaTimestamp.WithLabelValues("userB", "cluster").Add(10)
-	kvCASCalls.WithLabelValues("userA", "cluster1").Add(5)
-	kvCASCalls.WithLabelValues("userA", "cluster2").Add(8)
-	kvCASCalls.WithLabelValues("userB", "cluster").Add(10)
+	tr.electedReplicaChanges.WithLabelValues("userA", "cluster1").Add(5)
+	tr.electedReplicaChanges.WithLabelValues("userA", "cluster2").Add(8)
+	tr.electedReplicaChanges.WithLabelValues("userB", "cluster").Add(10)
+	tr.electedReplicaTimestamp.WithLabelValues("userA", "cluster1").Add(5)
+	tr.electedReplicaTimestamp.WithLabelValues("userA", "cluster2").Add(8)
+	tr.electedReplicaTimestamp.WithLabelValues("userB", "cluster").Add(10)
+	tr.kvCASCalls.WithLabelValues("userA", "cluster1").Add(5)
+	tr.kvCASCalls.WithLabelValues("userA", "cluster2").Add(8)
+	tr.kvCASCalls.WithLabelValues("userB", "cluster").Add(10)
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
 		# TYPE cortex_ha_tracker_elected_replica_changes_total counter
 		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster",user="userB"} 10
@@ -683,9 +684,9 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		cortex_ha_tracker_kv_store_cas_total{cluster="cluster2",user="userA"} 8
 	`), metrics...))
 
-	cleanupMetricsForUser("userA")
+	tr.cleanupHATrackerMetricsForUser("userA")
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_elected_replica_changes_total The total number of times the elected replica has changed for a user ID/cluster.
 		# TYPE cortex_ha_tracker_elected_replica_changes_total counter
 		cortex_ha_tracker_elected_replica_changes_total{cluster="cluster",user="userB"} 10

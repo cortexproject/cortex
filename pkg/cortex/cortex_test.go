@@ -124,7 +124,7 @@ func TestConfigValidation(t *testing.T) {
 				configuration.HTTPPrefix = "test"
 				return configuration
 			},
-			expectedError: errInvalidHttpPrefix,
+			expectedError: errInvalidHTTPPrefix,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

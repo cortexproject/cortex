@@ -63,7 +63,7 @@ import (
 )
 
 var (
-	errInvalidHttpPrefix = errors.New("HTTP prefix should be empty or start with /")
+	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -179,7 +179,7 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
-		return errInvalidHttpPrefix
+		return errInvalidHTTPPrefix
 	}
 
 	if err := c.Schema.Validate(); err != nil {

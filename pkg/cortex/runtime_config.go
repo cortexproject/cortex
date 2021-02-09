@@ -45,17 +45,34 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
+// tenantLimitsFromRuntimeConfig returns a function that translates tenant IDs to
+// specific limits for that tenant if configured, nil otherwise
 func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLimits {
 	if c == nil {
 		return nil
 	}
+
+	supplier := tenantLimitsRuntimeConfigFunc(c)
 	return func(userID string) *validation.Limits {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
+		tenantLimits := supplier()
+		return tenantLimits[userID]
+	}
+}
+
+// tenantLimitsRuntimeConfigFunc returns a function that returns a mapping of all
+// tenant specific overrides as it is updated via runtime configuration
+func tenantLimitsRuntimeConfigFunc(manager *runtimeconfig.Manager) func() map[string]*validation.Limits {
+	if manager == nil {
+		return nil
+	}
+
+	return func() map[string]*validation.Limits {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return cfg.TenantLimits
 		}
 
-		return cfg.TenantLimits[userID]
+		return nil
 	}
 }
 

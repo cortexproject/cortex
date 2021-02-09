@@ -52,6 +52,7 @@ const (
 	Ring                     string = "ring"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
+	OverridesExporter        string = "overrides-exporter"
 	Server                   string = "server"
 	Distributor              string = "distributor"
 	DistributorService       string = "distributor-service"
@@ -168,6 +169,23 @@ func (t *Cortex) initOverrides() (serv services.Service, err error) {
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, err
+}
+
+func (t *Cortex) initOverridesExporter() (services.Service, error) {
+	supplier := tenantLimitsRuntimeConfigFunc(t.RuntimeConfig)
+	if t.Cfg.isModuleEnabled(OverridesExporter) && supplier == nil {
+		// This target isn't enabled by default ("all") and requires runtime configuration
+		// to work. Fail if it can't be setup correctly since the user explicitly wanted this
+		// target to run.
+		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
+	}
+
+	exporter := validation.NewOverridesExporter(supplier)
+	prometheus.MustRegister(exporter)
+
+	// the overrides exporter has no state and reads overrides for runtime configuration each time it
+	// is collected so there is no need to return any service
+	return nil, nil
 }
 
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
@@ -792,6 +810,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
+	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
@@ -825,6 +844,7 @@ func (t *Cortex) setupModuleManager() error {
 		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
+		OverridesExporter:        {RuntimeConfig},
 		Distributor:              {DistributorService, API},
 		DistributorService:       {Ring, Overrides},
 		Store:                    {Overrides, DeleteRequestsStore},

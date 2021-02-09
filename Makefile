@@ -226,6 +226,7 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 	embedmd -w docs/configuration/single-process-config.md
+	embedmd -w docs/guides/overrides-exporter.md
 
 endif
 

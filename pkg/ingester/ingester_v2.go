@@ -921,6 +921,11 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 }
 
 func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -931,7 +936,7 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db)
 	if err != nil {
 		return nil, err
 	}
@@ -942,7 +947,7 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 	}
 	defer q.Close()
 
-	vals, _, err := q.LabelValues(req.LabelName)
+	vals, _, err := q.LabelValues(labelName, matchers...)
 	if err != nil {
 		return nil, err
 	}

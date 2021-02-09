@@ -110,6 +110,36 @@ func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) 
 	return metrics
 }
 
+// ToLabelValuesRequest builds a LabelValuesRequest proto
+func ToLabelValuesRequest(labelName model.LabelName, from, to model.Time, matchers []*labels.Matcher) (*LabelValuesRequest, error) {
+	ms, err := toLabelMatchers(matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LabelValuesRequest{
+		LabelName:        string(labelName),
+		StartTimestampMs: int64(from),
+		EndTimestampMs:   int64(to),
+		Matchers:         &LabelMatchers{Matchers: ms},
+	}, nil
+}
+
+// FromLabelValuesRequest unpacks a LabelValuesRequest proto
+func FromLabelValuesRequest(req *LabelValuesRequest) (string, int64, int64, []*labels.Matcher, error) {
+	var err error
+	var matchers []*labels.Matcher
+
+	if req.Matchers != nil {
+		matchers, err = fromLabelMatchers(req.Matchers.Matchers)
+		if err != nil {
+			return "", 0, 0, nil, err
+		}
+	}
+
+	return req.LabelName, req.StartTimestampMs, req.EndTimestampMs, matchers, nil
+}
+
 func toLabelMatchers(matchers []*labels.Matcher) ([]*LabelMatcher, error) {
 	result := make([]*LabelMatcher, 0, len(matchers))
 	for _, matcher := range matchers {

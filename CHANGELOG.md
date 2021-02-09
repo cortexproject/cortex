@@ -34,7 +34,7 @@
   * `-blocks-storage.s3.max-connections-per-host`: Maximum number of connections per host. 0 means no limit.
 * [ENHANCEMENT] Ingester: when tenant's TSDB is closed, Ingester now removes pushed metrics-metadata from memory, and removes metadata (`cortex_ingester_memory_metadata`, `cortex_ingester_memory_metadata_created_total`, `cortex_ingester_memory_metadata_removed_total`) and validation metrics (`cortex_discarded_samples_total`, `cortex_discarded_metadata_total`). #3782
 * [ENHANCEMENT] Distributor: cleanup metrics for inactive tenants. #3784
-* [ENHANCEMENT] Ingester: Have ingester to re-emit following TSDB metrics. #3799
+* [ENHANCEMENT] Ingester: Have ingester to re-emit following TSDB metrics. #3800
   * `cortex_ingester_tsdb_blocks_loaded`
   * `cortex_ingester_tsdb_reloads_total`
   * `cortex_ingester_tsdb_reloads_failures_total`

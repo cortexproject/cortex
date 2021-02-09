@@ -51,10 +51,7 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	defaults := Limits{
 		MaxLabelNamesPerSeries: 100,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
-
+	ov, err := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
@@ -128,9 +125,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryParallelism: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -162,9 +157,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueriersPerTenant: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -196,9 +189,7 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryLength: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, NewMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {

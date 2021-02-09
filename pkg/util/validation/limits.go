@@ -189,9 +189,35 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-// TenantLimits is a function that returns limits for given tenant, or
-// nil, if there are no tenant-specific limits.
-type TenantLimits func(userID string) *Limits
+// TenantLimits exposes per-tenant limit overrides to various resource usage limits
+type TenantLimits interface {
+	// ByUserID gets limits specific to a particular tenant or nil if there are none
+	ByUserID(userID string) *Limits
+
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
+}
+
+// MockTenantLimits exposes per-tenant limits based on a provided map. Useful for unit testing
+type MockTenantLimits struct {
+	limits map[string]*Limits
+}
+
+// NewMockTenantLimits creates a new MockTenantLimits that returns per-tenant limits based on
+// the given map. Useful for unit testing
+func NewMockTenantLimits(limits map[string]*Limits) *MockTenantLimits {
+	return &MockTenantLimits{
+		limits: limits,
+	}
+}
+
+func (l *MockTenantLimits) ByUserID(userID string) *Limits {
+	return l.limits[userID]
+}
+
+func (l *MockTenantLimits) AllByUserID() map[string]*Limits {
+	return l.limits
+}
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
@@ -443,7 +469,7 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
-		l := o.tenantLimits(userID)
+		l := o.tenantLimits.ByUserID(userID)
 		if l != nil {
 			return l
 		}

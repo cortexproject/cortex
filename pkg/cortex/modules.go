@@ -165,22 +165,27 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 }
 
 func (t *Cortex) initOverrides() (serv services.Service, err error) {
-	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.RuntimeConfig))
+	// If runtime configuration isn't enabled it doesn't make sense to configure per-tenant
+	// limits. Any consumers of TenantLimits will handle it being `nil` correctly.
+	if t.RuntimeConfig != nil {
+		t.TenantLimits = newTenantLimits(t.RuntimeConfig)
+	}
+
+	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, err
 }
 
 func (t *Cortex) initOverridesExporter() (services.Service, error) {
-	supplier := tenantLimitsRuntimeConfigFunc(t.RuntimeConfig)
-	if t.Cfg.isModuleEnabled(OverridesExporter) && supplier == nil {
-		// This target isn't enabled by default ("all") and requires runtime configuration
-		// to work. Fail if it can't be setup correctly since the user explicitly wanted this
+	if t.Cfg.isModuleEnabled(OverridesExporter) && t.TenantLimits == nil {
+		// This target isn't enabled by default ("all") and requires per-tenant limits to
+		// work. Fail if it can't be setup correctly since the user explicitly wanted this
 		// target to run.
 		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
 	}
 
-	exporter := validation.NewOverridesExporter(supplier)
+	exporter := validation.NewOverridesExporter(t.TenantLimits)
 	prometheus.MustRegister(exporter)
 
 	// the overrides exporter has no state and reads overrides for runtime configuration each time it
@@ -849,7 +854,7 @@ func (t *Cortex) setupModuleManager() error {
 		RuntimeConfig:            {API},
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
-		OverridesExporter:        {RuntimeConfig},
+		OverridesExporter:        {Overrides},
 		Distributor:              {DistributorService, API},
 		DistributorService:       {Ring, Overrides},
 		Store:                    {Overrides, DeleteRequestsStore},

@@ -195,22 +195,6 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
-
-			# HELP cortex_ingester_tsdb_tombstone_cleanup_seconds The time taken to recompact blocks to remove tombstones.
-			# TYPE cortex_ingester_tsdb_tombstone_cleanup_seconds histogram
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="1"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="2"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="4"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="8"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="16"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="32"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="64"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="128"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="256"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="512"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="+Inf"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_sum 39
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_count 3
 	`))
 	require.NoError(t, err)
 }
@@ -395,22 +379,6 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
-
-			# HELP cortex_ingester_tsdb_tombstone_cleanup_seconds The time taken to recompact blocks to remove tombstones.
-			# TYPE cortex_ingester_tsdb_tombstone_cleanup_seconds histogram
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="1"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="2"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="4"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="8"} 0
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="16"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="32"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="64"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="128"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="256"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="512"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_bucket{le="+Inf"} 3
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_sum 39
-			cortex_ingester_tsdb_tombstone_cleanup_seconds_count 3
 	`))
 	require.NoError(t, err)
 }
@@ -629,13 +597,5 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "The number of times that blocks were deleted because the maximum time limit was exceeded.",
 	})
 	retentionsTotal.Add(11)
-
-	tombsonteCleanSeconds := promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-		Name:    "prometheus_tsdb_tombstone_cleanup_seconds",
-		Help:    "The time taken to recompact blocks to remove tombstones.",
-		Buckets: prometheus.ExponentialBuckets(1, 2, 10),
-	})
-	tombsonteCleanSeconds.Observe(13)
-
 	return r
 }

@@ -62,6 +62,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+var (
+	errInvalidHttpPrefix = errors.New("HTTP prefix should be empty or start with /")
+)
+
 // The design pattern for Cortex is a series of config objects, which are
 // registered for command line flags, and then a series of components that
 // are instantiated and composed.  Some rules of thumb:
@@ -175,7 +179,7 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
-		return errors.New("http_prefix should be empty or start with /")
+		return errInvalidHttpPrefix
 	}
 
 	if err := c.Schema.Validate(); err != nil {

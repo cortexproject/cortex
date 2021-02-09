@@ -118,7 +118,7 @@ func TestConfigValidation(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name: "should fail if validation is not empty or starts with /",
+			name: "should fail validation for invalid prefix",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
 				configuration.HTTPPrefix = "test"

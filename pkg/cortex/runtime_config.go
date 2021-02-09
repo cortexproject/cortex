@@ -55,10 +55,6 @@ func tenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.TenantLi
 	supplier := tenantLimitsRuntimeConfigFunc(c)
 	return func(userID string) *validation.Limits {
 		tenantLimits := supplier()
-		if tenantLimits == nil {
-			return nil
-		}
-
 		return tenantLimits[userID]
 	}
 }

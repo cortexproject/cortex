@@ -14,7 +14,7 @@ to their limits tenants are, the `overrides-exporter` module can expose limits a
 To update configuration without restarting, Cortex allows operators to supply a `runtime_config`
 file that will be periodically reloaded. This file can be specified under the `runtime_config` section
 of the main [configuration file](../configuration/arguments.md#runtime-configuration-file) or using the `-runtime-config.file`
-command line flag. This file is used apply tenant-specific limits.
+command line flag. This file is used to apply tenant-specific limits.
 
 ## Example
 
@@ -52,15 +52,14 @@ After the `overrides-exporter` starts, you can to use `curl` to inspect the tena
 curl -s http://localhost:8080/metrics | grep cortex_overrides
 # HELP cortex_overrides Resource limit overrides applied to tenants
 # TYPE cortex_overrides gauge
-cortex_overrides{limit_type="ingestion_burst_size",type="tenant",user="user1"} 350000
-cortex_overrides{limit_type="ingestion_rate",type="tenant",user="user1"} 350000
-cortex_overrides{limit_type="max_global_series_per_metric",type="tenant",user="user1"} 300000
-cortex_overrides{limit_type="max_global_series_per_user",type="tenant",user="user1"} 300000
-cortex_overrides{limit_type="max_local_series_per_metric",type="tenant",user="user1"} 0
-cortex_overrides{limit_type="max_local_series_per_user",type="tenant",user="user1"} 0
-cortex_overrides{limit_type="max_samples_per_query",type="tenant",user="user1"} 100000
-cortex_overrides{limit_type="max_series_per_query",type="tenant",user="user1"} 100000
-
+cortex_overrides{limit_name="ingestion_burst_size",user="user1"} 350000
+cortex_overrides{limit_name="ingestion_rate",user="user1"} 350000
+cortex_overrides{limit_name="max_global_series_per_metric",user="user1"} 300000
+cortex_overrides{limit_name="max_global_series_per_user",user="user1"} 300000
+cortex_overrides{limit_name="max_local_series_per_metric",user="user1"} 0
+cortex_overrides{limit_name="max_local_series_per_user",user="user1"} 0
+cortex_overrides{limit_name="max_samples_per_query",user="user1"} 100000
+cortex_overrides{limit_name="max_series_per_query",user="user1"} 100000
 ```
 
 With these metrics, you can set up alerts to know when tenants are close to hitting their limits

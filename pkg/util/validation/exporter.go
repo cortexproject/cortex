@@ -30,10 +30,6 @@ func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 
 func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
 	allLimits := oe.limitSupplier()
-	if allLimits == nil {
-		return
-	}
-
 	for tenant, limits := range allLimits {
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionRate, "ingestion_rate", tenant)
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.IngestionBurstSize), "ingestion_burst_size", tenant)

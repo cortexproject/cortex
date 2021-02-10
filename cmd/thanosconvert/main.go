@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/logging"
 	"gopkg.in/yaml.v2"
 
@@ -39,44 +38,33 @@ func main() {
 
 	logger, err := log.NewPrometheusLogger(loglvl, logfmt)
 	if err != nil {
-		fmt.Printf("failed to create logger: %v\n", err)
-		flag.Usage()
-		os.Exit(1)
+		fatal("failed to create logger: %v", err)
 	}
 
 	if configFilename != "" {
 		buf, err := ioutil.ReadFile(configFilename)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed to load config file", "err", err, "filename", configFilename)
-			os.Exit(1)
+			fatal("failed to load config file from %s: %v", configFilename, err)
 		}
 		err = yaml.UnmarshalStrict(buf, &cfg)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed to parse config", "err", err)
-			os.Exit(1)
+			fatal("failed to parse config file: %v", err)
 		}
 	}
 
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(flag.CommandLine.Output(), "Error: Bucket config is invalid. Error: %v\n\n", err)
-		flag.Usage()
-		os.Exit(1)
+		fatal("bucket config is invalid: %v", err)
 	}
 
 	ctx := context.Background()
 
 	converter, err := thanosconvert.NewThanosBlockConverter(ctx, cfg, dryRun, logger)
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to initialize", "err", err)
-		os.Exit(1)
+		fatal("couldn't initilize converter: %v", err)
 	}
 
 	iterCtx := context.Background()
 	results, err := converter.Run(iterCtx)
-	if err != nil {
-		level.Error(logger).Log("msg", "error while iterating blocks", "err", err)
-		os.Exit(1)
-	}
 
 	fmt.Println("Results:")
 	for user, res := range results {
@@ -86,4 +74,13 @@ func main() {
 		fmt.Printf("  Failed %d:\n  %s", len(res.FailedBlocks), strings.Join(res.FailedBlocks, ","))
 	}
 
+	if err != nil {
+		fatal("converter failed: %v", err)
+	}
+
+}
+
+func fatal(msg string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	os.Exit(1)
 }

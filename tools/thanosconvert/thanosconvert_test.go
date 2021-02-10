@@ -327,6 +327,23 @@ func TestConvertMetadata(t *testing.T) {
 			changesRequired: []string{"add __org_id__ label"},
 		},
 		{
+			name:         "nil labels map",
+			expectedUser: "user1",
+			in: metadata.Meta{
+				Thanos: metadata.Thanos{
+					Labels: nil,
+				},
+			},
+			out: metadata.Meta{
+				Thanos: metadata.Thanos{
+					Labels: map[string]string{
+						cortex_tsdb.TenantIDExternalLabel: "user1",
+					},
+				},
+			},
+			changesRequired: []string{"add __org_id__ label"},
+		},
+		{
 			name:         "remove extra Thanos labels",
 			expectedUser: "user1",
 			in: metadata.Meta{

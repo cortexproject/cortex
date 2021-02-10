@@ -91,7 +91,7 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 
 		meta, err := block.DownloadMeta(ctx, c.logger, userBucketClient, blockID)
 		if err != nil {
-			level.Error(c.logger).Log("msg", "download block meta", "block", blockID.String(), "err", err.Error())
+			level.Error(c.logger).Log("msg", "download block meta", "block", blockID.String(), "user", user, "err", err.Error())
 			results.AddFailed(blockID.String())
 			return nil
 		}
@@ -102,18 +102,18 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 
 		if len(changesRequired) > 0 {
 			if c.dryRun {
-				level.Info(c.logger).Log("msg", "Block requires changes (dry-run)", "block", blockID.String(), "changes_required", strings.Join(changesRequired, ","))
+				level.Info(c.logger).Log("msg", "Block requires changes (dry-run)", "block", blockID.String(), "user", user, "changes_required", strings.Join(changesRequired, ","))
 			} else {
-				level.Info(c.logger).Log("msg", "Block requires changes, uploading new meta.json", "block", blockID.String(), "changes_required", strings.Join(changesRequired, ","))
+				level.Info(c.logger).Log("msg", "Block requires changes, uploading new meta.json", "block", blockID.String(), "user", user, "changes_required", strings.Join(changesRequired, ","))
 				if err := c.uploadNewMeta(ctx, userBucketClient, blockID.String(), newMeta); err != nil {
-					level.Error(c.logger).Log("msg", "Update meta.json", "block", blockID.String(), "err", err.Error())
+					level.Error(c.logger).Log("msg", "Update meta.json", "block", blockID.String(), "user", user, "err", err.Error())
 					results.AddFailed(blockID.String())
 					return nil
 				}
 			}
 			results.AddConverted(blockID.String())
 		} else {
-			level.Info(c.logger).Log("msg", "Block doesn't need changes", "block", blockID.String())
+			level.Info(c.logger).Log("msg", "Block doesn't need changes", "block", blockID.String(), "user", user)
 			results.AddUnchanged(blockID.String())
 		}
 
@@ -140,11 +140,6 @@ func (c *ThanosBlockConverter) uploadNewMeta(ctx context.Context, userBucketClie
 
 func convertMetadata(meta metadata.Meta, expectedUser string) (metadata.Meta, []string) {
 	var changesRequired []string
-
-	if meta.Thanos.Labels == nil {
-		meta.Thanos.Labels = map[string]string{}
-		// don't need to add to changesRequired, since the code below will notice lack of org id
-	}
 
 	org, ok := meta.Thanos.Labels[cortex_tsdb.TenantIDExternalLabel]
 	if !ok {

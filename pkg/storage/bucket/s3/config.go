@@ -160,12 +160,12 @@ func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 	}
 }
 
-func parseKMSEncryptionContext(data string) (decoded map[string]string, err error) {
+func parseKMSEncryptionContext(data string) (map[string]string, error) {
 	if data == "" {
 		return nil, nil
 	}
 
-	err = json.Unmarshal([]byte(data), &decoded)
-	err = errors.Wrap(err, "unable to parse KMS encryption context")
-	return
+	decoded := map[string]string{}
+	err := errors.Wrap(json.Unmarshal([]byte(data), &decoded), "unable to parse KMS encryption context")
+	return decoded, err
 }

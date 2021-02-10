@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -25,11 +24,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-)
-
-var (
-	ctxUser1 = user.InjectOrgID(context.Background(), "user1")
-	ctxUser2 = user.InjectOrgID(context.Background(), "user1")
 )
 
 func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *haTracker, user, cluster, replica string, expected time.Time) {
@@ -366,18 +360,18 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	now := time.Now()
 
 	// Write the first time for user 1.
-	err = c.checkReplica(ctxUser1, user, cluster, replica, now)
+	err = c.checkReplica(context.Background(), user, cluster, replica, now)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 
 	// Write the first time for user 2.
-	err = c.checkReplica(ctxUser2, user, cluster, replica, now)
+	err = c.checkReplica(context.Background(), user, cluster, replica, now)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 
 	// Now we've waited > 1s, so the timestamp should update.
 	now = now.Add(1100 * time.Millisecond)
-	err = c.checkReplica(ctxUser1, user, cluster, replica, now)
+	err = c.checkReplica(context.Background(), user, cluster, replica, now)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 }
@@ -439,7 +433,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 			// Init context used by the test
-			ctx, cancel := context.WithTimeout(ctxUser1, time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
 			// Override the jitter so that it's not based on a random value

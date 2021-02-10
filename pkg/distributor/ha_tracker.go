@@ -197,6 +197,9 @@ func (c *haTracker) loop(ctx context.Context) error {
 		return nil
 	}
 
+	// Start cleanup loop. It will stop when context is done.
+	go c.cleanupOldReplicasLoop(ctx)
+
 	// The KVStore config we gave when creating c should have contained a prefix,
 	// which would have given us a prefixed KVStore client. So, we can pass empty string here.
 	c.client.WatchPrefix(ctx, "", func(key string, value interface{}) bool {

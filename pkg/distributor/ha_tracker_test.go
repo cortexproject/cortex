@@ -44,8 +44,6 @@ func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *haTracker, u
 		r := c.elected[key]
 		c.electedLock.RUnlock()
 
-		// If the replica or the timestamp don't match, we save the error
-		// to return if the expected match is not found within the timeout period
 		if r.GetReplica() != replica {
 			return fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
 		}

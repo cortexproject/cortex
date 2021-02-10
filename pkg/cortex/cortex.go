@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -59,6 +60,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -171,6 +176,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 func (c *Config) Validate(log log.Logger) error {
 	if err := c.validateYAMLEmptyNodes(); err != nil {
 		return err
+	}
+
+	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
+		return errInvalidHTTPPrefix
 	}
 
 	if err := c.Schema.Validate(); err != nil {

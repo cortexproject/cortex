@@ -46,6 +46,7 @@
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761
 * [BUGFIX] Store-gateway: fixed a panic caused by a race condition when the index-header lazy loading is enabled. #3775 #3789
+* [BUGFIX] Compactor: fixed "could not guess file size" log when uploading blocks deletion marks to the global location. #3807
 * [BUGFIX] Prevent panic at start if the http_prefix setting doesn't have a valid value. #3796
 
 ## 1.7.0 in progress

@@ -5213,4 +5213,5 @@ and development.&lt;/p>
 &lt;/li>
 &lt;li>Querier: tenant federation&lt;/li>
 &lt;li>Alertmanager: Sharding of tenants across multiple instances&lt;/li>
+&lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
 &lt;/ul></description></item></channel></rss>

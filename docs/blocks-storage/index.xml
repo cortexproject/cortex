@@ -2136,15 +2136,31 @@ Cortex isolates blocks on a per-tenant basis in the bucket and, for this reason,
 Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thanos stores external labels at &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>, which should be all removed when migrating to Cortex, while the &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> added.&lt;/li>
 &lt;/ol>
 &lt;h2 id="how-to-migrate-the-storage">How to migrate the storage&lt;/h2>
-&lt;p>Currently, no tool is provided to migrate TSDB blocks from Thanos / Prometheus to Cortex, but writing an automation should be fairly easy. This automation could do the following:&lt;/p>
-&lt;ol>
-&lt;li>Upload TSDB blocks from Thanos / Prometheus to Cortex bucket&lt;/li>
-&lt;li>Manipulate &lt;code>meta.json&lt;/code> file for each block in the Cortex bucket&lt;/li>
-&lt;/ol>
 &lt;h3 id="upload-tsdb-blocks-to-cortex-bucket">Upload TSDB blocks to Cortex bucket&lt;/h3>
 &lt;p>TSDB blocks stored in Prometheus local disk or Thanos bucket should be copied/uploaded to the Cortex bucket at the location &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code> (when Cortex is running with auth disabled then &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> must be &lt;code>fake&lt;/code>).&lt;/p>
-&lt;h3 id="manipulate-metajson-file">Manipulate &lt;code>meta.json&lt;/code> file&lt;/h3>
-&lt;p>For each block copied/uploaded to the Cortex bucket, the &lt;code>meta.json&lt;/code> should be manipulated. The easiest approach would be iterating the tenants and blocks in the bucket and for each block:&lt;/p>
+&lt;h3 id="migrate-block-metadata-metajson-to-cortex">Migrate block metadata (&lt;code>meta.json&lt;/code>) to Cortex&lt;/h3>
+&lt;p>For each block copied/uploaded to the Cortex bucket, there are a few changes required to the &lt;code>meta.json&lt;/code>.&lt;/p>
+&lt;h4 id="automatically-migrate-metadata-using-the-thanosconvert-tool">Automatically migrate metadata using the &lt;code>thanosconvert&lt;/code> tool&lt;/h4>
+&lt;p>&lt;code>thanosconvert&lt;/code> can iterate over a Cortex bucket and make sure that each &lt;code>meta.json&lt;/code> has the correct &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> layout.&lt;/p>
+&lt;p>⚠ Warning ⚠ &lt;code>thanosconvert&lt;/code> will modify files in the bucket you specify. It&amp;rsquo;s recommended that you have backups or enable object versioning before running this tool.&lt;/p>
+&lt;p>To run &lt;code>thanosconvert&lt;/code>, you need to provide it with the bucket configuration in the same format as the &lt;a href="/docs/configuration/configuration-file/#blocks_storage_config">blocks storage bucket configuration&lt;/a>.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># bucket-config.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">backend&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>s3&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">s3&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">endpoint&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>s3.us-east&lt;span style="color:#0000cf;font-weight:bold">-1.&lt;/span>amazonaws.com&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>my-cortex-bucket&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run thanosconvert directly using Go:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">go install github.com/cortexproject/cortex/cmd/thanosconvert
+thanosconvert
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>Or use the provided docker image:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">docker run quay.io/cortexproject/thanosconvert
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run the tool in dry-run mode first to find out what which blocks it will migrate:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">thanosconvert -config ./bucket-config.yaml -dry-run
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>Once you&amp;rsquo;re happy with the results, you can run without dry run to migrate blocks:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">thanosconvert -config ./bucket-config.yaml
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can cancel a conversion in progress (with Ctrl+C) and rerun &lt;code>thanosconvert&lt;/code>. It won&amp;rsquo;t change any blocks which have been written by Cortex or already converted from Thanos, so you can run &lt;code>thanosconvert&lt;/code> multiple times.&lt;/p>
+&lt;h4 id="migrate-metadata-manually">Migrate metadata manually&lt;/h4>
+&lt;p>If you need to migrate the block metadata manually, you need to:&lt;/p>
 &lt;ol>
 &lt;li>Download the &lt;code>meta.json&lt;/code> to the local filesystem&lt;/li>
 &lt;li>Decode the JSON&lt;/li>
@@ -2158,7 +2174,7 @@ Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thano
 &lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> do not contain any Thanos-specific external label&lt;/li>
 &lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> contain the Cortex-specific external label &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code>&lt;/li>
 &lt;/ul>
-&lt;h4 id="when-migrating-from-thanos">When migrating from Thanos&lt;/h4>
+&lt;h5 id="when-migrating-from-thanos">When migrating from Thanos&lt;/h5>
 &lt;p>When migrating from Thanos, the easiest approach would be keep the existing &lt;code>thanos&lt;/code> root-level entry as is, except:&lt;/p>
 &lt;ol>
 &lt;li>Completely remove the content of &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
@@ -2176,7 +2192,7 @@ Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thano
 &lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
 &lt;span style="color:#000;font-weight:bold">}&lt;/span>
 &lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="when-migrating-from-prometheus">When migrating from Prometheus&lt;/h4>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h5 id="when-migrating-from-prometheus">When migrating from Prometheus&lt;/h5>
 &lt;p>When migrating from Prometheus, the &lt;code>meta.json&lt;/code> file will not contain any &lt;code>thanos&lt;/code> root-level entry and, for this reason, it would need to be generated:&lt;/p>
 &lt;ol>
 &lt;li>Create the &lt;code>thanos&lt;/code> root-level entry (&lt;em>see below&lt;/em>)&lt;/li>

@@ -12,8 +12,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -178,12 +176,9 @@ func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time
 		_ = os.RemoveAll(dir)
 	})
 
-	opts := tsdb.DefaultOptions()
-	opts.WALSegmentSize = -1 // Disable
-	opts.NoLockfile = true
-
+	opts := tsdb.DefaultHeadOptions()
 	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
-	head, err := tsdb.NewHead(nil, nil, nil, tsdb.ExponentialBlockRanges(opts.MinBlockDuration, 10, 3)[0], dir, chunkenc.NewPool(), chunks.DefaultWriteBufferSize, opts.StripeSize, opts.SeriesLifecycleCallback)
+	head, err := tsdb.NewHead(nil, nil, nil, opts)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = head.Close()
@@ -658,7 +653,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				t.Run("label values", func(t *testing.T) {
 					distributor := &mockDistributor{}
-					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil)
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -748,7 +743,7 @@ func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matcher
 func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
-func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName) ([]string, error) {
+func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
 func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
@@ -790,7 +785,7 @@ func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time,
 	return &client.QueryStreamResponse{}, nil
 }
 
-func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName) ([]string, error) {
+func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

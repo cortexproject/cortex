@@ -95,7 +95,7 @@ func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels
 	return series.MatrixToSeriesSet(m.matrix)
 }
 
-func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m mockQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

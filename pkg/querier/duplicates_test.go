@@ -124,7 +124,7 @@ func (m testQuerier) Select(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher
 	return m.ts
 }
 
-func (m testQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m testQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

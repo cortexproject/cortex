@@ -198,7 +198,11 @@ func (c *haTracker) loop(ctx context.Context) error {
 	}
 
 	// Start cleanup loop. It will stop when context is done.
-	go c.cleanupOldReplicasLoop(ctx)
+	wg := sync.WaitGroup{}
+	go func() {
+		defer wg.Done()
+		c.cleanupOldReplicasLoop(ctx)
+	}()
 
 	// The KVStore config we gave when creating c should have contained a prefix,
 	// which would have given us a prefixed KVStore client. So, we can pass empty string here.
@@ -237,6 +241,7 @@ func (c *haTracker) loop(ctx context.Context) error {
 		return true
 	})
 
+	wg.Wait()
 	return nil
 }
 

@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/weaveworks/common/mtime"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -87,22 +86,10 @@ type HATrackerConfig struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.EnableHATracker,
-		"distributor.ha-tracker.enable",
-		false,
-		"Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
-	f.DurationVar(&cfg.UpdateTimeout,
-		"distributor.ha-tracker.update-timeout",
-		15*time.Second,
-		"Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
-	f.DurationVar(&cfg.UpdateTimeoutJitterMax,
-		"distributor.ha-tracker.update-timeout-jitter-max",
-		5*time.Second,
-		"Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
-	f.DurationVar(&cfg.FailoverTimeout,
-		"distributor.ha-tracker.failover-timeout",
-		30*time.Second,
-		"If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
+	f.BoolVar(&cfg.EnableHATracker, "distributor.ha-tracker.enable", false, "Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).")
+	f.DurationVar(&cfg.UpdateTimeout, "distributor.ha-tracker.update-timeout", 15*time.Second, "Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
+	f.DurationVar(&cfg.UpdateTimeoutJitterMax, "distributor.ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
+	f.DurationVar(&cfg.FailoverTimeout, "distributor.ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
 
 	// We want the ability to use different Consul instances for the ring and
 	// for HA cluster tracking. We also customize the default keys prefix, in
@@ -227,13 +214,12 @@ func (c *haTracker) loop(ctx context.Context) error {
 // replicasNotMatchError is returned (from checkKVStore) if we shouldn't store this sample but are
 // accepting samples from another replica for the cluster, so that there isn't a bunch of error's returned
 // to customers clients.
-func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica string) error {
+func (c *haTracker) checkReplica(ctx context.Context, userID, cluster, replica string, now time.Time) error {
 	// If HA tracking isn't enabled then accept the sample
 	if !c.cfg.EnableHATracker {
 		return nil
 	}
 	key := fmt.Sprintf("%s/%s", userID, cluster)
-	now := mtime.Now()
 
 	c.electedLock.RLock()
 	entry, ok := c.elected[key]

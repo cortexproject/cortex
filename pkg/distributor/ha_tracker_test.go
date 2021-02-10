@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/mtime"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -49,9 +48,6 @@ func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *haTracker, u
 		// to return if the expected match is not found within the timeout period
 		if r.GetReplica() != replica {
 			return fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
-		}
-		if r.GetDeletedAt() > 0 {
-			return fmt.Errorf("replica is marked for deletion")
 		}
 		if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
 			return fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
@@ -124,7 +120,7 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 func TestWatchPrefixAssignment(t *testing.T) {
 	cluster := "c1"
 	replica := "r1"
-	start := mtime.Now()
+	start := time.Now()
 
 	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
@@ -140,8 +136,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
-	mtime.NowForce(start)
-	err = c.checkReplica(context.Background(), "user", cluster, replica)
+	err = c.checkReplica(context.Background(), "user", cluster, replica, start)
 	assert.NoError(t, err)
 
 	// Check to see if the value in the trackers cache is correct.
@@ -151,7 +146,6 @@ func TestWatchPrefixAssignment(t *testing.T) {
 func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	replica1 := "replica1"
 	replica2 := "replica2"
-	start := mtime.Now()
 
 	c, err := newClusterTracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -164,23 +158,25 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
+	start := time.Now()
+
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "test", replica1)
+	err = c.checkReplica(context.Background(), "user", "test", replica1, start)
 	assert.NoError(t, err)
 
 	// Throw away a sample from replica2.
-	err = c.checkReplica(context.Background(), "user", "test", replica2)
+	err = c.checkReplica(context.Background(), "user", "test", replica2, start)
 	assert.Error(t, err)
 
 	// Wait more than the overwrite timeout.
-	mtime.NowForce(start.Add(1100 * time.Millisecond))
+	start = start.Add(1100 * time.Millisecond)
 
 	// Accept from replica 2, this should overwrite the saved replica of replica 1.
-	err = c.checkReplica(context.Background(), "user", "test", replica2)
+	err = c.checkReplica(context.Background(), "user", "test", replica2, start)
 	assert.NoError(t, err)
 
 	// We timed out accepting samples from replica 1 and should now reject them.
-	err = c.checkReplica(context.Background(), "user", "test", replica1)
+	err = c.checkReplica(context.Background(), "user", "test", replica1, start)
 	assert.Error(t, err)
 }
 
@@ -200,22 +196,24 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
+	now := time.Now()
+
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1)
+	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1)
+	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2)
+	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2)
+	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
 	assert.Error(t, err)
 
 	// We should still accept from replica 1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1)
+	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1)
+	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -233,7 +231,6 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 }
 
 func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
-	start := mtime.Now()
 	replica1 := "replica1"
 	replica2 := "replica2"
 
@@ -249,40 +246,42 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
+	now := time.Now()
+
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1)
+	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1)
+	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2)
+	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2)
+	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Accept a sample for replica1 in C2.
-	mtime.NowForce(start.Add(500 * time.Millisecond))
-	err = c.checkReplica(context.Background(), "user", "c2", replica1)
+	now = now.Add(500 * time.Millisecond)
+	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2)
+	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2)
+	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Wait more than the failover timeout.
-	mtime.NowForce(start.Add(1100 * time.Millisecond))
+	now = now.Add(1100 * time.Millisecond)
 
 	// Accept a sample from c1/replica2.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2)
+	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
 	assert.NoError(t, err)
 
 	// We should still accept from c2/replica1 but reject from c1/replica1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1)
+	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1)
+	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -301,7 +300,6 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 
 // Test that writes only happen every update timeout.
 func TestCheckReplicaUpdateTimeout(t *testing.T) {
-	startTime := mtime.Now()
 	replica := "r1"
 	cluster := "c1"
 	user := "user"
@@ -320,38 +318,36 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
-	mtime.NowForce(startTime)
-	err = c.checkReplica(context.Background(), user, cluster, replica)
+	startTime := time.Now()
+	err = c.checkReplica(context.Background(), user, cluster, replica, startTime)
 	assert.NoError(t, err)
 
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Timestamp should not update here, since time has not advanced.
-	err = c.checkReplica(context.Background(), user, cluster, replica)
+	err = c.checkReplica(context.Background(), user, cluster, replica, startTime)
 	assert.NoError(t, err)
 
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Wait 500ms and the timestamp should still not update.
 	updateTime := time.Unix(0, startTime.UnixNano()).Add(500 * time.Millisecond)
-	mtime.NowForce(updateTime)
 
-	err = c.checkReplica(context.Background(), user, cluster, replica)
+	err = c.checkReplica(context.Background(), user, cluster, replica, updateTime)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Now we've waited > 1s, so the timestamp should update.
 	updateTime = time.Unix(0, startTime.UnixNano()).Add(1100 * time.Millisecond)
-	mtime.NowForce(updateTime)
 
-	err = c.checkReplica(context.Background(), user, cluster, replica)
+	err = c.checkReplica(context.Background(), user, cluster, replica, updateTime)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, updateTime)
 }
 
 // Test that writes only happen every write timeout.
 func TestCheckReplicaMultiUser(t *testing.T) {
-	start := mtime.Now()
+	start := time.Now()
 	replica := "r1"
 	cluster := "c1"
 	user := "user"
@@ -370,21 +366,20 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time for user 1.
-	mtime.NowForce(start)
-	err = c.checkReplica(ctxUser1, user, cluster, replica)
+	err = c.checkReplica(ctxUser1, user, cluster, replica, start)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
 
 	// Write the first time for user 2.
-	err = c.checkReplica(ctxUser2, user, cluster, replica)
+	err = c.checkReplica(ctxUser2, user, cluster, replica, start)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
 
 	// Now we've waited > 1s, so the timestamp should update.
-	mtime.NowForce(start.Add(1100 * time.Millisecond))
-	err = c.checkReplica(ctxUser1, user, cluster, replica)
+	start = start.Add(1100 * time.Millisecond)
+	err = c.checkReplica(ctxUser1, user, cluster, replica, start)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, mtime.Now())
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
 }
 
 func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
@@ -452,14 +447,12 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			c.updateTimeoutJitter = testData.updateJitter
 
 			// Init the replica in the KV Store
-			mtime.NowForce(testData.startTime)
-			err = c.checkReplica(ctx, "user1", "cluster", "replica-1")
+			err = c.checkReplica(ctx, "user1", "cluster", "replica-1", testData.startTime)
 			require.NoError(t, err)
 			checkReplicaTimestamp(t, time.Second, c, "user1", "cluster", "replica-1", testData.startTime)
 
 			// Refresh the replica in the KV Store
-			mtime.NowForce(testData.updateTime)
-			err = c.checkReplica(ctx, "user1", "cluster", "replica-1")
+			err = c.checkReplica(ctx, "user1", "cluster", "replica-1", testData.updateTime)
 			require.NoError(t, err)
 
 			// Assert on the the received timestamp
@@ -526,8 +519,6 @@ func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
 }
 
 func TestHAClustersLimit(t *testing.T) {
-	defer mtime.NowReset()
-
 	const userID = "user"
 
 	codec := GetReplicaDescCodec()
@@ -546,18 +537,20 @@ func TestHAClustersLimit(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), t1))
 	defer services.StopAndAwaitTerminated(context.Background(), t1) //nolint:errcheck
 
-	assert.NoError(t, t1.checkReplica(context.Background(), userID, "a", "a1"))
+	now := time.Now()
+
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "a", "a1", now))
 	waitForClustersUpdate(t, 1, t1, userID)
 
-	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b1"))
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b1", now))
 	waitForClustersUpdate(t, 2, t1, userID)
 
-	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1"), "too many HA clusters (limit: 2)")
+	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "c", "c1", now), "too many HA clusters (limit: 2)")
 
 	// Move time forward, and make sure that checkReplica for existing cluster works fine.
-	mtime.NowForce(time.Now().Add(5 * time.Second)) // higher than "update timeout"
+	now = now.Add(5 * time.Second) // higher than "update timeout"
 
-	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b2"))
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b2", now))
 	waitForClustersUpdate(t, 2, t1, userID)
 }
 

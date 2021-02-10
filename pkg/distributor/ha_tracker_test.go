@@ -33,41 +33,32 @@ var (
 	ctxUser2 = user.InjectOrgID(context.Background(), "user1")
 )
 
-func checkReplicaTimestamp(ctx context.Context, c *haTracker, user, cluster, replica string, expected time.Time) error {
-	var err error
-	ticker := time.NewTicker(time.Millisecond * 50)
+func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *haTracker, user, cluster, replica string, expected time.Time) {
 	key := fmt.Sprintf("%s/%s", user, cluster)
 
 	// Round the expected timestamp with milliseconds precision
 	// to match "received at" precision
 	expected = expected.Truncate(time.Millisecond)
 
-outer:
-	for {
-		select {
-		case <-ticker.C:
-			c.electedLock.RLock()
-			r := c.elected[key]
-			c.electedLock.RUnlock()
+	test.Poll(t, duration, nil, func() interface{} {
+		c.electedLock.RLock()
+		r := c.elected[key]
+		c.electedLock.RUnlock()
 
-			// If the replica or the timestamp don't match, we save the error
-			// to return if the expected match is not found within the timeout period
-			if r.GetReplica() != replica {
-				err = fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
-				continue outer
-			}
-			if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
-				err = fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
-				continue outer
-			}
-
-			return nil
-		case <-ctx.Done():
-			break outer
+		// If the replica or the timestamp don't match, we save the error
+		// to return if the expected match is not found within the timeout period
+		if r.GetReplica() != replica {
+			return fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
 		}
-	}
+		if r.GetDeletedAt() > 0 {
+			return fmt.Errorf("replica is marked for deletion")
+		}
+		if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
+			return fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
+		}
 
-	return err
+		return nil
+	})
 }
 
 func TestHATrackerConfig_Validate(t *testing.T) {
@@ -153,13 +144,8 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	err = c.checkReplica(context.Background(), "user", cluster, replica)
 	assert.NoError(t, err)
 
-	// We need to wait for WatchPrefix to grab the value.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-
 	// Check to see if the value in the trackers cache is correct.
-	err = checkReplicaTimestamp(ctx, c, "user", cluster, replica, start)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, "user", cluster, replica, start)
 }
 
 func TestCheckReplicaOverwriteTimeout(t *testing.T) {
@@ -336,20 +322,15 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	// Write the first time.
 	mtime.NowForce(startTime)
 	err = c.checkReplica(context.Background(), user, cluster, replica)
+	assert.NoError(t, err)
 
-	assert.NoError(t, err)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Timestamp should not update here, since time has not advanced.
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
-	cancel()
-	assert.NoError(t, err)
+
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Wait 500ms and the timestamp should still not update.
 	updateTime := time.Unix(0, startTime.UnixNano()).Add(500 * time.Millisecond)
@@ -357,10 +338,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, startTime)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, startTime)
 
 	// Now we've waited > 1s, so the timestamp should update.
 	updateTime = time.Unix(0, startTime.UnixNano()).Add(1100 * time.Millisecond)
@@ -368,10 +346,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 
 	err = c.checkReplica(context.Background(), user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, updateTime)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, updateTime)
 }
 
 // Test that writes only happen every write timeout.
@@ -398,27 +373,18 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	mtime.NowForce(start)
 	err = c.checkReplica(ctxUser1, user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel := context.WithTimeout(ctxUser1, time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, start)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
 
 	// Write the first time for user 2.
 	err = c.checkReplica(ctxUser2, user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel = context.WithTimeout(ctxUser2, time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, start)
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
 
 	// Now we've waited > 1s, so the timestamp should update.
 	mtime.NowForce(start.Add(1100 * time.Millisecond))
 	err = c.checkReplica(ctxUser1, user, cluster, replica)
 	assert.NoError(t, err)
-	ctx, cancel = context.WithTimeout(ctxUser1, time.Second)
-	err = checkReplicaTimestamp(ctx, c, user, cluster, replica, mtime.Now())
-	cancel()
-	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, mtime.Now())
 }
 
 func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
@@ -489,8 +455,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			mtime.NowForce(testData.startTime)
 			err = c.checkReplica(ctx, "user1", "cluster", "replica-1")
 			require.NoError(t, err)
-			err = checkReplicaTimestamp(ctx, c, "user1", "cluster", "replica-1", testData.startTime)
-			assert.NoError(t, err)
+			checkReplicaTimestamp(t, time.Second, c, "user1", "cluster", "replica-1", testData.startTime)
 
 			// Refresh the replica in the KV Store
 			mtime.NowForce(testData.updateTime)
@@ -498,8 +463,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			require.NoError(t, err)
 
 			// Assert on the the received timestamp
-			err = checkReplicaTimestamp(ctx, c, "user1", "cluster", "replica-1", testData.expectedTimestamp)
-			assert.NoError(t, err)
+			checkReplicaTimestamp(t, time.Second, c, "user1", "cluster", "replica-1", testData.expectedTimestamp)
 		})
 	}
 }

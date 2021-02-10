@@ -115,6 +115,7 @@ type haTracker struct {
 	electedReplicaPropagationTime prometheus.Histogram
 	kvCASCalls                    *prometheus.CounterVec
 
+	cleanupRuns               prometheus.Counter
 	replicasMarkedForDeletion prometheus.Counter
 	deletedReplicas           prometheus.Counter
 	markingOrDeletionsFailed  prometheus.Counter
@@ -154,6 +155,10 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 			Help: "The total number of CAS calls to the KV store for a user ID/cluster.",
 		}, []string{"user", "cluster"}),
 
+		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ha_tracker_elected_replicas_cleanup_cycles_total",
+			Help: "Number of elected replicas cleanup cycles.",
+		}),
 		replicasMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ha_tracker_elected_replicas_marked_for_deletion_total",
 			Help: "Number of elected replicas marked for deletion.",
@@ -252,6 +257,7 @@ func (c *haTracker) cleanupOldReplicasLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-tick.C:
+			c.cleanupRuns.Inc()
 			c.cleanupOldReplicas(ctx, t.Add(-deletionTimeout))
 		}
 	}

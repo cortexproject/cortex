@@ -118,7 +118,6 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 func TestWatchPrefixAssignment(t *testing.T) {
 	cluster := "c1"
 	replica := "r1"
-	start := time.Now()
 
 	codec := GetReplicaDescCodec()
 	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
@@ -134,11 +133,13 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", cluster, replica, start)
+	now := time.Now()
+
+	err = c.checkReplica(context.Background(), "user", cluster, replica, now)
 	assert.NoError(t, err)
 
 	// Check to see if the value in the trackers cache is correct.
-	checkReplicaTimestamp(t, time.Second, c, "user", cluster, replica, start)
+	checkReplicaTimestamp(t, time.Second, c, "user", cluster, replica, now)
 }
 
 func TestCheckReplicaOverwriteTimeout(t *testing.T) {
@@ -156,25 +157,25 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
-	start := time.Now()
+	now := time.Now()
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "test", replica1, start)
+	err = c.checkReplica(context.Background(), "user", "test", replica1, now)
 	assert.NoError(t, err)
 
 	// Throw away a sample from replica2.
-	err = c.checkReplica(context.Background(), "user", "test", replica2, start)
+	err = c.checkReplica(context.Background(), "user", "test", replica2, now)
 	assert.Error(t, err)
 
 	// Wait more than the overwrite timeout.
-	start = start.Add(1100 * time.Millisecond)
+	now = now.Add(1100 * time.Millisecond)
 
 	// Accept from replica 2, this should overwrite the saved replica of replica 1.
-	err = c.checkReplica(context.Background(), "user", "test", replica2, start)
+	err = c.checkReplica(context.Background(), "user", "test", replica2, now)
 	assert.NoError(t, err)
 
 	// We timed out accepting samples from replica 1 and should now reject them.
-	err = c.checkReplica(context.Background(), "user", "test", replica1, start)
+	err = c.checkReplica(context.Background(), "user", "test", replica1, now)
 	assert.Error(t, err)
 }
 
@@ -345,7 +346,6 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 
 // Test that writes only happen every write timeout.
 func TestCheckReplicaMultiUser(t *testing.T) {
-	start := time.Now()
 	replica := "r1"
 	cluster := "c1"
 	user := "user"
@@ -363,21 +363,23 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
+	now := time.Now()
+
 	// Write the first time for user 1.
-	err = c.checkReplica(ctxUser1, user, cluster, replica, start)
+	err = c.checkReplica(ctxUser1, user, cluster, replica, now)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 
 	// Write the first time for user 2.
-	err = c.checkReplica(ctxUser2, user, cluster, replica, start)
+	err = c.checkReplica(ctxUser2, user, cluster, replica, now)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 
 	// Now we've waited > 1s, so the timestamp should update.
-	start = start.Add(1100 * time.Millisecond)
-	err = c.checkReplica(ctxUser1, user, cluster, replica, start)
+	now = now.Add(1100 * time.Millisecond)
+	err = c.checkReplica(ctxUser1, user, cluster, replica, now)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, start)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
 }
 
 func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {

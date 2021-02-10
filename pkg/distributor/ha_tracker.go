@@ -45,27 +45,6 @@ func NewReplicaDesc() *ReplicaDesc {
 	return &ReplicaDesc{}
 }
 
-// Track the replica we're accepting samples from
-// for each HA cluster we know about.
-type haTracker struct {
-	services.Service
-
-	logger              log.Logger
-	cfg                 HATrackerConfig
-	client              kv.Client
-	updateTimeoutJitter time.Duration
-	limits              haTrackerLimits
-
-	electedLock sync.RWMutex
-	elected     map[string]ReplicaDesc // Replicas we are accepting samples from. Key = "user/cluster".
-	clusters    map[string]int         // Number of clusters with elected replicas that a single user has. Key = user.
-
-	electedReplicaChanges         *prometheus.CounterVec
-	electedReplicaTimestamp       *prometheus.GaugeVec
-	electedReplicaPropagationTime prometheus.Histogram
-	kvCASCalls                    *prometheus.CounterVec
-}
-
 // HATrackerConfig contains the configuration require to
 // create a HA Tracker.
 type HATrackerConfig struct {
@@ -116,9 +95,30 @@ func GetReplicaDescCodec() codec.Proto {
 	return codec.NewProtoCodec("replicaDesc", ProtoReplicaDescFactory)
 }
 
+// Track the replica we're accepting samples from
+// for each HA cluster we know about.
+type haTracker struct {
+	services.Service
+
+	logger              log.Logger
+	cfg                 HATrackerConfig
+	client              kv.Client
+	updateTimeoutJitter time.Duration
+	limits              haTrackerLimits
+
+	electedLock sync.RWMutex
+	elected     map[string]ReplicaDesc // Replicas we are accepting samples from. Key = "user/cluster".
+	clusters    map[string]int         // Number of clusters with elected replicas that a single user has. Key = user.
+
+	electedReplicaChanges         *prometheus.CounterVec
+	electedReplicaTimestamp       *prometheus.GaugeVec
+	electedReplicaPropagationTime prometheus.Histogram
+	kvCASCalls                    *prometheus.CounterVec
+}
+
 // NewClusterTracker returns a new HA cluster tracker using either Consul
 // or in-memory KV store. Tracker must be started via StartAsync().
-func newClusterTracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Registerer, logger log.Logger) (*haTracker, error) {
+func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Registerer, logger log.Logger) (*haTracker, error) {
 	var jitter time.Duration
 	if cfg.UpdateTimeoutJitterMax > 0 {
 		jitter = time.Duration(rand.Int63n(int64(2*cfg.UpdateTimeoutJitterMax))) - cfg.UpdateTimeoutJitterMax

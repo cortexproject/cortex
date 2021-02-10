@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -38,7 +39,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -520,12 +520,12 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				d := ds[0]
 
 				if tc.enableTracker {
-					r, err := newClusterTracker(HATrackerConfig{
+					r, err := newHATracker(HATrackerConfig{
 						EnableHATracker: true,
 						KVStore:         kv.Config{Mock: mock},
 						UpdateTimeout:   100 * time.Millisecond,
 						FailoverTimeout: time.Second,
-					}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+					}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 					require.NoError(t, err)
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
 					d.HATracker = r

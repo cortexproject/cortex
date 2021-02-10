@@ -84,16 +84,25 @@ func TestKVWatchAndDelete(t *testing.T) {
 		w := &watcher{}
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go w.watch(ctx, wg, client)
+		go func() {
+			defer wg.Done()
+			w.watch(ctx, client)
+		}()
 
 		err = client.CAS(context.Background(), "key-to-delete", func(in interface{}) (out interface{}, retry bool, err error) {
 			return "value-to-delete", false, nil
 		})
 		require.NoError(t, err, "object could not be created")
 
+		// Give watcher time to receive notification.
+		time.Sleep(500 * time.Millisecond)
+
 		// Now delete it
 		err = client.Delete(context.Background(), "key-to-delete")
 		require.NoError(t, err)
+
+		// Give watcher time to receive notification for delete, if any.
+		time.Sleep(500 * time.Millisecond)
 
 		// Stop the watcher
 		cancel()
@@ -207,9 +216,7 @@ type watcher struct {
 	values map[string][]interface{}
 }
 
-func (w *watcher) watch(ctx context.Context, wg *sync.WaitGroup, client kv.Client) {
-	defer wg.Done()
-
+func (w *watcher) watch(ctx context.Context, client kv.Client) {
 	w.values = map[string][]interface{}{}
 	client.WatchPrefix(ctx, "", func(key string, value interface{}) bool {
 		w.values[key] = append(w.values[key], value)

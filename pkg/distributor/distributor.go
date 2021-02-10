@@ -219,13 +219,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	clusterTracker, err := newClusterTracker(cfg.HATrackerConfig, limits, reg, log.Logger)
+	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	subservices := []services.Service(nil)
-	subservices = append(subservices, clusterTracker)
+	subservices = append(subservices, haTracker)
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -255,7 +255,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:            clusterTracker,
+		HATracker:            haTracker,
 		activeUsers:          util.NewActiveUsers(),
 	}
 

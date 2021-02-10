@@ -1810,7 +1810,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, nil, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db := i.getTSDB(userID)
@@ -2192,7 +2192,7 @@ func TestIngester_ForFlush(t *testing.T) {
 
 	// Restart ingester in "For Flusher" mode. We reuse the same config (esp. same dir)
 	reg = prometheus.NewPedanticRegistry()
-	i, err = NewV2ForFlusher(i.cfg, reg, log.NewNopLogger())
+	i, err = NewV2ForFlusher(i.cfg, i.limits, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 

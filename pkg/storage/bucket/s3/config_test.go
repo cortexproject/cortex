@@ -1,9 +1,12 @@
 package s3
 
 import (
+	"encoding/base64"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -51,6 +54,49 @@ func TestSSEConfig_Validate(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.setup().Validate())
+		})
+	}
+}
+
+func TestSSEConfig_BuildMinioConfig(t *testing.T) {
+	tests := map[string]struct {
+		cfg             *SSEConfig
+		expectedType    string
+		expectedKeyID   string
+		expectedContext string
+	}{
+		"SSE KMS without encryption context": {
+			cfg: &SSEConfig{
+				Type:     SSEKMS,
+				KMSKeyID: "test-key",
+			},
+			expectedType:    "aws:kms",
+			expectedKeyID:   "test-key",
+			expectedContext: "",
+		},
+		"SSE KMS with encryption context": {
+			cfg: &SSEConfig{
+				Type:                 SSEKMS,
+				KMSKeyID:             "test-key",
+				KMSEncryptionContext: "{\"department\":\"10103.0\"}",
+			},
+			expectedType:    "aws:kms",
+			expectedKeyID:   "test-key",
+			expectedContext: "{\"department\":\"10103.0\"}",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			sse, err := testData.cfg.BuildMinioConfig()
+			require.NoError(t, err)
+
+			headers := http.Header{}
+			sse.Marshal(headers)
+
+			assert.Equal(t, testData.expectedType, headers.Get("x-amz-server-side-encryption"))
+			assert.Equal(t, testData.expectedKeyID, headers.Get("x-amz-server-side-encryption-aws-kms-key-id"))
+			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(testData.expectedContext)), headers.Get("x-amz-server-side-encryption-encryption-context"))
 		})
 	}
 }

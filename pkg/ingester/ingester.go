@@ -289,7 +289,7 @@ func (i *Ingester) startFlushLoops() {
 //   * Does not start the lifecycler.
 func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	if cfg.BlocksStorageEnabled {
-		return NewV2ForFlusher(cfg, registerer, logger)
+		return NewV2ForFlusher(cfg, limits, registerer, logger)
 	}
 
 	i := &Ingester{

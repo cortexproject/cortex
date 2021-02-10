@@ -3579,6 +3579,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.tenant-shard-size
 [store_gateway_tenant_shard_size: <int> | default = 0]
 
+# S3 server-side encryption KMS Key ID. If unset, the default S3 client settings
+# are used.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3.
+[s3_sse_kms_encryption_context: <string> | default = ""]
+
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
 # CLI flag: -limits.per-user-override-config
@@ -3850,6 +3858,10 @@ s3:
   # S3-compatible service in hostname:port format.
   # CLI flag: -blocks-storage.s3.endpoint
   [endpoint: <string> | default = ""]
+
+  # S3 region. If unset an S3 API call is made to autodetect it.
+  # CLI flag: -blocks-storage.s3.region
+  [region: <string> | default = ""]
 
   # S3 bucket name
   # CLI flag: -blocks-storage.s3.bucket-name

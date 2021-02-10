@@ -48,7 +48,7 @@ func TestMigrateBlockDeletionMarksToGlobalLocation(t *testing.T) {
 	require.NoError(t, bkt.Upload(ctx, path.Join("user-1", block1.String(), metadata.DeletionMarkFilename), strings.NewReader("{}")))
 	require.NoError(t, bkt.Upload(ctx, path.Join("user-1", block3.String(), metadata.DeletionMarkFilename), strings.NewReader("{}")))
 
-	require.NoError(t, MigrateBlockDeletionMarksToGlobalLocation(ctx, bkt, "user-1"))
+	require.NoError(t, MigrateBlockDeletionMarksToGlobalLocation(ctx, bkt, "user-1", nil))
 
 	// Ensure deletion marks have been copied.
 	for _, tc := range []struct {

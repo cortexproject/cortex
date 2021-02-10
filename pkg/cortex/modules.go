@@ -709,7 +709,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
@@ -785,7 +785,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 	}
 
 	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
-	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
+	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.Overrides, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -866,10 +866,10 @@ func (t *Cortex) setupModuleManager() error {
 		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV},
-		Compactor:                {API, MemberlistKV},
+		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
-		BlocksPurger:             {Store, API, RulerStorage},
+		BlocksPurger:             {Store, API, Overrides, RulerStorage},
 		Purger:                   {ChunksPurger, BlocksPurger},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},

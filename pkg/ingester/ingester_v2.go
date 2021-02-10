@@ -482,7 +482,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 // NewV2ForFlusher is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all openened TSDBs when called.
-func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+func NewV2ForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -490,6 +490,7 @@ func NewV2ForFlusher(cfg Config, registerer prometheus.Registerer, logger log.Lo
 
 	i := &Ingester{
 		cfg:       cfg,
+		limits:    limits,
 		metrics:   newIngesterMetrics(registerer, false, false),
 		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
@@ -1326,7 +1327,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			userLogger,
 			tsdbPromReg,
 			udir,
-			bucket.NewUserBucketClient(userID, i.TSDBState.bucket),
+			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			false, // No need to upload compacted blocks. Cortex compactor takes care of that.

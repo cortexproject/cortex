@@ -90,7 +90,7 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = cacheDir
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewNopLogger(), reg)
+	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewNopLogger(), reg)
 	defer func() {
 		s.StopAsync()
 		s.AwaitTerminated(context.Background()) //nolint: errcheck
@@ -156,7 +156,7 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewLogfmtLogger(os.Stdout), nil)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -194,7 +194,7 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
-	s := NewBucketScanBlocksFinder(cfg, bucket, log.NewLogfmtLogger(os.Stdout), nil)
+	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewLogfmtLogger(os.Stdout), nil)
 
 	// Start the scanner, let it run for 1s and then issue a stop.
 	require.NoError(t, s.StartAsync(context.Background()))
@@ -491,7 +491,7 @@ func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfi
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg.CacheDir = cacheDir
-	s := NewBucketScanBlocksFinder(cfg, bkt, log.NewNopLogger(), reg)
+	s := NewBucketScanBlocksFinder(cfg, bkt, nil, log.NewNopLogger(), reg)
 
 	t.Cleanup(func() {
 		s.StopAsync()

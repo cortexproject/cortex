@@ -87,14 +87,14 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, marked for deletion.
-	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", nil, tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
 	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
 	user4Mark.FinishedTime = time.Now().Unix() - 60 // Set to check final user cleanup.
-	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
+	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", nil, user4Mark))
 	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
 	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
 
@@ -116,7 +116,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -185,7 +185,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 			expectedIndex: false,
 		},
 	} {
-		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, logger)
+		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, nil, logger)
 		if !tc.expectedIndex {
 			assert.Equal(t, bucketindex.ErrIndexNotFound, err)
 			continue
@@ -249,7 +249,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -274,7 +274,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
-	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, logger)
+	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
 	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
@@ -308,7 +308,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -332,7 +332,7 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
-	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, logger)
+	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
 	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
@@ -358,7 +358,7 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, reg)
 	require.NoError(t, cleaner.cleanUsers(ctx, true))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`

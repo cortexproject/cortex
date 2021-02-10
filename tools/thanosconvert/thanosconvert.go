@@ -79,7 +79,9 @@ func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (PerUserResults, error) {
 	results := PerUserResults{}
 
-	userBucketClient := bucket.NewUserBucketClient(user, c.bkt)
+	// No per-tenant config provider because the thanosconvert tool doesn't support it.
+	userBucketClient := bucket.NewUserBucketClient(user, c.bkt, nil)
+
 	err := userBucketClient.Iter(ctx, "", func(o string) error {
 		blockID, ok := block.IsBlockDir(o)
 		if !ok {

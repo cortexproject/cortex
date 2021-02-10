@@ -158,6 +158,7 @@ type Compactor struct {
 
 	compactorCfg Config
 	storageCfg   cortex_tsdb.BlocksStorageConfig
+	cfgProvider  bucket.TenantConfigProvider
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
@@ -210,7 +211,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -225,7 +226,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 		blocksCompactorFactory = DefaultBlocksCompactorFactory
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, cfgProvider, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -236,6 +237,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
+	cfgProvider bucket.TenantConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
@@ -245,6 +247,7 @@ func newCompactor(
 	c := &Compactor{
 		compactorCfg:           compactorCfg,
 		storageCfg:             storageCfg,
+		cfgProvider:            cfgProvider,
 		parentLogger:           logger,
 		logger:                 log.With(logger, "component", "compactor"),
 		registerer:             registerer,
@@ -400,7 +403,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.parentLogger, c.registerer)
+	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
 
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
@@ -542,8 +545,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient)
-
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 

@@ -236,6 +236,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.endpoint
     [endpoint: <string> | default = ""]
 
+    # S3 region. If unset an S3 API call is made to autodetect it.
+    # CLI flag: -blocks-storage.s3.region
+    [region: <string> | default = ""]
+
     # S3 bucket name
     # CLI flag: -blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]

@@ -9,6 +9,17 @@
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
+* [FEATURE] Alertmanager: It now shards the `/api/v1/alerts` API using the ring when sharding is enabled.
+  * Added `NewMaxBytesHandler` in the utils package for limiting the size of http request body.
+  * New flags added for communication between alertmanagers:
+    * `-alertmanager.max-recv-msg-size`
+    * `-alertmanager.alertmanager-client.remote-timeout`
+    * `-alertmanager.alertmanager-client.tls-enabled`
+    * `-alertmanager.alertmanager-client.tls-cert-path`
+    * `-alertmanager.alertmanager-client.tls-key-path`
+    * `-alertmanager.alertmanager-client.tls-ca-path`
+    * `-alertmanager.alertmanager-client.tls-server-name`
+    * `-alertmanager.alertmanager-client.tls-insecure-skip-verify`
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.

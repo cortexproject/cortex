@@ -19,6 +19,16 @@ import (
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
+var ErrRequestBodyTooLarge = &errRequestBodyTooLarge{}
+
+type errRequestBodyTooLarge struct{}
+
+func (errRequestBodyTooLarge) Error() string { return "http: request body too large" }
+
+func (errRequestBodyTooLarge) Is(err error) bool {
+	return err.Error() == "http: request body too large"
+}
+
 // WriteJSONResponse writes some JSON as a HTTP response.
 func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")

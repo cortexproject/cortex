@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -96,8 +97,8 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	if r.Body != nil {
 		body, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			if err.Error() == "http: request body too large\n" {
-				http.Error(w, "Request body too large", http.StatusBadRequest)
+			if errors.Is(util.ErrRequestBodyTooLarge, err) {
+				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
 			}
 			level.Error(logger).Log("msg", "failed to read the request body during write", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -106,14 +107,12 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	}
 
 	var firstSuccessfulResponse *httpgrpc.HTTPResponse
-	var respMtx sync.Mutex
+	var firstSuccessfulResponseMtx sync.Mutex
 	grpcHeaders := httpTogrpchttpHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
-		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.AlertmanagerClient.RemoteTimeout)
-		defer cancel()
-		localCtx = user.InjectOrgID(localCtx, userID)
-		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "DistributeRequest.doWrite")
+		localCtx := user.InjectOrgID(context.Background(), userID)
+		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distribute.doWrite")
 		defer sp.Finish()
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
@@ -130,11 +129,11 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			return httpgrpc.ErrorFromHTTPResponse(resp)
 		}
 
-		respMtx.Lock()
+		firstSuccessfulResponseMtx.Lock()
 		if firstSuccessfulResponse == nil {
 			firstSuccessfulResponse = resp
 		}
-		respMtx.Unlock()
+		firstSuccessfulResponseMtx.Unlock()
 
 		return nil
 	}, func() {})
@@ -143,9 +142,9 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		respondFromError(err, w, logger)
 	}
 
-	respMtx.Lock() // Another request might be ongoing after quorum.
+	firstSuccessfulResponseMtx.Lock() // Another request might be ongoing after quorum.
 	resp := firstSuccessfulResponse
-	respMtx.Unlock()
+	firstSuccessfulResponseMtx.Unlock()
 
 	if resp != nil {
 		respondFromHTTPGRPCResponse(w, resp)
@@ -172,10 +171,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), d.cfg.AlertmanagerClient.RemoteTimeout)
-	defer cancel()
-
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "DistributeRequest.doRead")
+	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distribute.doRead")
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
@@ -210,6 +206,8 @@ func respondFromHTTPGRPCResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPR
 }
 
 func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.AlertmanagerClient.RemoteTimeout)
+	defer cancel()
 	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get alertmanager client from pool (alertmanager address: %s)", am.Addr)

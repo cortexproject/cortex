@@ -110,7 +110,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			// Since the response is sent as soon as the quorum is reached, when we
 			// reach this point the 3rd AM may not have received the request yet.
 			// To avoid flaky test we retry until we hit the desired state within a reasonable timeout.
-			test.Poll(t, time.Second, true, func() interface{} {
+			test.Poll(t, time.Second, c.expectedTotalCalls, func() interface{} {
 				totalReqCount := 0
 				for _, a := range ams {
 					reqCount := a.requestsCount(route)
@@ -119,7 +119,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 					totalReqCount += reqCount
 				}
 
-				return c.expectedTotalCalls == totalReqCount
+				return totalReqCount
 			})
 		})
 	}
@@ -129,10 +129,10 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
 	for i := 0; i < numHappyAM; i++ {
-		ams = append(ams, newMockAlertmanager(t, i, true))
+		ams = append(ams, newMockAlertmanager(i, true))
 	}
 	for i := numHappyAM; i < numAM; i++ {
-		ams = append(ams, newMockAlertmanager(t, i, false))
+		ams = append(ams, newMockAlertmanager(i, false))
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
@@ -188,7 +188,6 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 type mockAlertmanager struct {
 	alertmanagerpb.AlertmanagerClient
 	grpc_health_v1.HealthClient
-	t *testing.T
 	// receivedRequests is map of route -> statusCode -> number of requests.
 	receivedRequests map[string]map[int]int
 	mtx              sync.Mutex
@@ -196,9 +195,8 @@ type mockAlertmanager struct {
 	happy            bool
 }
 
-func newMockAlertmanager(t *testing.T, idx int, happy bool) *mockAlertmanager {
+func newMockAlertmanager(idx int, happy bool) *mockAlertmanager {
 	return &mockAlertmanager{
-		t:                t,
 		receivedRequests: make(map[string]map[int]int),
 		myAddr:           fmt.Sprintf("127.0.0.1:%05d", 10000+idx),
 		happy:            happy,
@@ -210,7 +208,9 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *httpgrpc.HTTPRe
 	defer am.mtx.Unlock()
 
 	u, err := url.Parse(in.Url)
-	require.NoError(am.t, err)
+	if err != nil {
+		return nil, err
+	}
 	path := u.Path
 	m, ok := am.receivedRequests[path]
 	if !ok {
@@ -253,15 +253,10 @@ func (am *mockAlertmanager) requestsCount(route string) int {
 	am.mtx.Lock()
 	defer am.mtx.Unlock()
 
-	routesReceived := len(am.receivedRequests)
-	if routesReceived == 0 {
-		// This AM did not receive any requests.
+	routeMap, ok := am.receivedRequests[route]
+	if !ok {
 		return 0
 	}
-
-	require.Equal(am.t, 1, routesReceived)
-	routeMap, ok := am.receivedRequests[route]
-	require.True(am.t, ok)
 
 	// The status could be something other than overall
 	// expected status because of quorum logic.

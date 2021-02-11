@@ -3,6 +3,7 @@ package util_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"html/template"
 	"io/ioutil"
 	"net/http"
@@ -175,7 +176,7 @@ func TestMaxBytesHandler(t *testing.T) {
 		}, {
 			inpBody:       []byte{1, 2, 3, 4},
 			maxSize:       3,
-			expBody:       "http: request body too large\n",
+			expBody:       util.ErrRequestBodyTooLarge.Error(),
 			expStatusCode: http.StatusBadRequest,
 		}, {
 			inpBody:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
@@ -185,7 +186,7 @@ func TestMaxBytesHandler(t *testing.T) {
 		}, {
 			inpBody:       []byte{1},
 			maxSize:       0,
-			expBody:       "http: request body too large\n",
+			expBody:       util.ErrRequestBodyTooLarge.Error(),
 			expStatusCode: http.StatusBadRequest,
 		},
 	}
@@ -212,8 +213,25 @@ type mockHandler struct {
 func (mockHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	_, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
 		return
 	}
 	w.Write([]byte("all is well")) //nolint
+}
+
+func TestErrRequestBodyTooLargeRegression(t *testing.T) {
+	var handlerErr error
+	handler := func(w http.ResponseWriter, req *http.Request) {
+		_, handlerErr = ioutil.ReadAll(req.Body)
+		w.WriteHeader(http.StatusOK)
+	}
+
+	h := util.NewMaxBytesHandler(http.HandlerFunc(handler), 1)
+
+	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1/test", bytes.NewReader([]byte{1, 2, 3, 4}))
+	assert.NoError(t, err)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.True(t, errors.Is(util.ErrRequestBodyTooLarge, handlerErr))
 }

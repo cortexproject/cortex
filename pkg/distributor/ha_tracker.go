@@ -199,6 +199,7 @@ func (c *haTracker) loop(ctx context.Context) error {
 
 	// Start cleanup loop. It will stop when context is done.
 	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		c.cleanupOldReplicasLoop(ctx)

@@ -268,8 +268,8 @@ blocks_storage:
       # CLI flag: -blocks-storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
-      # KMS Encryption Context used for object encryption. It expects a JSON as
-      # a string.
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
       # CLI flag: -blocks-storage.s3.sse.kms-encryption-context
       [kms_encryption_context: <string> | default = ""]
 

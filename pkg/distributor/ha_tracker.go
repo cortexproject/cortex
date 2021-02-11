@@ -58,7 +58,8 @@ type HATrackerConfig struct {
 	// other than the replica written in the KVStore if the difference
 	// between the stored timestamp and the time we received a sample is
 	// more than this duration
-	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
+	FailoverTimeout    time.Duration `yaml:"ha_tracker_failover_timeout"`
+	CleanupOldReplicas bool          `yaml:"cleanup_old_replicas"`
 
 	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 }
@@ -69,6 +70,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateTimeout, "distributor.ha-tracker.update-timeout", 15*time.Second, "Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, "distributor.ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout, "distributor.ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
+	f.BoolVar(&cfg.CleanupOldReplicas, "distributor.ha-tracker.cleanup-old-replicas", false, "Enable deleting of old elected replicas from KV store.")
 
 	// We want the ability to use different Consul instances for the ring and
 	// for HA cluster tracking. We also customize the default keys prefix, in
@@ -199,11 +201,13 @@ func (c *haTracker) loop(ctx context.Context) error {
 
 	// Start cleanup loop. It will stop when context is done.
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		c.cleanupOldReplicasLoop(ctx)
-	}()
+	if c.cfg.CleanupOldReplicas {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.cleanupOldReplicasLoop(ctx)
+		}()
+	}
 
 	// The KVStore config we gave when creating c should have contained a prefix,
 	// which would have given us a prefixed KVStore client. So, we can pass empty string here.

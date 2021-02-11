@@ -43,7 +43,7 @@
   * `cortex_ingester_tsdb_symbol_table_size_bytes`
   * `cortex_ingester_tsdb_storage_blocks_bytes`
   * `cortex_ingester_tsdb_time_retentions_total`
-* [ENHANCEMENT] Distributor / HA Tracker: cleanup unused elected HA replicas from KV store. Added following metrics to monitor this process: #3809
+* [ENHANCEMENT] Distributor / HA Tracker: added cleanup of unused elected HA replicas from KV store, enabled via `-distributor.ha-tracker.cleanup-old-replicas`. Added following metrics to monitor this process: #3809
   * `cortex_ha_tracker_elected_replicas_cleanup_cycles_total`
   * `cortex_ha_tracker_elected_replicas_marked_for_deletion_total`
   * `cortex_ha_tracker_elected_replicas_deleted_total`

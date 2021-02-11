@@ -69,3 +69,4 @@ Currently experimental features are:
 - Querier: tenant federation
 - Alertmanager: Sharding of tenants across multiple instances
 - The thanosconvert tool for converting Thanos block metadata to Cortex
+- HA Tracker: cleanup of old replicas from KV Store.

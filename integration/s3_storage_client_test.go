@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -84,7 +85,7 @@ func TestS3Client(t *testing.T) {
 				Insecure:         true,
 				AccessKeyID:      e2edb.MinioAccessKey,
 				SecretAccessKey:  e2edb.MinioSecretKey,
-				SSEConfig: s3.SSEConfig{
+				SSEConfig: cortex_s3.SSEConfig{
 					Type: "SSE-S3",
 				},
 			},

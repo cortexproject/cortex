@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -30,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -131,6 +131,7 @@ type Distributor struct {
 	services.Service
 
 	cfg           Config
+	log           log.Logger
 	ingestersRing ring.ReadRing
 	ingesterPool  *ring_client.Pool
 	limits        *validation.Overrides
@@ -209,7 +210,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, log log.Logger) (*Distributor, error) {
 	if cfg.IngesterClientFactory == nil {
 		cfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -219,7 +220,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log.Logger)
+	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log)
 	if err != nil {
 		return nil, err
 	}
@@ -250,8 +251,9 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 	d := &Distributor{
 		cfg:                  cfg,
+		log:                  log,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
@@ -285,7 +287,7 @@ func (d *Distributor) running(ctx context.Context) error {
 		case <-metricsCleanupTimer.C:
 			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
 			for _, userID := range inactiveUsers {
-				cleanupMetricsForUser(userID)
+				cleanupMetricsForUser(userID, d.log)
 				d.HATracker.cleanupHATrackerMetricsForUser(userID)
 			}
 			continue
@@ -299,7 +301,7 @@ func (d *Distributor) running(ctx context.Context) error {
 	}
 }
 
-func cleanupMetricsForUser(userID string) {
+func cleanupMetricsForUser(userID string, log log.Logger) {
 	receivedSamples.DeleteLabelValues(userID)
 	receivedMetadata.DeleteLabelValues(userID)
 	incomingSamples.DeleteLabelValues(userID)
@@ -308,10 +310,10 @@ func cleanupMetricsForUser(userID string) {
 	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
 
 	if err := util.DeleteMatchingLabels(dedupedSamples, map[string]string{"user": userID}); err != nil {
-		level.Warn(log.Logger).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+		level.Warn(log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
 	}
 
-	validation.DeletePerUserValidationMetrics(userID, log.Logger)
+	validation.DeletePerUserValidationMetrics(userID, log)
 }
 
 // Called after distributor is asked to stop via StopAsync.

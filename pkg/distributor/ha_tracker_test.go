@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -21,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -121,7 +121,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		UpdateTimeout:          time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Millisecond * 2,
-	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -146,7 +146,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -184,7 +184,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, reg, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -234,7 +234,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, reg, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -305,7 +305,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -351,7 +351,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+	}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -428,7 +428,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				UpdateTimeout:          testData.updateTimeout,
 				UpdateTimeoutJitterMax: 0,
 				FailoverTimeout:        time.Second,
-			}, trackerLimits{maxClusters: 100}, nil, util_log.Logger)
+			}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -526,7 +526,7 @@ func TestHAClustersLimit(t *testing.T) {
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
 		FailoverTimeout:        time.Second,
-	}, limits, nil, util_log.Logger)
+	}, limits, nil, log.NewNopLogger())
 
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), t1))
@@ -597,7 +597,7 @@ func (l trackerLimits) MaxHAClusters(_ string) int {
 
 func TestHATracker_MetricsCleanup(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	tr, err := newHATracker(HATrackerConfig{EnableHATracker: false}, nil, reg, util_log.Logger)
+	tr, err := newHATracker(HATrackerConfig{EnableHATracker: false}, nil, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	metrics := []string{

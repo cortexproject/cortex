@@ -328,7 +328,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_samples_in_total{user="userA"} 5
 `), metrics...))
 
-	cleanupMetricsForUser("userA")
+	cleanupMetricsForUser("userA", log.NewNopLogger())
 
 	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
 		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
@@ -1305,7 +1305,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		overrides, err := validation.NewOverrides(*cfg.limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil)
+		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

@@ -214,10 +214,10 @@ func (mockHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	_, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte(err.Error())) //nolint:errcheck
 		return
 	}
-	w.Write([]byte("all is well")) //nolint
+	w.Write([]byte("all is well")) //nolint:errcheck
 }
 
 func TestErrRequestBodyTooLargeRegression(t *testing.T) {

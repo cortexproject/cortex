@@ -68,3 +68,4 @@ Currently experimental features are:
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Querier: tenant federation
 - Alertmanager: Sharding of tenants across multiple instances
+- The thanosconvert tool for converting Thanos block metadata to Cortex

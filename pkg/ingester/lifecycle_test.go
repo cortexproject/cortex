@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
@@ -130,7 +131,7 @@ func TestIngesterChunksTransfer(t *testing.T) {
 	cfg1.LifecyclerConfig.Addr = "ingester1"
 	cfg1.LifecyclerConfig.JoinAfter = 0 * time.Second
 	cfg1.MaxTransferRetries = 10
-	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil)
+	ing1, err := New(cfg1, defaultClientTestConfig(), limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing1))
 
@@ -150,7 +151,7 @@ func TestIngesterChunksTransfer(t *testing.T) {
 	cfg2.LifecyclerConfig.ID = "ingester2"
 	cfg2.LifecyclerConfig.Addr = "ingester2"
 	cfg2.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil)
+	ing2, err := New(cfg2, defaultClientTestConfig(), limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing2))
 
@@ -197,7 +198,7 @@ func TestIngesterBadTransfer(t *testing.T) {
 	cfg.LifecyclerConfig.ID = "ingester1"
 	cfg.LifecyclerConfig.Addr = "ingester1"
 	cfg.LifecyclerConfig.JoinAfter = 100 * time.Second
-	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil)
+	ing, err := New(cfg, defaultClientTestConfig(), limits, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 

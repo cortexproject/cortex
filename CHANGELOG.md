@@ -4,12 +4,14 @@
 
 * [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
 * [CHANGE] Require explicit flag `-<prefix>.tls-enabled` to enable TLS in GRPC clients. Previously it was enough to specify a TLS flag to enable TLS validation. #3156
-* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651
+* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810
   - `-<prefix>.s3.sse.type`
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
-* [FEATURE] Alertmanager: It now shards the `/api/v1/alerts` API using the ring when sharding is enabled.
+* [FEATURE] Overrides Exporter: Add `overrides-exporter` module for exposing per-tenant resource limit overrides as metrics. It is not included in `all` target, and must be explicitly enabled. #3785
+* [FEATURE] Experimental thanosconvert: introduce an experimental tool `thanosconvert` to migrate Thanos block metadata to Cortex metadata. #3770
+* [FEATURE] Alertmanager: It now shards the `/api/v1/alerts` API using the ring when sharding is enabled. #3671
   * Added `NewMaxBytesHandler` in the utils package for limiting the size of http request body.
   * New flags added for communication between alertmanagers:
     * `-alertmanager.max-recv-msg-size`
@@ -20,6 +22,14 @@
     * `-alertmanager.alertmanager-client.tls-ca-path`
     * `-alertmanager.alertmanager-client.tls-server-name`
     * `-alertmanager.alertmanager-client.tls-insecure-skip-verify`
+* [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
+  * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
+  * `-ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.
+  * `-ruler.alertmanager-client.tls-ca-path`: File path to the CA file.
+  * `-ruler.alertmanager-client.tls-cert-path`: File path to the TLS certificate.
+  * `-ruler.alertmanager-client.tls-insecure-skip-verify`: Boolean to disable verifying the certificate.
+  * `-ruler.alertmanager-client.tls-key-path`: File path to the TLS key certificate.
+  * `-ruler.alertmanager-client.tls-server-name`: Expected name on the TLS certificate.
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.
@@ -29,8 +39,27 @@
 * [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
+* [ENHANCEMENT] Blocks storage: added more configuration options to S3 client. #3775
+  * `-blocks-storage.s3.tls-handshake-timeout`: Maximum time to wait for a TLS handshake. 0 means no limit.
+  * `-blocks-storage.s3.expect-continue-timeout`: The time to wait for a server's first response headers after fully writing the request headers if the request has an Expect header. 0 to send the request body immediately.
+  * `-blocks-storage.s3.max-idle-connections`: Maximum number of idle (keep-alive) connections across all hosts. 0 means no limit.
+  * `-blocks-storage.s3.max-idle-connections-per-host`: Maximum number of idle (keep-alive) connections to keep per-host. If 0, a built-in default value is used.
+  * `-blocks-storage.s3.max-connections-per-host`: Maximum number of connections per host. 0 means no limit.
+* [ENHANCEMENT] Ingester: when tenant's TSDB is closed, Ingester now removes pushed metrics-metadata from memory, and removes metadata (`cortex_ingester_memory_metadata`, `cortex_ingester_memory_metadata_created_total`, `cortex_ingester_memory_metadata_removed_total`) and validation metrics (`cortex_discarded_samples_total`, `cortex_discarded_metadata_total`). #3782
+* [ENHANCEMENT] Distributor: cleanup metrics for inactive tenants. #3784
+* [ENHANCEMENT] Ingester: Have ingester to re-emit following TSDB metrics. #3800
+  * `cortex_ingester_tsdb_blocks_loaded`
+  * `cortex_ingester_tsdb_reloads_total`
+  * `cortex_ingester_tsdb_reloads_failures_total`
+  * `cortex_ingester_tsdb_symbol_table_size_bytes`
+  * `cortex_ingester_tsdb_storage_blocks_bytes`
+  * `cortex_ingester_tsdb_time_retentions_total`
+* [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761
+* [BUGFIX] Store-gateway: fixed a panic caused by a race condition when the index-header lazy loading is enabled. #3775 #3789
+* [BUGFIX] Compactor: fixed "could not guess file size" log when uploading blocks deletion marks to the global location. #3807
+* [BUGFIX] Prevent panic at start if the http_prefix setting doesn't have a valid value. #3796
 
 ## 1.7.0 in progress
 

@@ -21,7 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, step time.Duration, store chunkstore.ChunkStore) {
@@ -55,14 +55,14 @@ func runRangeQuery(t testing.TB, query string, from, through time.Time, step tim
 	dir, err := ioutil.TempDir("", t.Name())
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 1, util.Logger)
+	queryTracker := promql.NewActiveQueryTracker(dir, 1, util_log.Logger)
 
 	if len(query) == 0 || store == nil {
 		return
 	}
 	queryable := newChunkStoreQueryable(store, batch.NewChunkMergeIterator)
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util.Logger,
+		Logger:             util_log.Logger,
 		ActiveQueryTracker: queryTracker,
 		MaxSamples:         math.MaxInt32,
 		Timeout:            10 * time.Minute,

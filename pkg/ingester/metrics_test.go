@@ -167,6 +167,34 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
+
+			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
+			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
+			cortex_ingester_tsdb_blocks_loaded 15
+
+			# HELP cortex_ingester_tsdb_reloads_total Number of times the database reloaded block data from disk.
+			# TYPE cortex_ingester_tsdb_reloads_total counter
+			cortex_ingester_tsdb_reloads_total 30
+
+			# HELP cortex_ingester_tsdb_reloads_failures_total Number of times the database failed to reloadBlocks block data from disk.
+			# TYPE cortex_ingester_tsdb_reloads_failures_total counter
+			cortex_ingester_tsdb_reloads_failures_total 21
+
+			# HELP cortex_ingester_tsdb_symbol_table_size_bytes Size of symbol table in memory for loaded blocks
+			# TYPE cortex_ingester_tsdb_symbol_table_size_bytes gauge
+			cortex_ingester_tsdb_symbol_table_size_bytes{user="user1"} 12641280
+			cortex_ingester_tsdb_symbol_table_size_bytes{user="user2"} 87845888
+			cortex_ingester_tsdb_symbol_table_size_bytes{user="user3"} 1022976
+
+			# HELP cortex_ingester_tsdb_storage_blocks_bytes The number of bytes that are currently used for local storage by all blocks.
+			# TYPE cortex_ingester_tsdb_storage_blocks_bytes gauge
+			cortex_ingester_tsdb_storage_blocks_bytes{user="user1"} 50565120
+			cortex_ingester_tsdb_storage_blocks_bytes{user="user2"} 351383552
+			cortex_ingester_tsdb_storage_blocks_bytes{user="user3"} 4091904
+
+			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
+			# TYPE cortex_ingester_tsdb_time_retentions_total counter
+			cortex_ingester_tsdb_time_retentions_total 33
 	`))
 	require.NoError(t, err)
 }
@@ -325,6 +353,32 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
+
+			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
+			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
+			cortex_ingester_tsdb_blocks_loaded 10
+
+			# HELP cortex_ingester_tsdb_reloads_total Number of times the database reloaded block data from disk.
+			# TYPE cortex_ingester_tsdb_reloads_total counter
+			cortex_ingester_tsdb_reloads_total 30
+
+			# HELP cortex_ingester_tsdb_reloads_failures_total Number of times the database failed to reloadBlocks block data from disk.
+			# TYPE cortex_ingester_tsdb_reloads_failures_total counter
+			cortex_ingester_tsdb_reloads_failures_total 21
+
+			# HELP cortex_ingester_tsdb_symbol_table_size_bytes Size of symbol table in memory for loaded blocks
+			# TYPE cortex_ingester_tsdb_symbol_table_size_bytes gauge
+			cortex_ingester_tsdb_symbol_table_size_bytes{user="user1"} 12641280
+			cortex_ingester_tsdb_symbol_table_size_bytes{user="user2"} 87845888
+
+			# HELP cortex_ingester_tsdb_storage_blocks_bytes The number of bytes that are currently used for local storage by all blocks.
+			# TYPE cortex_ingester_tsdb_storage_blocks_bytes gauge
+			cortex_ingester_tsdb_storage_blocks_bytes{user="user1"} 50565120
+			cortex_ingester_tsdb_storage_blocks_bytes{user="user2"} 351383552
+
+			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
+			# TYPE cortex_ingester_tsdb_time_retentions_total counter
+			cortex_ingester_tsdb_time_retentions_total 33
 	`))
 	require.NoError(t, err)
 }
@@ -508,5 +562,40 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	})
 	gcDuration.Observe(3)
 
+	loadedBlocks := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_blocks_loaded",
+		Help: "Number of currently loaded data blocks",
+	})
+	loadedBlocks.Set(5)
+
+	reloadsTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_reloads_total",
+		Help: "Number of times the database reloaded block data from disk.",
+	})
+	reloadsTotal.Add(10)
+
+	reloadsFailed := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_reloads_failures_total",
+		Help: "Number of times the database failed to reloadBlocks block data from disk.",
+	})
+	reloadsFailed.Add(7)
+
+	symbolTableSize := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_symbol_table_size_bytes",
+		Help: "Size of symbol table in memory for loaded blocks",
+	})
+	symbolTableSize.Set(1024 * base)
+
+	blocksSize := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_storage_blocks_bytes",
+		Help: "The number of bytes that are currently used for local storage by all blocks.",
+	})
+	blocksSize.Set(4096 * base)
+
+	retentionsTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_time_retentions_total",
+		Help: "The number of times that blocks were deleted because the maximum time limit was exceeded.",
+	})
+	retentionsTotal.Add(11)
 	return r
 }

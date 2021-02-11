@@ -259,6 +259,20 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
+    sse:
+      # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
+      # CLI flag: -blocks-storage.s3.sse.type
+      [type: <string> | default = ""]
+
+      # KMS Key ID used to encrypt objects in S3
+      # CLI flag: -blocks-storage.s3.sse.kms-key-id
+      [kms_key_id: <string> | default = ""]
+
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
+      # CLI flag: -blocks-storage.s3.sse.kms-encryption-context
+      [kms_encryption_context: <string> | default = ""]
+
     http:
       # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -272,6 +286,30 @@ blocks_storage:
       # client will accept any certificate and hostname.
       # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -blocks-storage.s3.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -blocks-storage.s3.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
 
   gcs:
     # GCS bucket name

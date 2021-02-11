@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -114,14 +115,14 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+
+	inactiveUserTimeout    = 15 * time.Minute
+	metricsCleanupInterval = inactiveUserTimeout / 5
 )
 
 const (
 	typeSamples  = "samples"
 	typeMetadata = "metadata"
-
-	// Supported sharding strategies.
-
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -130,6 +131,7 @@ type Distributor struct {
 	services.Service
 
 	cfg           Config
+	log           log.Logger
 	ingestersRing ring.ReadRing
 	ingesterPool  *ring_client.Pool
 	limits        *validation.Overrides
@@ -147,6 +149,8 @@ type Distributor struct {
 	// Manager for subservices (HA Tracker, distributor ring and client pool)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+
+	activeUsers *util.ActiveUsers
 }
 
 // Config contains the configuration required to
@@ -169,6 +173,10 @@ type Config struct {
 
 	// for testing and for extending the ingester by adding calls to the client
 	IngesterClientFactory ring_client.PoolFactory `yaml:"-"`
+
+	// when true the distributor does not validate the label name, Cortex doesn't directly use
+	// this (and should never use it) but this feature is used by other projects built on top of it
+	SkipLabelNameValidation bool `yaml:"-"`
 
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
@@ -202,7 +210,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 }
 
 // New constructs a new Distributor
-func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer) (*Distributor, error) {
+func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, log log.Logger) (*Distributor, error) {
 	if cfg.IngesterClientFactory == nil {
 		cfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.MakeIngesterClient(addr, clientConfig)
@@ -212,13 +220,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	replicas, err := newClusterTracker(cfg.HATrackerConfig, limits, reg)
+	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log)
 	if err != nil {
 		return nil, err
 	}
 
 	subservices := []services.Service(nil)
-	subservices = append(subservices, replicas)
+	subservices = append(subservices, haTracker)
 
 	// Create the configured ingestion rate limit strategy (local or global). In case
 	// it's an internal dependency and can't join the distributors ring, we skip rate
@@ -243,12 +251,14 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 	d := &Distributor{
 		cfg:                  cfg,
+		log:                  log,
 		ingestersRing:        ingestersRing,
-		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log.Logger),
+		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
 		distributorsRing:     distributorsRing,
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:            replicas,
+		HATracker:            haTracker,
+		activeUsers:          util.NewActiveUsers(),
 	}
 
 	subservices = append(subservices, d.ingesterPool)
@@ -269,12 +279,41 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-d.subservicesWatcher.Chan():
-		return errors.Wrap(err, "distributor subservice failed")
+	metricsCleanupTimer := time.NewTicker(metricsCleanupInterval)
+	defer metricsCleanupTimer.Stop()
+
+	for {
+		select {
+		case <-metricsCleanupTimer.C:
+			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
+			for _, userID := range inactiveUsers {
+				cleanupMetricsForUser(userID, d.log)
+				d.HATracker.cleanupHATrackerMetricsForUser(userID)
+			}
+			continue
+
+		case <-ctx.Done():
+			return nil
+
+		case err := <-d.subservicesWatcher.Chan():
+			return errors.Wrap(err, "distributor subservice failed")
+		}
 	}
+}
+
+func cleanupMetricsForUser(userID string, log log.Logger) {
+	receivedSamples.DeleteLabelValues(userID)
+	receivedMetadata.DeleteLabelValues(userID)
+	incomingSamples.DeleteLabelValues(userID)
+	incomingMetadata.DeleteLabelValues(userID)
+	nonHASamples.DeleteLabelValues(userID)
+	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
+
+	if err := util.DeleteMatchingLabels(dedupedSamples, map[string]string{"user": userID}); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+	}
+
+	validation.DeletePerUserValidationMetrics(userID, log)
 }
 
 // Called after distributor is asked to stop via StopAsync.
@@ -352,7 +391,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.HATracker.checkReplica(ctx, userID, cluster, replica)
+	err := d.HATracker.checkReplica(ctx, userID, cluster, replica, time.Now())
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err
@@ -393,6 +432,10 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	if err != nil {
 		return nil, err
 	}
+
+	now := time.Now()
+	d.activeUsers.UpdateUserTimestamp(userID, now.UnixNano())
+
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 
 	var firstPartialErr error
@@ -492,7 +535,8 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 			return nil, err
 		}
 
-		validatedSeries, err := d.validateSeries(ts, userID, req.GetSkipLabelNameValidation())
+		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
+		validatedSeries, err := d.validateSeries(ts, userID, skipLabelNameValidation)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
@@ -535,7 +579,6 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 		return &ingester_client.WriteResponse{}, firstPartialErr
 	}
 
-	now := time.Now()
 	totalN := validatedSamples + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.

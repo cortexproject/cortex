@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -266,6 +267,95 @@ func TestDistributor_Push(t *testing.T) {
 	}
 }
 
+func TestDistributor_MetricsCleanup(t *testing.T) {
+	receivedSamples.Reset()
+	receivedMetadata.Reset()
+	incomingSamples.Reset()
+	incomingMetadata.Reset()
+	nonHASamples.Reset()
+	dedupedSamples.Reset()
+	latestSeenSampleTimestampPerUser.Reset()
+
+	metrics := []string{
+		"cortex_distributor_received_samples_total",
+		"cortex_distributor_received_metadata_total",
+		"cortex_distributor_deduped_samples_total",
+		"cortex_distributor_samples_in_total",
+		"cortex_distributor_metadata_in_total",
+		"cortex_distributor_non_ha_samples_received_total",
+		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+	}
+
+	receivedSamples.WithLabelValues("userA").Add(5)
+	receivedSamples.WithLabelValues("userB").Add(10)
+	receivedMetadata.WithLabelValues("userA").Add(5)
+	receivedMetadata.WithLabelValues("userB").Add(10)
+	incomingSamples.WithLabelValues("userA").Add(5)
+	incomingMetadata.WithLabelValues("userA").Add(5)
+	nonHASamples.WithLabelValues("userA").Add(5)
+	dedupedSamples.WithLabelValues("userA", "cluster1").Inc() // We cannot clean this metric
+	latestSeenSampleTimestampPerUser.WithLabelValues("userA").Set(1111)
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
+		# TYPE cortex_distributor_deduped_samples_total counter
+		cortex_distributor_deduped_samples_total{cluster="cluster1",user="userA"} 1
+
+		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+		cortex_distributor_latest_seen_sample_timestamp_seconds{user="userA"} 1111
+
+		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# TYPE cortex_distributor_metadata_in_total counter
+		cortex_distributor_metadata_in_total{user="userA"} 5
+
+		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
+		# TYPE cortex_distributor_non_ha_samples_received_total counter
+		cortex_distributor_non_ha_samples_received_total{user="userA"} 5
+
+		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
+		# TYPE cortex_distributor_received_metadata_total counter
+		cortex_distributor_received_metadata_total{user="userA"} 5
+		cortex_distributor_received_metadata_total{user="userB"} 10
+
+		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_total counter
+		cortex_distributor_received_samples_total{user="userA"} 5
+		cortex_distributor_received_samples_total{user="userB"} 10
+
+		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
+		# TYPE cortex_distributor_samples_in_total counter
+		cortex_distributor_samples_in_total{user="userA"} 5
+`), metrics...))
+
+	cleanupMetricsForUser("userA", log.NewNopLogger())
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
+		# TYPE cortex_distributor_deduped_samples_total counter
+
+		# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+
+		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# TYPE cortex_distributor_metadata_in_total counter
+
+		# HELP cortex_distributor_non_ha_samples_received_total The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.
+		# TYPE cortex_distributor_non_ha_samples_received_total counter
+
+		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
+		# TYPE cortex_distributor_received_metadata_total counter
+		cortex_distributor_received_metadata_total{user="userB"} 10
+
+		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_total counter
+		cortex_distributor_received_samples_total{user="userB"} 10
+
+		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
+		# TYPE cortex_distributor_samples_in_total counter
+`), metrics...))
+}
+
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		samples       int
@@ -430,12 +520,12 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				d := ds[0]
 
 				if tc.enableTracker {
-					r, err := newClusterTracker(HATrackerConfig{
+					r, err := newHATracker(HATrackerConfig{
 						EnableHATracker: true,
 						KVStore:         kv.Config{Mock: mock},
 						UpdateTimeout:   100 * time.Millisecond,
 						FailoverTimeout: time.Second,
-					}, trackerLimits{maxClusters: 100}, nil)
+					}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
 					require.NoError(t, err)
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
 					d.HATracker = r
@@ -443,7 +533,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
-				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica)
+				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)
@@ -840,6 +930,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 	tests := map[string]struct {
 		inputLabels                labels.Labels
+		skipLabelNameValidationCfg bool
 		skipLabelNameValidationReq bool
 		errExpected                bool
 		errMessage                 string
@@ -848,6 +939,11 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 			inputLabels: inputLabels,
 			errExpected: true,
 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
+		},
+		"label name validation can be skipped via config": {
+			inputLabels:                inputLabels,
+			skipLabelNameValidationCfg: true,
+			errExpected:                false,
 		},
 		"label name validation can be skipped via WriteRequest parameter": {
 			inputLabels:                inputLabels,
@@ -859,10 +955,11 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	for testName, tc := range tests {
 		t.Run(testName, func(t *testing.T) {
 			ds, _, _ := prepare(t, prepConfig{
-				numIngesters:     2,
-				happyIngesters:   2,
-				numDistributors:  1,
-				shuffleShardSize: 1,
+				numIngesters:            2,
+				happyIngesters:          2,
+				numDistributors:         1,
+				shuffleShardSize:        1,
+				skipLabelNameValidation: tc.skipLabelNameValidationCfg,
 			})
 			req := mockWriteRequest(tc.inputLabels, 42, 100000)
 			req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
@@ -1117,6 +1214,7 @@ type prepConfig struct {
 	shuffleShardSize             int
 	limits                       *validation.Limits
 	numDistributors              int
+	skipLabelNameValidation      bool
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring) {
@@ -1195,6 +1293,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.InstanceID = strconv.Itoa(i)
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
+		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -1206,7 +1305,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		overrides, err := validation.NewOverrides(*cfg.limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil)
+		d, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

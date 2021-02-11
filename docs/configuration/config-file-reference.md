@@ -486,7 +486,7 @@ ha_tracker:
       [mirror_timeout: <duration> | default = 2s]
 
 # remote_write API max receive message size (bytes).
-# CLI flag: -distributor.max-recv-body-size
+# CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
 # Timeout for downstream ingesters.
@@ -1312,8 +1312,8 @@ storage:
       # CLI flag: -ruler.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
-      # KMS Encryption Context used for object encryption. It expects a JSON as
-      # a string.
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
       # CLI flag: -ruler.storage.s3.sse.kms-encryption-context
       [kms_encryption_context: <string> | default = ""]
 
@@ -1430,6 +1430,40 @@ storage:
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
 
+alertmanager_client:
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -ruler.alertmanager-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -ruler.alertmanager-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ruler.alertmanager-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # HTTP Basic authentication username. It overrides the username set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-username
+  [basic_auth_username: <string> | default = ""]
+
+  # HTTP Basic authentication password. It overrides the password set in the URL
+  # (if any).
+  # CLI flag: -ruler.alertmanager-client.basic-auth-password
+  [basic_auth_password: <string> | default = ""]
+
 # Max time to tolerate outage for restoring "for" state of alert.
 # CLI flag: -ruler.for-outage-tolerance
 [for_outage_tolerance: <duration> | default = 1h]
@@ -1542,7 +1576,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
 
-# Max receive http body size (bytes).
+# Maximum size (bytes) of an accepted HTTP request body size.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
@@ -1771,8 +1805,8 @@ storage:
       # CLI flag: -alertmanager.storage.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
-      # KMS Encryption Context used for object encryption. It expects a JSON as
-      # a string.
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
       # CLI flag: -alertmanager.storage.s3.sse.kms-encryption-context
       [kms_encryption_context: <string> | default = ""]
 
@@ -2337,8 +2371,8 @@ aws:
     # CLI flag: -s3.sse.kms-key-id
     [kms_key_id: <string> | default = ""]
 
-    # KMS Encryption Context used for object encryption. It expects a JSON as a
-    # string.
+    # KMS Encryption Context used for object encryption. It expects JSON
+    # formatted string.
     # CLI flag: -s3.sse.kms-encryption-context
     [kms_encryption_context: <string> | default = ""]
 
@@ -3844,6 +3878,20 @@ s3:
   # CLI flag: -blocks-storage.s3.signature-version
   [signature_version: <string> | default = "v4"]
 
+  sse:
+    # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
+    # CLI flag: -blocks-storage.s3.sse.type
+    [type: <string> | default = ""]
+
+    # KMS Key ID used to encrypt objects in S3
+    # CLI flag: -blocks-storage.s3.sse.kms-key-id
+    [kms_key_id: <string> | default = ""]
+
+    # KMS Encryption Context used for object encryption. It expects JSON
+    # formatted string.
+    # CLI flag: -blocks-storage.s3.sse.kms-encryption-context
+    [kms_encryption_context: <string> | default = ""]
+
   http:
     # The time an idle connection will remain idle before closing.
     # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -3857,6 +3905,30 @@ s3:
     # client will accept any certificate and hostname.
     # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -blocks-storage.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -blocks-storage.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -blocks-storage.s3.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -blocks-storage.s3.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
 
 gcs:
   # GCS bucket name

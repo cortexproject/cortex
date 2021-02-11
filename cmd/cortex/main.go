@@ -22,7 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/log"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Version is set via build flag -ldflags -X main.Version
@@ -118,7 +118,7 @@ func main() {
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
-	err = cfg.Validate(util.Logger)
+	err = cfg.Validate(util_log.Logger)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error validating config: %v\n", err)
 		if !testMode {
@@ -137,7 +137,7 @@ func main() {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 	}
 
-	util.InitLogger(&cfg.Server)
+	util_log.InitLogger(&cfg.Server)
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
 	ballast := make([]byte, ballastBytes)
@@ -154,7 +154,7 @@ func main() {
 
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
 		if trace, err := tracing.NewFromEnv(name); err != nil {
-			level.Error(util.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
+			level.Error(util_log.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
 		} else {
 			defer trace.Close()
 		}
@@ -164,7 +164,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	t, err := cortex.New(cfg)
-	log.CheckFatal("initializing cortex", err)
+	util_log.CheckFatal("initializing cortex", err)
 
 	if printModules {
 		allDeps := t.ModuleManager.DependenciesForModule(cortex.All)
@@ -185,12 +185,12 @@ func main() {
 		return
 	}
 
-	level.Info(util.Logger).Log("msg", "Starting Cortex", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
 	err = t.Run()
 
 	runtime.KeepAlive(ballast)
-	log.CheckFatal("running cortex", err)
+	util_log.CheckFatal("running cortex", err)
 }
 
 // Parse -config.file and -config.expand-env option via separate flag set, to avoid polluting default one and calling flag.Parse on it twice.

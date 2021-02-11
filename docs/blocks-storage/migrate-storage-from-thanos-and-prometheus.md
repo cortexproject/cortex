@@ -18,18 +18,57 @@ The Cortex blocks storage has few requirements that should be considered when mi
 
 ## How to migrate the storage
 
-Currently, no tool is provided to migrate TSDB blocks from Thanos / Prometheus to Cortex, but writing an automation should be fairly easy. This automation could do the following:
-
-1. Upload TSDB blocks from Thanos / Prometheus to Cortex bucket
-2. Manipulate `meta.json` file for each block in the Cortex bucket
-
 ### Upload TSDB blocks to Cortex bucket
 
 TSDB blocks stored in Prometheus local disk or Thanos bucket should be copied/uploaded to the Cortex bucket at the location `bucket://<tenant-id>/` (when Cortex is running with auth disabled then `<tenant-id>` must be `fake`).
 
-### Manipulate `meta.json` file
+### Migrate block metadata (`meta.json`) to Cortex
 
-For each block copied/uploaded to the Cortex bucket, the `meta.json` should be manipulated. The easiest approach would be iterating the tenants and blocks in the bucket and for each block:
+For each block copied/uploaded to the Cortex bucket, there are a few changes required to the `meta.json`.
+
+#### Automatically migrate metadata using the `thanosconvert` tool
+
+`thanosconvert` can iterate over a Cortex bucket and make sure that each `meta.json` has the correct `thanos` > `labels` layout.
+
+⚠ Warning ⚠ `thanosconvert` will modify files in the bucket you specify. It's recommended that you have backups or enable object versioning before running this tool.
+
+To run `thanosconvert`, you need to provide it with the bucket configuration in the same format as the [blocks storage bucket configuration](../configuration/config-file-reference.md#blocks_storage_config).
+```yaml
+# bucket-config.yaml
+backend: s3
+s3:
+  endpoint: s3.us-east-1.amazonaws.com
+  bucket_name: my-cortex-bucket
+```
+
+You can run thanosconvert directly using Go:
+```bash
+go install github.com/cortexproject/cortex/cmd/thanosconvert
+thanosconvert
+```
+
+Or use the provided docker image:
+```bash
+docker run quay.io/cortexproject/thanosconvert
+```
+
+You can run the tool in dry-run mode first to find out what which blocks it will migrate:
+
+```bash
+thanosconvert -config ./bucket-config.yaml -dry-run
+```
+
+Once you're happy with the results, you can run without dry run to migrate blocks:
+```bash
+thanosconvert -config ./bucket-config.yaml
+```
+
+You can cancel a conversion in progress (with Ctrl+C) and rerun `thanosconvert`. It won't change any blocks which have been written by Cortex or already converted from Thanos, so you can run `thanosconvert` multiple times.
+
+
+#### Migrate metadata manually
+
+If you need to migrate the block metadata manually, you need to:
 
 1. Download the `meta.json` to the local filesystem
 2. Decode the JSON
@@ -43,7 +82,8 @@ The `meta.json` should be manipulated in order to ensure:
 - The `thanos` > `labels` do not contain any Thanos-specific external label
 - The `thanos` > `labels` contain the Cortex-specific external label `"__org_id__": "<tenant-id>"`
 
-#### When migrating from Thanos
+
+##### When migrating from Thanos
 
 When migrating from Thanos, the easiest approach would be keep the existing `thanos` root-level entry as is, except:
 
@@ -66,7 +106,7 @@ For example, when migrating a block from Thanos for the tenant `user-1`, the `th
 }
 ```
 
-#### When migrating from Prometheus
+##### When migrating from Prometheus
 
 When migrating from Prometheus, the `meta.json` file will not contain any `thanos` root-level entry and, for this reason, it would need to be generated:
 

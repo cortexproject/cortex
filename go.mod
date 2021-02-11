@@ -26,7 +26,7 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/golang/protobuf v1.4.3
-	github.com/golang/snappy v0.0.2
+	github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
 	github.com/gorilla/mux v1.7.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0
 	github.com/hashicorp/consul/api v1.8.1
@@ -34,7 +34,6 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.2
 	github.com/json-iterator/go v1.1.10
-	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.2
 	github.com/mitchellh/go-wordwrap v1.0.0
@@ -53,7 +52,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.6.1
-	github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51
+	github.com/thanos-io/thanos v0.13.1-0.20210204123931-82545cdd16fe
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210112142934-23c8d7fa6120
 	go.etcd.io/bbolt v1.3.5-0.20200615073812-232d8fc87f50

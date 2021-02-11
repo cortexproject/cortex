@@ -181,6 +181,10 @@ lint:
 		./pkg/frontend/... \
 		./pkg/querier/tenantfederation/... \
 		./pkg/querier/queryrange/...
+	# Ensure packages that no longer use a global logger don't reintroduce it
+	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
+		./pkg/ingester/... \
+		./pkg/flusher/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev
@@ -223,6 +227,7 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 	embedmd -w docs/configuration/single-process-config.md
+	embedmd -w docs/guides/overrides-exporter.md
 
 endif
 

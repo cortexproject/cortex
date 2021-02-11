@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -49,7 +50,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, reg)
+	ing, err := New(cfg, clientConfig, overrides, store, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 

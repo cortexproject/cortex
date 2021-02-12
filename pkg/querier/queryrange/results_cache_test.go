@@ -17,7 +17,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -106,7 +105,7 @@ func mkExtent(start, end int64) Extent {
 
 func TestShouldCache(t *testing.T) {
 	maxCacheTime := int64(150 * 1000)
-	c := &resultsCache{logger: util_log.Logger, cacheGenNumberLoader: newMockCacheGenNumberLoader()}
+	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
 	for _, tc := range []struct {
 		name                   string
 		request                Request

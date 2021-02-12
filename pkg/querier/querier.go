@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -28,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -167,7 +167,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		Reg:                reg,
 		ActiveQueryTracker: createActiveQueryTracker(cfg),
 		MaxSamples:         cfg.MaxSamples,
@@ -199,7 +199,7 @@ func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.Logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, log.NewNopLogger())
 	}
 
 	return nil

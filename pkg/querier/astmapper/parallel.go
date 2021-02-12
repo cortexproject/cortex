@@ -1,12 +1,7 @@
 package astmapper
 
 import (
-	"fmt"
-
-	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var summableAggregates = map[parser.ItemType]struct{}{
@@ -90,7 +85,9 @@ func CanParallelize(node parser.Node) bool {
 		return true
 
 	default:
-		level.Error(util_log.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node))
+		// Should never occur, unknown types will return errors when parsed. However, the best course of
+		// action is to return false. AST type errors from the expression will be returned the next time in
+		// the request lifecylce that it is parsed.
 		return false
 	}
 

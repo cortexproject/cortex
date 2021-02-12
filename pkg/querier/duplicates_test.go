@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -13,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestDuplicatesSamples(t *testing.T) {
@@ -88,7 +88,7 @@ func runPromQLAndGetJSONResult(t *testing.T, query string, ts client.TimeSeries,
 	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]client.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:     util_log.Logger,
+		Logger:     log.NewNopLogger(),
 		Timeout:    10 * time.Second,
 		MaxSamples: 1e6,
 	})

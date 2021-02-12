@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -68,7 +68,7 @@ func TestResetConcurrency(t *testing.T) {
 				MaxConcurrentRequests: tt.maxConcurrent,
 			}
 
-			w, err := newQuerierWorkerWithProcessor(cfg, util_log.Logger, &mockProcessor{}, "", nil)
+			w, err := newQuerierWorkerWithProcessor(cfg, log.NewNopLogger(), &mockProcessor{}, "", nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
 

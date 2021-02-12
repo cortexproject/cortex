@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/prometheus/common/model"
@@ -260,10 +260,10 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	dir, err := ioutil.TempDir("", t.Name())
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, util_log.Logger)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		ActiveQueryTracker: queryTracker,
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
@@ -345,7 +345,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 	}
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:        util_log.Logger,
+		Logger:        log.NewNopLogger(),
 		MaxSamples:    1e6,
 		Timeout:       1 * time.Minute,
 		LookbackDelta: engineLookbackDelta,
@@ -449,7 +449,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 
 			// Create the PromQL engine to execute the query.
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:             util_log.Logger,
+				Logger:             log.NewNopLogger(),
 				ActiveQueryTracker: nil,
 				MaxSamples:         1e6,
 				Timeout:            1 * time.Minute,
@@ -541,7 +541,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 	// Create the PromQL engine to execute the queries.
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		ActiveQueryTracker: nil,
 		MaxSamples:         1e6,
 		LookbackDelta:      engineLookbackDelta,
@@ -702,11 +702,11 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q
 	dir, err := ioutil.TempDir("", "test_query")
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, util_log.Logger)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		ActiveQueryTracker: queryTracker,
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
@@ -842,10 +842,10 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	dir, err := ioutil.TempDir("", t.Name())
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, util_log.Logger)
+	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		ActiveQueryTracker: queryTracker,
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,

@@ -25,7 +25,7 @@ var (
 type RuleStore interface {
 	ListAllUsers(ctx context.Context) ([]string, error)
 
-	// Returns all rule groups for all users.
+	// ListAllRuleGroups returns all rule groups for all users.
 	ListAllRuleGroups(ctx context.Context) (map[string]RuleGroupList, error)
 
 	// ListRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
@@ -40,12 +40,15 @@ type RuleStore interface {
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *RuleGroupDesc) error
 
-	// Deletes single rule group.
+	// DeleteRuleGroup deletes single rule group.
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
 
-	// Lists rule groups for given user and namespace, and deletes all rule groups.
+	// DeleteNamespace lists rule groups for given user and namespace, and deletes all rule groups.
 	// If namespace is empty, deletes all rule groups for user.
 	DeleteNamespace(ctx context.Context, userID, namespace string) error
+
+	// SupportsModifications true if this RuleStore supports operations that modify rule groups in the store.
+	SupportsModifications() bool
 }
 
 // RuleGroupList contains a set of rule groups
@@ -71,6 +74,10 @@ type ConfigRuleStore struct {
 	configClient  client.Client
 	since         userconfig.ID
 	ruleGroupList map[string]RuleGroupList
+}
+
+func (c *ConfigRuleStore) SupportsModifications() bool {
+	return false
 }
 
 // NewConfigRuleStore constructs a ConfigRuleStore

@@ -58,18 +58,30 @@ func (api *BlocksPurgerAPI) DeleteTenant(w http.ResponseWriter, r *http.Request)
 	level.Info(api.logger).Log("msg", "tenant deletion mark in blocks storage created", "user", userID)
 
 	if api.ruleStore != nil {
-		err = api.ruleStore.DeleteNamespace(r.Context(), userID, "") // Empty namespace = delete all rule groups.
-		if err != nil && !errors.Is(err, rules.ErrGroupNamespaceNotFound) {
+		err := api.deleteRules(r.Context(), userID)
+		if err != nil {
 			level.Error(api.logger).Log("msg", "failed to delete tenant rule groups", "user", userID, "err", err)
-
 			http.Error(w, errors.Wrapf(err, "failed to delete tenant rule groups").Error(), http.StatusInternalServerError)
 			return
 		}
-
-		level.Info(api.logger).Log("msg", "deleted all tenant rule groups", "user", userID)
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (api *BlocksPurgerAPI) deleteRules(ctx context.Context, userID string) error {
+	if !api.ruleStore.SupportsModifications() {
+		level.Warn(api.logger).Log("msg", "cannot delete tenant rule groups, using read-only rule store", "user", userID)
+		return nil
+	}
+
+	err := api.ruleStore.DeleteNamespace(ctx, userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rules.ErrGroupNamespaceNotFound) {
+		return err
+	}
+
+	level.Info(api.logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	return nil
 }
 
 type DeleteTenantStatusResponse struct {

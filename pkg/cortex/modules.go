@@ -633,11 +633,6 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
-	if t.Cfg.isModuleEnabled(Purger) && !t.Cfg.PurgerConfig.EnableDeletionOfRuleGroups {
-		// Don't set t.RulerStorage, then it won't be used by Tenant Deletion API.
-		return
-	}
-
 	t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
 	return
 }
@@ -785,6 +780,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, nil
 	}
 
+	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
 	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

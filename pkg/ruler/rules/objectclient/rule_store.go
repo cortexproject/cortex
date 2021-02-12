@@ -37,6 +37,10 @@ type RuleStore struct {
 	loadConcurrency int
 }
 
+func (o *RuleStore) SupportsModifications() bool {
+	return true
+}
+
 // NewRuleStore returns a new RuleStore
 func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
 	return &RuleStore{

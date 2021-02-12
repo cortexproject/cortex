@@ -91,9 +91,6 @@ type Config struct {
 	NumWorkers                int           `yaml:"num_workers"`
 	ObjectStoreType           string        `yaml:"object_store_type"`
 	DeleteRequestCancelPeriod time.Duration `yaml:"delete_request_cancel_period"`
-
-	// Used by tenant deletion API.
-	EnableDeletionOfRuleGroups bool `yaml:"tenant_deletion_rule_groups_enabled"`
 }
 
 // RegisterFlags registers CLI flags for Config
@@ -102,8 +99,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.NumWorkers, "purger.num-workers", 2, "Number of workers executing delete plans in parallel")
 	f.StringVar(&cfg.ObjectStoreType, "purger.object-store-type", "", "Name of the object store to use for storing delete plans")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "purger.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-
-	f.BoolVar(&cfg.EnableDeletionOfRuleGroups, "purger.tenant-deletion-rule-groups-enabled", false, "Enable deletion of rule groups when deleting tenant.")
 }
 
 type workerJob struct {

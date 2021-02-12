@@ -247,11 +247,6 @@ query_scheduler:
     # Skip validating server certificate.
     # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
-
-tenant_deletion:
-  # Enable deletion of rule groups when deleting tenant.
-  # CLI flag: -tenant-deletion.rule-groups-enabled
-  [rule_groups_enabled: <boolean> | default = false]
 ```
 
 ### `server_config`

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	strconv "strconv"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -122,34 +122,6 @@ func (s byLabel) Len() int           { return len(s) }
 func (s byLabel) Less(i, j int) bool { return strings.Compare(s[i].Name, s[j].Name) < 0 }
 func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
-
-// MarshalJSON implements json.Marshaler.
-func (s Sample) MarshalJSON() ([]byte, error) {
-	t, err := json.Marshal(model.Time(s.TimestampMs))
-	if err != nil {
-		return nil, err
-	}
-	v, err := json.Marshal(model.SampleValue(s.Value))
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (s *Sample) UnmarshalJSON(b []byte) error {
-	var t model.Time
-	var v model.SampleValue
-	vs := [...]stdjson.Unmarshaler{&t, &v}
-	if err := json.Unmarshal(b, &vs); err != nil {
-		return err
-	}
-	s.TimestampMs = int64(t)
-	s.Value = float64(v)
-	return nil
-}
-
 // MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
 // to a Prometheus one.
 func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textparse.MetricType {
@@ -175,61 +147,97 @@ func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textpars
 	}
 }
 
-// Only set from tests to get special behaviour to verify that custom marshal and unmarshal is used.
-var isTesting = false
+// IsTesting is only set from tests to get special behaviour to verify that custom sample encode and decode is used,
+// both when using jsonitor or standard json package.
+// It is public, so that test in client package can verify that it works for deprecated "client.Sample" type too.
+var IsTesting = false
+
+// MarshalJSON implements json.Marshaler.
+func (s Sample) MarshalJSON() ([]byte, error) {
+	if IsTesting && math.IsNaN(s.Value) {
+		return nil, fmt.Errorf("test sample")
+	}
+
+	t, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.Time(s.TimestampMs))
+	if err != nil {
+		return nil, err
+	}
+	v, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(model.SampleValue(s.Value))
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *Sample) UnmarshalJSON(b []byte) error {
+	var t model.Time
+	var v model.SampleValue
+	vs := [...]stdjson.Unmarshaler{&t, &v}
+	if err := jsoniter.ConfigCompatibleWithStandardLibrary.Unmarshal(b, &vs); err != nil {
+		return err
+	}
+	s.TimestampMs = int64(t)
+	s.Value = float64(v)
+
+	if IsTesting && math.IsNaN(float64(v)) {
+		return fmt.Errorf("test sample")
+	}
+	return nil
+}
+
+func SampleJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	sample := (*Sample)(ptr)
+
+	if IsTesting && math.IsNaN(sample.Value) {
+		stream.Error = fmt.Errorf("test sample")
+		return
+	}
+
+	stream.WriteArrayStart()
+	stream.WriteFloat64(float64(sample.TimestampMs) / float64(time.Second/time.Millisecond))
+	stream.WriteMore()
+	stream.WriteString(model.SampleValue(sample.Value).String())
+	stream.WriteArrayEnd()
+}
+
+func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	if !iter.ReadArray() {
+		iter.ReportError("cortexpb.Sample", "expected [")
+		return
+	}
+
+	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
+
+	if !iter.ReadArray() {
+		iter.ReportError("cortexpb.Sample", "expected ,")
+		return
+	}
+
+	bs := iter.ReadStringAsSlice()
+	ss := *(*string)(unsafe.Pointer(&bs))
+	v, err := strconv.ParseFloat(ss, 64)
+	if err != nil {
+		iter.ReportError("cortexpb.Sample", err.Error())
+		return
+	}
+
+	if IsTesting && math.IsNaN(v) {
+		iter.Error = fmt.Errorf("test sample")
+		return
+	}
+
+	if iter.ReadArray() {
+		iter.ReportError("cortexpb.Sample", "expected ]")
+	}
+
+	*(*Sample)(ptr) = Sample{
+		TimestampMs: int64(t),
+		Value:       v,
+	}
+}
 
 func init() {
-
-	jsoniter.RegisterTypeEncoderFunc("cortexpb.Sample", func(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-		sample := (*Sample)(ptr)
-
-		if isTesting && sample.TimestampMs == math.MinInt64 && math.IsNaN(sample.Value) {
-			stream.Error = fmt.Errorf("test sample")
-			return
-		}
-
-		stream.WriteArrayStart()
-		stream.WriteFloat64(float64(sample.TimestampMs) / float64(time.Second/time.Millisecond))
-		stream.WriteMore()
-		stream.WriteString(model.SampleValue(sample.Value).String())
-		stream.WriteArrayEnd()
-	}, func(unsafe.Pointer) bool {
-		return false
-	})
-
-	jsoniter.RegisterTypeDecoderFunc("cortexpb.Sample", func(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
-		if !iter.ReadArray() {
-			iter.ReportError("cortexpb.Sample", "expected [")
-			return
-		}
-
-		t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
-
-		if !iter.ReadArray() {
-			iter.ReportError("cortexpb.Sample", "expected ,")
-			return
-		}
-
-		bs := iter.ReadStringAsSlice()
-		ss := *(*string)(unsafe.Pointer(&bs))
-		v, err := strconv.ParseFloat(ss, 64)
-		if err != nil {
-			iter.ReportError("cortexpb.Sample", err.Error())
-			return
-		}
-
-		if isTesting && math.IsNaN(v) {
-			iter.Error = fmt.Errorf("test sample")
-			return
-		}
-
-		if iter.ReadArray() {
-			iter.ReportError("cortexpb.Sample", "expected ]")
-		}
-
-		*(*Sample)(ptr) = Sample{
-			TimestampMs: int64(t),
-			Value:       v,
-		}
-	})
+	jsoniter.RegisterTypeEncoderFunc("cortexpb.Sample", SampleJsoniterEncode, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeDecoderFunc("cortexpb.Sample", SampleJsoniterDecode)
 }

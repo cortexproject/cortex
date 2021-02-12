@@ -9,8 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
-var ToWriteRequest = cortexpb.ToWriteRequest
-
 // ToQueryRequest builds a QueryRequest proto.
 func ToQueryRequest(from, to model.Time, matchers []*labels.Matcher) (*QueryRequest, error) {
 	ms, err := toLabelMatchers(matchers)

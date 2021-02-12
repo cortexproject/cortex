@@ -63,6 +63,9 @@ var FromMetricsToLabelAdapters = cortexpb.FromMetricsToLabelAdapters
 var ReuseSlice = cortexpb.ReuseSlice
 
 // Deprecated. Use cortexpb package instead.
+var ToWriteRequest = cortexpb.ToWriteRequest
+
+// Deprecated. Use cortexpb package instead.
 const API = cortexpb.API
 
 // Deprecated. Use cortexpb package instead.

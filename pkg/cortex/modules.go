@@ -629,7 +629,14 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured in single binary mode and will not be started.")
+		return
+	}
+
+	// Purger didn't use ruler storage before, but now it does. However empty configuration just causes error,
+	// so to preserve previous purger behaviour, we simply disable it.
+	if t.Cfg.isModuleEnabled(Purger) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured. If you want to use tenant deletion API and delete rule groups, please configure ruler storage.")
 		return
 	}
 

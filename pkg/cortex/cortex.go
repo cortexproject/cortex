@@ -119,8 +119,6 @@ type Config struct {
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
 	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
-
-	TenantDeletionConfig purger.TenantDeletionConfig `yaml:"tenant_deletion"`
 }
 
 // RegisterFlags registers flag.
@@ -168,7 +166,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.QueryScheduler.RegisterFlags(f)
-	c.TenantDeletionConfig.RegisterFlags(f)
 
 	// These don't seem to have a home.
 	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")

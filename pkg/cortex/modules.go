@@ -633,7 +633,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
-	if t.Cfg.isModuleEnabled(Purger) && !t.Cfg.TenantDeletionConfig.EnableDeletionOfRuleGroups {
+	if t.Cfg.isModuleEnabled(Purger) && !t.Cfg.PurgerConfig.EnableDeletionOfRuleGroups {
 		// Don't set t.RulerStorage, then it won't be used by Tenant Deletion API.
 		return
 	}

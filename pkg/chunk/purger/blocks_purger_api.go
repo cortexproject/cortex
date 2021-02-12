@@ -2,7 +2,6 @@ package purger
 
 import (
 	"context"
-	"flag"
 	"net/http"
 	"strings"
 	"time"
@@ -20,14 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-type TenantDeletionConfig struct {
-	EnableDeletionOfRuleGroups bool `yaml:"rule_groups_enabled"`
-}
-
-func (cfg *TenantDeletionConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.EnableDeletionOfRuleGroups, "tenant-deletion.rule-groups-enabled", false, "Enable deletion of rule groups when deleting tenant.")
-}
 
 type BlocksPurgerAPI struct {
 	bucketClient objstore.Bucket
@@ -121,7 +112,7 @@ func (api *BlocksPurgerAPI) isRulesForUserDeleted(ctx context.Context, userID st
 
 	list, err := api.ruleStore.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
 	if err != nil {
-		return false, nil
+		return false, errors.Wrap(err, "failed to list rule groups for tenant")
 	}
 
 	return len(list) == 0, nil

@@ -47,7 +47,7 @@
   * `cortex_ha_tracker_elected_replicas_cleanup_cycles_total`
   * `cortex_ha_tracker_elected_replicas_marked_for_deletion_total`
   * `cortex_ha_tracker_elected_replicas_deleted_total`
-  * `cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total` to monitor this process. #3809
+  * `cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total`
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

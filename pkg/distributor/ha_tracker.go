@@ -158,8 +158,8 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 		}, []string{"user", "cluster"}),
 
 		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ha_tracker_elected_replicas_cleanup_cycles_total",
-			Help: "Number of elected replicas cleanup cycles.",
+			Name: "cortex_ha_tracker_elected_replicas_cleanup_started_total",
+			Help: "Number of elected replicas cleanup loops started.",
 		}),
 		replicasMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ha_tracker_elected_replicas_marked_for_deletion_total",
@@ -251,8 +251,8 @@ func (c *haTracker) loop(ctx context.Context) error {
 }
 
 const (
-	cleanupCyclePeriod = 30 * time.Minute
-	cleanupCycleJitter = 10 * time.Minute
+	cleanupCyclePeriod         = 30 * time.Minute
+	cleanupCycleJitterVariance = 0.2 // for 30 minutes, this is ±6 min
 
 	// If we have received last sample for given cluster before this timeout, we will mark selected replica for deletion.
 	// If selected replica is marked for deletion for this time, it is deleted completely.
@@ -260,9 +260,7 @@ const (
 )
 
 func (c *haTracker) cleanupOldReplicasLoop(ctx context.Context) {
-	tickerTimeout := cleanupCyclePeriod + time.Duration(rand.Int63n(cleanupCycleJitter.Nanoseconds())-cleanupCycleJitter.Nanoseconds()/2)
-
-	tick := time.NewTicker(tickerTimeout)
+	tick := time.NewTicker(util.DurationWithJitter(cleanupCyclePeriod, cleanupCycleJitterVariance))
 	defer tick.Stop()
 
 	for {
@@ -281,7 +279,7 @@ func (c *haTracker) cleanupOldReplicasLoop(ctx context.Context) {
 func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) {
 	keys, err := c.client.List(ctx, "")
 	if err != nil {
-		level.Error(c.logger).Log("msg", "cleanup: failed to list replica keys", "err", err)
+		level.Warn(c.logger).Log("msg", "cleanup: failed to list replica keys", "err", err)
 		return
 	}
 
@@ -292,7 +290,7 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 
 		val, err := c.client.Get(ctx, key)
 		if err != nil {
-			level.Error(c.logger).Log("msg", "cleanup: failed to get replica value", "key", key, "err", err)
+			level.Warn(c.logger).Log("msg", "cleanup: failed to get replica value", "key", key, "err", err)
 			continue
 		}
 
@@ -330,15 +328,12 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 		if desc.DeletedAt == 0 && timestamp.Time(desc.ReceivedAt).Before(deadline) {
 			err := c.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
 				d, ok := in.(*ReplicaDesc)
-				if !ok || d.DeletedAt > 0 || !timestamp.Time(desc.ReceivedAt).Before(deadline) {
+				if !ok || d == nil || d.DeletedAt > 0 || !timestamp.Time(desc.ReceivedAt).Before(deadline) {
 					return nil, false, nil
 				}
 
-				return &ReplicaDesc{
-					Replica:    d.Replica,
-					ReceivedAt: d.ReceivedAt,
-					DeletedAt:  timestamp.FromTime(time.Now()),
-				}, true, nil
+				d.DeletedAt = timestamp.FromTime(time.Now())
+				return d, true, nil
 			})
 
 			if err != nil {

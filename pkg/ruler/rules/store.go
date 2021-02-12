@@ -47,7 +47,7 @@ type RuleStore interface {
 	// If namespace is empty, deletes all rule groups for user.
 	DeleteNamespace(ctx context.Context, userID, namespace string) error
 
-	// SupportsModifications true if this RuleStore supports operations that modify rule groups in the store.
+	// SupportsModifications returns true if this RuleStore supports operations that modify rule groups in the store.
 	SupportsModifications() bool
 }
 

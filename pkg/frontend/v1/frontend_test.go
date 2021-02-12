@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
@@ -43,7 +45,7 @@ func TestFrontend(t *testing.T) {
 		_, err := w.Write([]byte("Hello World"))
 		require.NoError(t, err)
 	})
-	test := func(addr string) {
+	test := func(addr string, _ *Frontend) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
@@ -59,8 +61,8 @@ func TestFrontend(t *testing.T) {
 		assert.Equal(t, "Hello World", string(body))
 	}
 
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
 }
 
 func TestFrontendPropagateTrace(t *testing.T) {
@@ -81,7 +83,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		require.NoError(t, err)
 	}))
 
-	test := func(addr string) {
+	test := func(addr string, _ *Frontend) {
 		sp, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
 		defer sp.Finish()
 		traceID := fmt.Sprintf("%v", sp.Context().(jaeger.SpanContext).TraceID())
@@ -109,8 +111,8 @@ func TestFrontendPropagateTrace(t *testing.T) {
 		// Query should do one call.
 		assert.Equal(t, traceID, <-observedTraceID)
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
 }
 
 func TestFrontendCheckReady(t *testing.T) {
@@ -151,7 +153,7 @@ func TestFrontendCancel(t *testing.T) {
 		<-r.Context().Done()
 		tries.Inc()
 	})
-	test := func(addr string) {
+	test := func(addr string, _ *Frontend) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
 		require.NoError(t, err)
 		err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
@@ -171,12 +173,54 @@ func TestFrontendCancel(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, int32(1), tries.Load())
 	}
-	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, false, nil, nil)
 	tries.Store(0)
-	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil)
+	testFrontend(t, defaultFrontendConfig(), handler, test, true, nil, nil)
 }
 
-func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string), matchMaxConcurrency bool, l log.Logger) {
+func TestFrontendMetricsCleanup(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := w.Write([]byte("Hello World"))
+		require.NoError(t, err)
+	})
+
+	for _, matchMaxConcurrency := range []bool{false, true} {
+		reg := prometheus.NewPedanticRegistry()
+
+		test := func(addr string, fr *Frontend) {
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/", addr), nil)
+			require.NoError(t, err)
+			err = user.InjectOrgIDIntoHTTPRequest(user.InjectOrgID(context.Background(), "1"), req)
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode)
+
+			body, err := ioutil.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			assert.Equal(t, "Hello World", string(body))
+
+			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
+				# TYPE cortex_query_frontend_queue_length gauge
+				cortex_query_frontend_queue_length{user="1"} 0
+			`), "cortex_query_frontend_queue_length"))
+
+			fr.cleanupInactiveUserMetrics("1")
+
+			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
+				# TYPE cortex_query_frontend_queue_length gauge
+			`), "cortex_query_frontend_queue_length"))
+		}
+
+		testFrontend(t, defaultFrontendConfig(), handler, test, matchMaxConcurrency, nil, reg)
+	}
+}
+
+func testFrontend(t *testing.T, config Config, handler http.Handler, test func(addr string, frontend *Frontend), matchMaxConcurrency bool, l log.Logger, reg prometheus.Registerer) {
 	logger := log.NewNopLogger()
 	if l != nil {
 		logger = l
@@ -196,10 +240,12 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1, err := New(config, limits{}, logger, nil)
-	require.NoError(t, err)
+	v1 := New(config, limits{}, logger, reg)
 	require.NotNil(t, v1)
-	defer v1.Close()
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
+	defer func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), v1))
+	}()
 
 	grpcServer := grpc.NewServer(
 		grpc.StreamInterceptor(otgrpc.OpenTracingStreamServerInterceptor(opentracing.GlobalTracer())),
@@ -232,7 +278,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), worker))
 
-	test(httpListen.Addr().String())
+	test(httpListen.Addr().String(), v1)
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), worker))
 }

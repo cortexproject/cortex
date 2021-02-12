@@ -37,7 +37,7 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
-// Initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
+// InitFrontend initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
 // all if downstream Prometheus URL is used instead.
 //
 // Returned RoundTripper can be wrapped in more round-tripper middlewares, and then eventually registered

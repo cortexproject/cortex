@@ -61,7 +61,7 @@ type Handler struct {
 	querySeconds *prometheus.CounterVec
 }
 
-// New creates a new frontend handler.
+// NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
 	h := &Handler{
 		cfg:          cfg,

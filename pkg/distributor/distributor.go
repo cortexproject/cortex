@@ -115,9 +115,6 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
-
-	inactiveUserTimeout    = 15 * time.Minute
-	metricsCleanupInterval = inactiveUserTimeout / 5
 )
 
 const (
@@ -150,7 +147,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsers
+	activeUsers *util.ActiveUsersCleanupService
 }
 
 // Config contains the configuration require to
@@ -258,10 +255,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:            haTracker,
-		activeUsers:          util.NewActiveUsers(),
 	}
+	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupMetricsForUser)
 
-	subservices = append(subservices, d.ingesterPool)
+	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
 	if err != nil {
 		return nil, err
@@ -279,19 +276,8 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	metricsCleanupTimer := time.NewTicker(metricsCleanupInterval)
-	defer metricsCleanupTimer.Stop()
-
 	for {
 		select {
-		case <-metricsCleanupTimer.C:
-			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
-			for _, userID := range inactiveUsers {
-				cleanupMetricsForUser(userID, d.log)
-				d.HATracker.cleanupHATrackerMetricsForUser(userID)
-			}
-			continue
-
 		case <-ctx.Done():
 			return nil
 
@@ -301,7 +287,9 @@ func (d *Distributor) running(ctx context.Context) error {
 	}
 }
 
-func cleanupMetricsForUser(userID string, log log.Logger) {
+func (d *Distributor) cleanupMetricsForUser(userID string) {
+	d.HATracker.cleanupHATrackerMetricsForUser(userID)
+
 	receivedSamples.DeleteLabelValues(userID)
 	receivedMetadata.DeleteLabelValues(userID)
 	incomingSamples.DeleteLabelValues(userID)
@@ -310,10 +298,10 @@ func cleanupMetricsForUser(userID string, log log.Logger) {
 	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
 
 	if err := util.DeleteMatchingLabels(dedupedSamples, map[string]string{"user": userID}); err != nil {
-		level.Warn(log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
 	}
 
-	validation.DeletePerUserValidationMetrics(userID, log)
+	validation.DeletePerUserValidationMetrics(userID, d.log)
 }
 
 // Called after distributor is asked to stop via StopAsync.
@@ -434,7 +422,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	}
 
 	now := time.Now()
-	d.activeUsers.UpdateUserTimestamp(userID, now.UnixNano())
+	d.activeUsers.UpdateUserTimestamp(userID, now)
 
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 

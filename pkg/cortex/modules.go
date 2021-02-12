@@ -555,10 +555,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 		t.API.RegisterQueryFrontend1(frontendV1)
 		t.Frontend = frontendV1
 
-		return services.NewIdleService(nil, func(_ error) error {
-			frontendV1.Close()
-			return nil
-		}), nil
+		return frontendV1, nil
 	} else if frontendV2 != nil {
 		t.API.RegisterQueryFrontend2(frontendV2)
 

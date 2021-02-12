@@ -1019,10 +1019,6 @@ The `query_range_config` configures the query splitting and caching in the Corte
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
-# Deprecated: Split queries by day and execute in parallel.
-# CLI flag: -querier.split-queries-by-day
-[split_queries_by_day: <boolean> | default = false]
-
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]

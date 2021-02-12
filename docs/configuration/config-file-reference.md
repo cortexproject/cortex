@@ -447,10 +447,6 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
-  # Enable deleting of old elected replicas from KV store.
-  # CLI flag: -distributor.ha-tracker.cleanup-old-replicas
-  [cleanup_old_replicas: <boolean> | default = false]
-
   # Backend storage to use for the ring. Please be aware that memberlist is not
   # supported by the HA tracker since gossip propagation is too slow for HA
   # purposes.

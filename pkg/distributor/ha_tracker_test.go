@@ -706,20 +706,20 @@ func TestCheckReplicaCleanup(t *testing.T) {
 	checkReplicaDeletionState(t, time.Second, c, user, cluster, false, false, false)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_ha_tracker_elected_replicas_marked_for_deletion_total Number of elected replicas marked for deletion.
-		# TYPE cortex_ha_tracker_elected_replicas_marked_for_deletion_total counter
-		cortex_ha_tracker_elected_replicas_marked_for_deletion_total 2
+		# HELP cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total Number of elected replicas marked for deletion.
+		# TYPE cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total counter
+		cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total 2
 
-		# HELP cortex_ha_tracker_elected_replicas_deleted_total Number of elected replicas deleted from KV store.
-		# TYPE cortex_ha_tracker_elected_replicas_deleted_total counter
-		cortex_ha_tracker_elected_replicas_deleted_total 1
+		# HELP cortex_ha_tracker_replicas_cleanup_deleted_total Number of elected replicas deleted from KV store.
+		# TYPE cortex_ha_tracker_replicas_cleanup_deleted_total counter
+		cortex_ha_tracker_replicas_cleanup_deleted_total 1
 
-		# HELP cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total Number of elected replicas that failed to be marked for deletion, or deleted.
-		# TYPE cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total counter
-		cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total 0
-	`), "cortex_ha_tracker_elected_replicas_marked_for_deletion_total",
-		"cortex_ha_tracker_elected_replicas_deleted_total",
-		"cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total",
+		# HELP cortex_ha_tracker_replicas_cleanup_delete_failed_total Number of elected replicas that failed to be marked for deletion, or deleted.
+		# TYPE cortex_ha_tracker_replicas_cleanup_delete_failed_total counter
+		cortex_ha_tracker_replicas_cleanup_delete_failed_total 0
+	`), "cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total",
+		"cortex_ha_tracker_replicas_cleanup_deleted_total",
+		"cortex_ha_tracker_replicas_cleanup_delete_failed_total",
 	))
 }
 

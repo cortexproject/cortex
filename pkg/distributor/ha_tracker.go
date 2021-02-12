@@ -156,19 +156,19 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 		}, []string{"user", "cluster"}),
 
 		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ha_tracker_elected_replicas_cleanup_started_total",
+			Name: "cortex_ha_tracker_replicas_cleanup_started_total",
 			Help: "Number of elected replicas cleanup loops started.",
 		}),
 		replicasMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ha_tracker_elected_replicas_marked_for_deletion_total",
+			Name: "cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total",
 			Help: "Number of elected replicas marked for deletion.",
 		}),
 		deletedReplicas: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ha_tracker_elected_replicas_deleted_total",
+			Name: "cortex_ha_tracker_replicas_cleanup_deleted_total",
 			Help: "Number of elected replicas deleted from KV store.",
 		}),
 		markingOrDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ha_tracker_elected_replicas_failed_to_mark_or_delete_total",
+			Name: "cortex_ha_tracker_replicas_cleanup_delete_failed_total",
 			Help: "Number of elected replicas that failed to be marked for deletion, or deleted.",
 		}),
 	}

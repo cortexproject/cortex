@@ -479,8 +479,14 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
 			continue
 		}
+
 		// If this extent is tiny, discard it: more efficient to do a few larger queries
-		if extent.End-extent.Start < s.minCacheExtent {
+
+		// However if the step is large enough, we would end up with a request with a single step
+		// inside the split query. For example, if the step size is more than 12h and the interval is 24h.
+		// When this happens, we set the start and end time of the split request to the same value.
+		// This means the extent's start and end time would be same, even if the timerange covers several hours.
+		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
 			continue
 		}
 

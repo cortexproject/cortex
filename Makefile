@@ -187,7 +187,8 @@ lint:
 	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
 		./pkg/ingester/... \
 		./pkg/flusher/... \
-		./pkg/querier/...
+		./pkg/querier/... \
+		./pkg/ruler/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev

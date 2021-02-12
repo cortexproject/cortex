@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -27,7 +28,7 @@ func TestRuler_rules(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
@@ -84,7 +85,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
@@ -141,7 +142,7 @@ func TestRuler_alerts(t *testing.T) {
 	defer rcleanup()
 	defer r.StopAsync()
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, "user1")
 	w := httptest.NewRecorder()
@@ -177,7 +178,7 @@ func TestRuler_Create(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	tc := []struct {
 		name   string
@@ -268,7 +269,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	router := mux.NewRouter()
 	router.Path("/api/v1/rules/{namespace}").Methods(http.MethodDelete).HandlerFunc(a.DeleteNamespace)
@@ -309,7 +310,7 @@ func TestRuler_Limits(t *testing.T) {
 
 	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	tc := []struct {
 		name   string

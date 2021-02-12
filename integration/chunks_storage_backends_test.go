@@ -246,7 +246,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 	store, err := ruler.NewRuleStorage(ruler.RuleStoreConfig{
 		Type:  "swift",
 		Swift: swiftConfig(swift),
-	}, nil)
+	}, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	ctx := context.Background()
 

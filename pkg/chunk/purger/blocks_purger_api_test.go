@@ -134,6 +134,28 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	}
 }
 
+func TestDeleteTenantRuleGroupsWithReadOnlyStore(t *testing.T) {
+	ruleGroups := []ruleGroupKey{
+		{user: "userA", namespace: "namespace", group: "group"},
+		{user: "userB", namespace: "namespace1", group: "group"},
+		{user: "userB", namespace: "namespace2", group: "group"},
+	}
+
+	obj, rs := setupRuleGroupsStore(t, ruleGroups)
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	rs = &readOnlyRuleStore{RuleStore: rs}
+
+	api := newBlocksPurgerAPI(objstore.NewInMemBucket(), rs, log.NewNopLogger())
+
+	// Make sure there is no error reported.
+	callDeleteTenantAPI(t, api, "userA")
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false) // Cannot delete from read-only store.
+	verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+}
+
 func callDeleteTenantAPI(t *testing.T, api *BlocksPurgerAPI, userID string) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -158,7 +180,7 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *BlocksPurgerAPI, 
 	require.Equal(t, expected, deleteResp.RuleGroupsDeleted)
 }
 
-func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, *objectclient.RuleStore) {
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rules.RuleStore) {
 	obj := chunk.NewMockStorage()
 	rs := objectclient.NewRuleStore(obj, 5)
 
@@ -173,4 +195,12 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockS
 
 type ruleGroupKey struct {
 	user, namespace, group string
+}
+
+type readOnlyRuleStore struct {
+	rules.RuleStore
+}
+
+func (r *readOnlyRuleStore) SupportsModifications() bool {
+	return false
 }

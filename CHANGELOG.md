@@ -12,7 +12,7 @@
 * [FEATURE] Overrides Exporter: Add `overrides-exporter` module for exposing per-tenant resource limit overrides as metrics. It is not included in `all` target, and must be explicitly enabled. #3785
 * [FEATURE] Experimental thanosconvert: introduce an experimental tool `thanosconvert` to migrate Thanos block metadata to Cortex metadata. #3770
 * [FEATURE] Alertmanager: It now shards the `/api/v1/alerts` API using the ring when sharding is enabled. #3671
-  * Added `NewMaxBytesHandler` in the utils package for limiting the size of http request body.
+  * Added `-alertmanager.max-recv-msg-size` (defaults to 16M) to limit the size of HTTP request body handled by the alertmanager.
   * New flags added for communication between alertmanagers:
     * `-alertmanager.max-recv-msg-size`
     * `-alertmanager.alertmanager-client.remote-timeout`

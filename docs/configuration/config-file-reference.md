@@ -1576,7 +1576,7 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
 
-# Maximum size (bytes) of an accepted HTTP request body size.
+# Maximum size (bytes) of an accepted HTTP request body.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 

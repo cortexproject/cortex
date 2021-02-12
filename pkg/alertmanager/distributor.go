@@ -108,11 +108,11 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 	var firstSuccessfulResponse *httpgrpc.HTTPResponse
 	var firstSuccessfulResponseMtx sync.Mutex
-	grpcHeaders := httpTogrpchttpHeaders(r.Header)
+	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := user.InjectOrgID(context.Background(), userID)
-		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distribute.doWrite")
+		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doWrite")
 		defer sp.Finish()
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{
@@ -171,7 +171,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distribute.doRead")
+	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doRead")
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
@@ -223,7 +223,7 @@ func shardByUser(userID string) uint32 {
 	return ringHasher.Sum32()
 }
 
-func httpTogrpchttpHeaders(hs http.Header) []*httpgrpc.Header {
+func httpToHttpgrpcHeaders(hs http.Header) []*httpgrpc.Header {
 	result := make([]*httpgrpc.Header, 0, len(hs))
 	for k, vs := range hs {
 		result = append(result, &httpgrpc.Header{

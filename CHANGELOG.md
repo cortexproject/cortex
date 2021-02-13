@@ -4,7 +4,7 @@
 
 ## 1.7.0-rc.1
 
-[BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815
+* [BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815
 
 ## 1.7.0-rc.0
 

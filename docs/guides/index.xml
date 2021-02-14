@@ -484,48 +484,7 @@ Number of chunks sent by leaving ingester.&lt;/li>
 Number of chunks received by joining ingester.&lt;/li>
 &lt;/ul>
 &lt;p>You can see the current state of the ring via http browser request to
-&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
-&lt;p>Since Cortex is a multi-tenant system, it supports applying limits to each tenant to prevent
-any single one from using too many resources. In order to help operators understand how close
-to their limits tenants are, the &lt;code>overrides-exporter&lt;/code> module can expose limits as Prometheus metrics.&lt;/p>
-&lt;h2 id="context">Context&lt;/h2>
-&lt;p>To update configuration without restarting, Cortex allows operators to supply a &lt;code>runtime_config&lt;/code>
-file that will be periodically reloaded. This file can be specified under the &lt;code>runtime_config&lt;/code> section
-of the main &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">configuration file&lt;/a> or using the &lt;code>-runtime-config.file&lt;/code>
-command line flag. This file is used to apply tenant-specific limits.&lt;/p>
-&lt;h2 id="example">Example&lt;/h2>
-&lt;p>The &lt;code>overrides-exporter&lt;/code> is not enabled by default, it must be explicitly enabled. We recommend
-only running a single instance of it in your cluster due to the cardinality of the metrics
-emitted.&lt;/p>
-&lt;p>With a &lt;code>runtime.yaml&lt;/code> file given below&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># file: runtime.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># In this example, we&amp;#39;re overriding ingestion limits for a single tenant.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;user1&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_burst_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_samples_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows&lt;/p>
-&lt;pre>&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
-&lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can to use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-text" data-lang="text">curl -s http://localhost:8080/metrics | grep cortex_overrides
-# HELP cortex_overrides Resource limit overrides applied to tenants
-# TYPE cortex_overrides gauge
-cortex_overrides{limit_name=&amp;#34;ingestion_burst_size&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
-cortex_overrides{limit_name=&amp;#34;ingestion_rate&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
-cortex_overrides{limit_name=&amp;#34;max_global_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
-cortex_overrides{limit_name=&amp;#34;max_global_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
-cortex_overrides{limit_name=&amp;#34;max_local_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
-cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
-cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
-cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
-before they exceed them.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
+&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
 &lt;p>Cortex is a distributed system with significant traffic between its services.
 To allow for secure communication, Cortex supports TLS between all its
 components. This guide describes the process of setting up TLS.&lt;/p>
@@ -614,7 +573,6 @@ through the following config parameters:&lt;/p>
 &lt;li>An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.&lt;/li>
 &lt;li>A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it&amp;rsquo;s statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.&lt;/li>
 &lt;/ul>
-&lt;p>Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.&lt;/p>
 &lt;h3 id="low-overlapping-instances-probability">Low overlapping instances probability&lt;/h3>
 &lt;p>For example, given a Cortex cluster running &lt;strong>50 ingesters&lt;/strong> and assigning &lt;strong>each tenant 4&lt;/strong> out of 50 ingesters, shuffling instances between each tenant, we get &lt;strong>230K possible combinations&lt;/strong>.&lt;/p>
 &lt;p>Randomly picking two different tenants we have the:&lt;/p>

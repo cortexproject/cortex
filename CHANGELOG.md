@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.7.0-rc.1
+
+* [BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815
+
 ## 1.7.0-rc.0
 
 * [CHANGE] FramedSnappy encoding support has been removed from Push and Remote Read APIs. This means Prometheus 1.6 support has been removed and the oldest Prometheus version supported in the remote write is 1.7. #3682

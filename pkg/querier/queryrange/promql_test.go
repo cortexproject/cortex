@@ -611,7 +611,7 @@ func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers 
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 func (m *testMatrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }

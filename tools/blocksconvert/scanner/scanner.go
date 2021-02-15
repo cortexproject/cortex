@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -213,6 +214,19 @@ func (s *Scanner) running(ctx context.Context) error {
 			}
 
 			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
+		case "aws-dynamo":
+			cfg := s.storageCfg.AWSStorageConfig
+
+			if cfg.DynamoDB.URL == nil { // TODO: what else do we need?
+				level.Error(s.logger).Log("msg", "cannot scan DynamoDB, missing configuration", "schemaFrom", c.From.String())
+				continue
+			}
+
+			var err error
+			reader, err = aws.NewDynamoDBIndexReader(cfg.DynamoDBConfig, s.schema, s.reg, s.logger, s.indexReaderRowsRead)
+			if err != nil {
+				level.Error(s.logger).Log("msg", "cannot scan DynamoDB", "err", err)
+			}
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue

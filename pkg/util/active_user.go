@@ -94,6 +94,7 @@ func (m *ActiveUsers) PurgeInactiveUsers(deadline int64) []string {
 	return inactive
 }
 
+// ActiveUsersCleanupService tracks active users, and periodically purges inactive ones while running.
 type ActiveUsersCleanupService struct {
 	services.Service
 

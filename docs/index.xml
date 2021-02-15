@@ -6839,7 +6839,7 @@ The domain name after the prefix is looked up as a SRV query, with no A/AAAA loo
 &lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
 &lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.
-To reduce number of required dependencies in this guide, it will use &lt;a href="../blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
+To reduce number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
 Storage engine and external storage configuration are not dependant on the ring configuration.&lt;/p>
 &lt;h2 id="single-binary-two-cortex-instances">Single-binary, two Cortex instances&lt;/h2>
 &lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a two instances of Cortex on local computer.

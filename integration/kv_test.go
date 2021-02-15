@@ -111,8 +111,8 @@ func TestKVWatchAndDelete(t *testing.T) {
 		// Consul reports:
 		// map[key-before-watch:[value-before-watch] key-to-delete:[value-to-delete]]
 		//
-		// Etcd reports:
-		// map[key-to-delete:[value-to-delete ""]]
+		// Etcd reports (before changing etcd client to ignore deletes):
+		// map[key-to-delete:[value-to-delete <nil>]]
 		t.Log(w.values)
 	})
 }
@@ -208,9 +208,14 @@ func verifyClientMetrics(t *testing.T, reg *prometheus.Registry, sampleCounts ma
 
 type stringCodec struct{}
 
-func (c stringCodec) Decode(bb []byte) (interface{}, error) { return string(bb), nil }
-func (c stringCodec) Encode(v interface{}) ([]byte, error)  { return []byte(v.(string)), nil }
-func (c stringCodec) CodecID() string                       { return "stringCodec" }
+func (c stringCodec) Decode(bb []byte) (interface{}, error) {
+	if bb == nil {
+		return "<nil>", nil
+	}
+	return string(bb), nil
+}
+func (c stringCodec) Encode(v interface{}) ([]byte, error) { return []byte(v.(string)), nil }
+func (c stringCodec) CodecID() string                      { return "stringCodec" }
 
 type watcher struct {
 	values map[string][]interface{}

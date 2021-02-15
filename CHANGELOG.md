@@ -44,6 +44,11 @@
   * `cortex_ingester_tsdb_symbol_table_size_bytes`
   * `cortex_ingester_tsdb_storage_blocks_bytes`
   * `cortex_ingester_tsdb_time_retentions_total`
+* [ENHANCEMENT] Distributor / HA Tracker: added cleanup of unused elected HA replicas from KV store. Added following metrics to monitor this process: #3809
+  * `cortex_ha_tracker_replicas_cleanup_started_total`
+  * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`
+  * `cortex_ha_tracker_replicas_cleanup_deleted_total`
+  * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

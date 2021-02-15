@@ -480,11 +480,10 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			continue
 		}
 
-		// If this extent is tiny, discard it: more efficient to do a few larger queries
+		// If this extent is tiny, discard it: more efficient to do a few larger queries.
 
-		// However if the step is large enough, we would end up with a request with a single step
-		// inside the split query. For example, if the step size is more than 12h and the interval is 24h.
-		// When this happens, we set the start and end time of the split request to the same value.
+		// However if the step is large enough, the split_query_by_interval middlware would generate a query with same start and end.
+		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
 		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
 			continue
@@ -508,6 +507,12 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 	if start < req.GetEnd() {
 		r := req.WithStartEnd(start, req.GetEnd())
 		requests = append(requests, r)
+	}
+
+	// If start and end are the same (valid in promql), start == req.GetEnd() and we won't do the query.
+	// But we should only do the request if we don't have a valid cached response for it.
+	if req.GetStart() == req.GetEnd() && len(cachedResponses) == 0 {
+		requests = append(requests, req)
 	}
 
 	return requests, cachedResponses, nil

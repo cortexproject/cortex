@@ -447,6 +447,22 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(100, 120, 10),
 			},
 		},
+		// Extent is outside the range and the request has a single step (same start and end).
+		{
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(50, 90),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 100,
+					End:   100,
+				},
+			},
+		},
 		// Test when hit has a large step and only a single sample extent.
 		{
 			// If there is a only a single sample in the split interval, start and end will be the same.

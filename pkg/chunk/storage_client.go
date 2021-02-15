@@ -88,3 +88,11 @@ type StorageObject struct {
 // StorageCommonPrefix represents a common prefix aka a synthetic directory in Object Store.
 // It is guaranteed to always end with delimiter passed to List method.
 type StorageCommonPrefix string
+
+// IndexEntryProcessor receives index entries from the table.
+type IndexEntryProcessor interface {
+	ProcessIndexEntry(indexEntry IndexEntry) error
+
+	// Called at the end of reading of index entries.
+	Flush() error
+}

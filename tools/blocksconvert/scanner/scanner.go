@@ -497,7 +497,7 @@ func scanSingleTable(
 		})
 	}
 
-	var ps []IndexEntryProcessor
+	var ps []chunk.IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
 		ps = append(ps, newProcessor(outDir, result, allowed, ignored, series, indexEntries, ignoredEntries))

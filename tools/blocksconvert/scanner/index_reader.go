@@ -6,14 +6,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-// Processor that receives index entries from the table.
-type IndexEntryProcessor interface {
-	ProcessIndexEntry(indexEntry chunk.IndexEntry) error
-
-	// Called at the end of reading of index entries.
-	Flush() error
-}
-
 // IndexReader parses index entries and passes them to the IndexEntryProcessor.
 type IndexReader interface {
 	IndexTableNames(ctx context.Context) ([]string, error)
@@ -28,5 +20,5 @@ type IndexReader interface {
 	// as soon as new Hash and Range differ from last IndexEntry.
 	//
 	// Index entries passed to the same processor arrive sorted by HashValue and RangeValue.
-	ReadIndexEntries(ctx context.Context, table string, processors []IndexEntryProcessor) error
+	ReadIndexEntries(ctx context.Context, table string, processors []chunk.IndexEntryProcessor) error
 }

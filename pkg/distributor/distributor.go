@@ -580,8 +580,8 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	}
 
 	totalN := validatedSamples + len(validatedMetadata)
-	rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
-	if !rateReservation.OK() {
+	rateOK, rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
+	if !rateOK {
 		// Ensure the request slice is reused if the request is rate limited.
 		ingester_client.ReuseSlice(req.Timeseries)
 

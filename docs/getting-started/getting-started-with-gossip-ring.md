@@ -9,7 +9,7 @@ Cortex requires Key-Value (KV) store to store the ring. It can use traditional K
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.
 
 This short guide shows how to start Cortex in [single-binary mode](../architecture.md) with memberlist-based ring.
-To reduce number of required dependencies in this guide, it will use [blocks storage](../blocks-storage/) with no shipping to external stores.
+To reduce number of required dependencies in this guide, it will use [blocks storage](../blocks-storage/_index.md) with no shipping to external stores.
 Storage engine and external storage configuration are not dependant on the ring configuration.
 
 ## Single-binary, two Cortex instances

@@ -629,7 +629,14 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	if t.Cfg.isModuleEnabled(All) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured in single binary mode and will not be started.")
+		return
+	}
+
+	// Purger didn't use ruler storage before, but now it does. However empty configuration just causes error,
+	// so to preserve previous purger behaviour, we simply disable it.
+	if t.Cfg.isModuleEnabled(Purger) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured. If you want to use tenant deletion API and delete rule groups, please configure ruler storage.")
 		return
 	}
 
@@ -780,7 +787,8 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, nil
 	}
 
-	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer)
+	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
+	purgerAPI, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -864,7 +872,7 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:                {API, MemberlistKV},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
-		BlocksPurger:             {Store, API},
+		BlocksPurger:             {Store, API, RulerStorage},
 		Purger:                   {ChunksPurger, BlocksPurger},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},

@@ -156,3 +156,65 @@ func TestLoadRules(t *testing.T) {
 	require.NoError(t, rs.DeleteRuleGroup(context.Background(), "user1", "hello", "first testGroup"))
 	require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "group does not exist")
 }
+
+func TestDelete(t *testing.T) {
+	obj := chunk.NewMockStorage()
+	rs := NewRuleStore(obj, 5)
+
+	groups := []testGroup{
+		{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},
+		{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "2"}},
+		{user: "user1", namespace: "B", ruleGroup: rulefmt.RuleGroup{Name: "3"}},
+		{user: "user1", namespace: "C", ruleGroup: rulefmt.RuleGroup{Name: "4"}},
+		{user: "user2", namespace: "second", ruleGroup: rulefmt.RuleGroup{Name: "group"}},
+		{user: "user3", namespace: "third", ruleGroup: rulefmt.RuleGroup{Name: "group"}},
+	}
+
+	for _, g := range groups {
+		desc := rules.ToProto(g.user, g.namespace, g.ruleGroup)
+		require.NoError(t, rs.SetRuleGroup(context.Background(), g.user, g.namespace, desc))
+	}
+
+	// Verify that nothing was deleted, because we used canceled context.
+	{
+		canceled, cancelFn := context.WithCancel(context.Background())
+		cancelFn()
+
+		require.Error(t, rs.DeleteNamespace(canceled, "user1", ""))
+
+		require.Equal(t, []string{
+			generateRuleObjectKey("user1", "A", "1"),
+			generateRuleObjectKey("user1", "A", "2"),
+			generateRuleObjectKey("user1", "B", "3"),
+			generateRuleObjectKey("user1", "C", "4"),
+			generateRuleObjectKey("user2", "second", "group"),
+			generateRuleObjectKey("user3", "third", "group"),
+		}, obj.GetSortedObjectKeys())
+	}
+
+	// Verify that we can delete individual rule group, or entire namespace.
+	{
+		require.NoError(t, rs.DeleteRuleGroup(context.Background(), "user2", "second", "group"))
+		require.NoError(t, rs.DeleteNamespace(context.Background(), "user1", "A"))
+
+		require.Equal(t, []string{
+			generateRuleObjectKey("user1", "B", "3"),
+			generateRuleObjectKey("user1", "C", "4"),
+			generateRuleObjectKey("user3", "third", "group"),
+		}, obj.GetSortedObjectKeys())
+	}
+
+	// Verify that we can delete all remaining namespaces for user1.
+	{
+		require.NoError(t, rs.DeleteNamespace(context.Background(), "user1", ""))
+
+		require.Equal(t, []string{
+			generateRuleObjectKey("user3", "third", "group"),
+		}, obj.GetSortedObjectKeys())
+	}
+
+	{
+		// Trying to delete empty namespace again will result in error.
+		require.Equal(t, rules.ErrGroupNamespaceNotFound, rs.DeleteNamespace(context.Background(), "user1", ""))
+	}
+}

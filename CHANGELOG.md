@@ -49,6 +49,7 @@
   * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`
   * `cortex_ha_tracker_replicas_cleanup_deleted_total`
   * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
+* [ENHANCEMENT] Tenant deletion endpoints now support deletion of ruler groups. This only works when using rule store that supports deletion. #3750
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

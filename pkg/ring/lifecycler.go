@@ -583,6 +583,9 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// Update the ring if the instance has been changed.
 		if !instanceDesc.Equal(ringDesc.Ingesters[i.ID]) {
+			// Update timestamp to give gossiping client a chance register ring change.
+			instanceDesc.Timestamp = time.Now().Unix()
+
 			ringDesc.Ingesters[i.ID] = instanceDesc
 			return ringDesc, true, nil
 		}

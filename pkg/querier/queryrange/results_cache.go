@@ -18,6 +18,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
 	"github.com/weaveworks/common/httpgrpc"
@@ -284,6 +286,9 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
 		return false
 	}
+
+	// This resolves the start() and end() used with the @ modifier.
+	expr = promql.PreprocessExpr(expr, timestamp.Time(r.GetStart()), timestamp.Time(r.GetEnd()))
 
 	end := r.GetEnd()
 	atModCachable := true

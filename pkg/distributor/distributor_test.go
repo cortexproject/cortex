@@ -414,7 +414,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
 			},
 		},
-		"unhappy ingestors: rate limit should be unaffected when ingestion fails": {
+		"unhappy ingesters: rate limit should be unaffected when ingestion fails": {
 			distributors:          1,
 			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
 			ingestionRate:         10,

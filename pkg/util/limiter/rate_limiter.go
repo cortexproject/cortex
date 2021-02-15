@@ -54,7 +54,7 @@ func NewRateLimiter(strategy RateLimiterStrategy, recheckPeriod time.Duration) *
 // reservation of tokens can be canceled using CancelAt on the returned object.
 func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) *Reservation {
 
-	// Using ReserveN allows cancalation of the reservation, but
+	// Using ReserveN allows cancellation of the reservation, but
 	// the semantics are subtly different to AllowN.
 	r := l.getTenantLimiter(now, tenantID).ReserveN(now, n)
 	if !r.OK() {

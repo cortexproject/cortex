@@ -567,7 +567,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// The instance may already be in the ring with one of the following states:
 		// - JOINING: this means it crashed due to a failed token transfer or some other reason during startup.
-		// - LEAVING: this means it crashed while shutting down and unregister from ring on shutdown is disabled.
+		// - LEAVING: this means it crashed while shutting down or unregister from ring on shutdown is disabled.
 		// In both cases, we want to set it back to PENDING in order to start the lifecycle from the beginning.
 		if instanceDesc.State == JOINING || instanceDesc.State == LEAVING {
 			level.Info(log.Logger).Log("msg", "instance already found in ring, changing state to PENDING", "state", instanceDesc.State, "ring", i.RingName)

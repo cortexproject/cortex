@@ -838,3 +838,7 @@ func (i *Lifecycler) unregister(ctx context.Context) error {
 		return ringDesc, true, nil
 	})
 }
+
+func (i *Lifecycler) String() string {
+	return fmt.Sprintf("%s ring lifecycler", i.RingName)
+}

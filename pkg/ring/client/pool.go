@@ -151,6 +151,10 @@ func (p *Pool) Count() int {
 	return len(p.clients)
 }
 
+func (p *Pool) String() string {
+	return fmt.Sprintf("%s client pool", p.clientName)
+}
+
 func (p *Pool) removeStaleClients() {
 	// Only if service discovery has been configured.
 	if p.discovery == nil {

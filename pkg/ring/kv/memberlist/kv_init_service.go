@@ -162,6 +162,10 @@ func (kvs *KVInitService) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}, pageTemplate, req)
 }
 
+func (kvs *KVInitService) String() string {
+	return "memberlist KV service"
+}
+
 func getFormat(req *http.Request) string {
 	const viewFormat = "format"
 

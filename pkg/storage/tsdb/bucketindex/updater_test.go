@@ -54,8 +54,7 @@ func TestUpdater_UpdateIndex(t *testing.T) {
 		[]*metadata.DeletionMark{block2Mark, block4Mark})
 
 	// Hard delete a block and update the index.
-	userBkt := bucket.NewUserBucketClient(userID, bkt, nil)
-	require.NoError(t, block.Delete(ctx, log.NewNopLogger(), userBkt, block2.ULID))
+	require.NoError(t, block.Delete(ctx, log.NewNopLogger(), bucket.NewUserBucketClient(userID, bkt, nil), block2.ULID))
 
 	returnedIdx, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
@@ -158,6 +157,7 @@ func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 	for _, oldIdx := range []*Index{nil, {}} {
 		w := NewUpdater(bkt, userID, nil, log.NewNopLogger())
 		idx, partials, err := w.UpdateIndex(ctx, oldIdx)
+
 		require.NoError(t, err)
 		assert.Equal(t, IndexVersion1, idx.Version)
 		assert.InDelta(t, time.Now().Unix(), idx.UpdatedAt, 2)

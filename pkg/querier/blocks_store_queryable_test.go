@@ -1310,6 +1310,10 @@ func (m *blocksStoreLimitsMock) S3SSEKMSKeyID(_ string) string {
 	return ""
 }
 
+func (m *blocksStoreLimitsMock) S3SSEKMSEncryptionContext(_ string) string {
+	return ""
+}
+
 func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *storepb.SeriesResponse {
 	// Generate a chunk containing a single value (for simplicity).
 	chunk := chunkenc.NewXORChunk()

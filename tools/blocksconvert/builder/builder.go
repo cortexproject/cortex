@@ -233,7 +233,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 		// No per-tenant config provider because the blocksconvert tool doesn't support it.
 		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient, nil)
 
-		err = uploadBlock(ctx, p.log, userBucket, blockDir)
+		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {
 			return "", errors.Wrap(err, "uploading block")
 		}

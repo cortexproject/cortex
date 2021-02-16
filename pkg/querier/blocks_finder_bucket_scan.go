@@ -365,8 +365,8 @@ func (d *BucketScanBlocksFinder) getOrCreateMetaFetcher(userID string) (block.Me
 
 func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util_log.WithUserID(userID, d.logger)
-	userReg := prometheus.NewRegistry()
 	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient, d.cfgProvider)
+	userReg := prometheus.NewRegistry()
 
 	// The following filters have been intentionally omitted:
 	// - Consistency delay filter: omitted because we should discover all uploaded blocks.

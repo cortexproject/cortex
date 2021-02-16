@@ -4016,8 +4016,8 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 15m]
 
-  # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
-  # allocations.
+  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+  # The pool is shared across all tenants.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
   [max_chunk_pool_bytes: <int> | default = 2147483648]
 

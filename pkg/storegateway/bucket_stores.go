@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -46,6 +47,9 @@ type BucketStores struct {
 
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
+
+	// Chunks bytes pool shared across all tenants.
+	chunksPool pool.BytesPool
 
 	// Gate used to limit query concurrency across all tenants.
 	queryGate gate.Gate
@@ -109,6 +113,11 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	// Init the index cache.
 	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, reg); err != nil {
 		return nil, errors.Wrap(err, "create index cache")
+	}
+
+	// Init the chunks bytes pool.
+	if u.chunksPool, err = store.NewDefaultChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes); err != nil {
+		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
 	if reg != nil {
@@ -394,10 +403,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
 		u.indexCache,
 		u.queryGate,
-		u.cfg.BucketStore.MaxChunkPoolBytes,
+		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
-		u.logLevel.String() == "debug",   // Turn on debug logging, if the log level is set to debug
+		store.NewGapBasedPartitioner(store.PartitionerMaxGapSize),
+		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

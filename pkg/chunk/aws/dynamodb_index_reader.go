@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"sync"
@@ -53,8 +54,17 @@ func (r *dynamodbIndexReader) IndexTableNames(ctx context.Context) ([]string, er
 }
 
 type seriesMap struct {
-	mutex           sync.Mutex          // protect concurrent access to map
-	seriesProcessed map[string]struct{} // set of all series processes (NOTE: does not scale indefinitely)
+	mutex           sync.Mutex           // protect concurrent access to maps
+	seriesProcessed map[string]sha256Set // map of userID/bucket to set showing which series have been processed
+}
+
+// Since all sha256 values are the same size, a fixed-size array
+// is more space-efficient than string or byte slice
+type sha256 [32]byte
+
+// an entry in this set indicates we have processed a series with that sha already
+type sha256Set struct {
+	series map[sha256]struct{}
 }
 
 // ReadIndexEntries reads the whole of a table on multiple goroutines in parallel.
@@ -64,7 +74,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 	projection := hashKey + "," + rangeKey
 
 	sm := &seriesMap{ // new map per table
-		seriesProcessed: make(map[string]struct{}),
+		seriesProcessed: make(map[string]sha256Set),
 	}
 
 	var readerGroup sync.WaitGroup
@@ -120,23 +130,48 @@ func (r *dynamodbIndexReader) processPage(ctx context.Context, sm *seriesMap, pr
 			level.Error(r.log).Log("msg", "Failed to decode hash value", "err", err)
 			continue
 		}
-		queryHashKey := orgStr + ":" + day + ":" + seriesID // from v9Entries.GetChunkWriteEntries()
+
+		bucketHashKey := orgStr + ":" + day // from v9Entries.GetChunkWriteEntries()
 
 		// Check whether we have already processed this series
+		// via two-step lookup: first by tenant/day bucket, then by series
+		var seriesSha256 sha256
+		err = decodeBase64(seriesSha256[:], seriesID)
+		if err != nil {
+			level.Error(r.log).Log("msg", "Failed to decode series ID", "err", err)
+			continue
+		}
 		sm.mutex.Lock()
-		if _, exists := sm.seriesProcessed[queryHashKey]; exists {
+		shaSet := sm.seriesProcessed[bucketHashKey]
+		if shaSet.series == nil {
+			shaSet.series = make(map[sha256]struct{})
+			sm.seriesProcessed[bucketHashKey] = shaSet
+		}
+		if _, exists := shaSet.series[seriesSha256]; exists {
 			sm.mutex.Unlock()
 			continue
 		}
-		sm.seriesProcessed[queryHashKey] = struct{}{}
+		// mark it as 'seen already'
+		shaSet.series[seriesSha256] = struct{}{}
 		sm.mutex.Unlock()
 
-		err = r.queryChunkEntriesForSeries(ctx, processor, tableName, queryHashKey)
+		err = r.queryChunkEntriesForSeries(ctx, processor, tableName, bucketHashKey+":"+seriesID)
 		if err != nil {
 			level.Error(r.log).Log("msg", "error while reading series", "err", err)
 			return
 		}
 	}
+}
+
+func decodeBase64(dst []byte, value string) error {
+	n, err := base64.RawStdEncoding.Decode(dst, []byte(value))
+	if err != nil {
+		return errors.Wrap(err, "unable to decode sha256")
+	}
+	if n != len(dst) {
+		return errors.Wrapf(err, "seriesID has unexpected length; raw value %q", value)
+	}
+	return nil
 }
 
 func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, processor chunk.IndexEntryProcessor, tableName, queryHashKey string) error {

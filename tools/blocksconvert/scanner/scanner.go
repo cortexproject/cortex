@@ -203,7 +203,7 @@ func (s *Scanner) running(ctx context.Context) error {
 			continue
 		}
 
-		var reader IndexReader
+		var reader chunk.IndexReader
 		switch c.IndexType {
 		case "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed":
 			bigTable := s.storageCfg.GCPStorageConfig
@@ -311,12 +311,12 @@ func (s *Scanner) running(ctx context.Context) error {
 
 type tableToProcess struct {
 	table  string
-	reader IndexReader
+	reader chunk.IndexReader
 	start  time.Time
 	end    time.Time // Will not be set for non-periodic tables. Exclusive.
 }
 
-func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
+func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader chunk.IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
 	tables, err := indexReader.IndexTableNames(ctx)
 	if err != nil {
 		return nil, err
@@ -360,7 +360,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 	return result, nil
 }
 
-func (s *Scanner) processTable(ctx context.Context, table string, indexReader IndexReader) error {
+func (s *Scanner) processTable(ctx context.Context, table string, indexReader chunk.IndexReader) error {
 	tableLog := log.With(s.logger, "table", table)
 
 	tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, table+".processed")
@@ -483,7 +483,7 @@ func shouldSkipOperationBecauseFileExists(file string) bool {
 
 func scanSingleTable(
 	ctx context.Context,
-	indexReader IndexReader,
+	indexReader chunk.IndexReader,
 	tableName string,
 	outDir string,
 	concurrency int,

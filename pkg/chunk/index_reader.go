@@ -1,10 +1,19 @@
-package scanner
+package chunk
 
 import (
 	"context"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 )
+
+// IndexEntryProcessor receives index entries from a table.
+type IndexEntryProcessor interface {
+	ProcessIndexEntry(indexEntry IndexEntry) error
+
+	// Will this user be accepted by the processor?
+	AcceptUser(user string) bool
+
+	// Called at the end of reading of index entries.
+	Flush() error
+}
 
 // IndexReader parses index entries and passes them to the IndexEntryProcessor.
 type IndexReader interface {
@@ -20,5 +29,5 @@ type IndexReader interface {
 	// as soon as new Hash and Range differ from last IndexEntry.
 	//
 	// Index entries passed to the same processor arrive sorted by HashValue and RangeValue.
-	ReadIndexEntries(ctx context.Context, table string, processors []chunk.IndexEntryProcessor) error
+	ReadIndexEntries(ctx context.Context, table string, processors []IndexEntryProcessor) error
 }

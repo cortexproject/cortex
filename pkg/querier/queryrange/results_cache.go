@@ -482,7 +482,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 		// If this extent is tiny, discard it: more efficient to do a few larger queries.
 
-		// However if the step is large enough, the split_query_by_interval middlware would generate a query with same start and end.
+		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
 		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
 		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {

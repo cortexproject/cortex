@@ -61,7 +61,7 @@ func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) (bool, Reser
 	// the semantics are subtly different to AllowN.
 	r := l.getTenantLimiter(now, tenantID).ReserveN(now, n)
 	if !r.OK() {
-		return false, r
+		return false, nil
 	}
 
 	// ReserveN will still return OK if the necessary tokens are
@@ -72,7 +72,7 @@ func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) (bool, Reser
 		// Having decided not to use the reservation, return the
 		// tokens to the rate limiter.
 		r.CancelAt(now)
-		return false, r
+		return false, nil
 	}
 
 	return true, r

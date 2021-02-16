@@ -192,6 +192,9 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 		},
 		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 	}
+	withRetrys := func(req *request.Request) {
+		req.Retryer = client.DefaultRetryer{NumMaxRetries: r.maxRetries}
+	}
 	var result error
 	err := r.DynamoDB.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
 		if cc := output.ConsumedCapacity; cc != nil {
@@ -210,7 +213,7 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 			}
 		}
 		return true
-	})
+	}, withRetrys)
 	if err != nil {
 		return errors.Wrap(err, "DynamoDB error")
 	}

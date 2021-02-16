@@ -29,7 +29,7 @@ type dynamodbIndexReader struct {
 }
 
 // NewDynamoDBIndexReader returns an object that can scan an entire index table
-func NewDynamoDBIndexReader(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig, reg prometheus.Registerer, l gklog.Logger, rowsRead prometheus.Counter) (*dynamodbIndexReader, error) {
+func NewDynamoDBIndexReader(cfg DynamoDBConfig, schemaCfg chunk.SchemaConfig, reg prometheus.Registerer, l gklog.Logger, rowsRead prometheus.Counter) (chunk.IndexReader, error) {
 	client, err := newDynamoDBStorageClient(cfg, schemaCfg, reg)
 	if err != nil {
 		return nil, err

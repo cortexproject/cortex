@@ -2,6 +2,7 @@ package tenantfederation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -95,7 +96,11 @@ func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 	return series.MatrixToSeriesSet(matrix)
 }
 
-func (m mockTenantQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	if len(matchers) > 0 {
+		return nil, nil, errors.New("matchers are not implemented yet")
+	}
+
 	labelValues := make(map[string]struct{})
 	for _, s := range m.matrix() {
 		for k, v := range s.Metric {

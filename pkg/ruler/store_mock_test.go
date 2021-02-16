@@ -115,6 +115,10 @@ func newMockRuleStore(rules map[string]rules.RuleGroupList) *mockRuleStore {
 	}
 }
 
+func (m *mockRuleStore) SupportsModifications() bool {
+	return true
+}
+
 func (m *mockRuleStore) ListAllUsers(_ context.Context) ([]string, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

@@ -19,9 +19,9 @@ func TestMarshall(t *testing.T) {
 		req := WriteRequest{}
 		for i := 0; i < numSeries; i++ {
 			req.Timeseries = append(req.Timeseries, PreallocTimeseries{
-				&TimeSeries{
+				TimeSeries: &TimeSeries{
 					Labels: []LabelAdapter{
-						{"foo", strconv.Itoa(i)},
+						{Name: "foo", Value: strconv.Itoa(i)},
 					},
 					Samples: []Sample{
 						{TimestampMs: int64(i), Value: float64(i)},

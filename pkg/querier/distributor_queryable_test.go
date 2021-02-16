@@ -338,8 +338,8 @@ func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, 
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }
-func (m *mockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName) ([]string, error) {
-	args := m.Called(ctx, from, to, lbl)
+func (m *mockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, lbl, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
 func (m *mockDistributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {

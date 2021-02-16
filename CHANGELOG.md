@@ -45,6 +45,12 @@
   * `cortex_ingester_tsdb_storage_blocks_bytes`
   * `cortex_ingester_tsdb_time_retentions_total`
 * [ENHANCEMENT] Querier: distribute workload across `-store-gateway.sharding-ring.replication-factor` store-gateway replicas when querying blocks and `-store-gateway.sharding-enabled=true`. #3824
+* [ENHANCEMENT] Distributor / HA Tracker: added cleanup of unused elected HA replicas from KV store. Added following metrics to monitor this process: #3809
+  * `cortex_ha_tracker_replicas_cleanup_started_total`
+  * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`
+  * `cortex_ha_tracker_replicas_cleanup_deleted_total`
+  * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
+* [ENHANCEMENT] Tenant deletion endpoints now support deletion of ruler groups. This only works when using rule store that supports deletion. #3750
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

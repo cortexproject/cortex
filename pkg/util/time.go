@@ -48,6 +48,7 @@ func ParseTime(s string) (int64, error) {
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }
 
+// DurationWithJitter returns random duration from "input - input*variance" to "input + input*variance" interval.
 func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration {
 	// No duration? No jitter.
 	if input == 0 {

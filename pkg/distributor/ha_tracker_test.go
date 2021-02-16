@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -40,6 +41,9 @@ func checkReplicaTimestamp(t *testing.T, duration time.Duration, c *haTracker, u
 
 		if r.GetReplica() != replica {
 			return fmt.Errorf("replicas did not match: %s != %s", r.GetReplica(), replica)
+		}
+		if r.GetDeletedAt() > 0 {
+			return fmt.Errorf("replica is marked for deletion")
 		}
 		if !timestamp.Time(r.GetReceivedAt()).Equal(expected) {
 			return fmt.Errorf("timestamps did not match: %+v != %+v", timestamp.Time(r.GetReceivedAt()), expected)
@@ -651,4 +655,97 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_ha_tracker_kv_store_cas_total counter
 		cortex_ha_tracker_kv_store_cas_total{cluster="cluster",user="userB"} 10
 	`), metrics...))
+}
+
+func TestCheckReplicaCleanup(t *testing.T) {
+	replica := "r1"
+	cluster := "c1"
+	user := "user"
+
+	reg := prometheus.NewPedanticRegistry()
+
+	mock := kv.PrefixClient(consul.NewInMemoryClient(GetReplicaDescCodec()), "prefix")
+	c, err := newHATracker(HATrackerConfig{
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mock},
+		UpdateTimeout:          1 * time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
+	}, trackerLimits{maxClusters: 100}, reg, util_log.Logger)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
+
+	now := time.Now()
+
+	err = c.checkReplica(context.Background(), user, cluster, replica, now)
+	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now)
+
+	// Replica is not marked for deletion yet.
+	checkReplicaDeletionState(t, time.Second, c, user, cluster, true, true, false)
+
+	// This will mark replica for deletion (with time.Now())
+	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
+
+	// Verify marking for deletion.
+	checkReplicaDeletionState(t, time.Second, c, user, cluster, false, true, true)
+
+	// This will "revive" the replica.
+	now = time.Now()
+	err = c.checkReplica(context.Background(), user, cluster, replica, now)
+	assert.NoError(t, err)
+	checkReplicaTimestamp(t, time.Second, c, user, cluster, replica, now) // This also checks that entry is not marked for deletion.
+
+	// This will mark replica for deletion again (with new time.Now())
+	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
+	checkReplicaDeletionState(t, time.Second, c, user, cluster, false, true, true)
+
+	// Delete entry marked for deletion completely.
+	c.cleanupOldReplicas(ctx, time.Now().Add(5*time.Second))
+	checkReplicaDeletionState(t, time.Second, c, user, cluster, false, false, false)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total Number of elected replicas marked for deletion.
+		# TYPE cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total counter
+		cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total 2
+
+		# HELP cortex_ha_tracker_replicas_cleanup_deleted_total Number of elected replicas deleted from KV store.
+		# TYPE cortex_ha_tracker_replicas_cleanup_deleted_total counter
+		cortex_ha_tracker_replicas_cleanup_deleted_total 1
+
+		# HELP cortex_ha_tracker_replicas_cleanup_delete_failed_total Number of elected replicas that failed to be marked for deletion, or deleted.
+		# TYPE cortex_ha_tracker_replicas_cleanup_delete_failed_total counter
+		cortex_ha_tracker_replicas_cleanup_delete_failed_total 0
+	`), "cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total",
+		"cortex_ha_tracker_replicas_cleanup_deleted_total",
+		"cortex_ha_tracker_replicas_cleanup_delete_failed_total",
+	))
+}
+
+func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *haTracker, user, cluster string, expectedExistsInMemory, expectedExistsInKV, expectedMarkedForDeletion bool) {
+	key := fmt.Sprintf("%s/%s", user, cluster)
+
+	test.Poll(t, duration, nil, func() interface{} {
+		c.electedLock.RLock()
+		_, exists := c.elected[key]
+		c.electedLock.RUnlock()
+
+		if exists != expectedExistsInMemory {
+			return fmt.Errorf("exists in memory: expected=%v, got=%v", expectedExistsInMemory, exists)
+		}
+
+		return nil
+	})
+
+	val, err := c.client.Get(context.Background(), key)
+	require.NoError(t, err)
+
+	existsInKV := val != nil
+	require.Equal(t, expectedExistsInKV, existsInKV, "exists in KV")
+
+	if val != nil {
+		markedForDeletion := val.(*ReplicaDesc).DeletedAt > 0
+		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
+	}
 }

@@ -37,6 +37,10 @@ type RuleStore struct {
 	loadConcurrency int
 }
 
+func (o *RuleStore) SupportsModifications() bool {
+	return true
+}
+
 // NewRuleStore returns a new RuleStore
 func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
 	return &RuleStore{
@@ -227,6 +231,10 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	}
 
 	for _, obj := range ruleGroupObjects {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		level.Debug(util_log.Logger).Log("msg", "deleting rule group", "namespace", namespace, "key", obj.Key)
 		err = o.client.DeleteObject(ctx, obj.Key)
 		if err != nil {

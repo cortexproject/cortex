@@ -264,6 +264,7 @@ func TestShouldCache(t *testing.T) {
 			cacheGenNumberToInject: "1",
 			expected:               false,
 		},
+		// @ modifier on vector selectors.
 		{
 			name:     "@ modifier on vector selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
@@ -289,6 +290,19 @@ func TestShouldCache(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "@ modifier on vector selector with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on vector selector with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		// @ modifier on matrix selectors.
+		{
 			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
@@ -313,6 +327,19 @@ func TestShouldCache(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "@ modifier on matrix selector with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on matrix selector with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		// @ modifier on subqueries.
+		{
 			name:     "@ modifier on subqueries, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
 			input:    Response(&PrometheusResponse{}),
@@ -333,6 +360,18 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:     "@ modifier on subqueries, after end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on subqueries with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
 			input:    Response(&PrometheusResponse{}),
 			expected: false,
 		},

@@ -93,6 +93,9 @@ type StorageCommonPrefix string
 type IndexEntryProcessor interface {
 	ProcessIndexEntry(indexEntry IndexEntry) error
 
+	// Will this user be accepted by the processor?
+	AcceptUser(user string) bool
+
 	// Called at the end of reading of index entries.
 	Flush() error
 }

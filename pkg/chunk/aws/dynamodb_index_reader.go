@@ -130,6 +130,9 @@ func (r *dynamodbIndexReader) processPage(ctx context.Context, sm *seriesMap, pr
 			level.Error(r.log).Log("msg", "Failed to decode hash value", "err", err)
 			continue
 		}
+		if !processor.AcceptUser(orgStr) {
+			continue
+		}
 
 		bucketHashKey := orgStr + ":" + day // from v9Entries.GetChunkWriteEntries()
 

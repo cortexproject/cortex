@@ -1306,6 +1306,10 @@ func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) int {
 	return m.storeGatewayTenantShardSize
 }
 
+func (m *blocksStoreLimitsMock) S3SSEType(_ string) string {
+	return ""
+}
+
 func (m *blocksStoreLimitsMock) S3SSEKMSKeyID(_ string) string {
 	return ""
 }

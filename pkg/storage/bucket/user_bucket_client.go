@@ -16,6 +16,9 @@ import (
 
 // TenantConfigProvider defines a per-tenant config provider.
 type TenantConfigProvider interface {
+	// S3SSEType returns the per-tenant S3 SSE type.
+	S3SSEType(user string) string
+
 	// S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id or an empty string if not set.
 	S3SSEKMSKeyID(userID string) string
 
@@ -81,15 +84,15 @@ func (b *UserBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 		return nil, nil
 	}
 
-	// No S3 SSE override if the key ID override hasn't been provided.
-	keyID := b.cfgProvider.S3SSEKMSKeyID(b.userID)
-	if keyID == "" {
+	// No S3 SSE override if the type override hasn't been provided.
+	sseType := b.cfgProvider.S3SSEType(b.userID)
+	if sseType == "" {
 		return nil, nil
 	}
 
 	cfg := cortex_s3.SSEConfig{
-		Type:                 s3.SSEKMS,
-		KMSKeyID:             keyID,
+		Type:                 sseType,
+		KMSKeyID:             b.cfgProvider.S3SSEKMSKeyID(b.userID),
 		KMSEncryptionContext: b.cfgProvider.S3SSEKMSEncryptionContext(b.userID),
 	}
 

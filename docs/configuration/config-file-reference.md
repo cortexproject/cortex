@@ -3579,12 +3579,18 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.tenant-shard-size
 [store_gateway_tenant_shard_size: <int> | default = 0]
 
-# S3 server-side encryption KMS Key ID. If unset, the default S3 client settings
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
 # are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
 [s3_sse_kms_key_id: <string> | default = ""]
 
 # S3 server-side encryption KMS encryption context. If unset and the key ID
-# override is set, the encryption context will not be provided to S3.
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
 
 # File name of per-user overrides. [deprecated, use -runtime-config.file

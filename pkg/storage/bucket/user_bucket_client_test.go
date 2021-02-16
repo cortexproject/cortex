@@ -58,6 +58,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-encryption-context"))
 
 	// Configure the config provider with a KMS key ID and without encryption context.
+	cfgProvider.s3SseType = s3.SSEKMS
 	cfgProvider.s3KmsKeyID = kmsKeyID
 
 	err = userBkt.Upload(context.Background(), "test", strings.NewReader("test"))
@@ -69,6 +70,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-encryption-context"))
 
 	// Configure the config provider with a KMS key ID and encryption context.
+	cfgProvider.s3SseType = s3.SSEKMS
 	cfgProvider.s3KmsKeyID = kmsKeyID
 	cfgProvider.s3KmsEncryptionContext = kmsEncryptionContext
 
@@ -82,8 +84,13 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 }
 
 type mockTenantConfigProvider struct {
+	s3SseType              string
 	s3KmsKeyID             string
 	s3KmsEncryptionContext string
+}
+
+func (m *mockTenantConfigProvider) S3SSEType(_ string) string {
+	return m.s3SseType
 }
 
 func (m *mockTenantConfigProvider) S3SSEKMSKeyID(_ string) string {

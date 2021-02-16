@@ -87,8 +87,9 @@ type Limits struct {
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
-	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. If unset, the default S3 client settings are used."`
-	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3."`
+	S3SSEType                 string `yaml:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
+	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
+	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 
 	// Config for overrides, convenient if it goes here. [Deprecated in favor of RuntimeConfig flag in cortex.Config]
 	PerTenantOverrideConfig string        `yaml:"per_tenant_override_config"`
@@ -423,6 +424,11 @@ func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 // MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
 func (o *Overrides) MaxHAClusters(user string) int {
 	return o.getOverridesForUser(user).HAMaxClusters
+}
+
+// S3SSEType returns the per-tenant S3 SSE type.
+func (o *Overrides) S3SSEType(user string) string {
+	return o.getOverridesForUser(user).S3SSEType
 }
 
 // S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.

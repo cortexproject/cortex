@@ -110,6 +110,10 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 }
 
 func (w *processor) AcceptUser(user string) bool {
+	if _, found := w.ignoredUsers[user]; found {
+		w.ignoredEntries.Inc()
+		return false
+	}
 	if !w.allowedUsers.IsAllowed(user) || (w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user)) {
 		w.ignoredEntries.Inc()
 		w.ignoredUsers[user] = struct{}{}

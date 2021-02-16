@@ -256,7 +256,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:            haTracker,
 	}
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupMetricsForUser)
+	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+		d.HATracker.cleanupHATrackerMetricsForUser(user)
+		cleanupMetricsForUser(user, d.log)
+	})
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
@@ -287,9 +290,7 @@ func (d *Distributor) running(ctx context.Context) error {
 	}
 }
 
-func (d *Distributor) cleanupMetricsForUser(userID string) {
-	d.HATracker.cleanupHATrackerMetricsForUser(userID)
-
+func cleanupMetricsForUser(userID string, log log.Logger) {
 	receivedSamples.DeleteLabelValues(userID)
 	receivedMetadata.DeleteLabelValues(userID)
 	incomingSamples.DeleteLabelValues(userID)
@@ -298,10 +299,10 @@ func (d *Distributor) cleanupMetricsForUser(userID string) {
 	latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
 
 	if err := util.DeleteMatchingLabels(dedupedSamples, map[string]string{"user": userID}); err != nil {
-		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
+		level.Warn(log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
 	}
 
-	validation.DeletePerUserValidationMetrics(userID, d.log)
+	validation.DeletePerUserValidationMetrics(userID, log)
 }
 
 // Called after distributor is asked to stop via StopAsync.

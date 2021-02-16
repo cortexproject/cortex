@@ -82,7 +82,7 @@ const (
 	// not too small (too much memory).
 	DefaultPostingOffsetInMemorySampling = 32
 
-	partitionerMaxGapSize = 512 * 1024
+	PartitionerMaxGapSize = 512 * 1024
 
 	// Labels for metrics.
 	labelEncode = "encode"
@@ -278,7 +278,7 @@ type BucketStore struct {
 	chunksLimiterFactory ChunksLimiterFactory
 	// seriesLimiterFactory creates a new limiter used to limit the number of touched series by each Series() call.
 	seriesLimiterFactory SeriesLimiterFactory
-	partitioner          partitioner
+	partitioner          Partitioner
 
 	filterConfig             *FilterConfig
 	advLabelSets             []labelpb.ZLabelSet
@@ -300,9 +300,10 @@ func NewBucketStore(
 	dir string,
 	indexCache storecache.IndexCache,
 	queryGate gate.Gate,
-	maxChunkPoolBytes uint64,
+	chunkPool pool.BytesPool,
 	chunksLimiterFactory ChunksLimiterFactory,
 	seriesLimiterFactory SeriesLimiterFactory,
+	partitioner Partitioner,
 	debugLogging bool,
 	blockSyncConcurrency int,
 	filterConfig *FilterConfig,
@@ -314,11 +315,6 @@ func NewBucketStore(
 ) (*BucketStore, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
-	}
-
-	chunkPool, err := pool.NewBucketedBytesPool(maxChunkSize, 50e6, 2, maxChunkPoolBytes)
-	if err != nil {
-		return nil, errors.Wrap(err, "create chunk pool")
 	}
 
 	s := &BucketStore{
@@ -337,7 +333,7 @@ func NewBucketStore(
 		queryGate:                   queryGate,
 		chunksLimiterFactory:        chunksLimiterFactory,
 		seriesLimiterFactory:        seriesLimiterFactory,
-		partitioner:                 gapBasedPartitioner{maxGapSize: partitionerMaxGapSize},
+		partitioner:                 partitioner,
 		enableCompatibilityLabel:    enableCompatibilityLabel,
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
 		enableSeriesResponseHints:   enableSeriesResponseHints,
@@ -1383,7 +1379,7 @@ type bucketBlock struct {
 
 	pendingReaders sync.WaitGroup
 
-	partitioner partitioner
+	partitioner Partitioner
 
 	// Block's labels used by block-level matchers to filter blocks to query. These are used to select blocks using
 	// request hints' BlockMatchers.
@@ -1400,7 +1396,7 @@ func newBucketBlock(
 	indexCache storecache.IndexCache,
 	chunkPool pool.BytesPool,
 	indexHeadReader indexheader.Reader,
-	p partitioner,
+	p Partitioner,
 ) (b *bucketBlock, err error) {
 	b = &bucketBlock{
 		logger:            logger,
@@ -1470,7 +1466,9 @@ func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length i
 		return nil, errors.Errorf("unknown segment file for index %d", seq)
 	}
 
-	c, err := b.chunkPool.Get(int(length))
+	// Request bytes.MinRead extra space to ensure the copy operation will not trigger
+	// a memory reallocation.
+	c, err := b.chunkPool.Get(int(length) + bytes.MinRead)
 	if err != nil {
 		return nil, errors.Wrap(err, "allocate chunk bytes")
 	}
@@ -2037,7 +2035,7 @@ type part struct {
 	elemRng [2]int
 }
 
-type partitioner interface {
+type Partitioner interface {
 	// Partition partitions length entries into n <= length ranges that cover all
 	// input ranges
 	// It supports overlapping ranges.
@@ -2047,6 +2045,12 @@ type partitioner interface {
 
 type gapBasedPartitioner struct {
 	maxGapSize uint64
+}
+
+func NewGapBasedPartitioner(maxGapSize uint64) Partitioner {
+	return gapBasedPartitioner{
+		maxGapSize: maxGapSize,
+	}
 }
 
 // Partition partitions length entries into n <= length ranges that cover all
@@ -2446,4 +2450,9 @@ func (s queryStats) merge(o *queryStats) *queryStats {
 	s.mergeDuration += o.mergeDuration
 
 	return &s
+}
+
+// NewDefaultChunkBytesPool returns a chunk bytes pool with default settings.
+func NewDefaultChunkBytesPool(maxChunkPoolBytes uint64) (pool.BytesPool, error) {
+	return pool.NewBucketedBytesPool(maxChunkSize, 50e6, 2, maxChunkPoolBytes)
 }

@@ -1228,8 +1228,8 @@ github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52 h1:z3hglXVwJ4H
 github.com/thanos-io/thanos v0.13.1-0.20201030101306-47f9a225cc52/go.mod h1:OqqX4x21cg5N5MMHd/yGQAc/V3wg8a7Do4Jk8HfaFZQ=
 github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51 h1:cinCqkVci8c5Dg6uB3m3351EjLAXDbwJVFT+bgwu/Ew=
 github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51/go.mod h1:kPvI4H0AynFiHDN95ZB28/k70ZPGCx+pBrRh6RZPimw=
-github.com/thanos-io/thanos v0.13.1-0.20210204123931-82545cdd16fe h1:YMGaJuBKOK3XtCxxezHClrV2OTImnSdzpMQnXG9nqgw=
-github.com/thanos-io/thanos v0.13.1-0.20210204123931-82545cdd16fe/go.mod h1:ZLDGYRNkgM+FCwYNOD+6tOV+DE2fpjzfV6iqXyOgFIw=
+github.com/thanos-io/thanos v0.13.1-0.20210215212610-1311d287dfe2 h1:6jL8zwgLdjWcwDTvKxvyfGd8BF9WZW7EGdiCdgBwMMc=
+github.com/thanos-io/thanos v0.13.1-0.20210215212610-1311d287dfe2/go.mod h1:ZLDGYRNkgM+FCwYNOD+6tOV+DE2fpjzfV6iqXyOgFIw=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

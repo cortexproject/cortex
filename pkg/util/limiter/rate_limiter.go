@@ -68,7 +68,7 @@ func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) (bool, Reser
 	// available in the future, and tells us this time delay. In
 	// order to mimic the semantics of AllowN, we must check that
 	// there is no delay before we can use them.
-	if r.DelayFrom(now) > time.Duration(0) {
+	if r.DelayFrom(now) > 0 {
 		// Having decided not to use the reservation, return the
 		// tokens to the rate limiter.
 		r.CancelAt(now)

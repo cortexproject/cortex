@@ -227,6 +227,7 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/compactor.template            > ./docs/blocks-storage/compactor.md
 	go run ./tools/doc-generator ./docs/blocks-storage/store-gateway.template        > ./docs/blocks-storage/store-gateway.md
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
+	go run ./tools/doc-generator ./docs/guides/encryption-at-rest.template           > ./docs/guides/encryption-at-rest.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 	embedmd -w docs/configuration/single-process-config.md
 	embedmd -w docs/guides/overrides-exporter.md
@@ -261,7 +262,8 @@ clean-doc:
 		./docs/configuration/config-file-reference.md \
 		./docs/blocks-storage/compactor.md \
 		./docs/blocks-storage/store-gateway.md \
-		./docs/blocks-storage/querier.md
+		./docs/blocks-storage/querier.md \
+		./docs/guides/encryption-at-rest.md
 
 check-doc: doc
 	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md

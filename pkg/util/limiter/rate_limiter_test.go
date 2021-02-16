@@ -45,24 +45,24 @@ func TestRateLimiter_AllowN(t *testing.T) {
 	now := time.Now()
 
 	// Tenant #1
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-1", 8)))
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-1", 10)))
-	assert.Equal(t, false, OK(limiter.AllowN(now, "tenant-1", 3)))
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-1", 2)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-1", 8)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-1", 10)))
+	assert.Equal(t, false, isOK(limiter.AllowN(now, "tenant-1", 3)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-1", 2)))
 
-	assert.Equal(t, true, OK(limiter.AllowN(now.Add(time.Second), "tenant-1", 8)))
-	assert.Equal(t, false, OK(limiter.AllowN(now.Add(time.Second), "tenant-1", 3)))
-	assert.Equal(t, true, OK(limiter.AllowN(now.Add(time.Second), "tenant-1", 2)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now.Add(time.Second), "tenant-1", 8)))
+	assert.Equal(t, false, isOK(limiter.AllowN(now.Add(time.Second), "tenant-1", 3)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now.Add(time.Second), "tenant-1", 2)))
 
 	// Tenant #2
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-2", 18)))
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-2", 20)))
-	assert.Equal(t, false, OK(limiter.AllowN(now, "tenant-2", 3)))
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-2", 2)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-2", 18)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-2", 20)))
+	assert.Equal(t, false, isOK(limiter.AllowN(now, "tenant-2", 3)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-2", 2)))
 
-	assert.Equal(t, true, OK(limiter.AllowN(now.Add(time.Second), "tenant-2", 18)))
-	assert.Equal(t, false, OK(limiter.AllowN(now.Add(time.Second), "tenant-2", 3)))
-	assert.Equal(t, true, OK(limiter.AllowN(now.Add(time.Second), "tenant-2", 2)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now.Add(time.Second), "tenant-2", 18)))
+	assert.Equal(t, false, isOK(limiter.AllowN(now.Add(time.Second), "tenant-2", 3)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now.Add(time.Second), "tenant-2", 2)))
 }
 
 func TestRateLimiter_AllowNCancelation(t *testing.T) {
@@ -76,29 +76,29 @@ func TestRateLimiter_AllowNCancelation(t *testing.T) {
 	limiter := NewRateLimiter(strategy, 10*time.Second)
 	now := time.Now()
 
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-1", 12)))
-	assert.Equal(t, false, OK(limiter.AllowN(now, "tenant-1", 9)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-1", 12)))
+	assert.Equal(t, false, isOK(limiter.AllowN(now, "tenant-1", 9)))
 
 	ok1, r1 := limiter.AllowN(now, "tenant-1", 8)
 	assert.Equal(t, true, ok1)
 	r1.CancelAt(now)
 
-	assert.Equal(t, true, OK(limiter.AllowN(now, "tenant-1", 8)))
+	assert.Equal(t, true, isOK(limiter.AllowN(now, "tenant-1", 8)))
 
 	// +10 tokens (1s)
 	nowPlus := now.Add(time.Second)
 
-	assert.Equal(t, true, OK(limiter.AllowN(nowPlus, "tenant-1", 6)))
-	assert.Equal(t, false, OK(limiter.AllowN(nowPlus, "tenant-1", 5)))
+	assert.Equal(t, true, isOK(limiter.AllowN(nowPlus, "tenant-1", 6)))
+	assert.Equal(t, false, isOK(limiter.AllowN(nowPlus, "tenant-1", 5)))
 
 	ok2, r2 := limiter.AllowN(nowPlus, "tenant-1", 4)
 	assert.Equal(t, true, ok2)
 	r2.CancelAt(nowPlus)
 
-	assert.Equal(t, true, OK(limiter.AllowN(nowPlus, "tenant-1", 2)))
-	assert.Equal(t, false, OK(limiter.AllowN(nowPlus, "tenant-1", 3)))
-	assert.Equal(t, true, OK(limiter.AllowN(nowPlus, "tenant-1", 2)))
-	assert.Equal(t, false, OK(limiter.AllowN(nowPlus, "tenant-1", 1)))
+	assert.Equal(t, true, isOK(limiter.AllowN(nowPlus, "tenant-1", 2)))
+	assert.Equal(t, false, isOK(limiter.AllowN(nowPlus, "tenant-1", 3)))
+	assert.Equal(t, true, isOK(limiter.AllowN(nowPlus, "tenant-1", 2)))
+	assert.Equal(t, false, isOK(limiter.AllowN(nowPlus, "tenant-1", 1)))
 }
 
 func BenchmarkRateLimiter_CustomMultiTenant(b *testing.B) {
@@ -164,6 +164,6 @@ func (s *staticLimitStrategy) Burst(tenantID string) int {
 	return tenant.burst
 }
 
-func OK(ok bool, r Reservation) bool {
+func isOK(ok bool, r Reservation) bool {
 	return ok
 }

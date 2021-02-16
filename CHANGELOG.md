@@ -45,6 +45,7 @@
   * `cortex_ingester_tsdb_symbol_table_size_bytes`
   * `cortex_ingester_tsdb_storage_blocks_bytes`
   * `cortex_ingester_tsdb_time_retentions_total`
+* [ENHANCEMENT] Querier: distribute workload across `-store-gateway.sharding-ring.replication-factor` store-gateway replicas when querying blocks and `-store-gateway.sharding-enabled=true`. #3824
 * [ENHANCEMENT] Distributor / HA Tracker: added cleanup of unused elected HA replicas from KV store. Added following metrics to monitor this process: #3809
   * `cortex_ha_tracker_replicas_cleanup_started_total`
   * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`

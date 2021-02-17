@@ -577,7 +577,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 				}
 				// Append two metadata, expect no error since metadata is a best effort approach.
@@ -698,7 +698,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding series per metric, got %v", err)
 				}
 

@@ -313,3 +313,16 @@ func TestFailureCaseFromRunningIsPassedToStopping(t *testing.T) {
 	fc := s.FailureCase()
 	require.Equal(t, err, fc)
 }
+
+func TestServiceName(t *testing.T) {
+	s := NewIdleService(nil, nil).WithName("test name")
+	require.Equal(t, "test name", DescribeService(s))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, s.StartAsync(ctx))
+
+	// once service has started, BasicService will not allow changing the name
+	s.WithName("new")
+	require.Equal(t, "test name", DescribeService(s))
+}

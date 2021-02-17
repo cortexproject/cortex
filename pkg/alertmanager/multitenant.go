@@ -419,7 +419,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 
 		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
 
-		am.distributor, err = NewDistributor(cfg, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
+		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor")
 		}

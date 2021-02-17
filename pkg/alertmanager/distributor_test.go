@@ -176,7 +176,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distribut
 	cfg := &MultitenantAlertmanagerConfig{}
 	flagext.DefaultValues(cfg)
 
-	d, err := NewDistributor(cfg, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, prometheus.NewRegistry())
+	d, err := NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

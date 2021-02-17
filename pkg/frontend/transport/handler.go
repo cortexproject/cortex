@@ -22,6 +22,7 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -201,7 +202,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
-		if strings.Contains(err.Error(), "http: request body too large") {
+		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
 		}
 	}

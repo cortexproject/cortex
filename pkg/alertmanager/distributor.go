@@ -15,13 +15,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -29,7 +29,8 @@ import (
 type Distributor struct {
 	services.Service
 
-	cfg              *MultitenantAlertmanagerConfig
+	cfg              ClientConfig
+	maxRecvMsgSize   int64
 	requestsInFlight sync.WaitGroup
 
 	alertmanagerRing        ring.ReadRing
@@ -39,14 +40,15 @@ type Distributor struct {
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg *MultitenantAlertmanagerConfig, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if alertmanagerClientsPool == nil {
-		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg.AlertmanagerClient, logger, reg)
+		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg, logger, reg)
 	}
 
 	d = &Distributor{
 		cfg:                     cfg,
 		logger:                  logger,
+		maxRecvMsgSize:          maxRecvMsgSize,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
 	}
@@ -70,7 +72,7 @@ func (d *Distributor) IsPathSupported(path string) bool {
 
 // DistributeRequest shards the writes and returns as soon as the quorum is satisfied.
 // In case of reads, it proxies the request to one of the alertmanagers.
-// DistributeRequest assumes that the caller has verified IsPathSupported return
+// DistributeRequest assumes that the caller has verified IsPathSupported returns
 // true for the route.
 func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) {
 	d.requestsInFlight.Add(1)
@@ -82,7 +84,7 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	logger := log.With(d.logger, "user", userID)
+	logger := util_log.WithContext(r.Context(), d.logger)
 
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		d.doRead(userID, w, r, logger)
@@ -95,10 +97,11 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	var body []byte
 	var err error
 	if r.Body != nil {
-		body, err = ioutil.ReadAll(r.Body)
+		body, err = ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 		if err != nil {
-			if errors.Is(util.ErrRequestBodyTooLarge, err) {
+			if util.IsRequestBodyTooLarge(err) {
 				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+				return
 			}
 			level.Error(logger).Log("msg", "failed to read the request body during write", "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -150,7 +153,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		respondFromHTTPGRPCResponse(w, resp)
 	} else {
 		// This should not happen.
-		level.Error(logger).Log("msg", "distributor did not receive response from alertmanager though no errors")
+		level.Error(logger).Log("msg", "distributor did not receive any response from alertmanagers, but there were no errors")
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
@@ -164,11 +167,21 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	req, err := server.HTTPRequest(r)
+	body, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to get grpc request from http request", "err", err)
+		if util.IsRequestBodyTooLarge(err) {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		level.Error(logger).Log("msg", "failed to read the request body during read", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+	req := &httpgrpc.HTTPRequest{
+		Method:  r.Method,
+		Url:     r.RequestURI,
+		Body:    body,
+		Headers: httpToHttpgrpcHeaders(r.Header),
 	}
 
 	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doRead")
@@ -206,7 +219,7 @@ func respondFromHTTPGRPCResponse(w http.ResponseWriter, httpResp *httpgrpc.HTTPR
 }
 
 func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, d.cfg.AlertmanagerClient.RemoteTimeout)
+	ctx, cancel := context.WithTimeout(ctx, d.cfg.RemoteTimeout)
 	defer cancel()
 	amClient, err := d.alertmanagerClientsPool.GetClientFor(am.Addr)
 	if err != nil {

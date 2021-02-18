@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxSeriesPerUserLimitExceeded     = "per-user series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d) exceeded"
-	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d) exceeded"
+	errMaxSeriesPerMetricLimitExceeded   = "per-metric series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxSeriesPerUserLimitExceeded     = "per-user series limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxMetadataPerMetricLimitExceeded = "per-metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
+	errMaxMetadataPerUserLimitExceeded   = "per-user metric metadata limit of %d exceeded, please contact administrator to raise it. (local limit: %d global limit: %d actual local limit: %d)"
 )
 
 // RingCount is the interface exposed by a ring implementation which allows

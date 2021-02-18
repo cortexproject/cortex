@@ -17,15 +17,19 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -271,7 +275,8 @@ type MultitenantAlertmanager struct {
 	alertmanagerMetrics *alertmanagerMetrics
 	multitenantMetrics  *multitenantAlertmanagerMetrics
 
-	peer *cluster.Peer
+	peer                    *cluster.Peer
+	alertmanagerClientsPool ClientsPool
 
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
@@ -307,7 +312,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 	cfg.Cluster.SupportDeprecatedFlagset(cfg, logger)
 
 	var peer *cluster.Peer
-	if cfg.Cluster.ListenAddr != "" {
+	// We need to take this case into account to support our legacy upstream clustering.
+	if cfg.Cluster.ListenAddr != "" && !cfg.ShardingEnabled {
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
 			registerer,
@@ -414,7 +420,8 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 
 		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
 
-		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
+		am.alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(am.ring), cfg.AlertmanagerClient, logger, am.registry)
+		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, am.alertmanagerClientsPool, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor")
 		}
@@ -730,20 +737,26 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 			return fmt.Errorf("unable to apply Alertmanager config for user %v: %v", cfg.User, err)
 		}
 	}
+
 	am.cfgs[cfg.User] = cfg
 	return nil
 }
 
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config, rawCfg string) (*Alertmanager, error) {
 	reg := prometheus.NewRegistry()
+
 	newAM, err := New(&Config{
-		UserID:      userID,
-		DataDir:     am.cfg.DataDir,
-		Logger:      util_log.Logger,
-		Peer:        am.peer,
-		PeerTimeout: am.cfg.Cluster.PeerTimeout,
-		Retention:   am.cfg.Retention,
-		ExternalURL: am.cfg.ExternalURL.URL,
+		UserID:             userID,
+		DataDir:            am.cfg.DataDir,
+		Logger:             util_log.Logger,
+		Peer:               am.peer,
+		PeerTimeout:        am.cfg.Cluster.PeerTimeout,
+		Retention:          am.cfg.Retention,
+		ExternalURL:        am.cfg.ExternalURL.URL,
+		ShardingEnabled:    am.cfg.ShardingEnabled,
+		ReplicateStateFunc: am.replicateStateForUser,
+		GetPositionFunc:    am.getPositionFor,
+		ReplicationFactor:  am.cfg.ShardingRing.ReplicationFactor,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
@@ -755,6 +768,32 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 
 	am.alertmanagerMetrics.addUserRegistry(userID, reg)
 	return newAM, nil
+}
+
+// getPositionFor returns the position this Alertmanager instance holds in the ring related to its other replicas for an specific user.
+func (am *MultitenantAlertmanager) getPositionFor(userID string) int {
+	// If we have a replication factor of 1 or less we don't need to do any work and can immediately return.
+	if am.ring == nil || am.ring.ReplicationFactor() <= 1 {
+		return 0
+	}
+
+	set, err := am.ring.Get(shardByUser(userID), RingOp, nil, nil, nil)
+	if err != nil {
+		level.Error(am.logger).Log("msg", "unable to read the ring while trying to determine the alertmanager position", "err", err)
+		// If we're  unable to determine the position, we don't want a tenant to miss out on the notification - instead,
+		// just assume we're the first in line and run the risk of a double notification.
+		return 0
+	}
+
+	var position int
+	for i, instance := range set.Ingesters {
+		if instance.Addr == am.ringLifecycler.GetInstanceAddr() {
+			position = i
+			break
+		}
+	}
+
+	return position
 }
 
 // ServeHTTP serves the Alertmanager's web UI and API.
@@ -838,13 +877,80 @@ func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
 	}
 }
 
+// replicateStateForUser attempts to replicate a partial state sent by an alertmanager to its other replicas through the ring.
+func (am *MultitenantAlertmanager) replicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error {
+	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
+
+	selfAddress := am.ringLifecycler.GetInstanceAddr()
+	err := ring.DoBatch(ctx, RingOp, am.ring, []uint32{shardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
+		if desc.GetAddr() == selfAddress {
+			return nil
+		}
+
+		c, err := am.alertmanagerClientsPool.GetClientFor(desc.GetAddr())
+		if err != nil {
+			return err
+		}
+
+		resp, err := c.UpdateState(user.InjectOrgID(ctx, userID), part)
+		if err != nil {
+			return err
+		}
+
+		switch resp.Status {
+		case alertmanagerpb.OK:
+			return nil
+		case alertmanagerpb.MERGE_ERROR:
+			level.Error(am.logger).Log("msg", "state replication failed", "user", userID, "key", part.Key, "err", resp.Error)
+			return nil
+		case alertmanagerpb.USER_NOT_FOUND:
+			level.Debug(am.logger).Log("msg", "user not found while trying to replicate state", "user", userID, "key", part.Key)
+			return nil
+		default:
+			return nil
+		}
+	}, func() {})
+
+	return err
+}
+
+// UpdateState implements the Alertmanager service.
+func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *clusterpb.Part) (*alertmanagerpb.UpdateStateResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("no user id found in context")
+	}
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	userAM, ok := am.alertmanagers[userID]
+	if !ok {
+		// We can end up trying to replicate state to an alertmanager that is no longer available due to e.g. a ring topology change.
+		level.Debug(am.logger).Log("msg", "user does not have an alertmanager in this instance", "user", userID)
+		return &alertmanagerpb.UpdateStateResponse{
+			Status: alertmanagerpb.USER_NOT_FOUND,
+			Error:  "alertmanager for this user does not exists",
+		}, nil
+	}
+
+	if err = userAM.mergePartialExternalState(part); err != nil {
+		level.Error(am.logger).Log("msg", "failed to merge state", "err", err, "key", part.Key)
+		return &alertmanagerpb.UpdateStateResponse{
+			Status: alertmanagerpb.MERGE_ERROR,
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &alertmanagerpb.UpdateStateResponse{Status: alertmanagerpb.OK}, nil
+}
+
 // StatusHandler shows the status of the alertmanager.
 type StatusHandler struct {
 	am *MultitenantAlertmanager
 }
 
 // ServeHTTP serves the status of the alertmanager.
-func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	err := statusTemplate.Execute(w, s.am.peer.Info())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

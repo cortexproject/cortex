@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.7.0-rc.2
+
+* [BUGFIX] Handle the case of large step causing single pt extents. #3818 #3835
+
 ## 1.7.0-rc.1
 
 * [BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815

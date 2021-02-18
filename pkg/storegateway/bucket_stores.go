@@ -406,7 +406,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
-		store.NewGapBasedPartitioner(store.PartitionerMaxGapSize),
+		store.NewGapBasedPartitioner(u.cfg.BucketStore.PartitionerMaxGapBytes),
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.

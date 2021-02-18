@@ -231,6 +231,10 @@ type BucketStoreConfig struct {
 	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled"`
 	IndexHeaderLazyLoadingIdleTimeout time.Duration `yaml:"index_header_lazy_loading_idle_timeout"`
 
+	// Controls the partitioner, used to aggregate multiple GET object API requests.
+	// The config option is hidden until experimental.
+	PartitionerMaxGapBytes uint64 `yaml:"partitioner_max_gap_bytes" doc:"hidden"`
+
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
 	// It's meant for setups that want low baseline memory pressure and where less traffic is expected.
@@ -260,6 +264,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.PostingOffsetsInMemSampling, "blocks-storage.bucket-store.posting-offsets-in-mem-sampling", store.DefaultPostingOffsetInMemorySampling, "Controls what is the ratio of postings offsets that the store will hold in memory.")
 	f.BoolVar(&cfg.IndexHeaderLazyLoadingEnabled, "blocks-storage.bucket-store.index-header-lazy-loading-enabled", false, "If enabled, store-gateway will lazy load an index-header only once required by a query.")
 	f.DurationVar(&cfg.IndexHeaderLazyLoadingIdleTimeout, "blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout", 20*time.Minute, "If index-header lazy loading is enabled and this setting is > 0, the store-gateway will offload unused index-headers after 'idle timeout' inactivity.")
+	f.Uint64Var(&cfg.PartitionerMaxGapBytes, "blocks-storage.bucket-store.partitioner-max-gap-bytes", store.PartitionerMaxGapSize, "Max size - in bytes - of a gap for which the partitioner aggregates together two bucket GET object requests.")
 }
 
 // Validate the config.

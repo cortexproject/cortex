@@ -1572,6 +1572,10 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.configs.poll-interval
 [poll_interval: <duration> | default = 15s]
 
+# Maximum size (bytes) of an accepted HTTP request body.
+# CLI flag: -alertmanager.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 16777216]
+
 # Deprecated. Use -alertmanager.cluster.listen-address instead.
 # CLI flag: -cluster.listen-address
 [cluster_bind_address: <string> | default = "0.0.0.0:9094"]
@@ -1840,6 +1844,40 @@ cluster:
 # Enable the experimental alertmanager config api.
 # CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]
+
+alertmanager_client:
+  # Timeout for downstream alertmanagers.
+  # CLI flag: -alertmanager.alertmanager-client.remote-timeout
+  [remote_timeout: <duration> | default = 2s]
+
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -alertmanager.alertmanager-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -alertmanager.alertmanager-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -alertmanager.alertmanager-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -alertmanager.alertmanager-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -alertmanager.alertmanager-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `table_manager_config`

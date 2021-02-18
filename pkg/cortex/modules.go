@@ -698,14 +698,14 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
-	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.HTTPListenPort
+	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}
 
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 

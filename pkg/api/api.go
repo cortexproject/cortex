@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -158,7 +159,9 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, amCfg alertmanager.MultitenantAlertmanagerConfig, target, apiEnabled bool) {
+	alertmanagerpb.RegisterAlertmanagerServer(a.server.GRPC, am)
+
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/ring", "Alertmanager Ring Status")
 	// Ensure this route is registered before the prefixed AM route

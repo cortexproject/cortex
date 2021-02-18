@@ -1,6 +1,8 @@
 package astmapper
 
 import (
+	"log"
+
 	"github.com/prometheus/prometheus/promql/parser"
 )
 
@@ -85,9 +87,7 @@ func CanParallelize(node parser.Node) bool {
 		return true
 
 	default:
-		// Should never occur, unknown types will return errors when parsed. However, the best course of
-		// action is to return false. AST type errors from the expression will be returned the next time in
-		// the request lifecylce that it is parsed.
+		log.Printf("err=\"CanParallel: unhandled node type %T\"", node)
 		return false
 	}
 

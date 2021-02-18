@@ -141,7 +141,7 @@ func main() {
 
 	util_log.InitLogger(&cfg.Server)
 
-	Set the Go standard library logger to use the same logger as Cortex
+	//	Set the Go standard library logger to use the same logger as Cortex
 	stdlog.SetOutput(log.NewStdlibAdapter(util_log.Logger))
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044

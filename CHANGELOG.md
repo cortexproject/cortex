@@ -4,7 +4,7 @@
 
 ## 1.7.0-rc.2
 
-* [BUGFIX] Handle the case of large step causing single pt extents. #3818 #3835
+* [BUGFIX] Handle missing samples due to large steps and single point extents. #3818 #3835
 
 ## 1.7.0-rc.1
 

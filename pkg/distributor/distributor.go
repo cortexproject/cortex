@@ -150,7 +150,7 @@ type Distributor struct {
 	activeUsers *util.ActiveUsersCleanupService
 }
 
-// Config contains the configuration require to
+// Config contains the configuration required to
 // create a Distributor
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`
@@ -569,7 +569,8 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	}
 
 	totalN := validatedSamples + len(validatedMetadata)
-	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
+	rateOK, rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
+	if !rateOK {
 		// Ensure the request slice is reused if the request is rate limited.
 		ingester_client.ReuseSlice(req.Timeseries)
 
@@ -621,6 +622,8 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { ingester_client.ReuseSlice(req.Timeseries) })
 	if err != nil {
+		// Ingestion failed, so roll-back the reservation from the rate limiter.
+		rateReservation.CancelAt(now)
 		return nil, err
 	}
 	return &ingester_client.WriteResponse{}, firstPartialErr
@@ -691,17 +694,17 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 // LabelValuesForLabelName returns all of the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &ingester_client.LabelValuesRequest{
-		LabelName:        string(labelName),
-		StartTimestampMs: int64(from),
-		EndTimestampMs:   int64(to),
+	req, err := ingester_client.ToLabelValuesRequest(labelName, from, to, matchers)
+	if err != nil {
+		return nil, err
 	}
+
 	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.LabelValues(ctx, req)
 	})

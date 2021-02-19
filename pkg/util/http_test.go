@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"html/template"
+	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -156,4 +158,9 @@ func (b bytesBuffered) Close() error {
 
 func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 	return b.Buffer
+}
+
+func TestIsRequestBodyTooLargeRegression(t *testing.T) {
+	_, err := ioutil.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), ioutil.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
+	assert.True(t, util.IsRequestBodyTooLarge(err))
 }

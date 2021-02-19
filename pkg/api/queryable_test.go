@@ -135,6 +135,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 	api := v1.NewAPI(
 		engine,
 		q,
+		nil,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -180,7 +181,7 @@ type testQuerier struct {
 	err error
 }
 
-func (t testQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (t testQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, t.err
 }
 

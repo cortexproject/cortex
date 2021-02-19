@@ -55,6 +55,7 @@ message LabelValuesRequest {
   string label_name = 1;
   int64 start_timestamp_ms = 2;
   int64 end_timestamp_ms = 3;
+  LabelMatchers matchers = 4;
 }
 
 message LabelValuesResponse {

@@ -333,7 +333,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			}
 
 			reg := prometheus.NewPedanticRegistry()
-			s, err := newBlocksStoreReplicationSet(r, testData.shardingStrategy, limits, ClientConfig{}, log.NewNopLogger(), reg)
+			s, err := newBlocksStoreReplicationSet(r, testData.shardingStrategy, noLoadBalancing, limits, ClientConfig{}, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
@@ -357,6 +357,70 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 				`, len(testData.expectedClients))), "cortex_storegateway_clients"))
 			}
 		})
+	}
+}
+
+func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancingStrategy(t *testing.T) {
+	const (
+		numRuns      = 1000
+		numInstances = 3
+	)
+
+	ctx := context.Background()
+	userID := "user-A"
+	registeredAt := time.Now()
+	block1 := ulid.MustNew(1, nil)
+
+	// Create a ring.
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+		d := ring.NewDesc()
+		for n := 1; n <= numInstances; n++ {
+			d.AddIngester(fmt.Sprintf("instance-%d", n), fmt.Sprintf("127.0.0.%d", n), "", []uint32{uint32(n)}, ring.ACTIVE, registeredAt)
+		}
+		return d, true, nil
+	}))
+
+	// Configure a replication factor equal to the number of instances, so that every store-gateway gets all blocks.
+	ringCfg := ring.Config{}
+	flagext.DefaultValues(&ringCfg)
+	ringCfg.ReplicationFactor = numInstances
+
+	r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	require.NoError(t, err)
+
+	limits := &blocksStoreLimitsMock{}
+	reg := prometheus.NewPedanticRegistry()
+	s, err := newBlocksStoreReplicationSet(r, util.ShardingStrategyDefault, randomLoadBalancing, limits, ClientConfig{}, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+	defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
+
+	// Wait until the ring client has initialised the state.
+	test.Poll(t, time.Second, true, func() interface{} {
+		all, err := r.GetAllHealthy(ring.Read)
+		return err == nil && len(all.Ingesters) > 0
+	})
+
+	// Request the same block multiple times and ensure the distribution of
+	// requests across store-gateways is balanced.
+	distribution := map[string]int{}
+
+	for n := 0; n < numRuns; n++ {
+		clients, err := s.GetClientsFor(userID, []ulid.ULID{block1}, nil)
+		require.NoError(t, err)
+		require.Len(t, clients, 1)
+
+		for addr := range getStoreGatewayClientAddrs(clients) {
+			distribution[addr]++
+		}
+	}
+
+	assert.Len(t, distribution, numInstances)
+	for addr, count := range distribution {
+		// Ensure that the number of times each client is returned is above
+		// the 80% of the perfect even distribution.
+		assert.Greaterf(t, float64(count), (float64(numRuns)/float64(numInstances))*0.8, "store-gateway address: %s", addr)
 	}
 }
 

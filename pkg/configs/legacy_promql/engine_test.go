@@ -132,7 +132,7 @@ type errQuerier struct {
 func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) storage.SeriesSet {
 	return storage.ErrSeriesSet(q.err)
 }
-func (q *errQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *errQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, q.err
 }
 func (q *errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, q.err }

@@ -210,7 +210,7 @@ func writeError(w http.ResponseWriter, err error) {
 	case context.DeadlineExceeded:
 		err = errDeadlineExceeded
 	default:
-		if strings.Contains(err.Error(), "http: request body too large") {
+		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
 		}
 	}

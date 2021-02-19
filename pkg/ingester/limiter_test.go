@@ -270,7 +270,7 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
 			series:                   300,
-			expected:                 fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, 0, 1000, 300),
+			expected:                 fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, 1000, 0, 1000, 300),
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
 			metadata:                   300,
-			expected:                   fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, 0, 1000, 300),
+			expected:                   fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, 1000, 0, 1000, 300),
 		},
 	}
 
@@ -395,7 +395,7 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			ringIngesterCount:      10,
 			shardByAllLabels:       true,
 			series:                 300,
-			expected:               fmt.Errorf(errMaxSeriesPerUserLimitExceeded, 0, 1000, 300),
+			expected:               fmt.Errorf(errMaxSeriesPerUserLimitExceeded, 1000, 0, 1000, 300),
 		},
 	}
 
@@ -458,7 +458,7 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
 			metadata:                 300,
-			expected:                 fmt.Errorf(errMaxMetadataPerUserLimitExceeded, 0, 1000, 300),
+			expected:                 fmt.Errorf(errMaxMetadataPerUserLimitExceeded, 1000, 0, 1000, 300),
 		},
 	}
 

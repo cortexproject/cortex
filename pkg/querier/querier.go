@@ -384,13 +384,13 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 }
 
 // LabelsValue implements storage.Querier.
-func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelValues(name)
+		return q.metadataQuerier.LabelValues(name, matchers...)
 	}
 
 	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelValues(name)
+		return q.queriers[0].LabelValues(name, matchers...)
 	}
 
 	var (
@@ -406,7 +406,7 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
-			myValues, myWarnings, err := querier.LabelValues(name)
+			myValues, myWarnings, err := querier.LabelValues(name, matchers...)
 			if err != nil {
 				return err
 			}

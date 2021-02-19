@@ -21,6 +21,8 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/httpgrpc/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -91,10 +93,11 @@ func init() {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir      string           `yaml:"data_dir"`
-	Retention    time.Duration    `yaml:"retention"`
-	ExternalURL  flagext.URLValue `yaml:"external_url"`
-	PollInterval time.Duration    `yaml:"poll_interval"`
+	DataDir        string           `yaml:"data_dir"`
+	Retention      time.Duration    `yaml:"retention"`
+	ExternalURL    flagext.URLValue `yaml:"external_url"`
+	PollInterval   time.Duration    `yaml:"poll_interval"`
+	MaxRecvMsgSize int64            `yaml:"max_recv_msg_size"`
 
 	DeprecatedClusterBindAddr      string              `yaml:"cluster_bind_address"`
 	DeprecatedClusterAdvertiseAddr string              `yaml:"cluster_advertise_address"`
@@ -112,6 +115,9 @@ type MultitenantAlertmanagerConfig struct {
 	Cluster ClusterConfig    `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
+
+	// For distributor.
+	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
 }
 
 type ClusterConfig struct {
@@ -132,6 +138,7 @@ const (
 func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "alertmanager.storage.path", "data/", "Base path for data storage.")
 	f.DurationVar(&cfg.Retention, "alertmanager.storage.retention", 5*24*time.Hour, "How long to keep data for.")
+	f.Int64Var(&cfg.MaxRecvMsgSize, "alertmanager.max-recv-msg-size", 16<<20, "Maximum size (bytes) of an accepted HTTP request body.")
 
 	f.Var(&cfg.ExternalURL, "alertmanager.web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.")
 
@@ -149,6 +156,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
+
+	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
@@ -231,8 +240,15 @@ type MultitenantAlertmanager struct {
 	cfg *MultitenantAlertmanagerConfig
 
 	// Ring used for sharding alertmanager instances.
+	// When sharding is disabled, the flow is:
+	//   ServeHTTP() -> serveRequest()
+	// When sharding is enabled:
+	//   ServeHTTP() -> distributor.DistributeRequest() -> (sends to other AM or even the current)
+	//     -> HandleRequest() (gRPC call) -> grpcServer() -> handlerForGRPCServer.ServeHTTP() -> serveRequest().
 	ringLifecycler *ring.BasicLifecycler
 	ring           *ring.Ring
+	distributor    *Distributor
+	grpcServer     *server.Server
 
 	// Subservices manager (ring, lifecycler)
 	subservices        *services.Manager
@@ -400,6 +416,13 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		if am.registry != nil {
 			am.registry.MustRegister(am.ring)
 		}
+
+		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
+
+		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, nil, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
+		if err != nil {
+			return nil, errors.Wrap(err, "create distributor")
+		}
 	}
 
 	if registerer != nil {
@@ -409,6 +432,16 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 	am.Service = services.NewBasicService(am.starting, am.run, am.stopping)
 
 	return am, nil
+}
+
+// handlerForGRPCServer acts as a handler for gRPC server to serve
+// the serveRequest() via the standard ServeHTTP.
+type handlerForGRPCServer struct {
+	am *MultitenantAlertmanager
+}
+
+func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	h.am.serveRequest(w, req)
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
@@ -423,7 +456,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}()
 
 	if am.cfg.ShardingEnabled {
-		if am.subservices, err = services.NewManager(am.ringLifecycler, am.ring); err != nil {
+		if am.subservices, err = services.NewManager(am.ringLifecycler, am.ring, am.distributor); err != nil {
 			return errors.Wrap(err, "failed to start alertmanager's subservices")
 		}
 
@@ -738,6 +771,23 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		return
 	}
 
+	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
+		am.distributor.DistributeRequest(w, req)
+		return
+	}
+
+	// If sharding is not enabled or Distributor does not support this path,
+	// it is served by this instance.
+	am.serveRequest(w, req)
+}
+
+// HandleRequest implements gRPC Alertmanager service, which receives request from AlertManager-Distributor.
+func (am *MultitenantAlertmanager) HandleRequest(ctx context.Context, in *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+	return am.grpcServer.Handle(ctx, in)
+}
+
+// serveRequest serves the Alertmanager's web UI and API.
+func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -748,7 +798,6 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	am.alertmanagersMtx.Unlock()
 
 	if ok {
-
 		userAM.mux.ServeHTTP(w, req)
 		return
 	}

@@ -5,12 +5,28 @@
 * [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
 * [CHANGE] Require explicit flag `-<prefix>.tls-enabled` to enable TLS in GRPC clients. Previously it was enough to specify a TLS flag to enable TLS validation. #3156
 * [CHANGE] Query-frontend: removed `-querier.split-queries-by-day` (deprecated in Cortex 0.4.0). You should use `-querier.split-queries-by-interval` instead. #3813
+* [CHANGE] Store-gateway: the chunks pool controlled by `-blocks-storage.bucket-store.max-chunk-pool-bytes` is now shared across all tenants. #3830
+* [CHANGE] Ingester: return error code 400 instead of 429 when per-user/per-tenant series/metadata limits are reached. #3833
 * [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810
   - `-<prefix>.s3.sse.type`
+  
+  
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744
 * [FEATURE] Overrides Exporter: Add `overrides-exporter` module for exposing per-tenant resource limit overrides as metrics. It is not included in `all` target, and must be explicitly enabled. #3785
+* [FEATURE] Experimental thanosconvert: introduce an experimental tool `thanosconvert` to migrate Thanos block metadata to Cortex metadata. #3770
+* [FEATURE] Alertmanager: It now shards the `/api/v1/alerts` API using the ring when sharding is enabled. #3671
+  * Added `-alertmanager.max-recv-msg-size` (defaults to 16M) to limit the size of HTTP request body handled by the alertmanager.
+  * New flags added for communication between alertmanagers:
+    * `-alertmanager.max-recv-msg-size`
+    * `-alertmanager.alertmanager-client.remote-timeout`
+    * `-alertmanager.alertmanager-client.tls-enabled`
+    * `-alertmanager.alertmanager-client.tls-cert-path`
+    * `-alertmanager.alertmanager-client.tls-key-path`
+    * `-alertmanager.alertmanager-client.tls-ca-path`
+    * `-alertmanager.alertmanager-client.tls-server-name`
+    * `-alertmanager.alertmanager-client.tls-insecure-skip-verify`
 * [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
   * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
   * `-ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.
@@ -19,7 +35,6 @@
   * `-ruler.alertmanager-client.tls-insecure-skip-verify`: Boolean to disable verifying the certificate.
   * `-ruler.alertmanager-client.tls-key-path`: File path to the TLS key certificate.
   * `-ruler.alertmanager-client.tls-server-name`: Expected name on the TLS certificate.
-* [FEATURE] Experimental thanosconvert: introduce an experimental tool `thanosconvert` to migrate Thanos block metadata to Cortex metadata. #3770
 * [ENHANCEMENT] Ingester: exposed metric `cortex_ingester_oldest_unshipped_block_timestamp_seconds`, tracking the unix timestamp of the oldest TSDB block not shipped to the storage yet. #3705
 * [ENHANCEMENT] Prometheus upgraded. #3739
   * Avoid unnecessary `runtime.GC()` during compactions.
@@ -44,6 +59,7 @@
   * `cortex_ingester_tsdb_symbol_table_size_bytes`
   * `cortex_ingester_tsdb_storage_blocks_bytes`
   * `cortex_ingester_tsdb_time_retentions_total`
+* [ENHANCEMENT] Querier: distribute workload across `-store-gateway.sharding-ring.replication-factor` store-gateway replicas when querying blocks and `-store-gateway.sharding-enabled=true`. #3824
 * [ENHANCEMENT] Distributor / HA Tracker: added cleanup of unused elected HA replicas from KV store. Added following metrics to monitor this process: #3809
   * `cortex_ha_tracker_replicas_cleanup_started_total`
   * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`
@@ -51,6 +67,7 @@
   * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
 * [ENHANCEMENT] Tenant deletion endpoints now support deletion of ruler groups. This only works when using rule store that supports deletion. #3750
 * [ENHANCEMENT] Query-frontend, query-scheduler: cleanup metrics for inactive tenants. #3826
+* [ENHANCEMENT] Distributor: Prevent failed ingestion from affecting rate limiting. #3825
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

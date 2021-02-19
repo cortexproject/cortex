@@ -194,7 +194,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	l.BasicService = services.NewBasicService(nil, l.loop, l.stopping)
+	l.BasicService = services.
+		NewBasicService(nil, l.loop, l.stopping).
+		WithName(fmt.Sprintf("%s ring lifecycler", ringName))
 
 	return l, nil
 }
@@ -837,8 +839,4 @@ func (i *Lifecycler) unregister(ctx context.Context) error {
 		ringDesc.RemoveIngester(i.ID)
 		return ringDesc, true, nil
 	})
-}
-
-func (i *Lifecycler) String() string {
-	return fmt.Sprintf("%s ring lifecycler", i.RingName)
 }

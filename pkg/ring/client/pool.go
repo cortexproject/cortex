@@ -69,7 +69,9 @@ func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, 
 		clientsMetric: clientsMetric,
 	}
 
-	p.Service = services.NewTimerService(cfg.CheckInterval, nil, p.iteration, nil)
+	p.Service = services.
+		NewTimerService(cfg.CheckInterval, nil, p.iteration, nil).
+		WithName(fmt.Sprintf("%s client pool", p.clientName))
 	return p
 }
 
@@ -149,10 +151,6 @@ func (p *Pool) Count() int {
 	p.RLock()
 	defer p.RUnlock()
 	return len(p.clients)
-}
-
-func (p *Pool) String() string {
-	return fmt.Sprintf("%s client pool", p.clientName)
 }
 
 func (p *Pool) removeStaleClients() {

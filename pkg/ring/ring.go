@@ -155,7 +155,6 @@ type Ring struct {
 	services.Service
 
 	key      string
-	name     string
 	cfg      Config
 	KVClient kv.Client
 	strategy ReplicationStrategy
@@ -216,7 +215,6 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 
 	r := &Ring{
 		key:                  key,
-		name:                 name,
 		cfg:                  cfg,
 		KVClient:             store,
 		strategy:             strategy,
@@ -254,7 +252,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		),
 	}
 
-	r.Service = services.NewBasicService(nil, r.loop, nil)
+	r.Service = services.NewBasicService(nil, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
 	return r, nil
 }
 
@@ -763,10 +761,6 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	instances := r.ringDesc.GetIngesters()
 	_, ok := instances[instanceID]
 	return ok
-}
-
-func (r *Ring) String() string {
-	return fmt.Sprintf("%s ring client", r.name)
 }
 
 func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {

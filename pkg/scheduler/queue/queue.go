@@ -62,7 +62,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeV
 	return q
 }
 
-// Puts the request into the queue. MaxQueries is user-specific value that specifies how many queriers can
+// EnqueueRequest puts the request into the queue. MaxQueries is user-specific value that specifies how many queriers can
 // this user use (zero or negative = all queriers). It is passed to each EnqueueRequest, because it can change
 // between calls.
 //

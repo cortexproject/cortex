@@ -17,17 +17,17 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
-	if err != nil {
-		return nil, err
-	}
+	frontend := New(config, limits{queriers: 3}, logger, nil)
 
-	t.Cleanup(frontend.Close)
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), frontend))
+	})
 	return frontend, nil
 }
 

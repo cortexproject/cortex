@@ -60,9 +60,10 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
+	activeUsers  *util.ActiveUsersCleanupService
 }
 
-// New creates a new frontend handler.
+// NewHandler creates a new frontend handler.
 func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
@@ -75,6 +76,12 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
+
+		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+			h.querySeconds.DeleteLabelValues(user)
+		})
+		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
+		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
@@ -161,6 +168,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
+	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
 	logMessage := append([]interface{}{

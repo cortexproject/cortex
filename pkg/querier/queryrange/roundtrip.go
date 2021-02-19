@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const day = 24 * time.Hour
@@ -143,10 +145,16 @@ func NewTripperware(
 ) (Tripperware, cache.Cache, error) {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "query_frontend_queries_total",
-		Help:      "Total queries sent per tenant.",
+		Name: "cortex_query_frontend_queries_total",
+		Help: "Total queries sent per tenant.",
 	}, []string{"op", "user"})
+
+	activeUsers := util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+		err := util.DeleteMatchingLabels(queriesPerTenant, map[string]string{"user": user})
+		if err != nil {
+			level.Warn(log).Log("msg", "failed to remove cortex_query_frontend_queries_total metric for user", "user", user)
+		}
+	})
 
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
@@ -198,6 +206,8 @@ func NewTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
 
+	// Start cleanup. If cleaner stops or fail, we will simply not clean the metrics for inactive users.
+	_ = activeUsers.StartAsync(context.Background())
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
@@ -214,7 +224,9 @@ func NewTripperware(
 				if err != nil {
 					return nil, err
 				}
-				queriesPerTenant.WithLabelValues(op, tenant.JoinTenantIDs(tenantIDs)).Inc()
+				userStr := tenant.JoinTenantIDs(tenantIDs)
+				activeUsers.UpdateUserTimestamp(userStr, time.Now())
+				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
 				if !isQueryRange {
 					return next.RoundTrip(r)

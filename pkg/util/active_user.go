@@ -1,9 +1,13 @@
 package util
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // ActiveUsers keeps track of latest user's activity timestamp,
@@ -88,4 +92,40 @@ func (m *ActiveUsers) PurgeInactiveUsers(deadline int64) []string {
 	}
 
 	return inactive
+}
+
+// ActiveUsersCleanupService tracks active users, and periodically purges inactive ones while running.
+type ActiveUsersCleanupService struct {
+	services.Service
+
+	activeUsers     *ActiveUsers
+	cleanupFunc     func(string)
+	inactiveTimeout time.Duration
+}
+
+func NewActiveUsersCleanupWithDefaultValues(cleanupFn func(string)) *ActiveUsersCleanupService {
+	return NewActiveUsersCleanupService(3*time.Minute, 15*time.Minute, cleanupFn)
+}
+
+func NewActiveUsersCleanupService(cleanupInterval, inactiveTimeout time.Duration, cleanupFn func(string)) *ActiveUsersCleanupService {
+	s := &ActiveUsersCleanupService{
+		activeUsers:     NewActiveUsers(),
+		cleanupFunc:     cleanupFn,
+		inactiveTimeout: inactiveTimeout,
+	}
+
+	s.Service = services.NewTimerService(cleanupInterval, nil, s.iteration, nil)
+	return s
+}
+
+func (s *ActiveUsersCleanupService) UpdateUserTimestamp(user string, now time.Time) {
+	s.activeUsers.UpdateUserTimestamp(user, now.UnixNano())
+}
+
+func (s *ActiveUsersCleanupService) iteration(_ context.Context) error {
+	inactiveUsers := s.activeUsers.PurgeInactiveUsers(time.Now().Add(-s.inactiveTimeout).UnixNano())
+	for _, userID := range inactiveUsers {
+		s.cleanupFunc(userID)
+	}
+	return nil
 }

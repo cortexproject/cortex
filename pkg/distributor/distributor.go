@@ -115,9 +115,6 @@ var (
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
-
-	inactiveUserTimeout    = 15 * time.Minute
-	metricsCleanupInterval = inactiveUserTimeout / 5
 )
 
 const (
@@ -150,7 +147,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsers
+	activeUsers *util.ActiveUsersCleanupService
 }
 
 // Config contains the configuration required to
@@ -258,10 +255,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		limits:               limits,
 		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		HATracker:            haTracker,
-		activeUsers:          util.NewActiveUsers(),
 	}
+	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+		d.HATracker.cleanupHATrackerMetricsForUser(user)
+		cleanupMetricsForUser(user, d.log)
+	})
 
-	subservices = append(subservices, d.ingesterPool)
+	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
 	if err != nil {
 		return nil, err
@@ -279,19 +279,8 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
-	metricsCleanupTimer := time.NewTicker(metricsCleanupInterval)
-	defer metricsCleanupTimer.Stop()
-
 	for {
 		select {
-		case <-metricsCleanupTimer.C:
-			inactiveUsers := d.activeUsers.PurgeInactiveUsers(time.Now().Add(-inactiveUserTimeout).UnixNano())
-			for _, userID := range inactiveUsers {
-				cleanupMetricsForUser(userID, d.log)
-				d.HATracker.cleanupHATrackerMetricsForUser(userID)
-			}
-			continue
-
 		case <-ctx.Done():
 			return nil
 
@@ -434,7 +423,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	}
 
 	now := time.Now()
-	d.activeUsers.UpdateUserTimestamp(userID, now.UnixNano())
+	d.activeUsers.UpdateUserTimestamp(userID, now)
 
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 

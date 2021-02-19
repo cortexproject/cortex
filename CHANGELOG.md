@@ -9,8 +9,6 @@
 * [CHANGE] Ingester: return error code 400 instead of 429 when per-user/per-tenant series/metadata limits are reached. #3833
 * [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810
   - `-<prefix>.s3.sse.type`
-  
-  
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`
 * [FEATURE] Querier: Enable `@ <timestamp>` modifier in PromQL using the new `-querier.at-modifier-enabled` flag. #3744

@@ -1,9 +1,12 @@
 package astmapper
 
 import (
-	"log"
+	"fmt"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var summableAggregates = map[parser.ItemType]struct{}{
@@ -87,7 +90,7 @@ func CanParallelize(node parser.Node) bool {
 		return true
 
 	default:
-		log.Printf("err=\"CanParallel: unhandled node type %T\"", node)
+		level.Error(util_log.Logger).Log("err", fmt.Sprintf("CanParallel: unhandled node type %T", node)) //lint:ignore faillint allow global logger for now
 		return false
 	}
 

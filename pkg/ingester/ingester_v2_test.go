@@ -2338,6 +2338,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second // Testing this.
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleMinAge = 2 * time.Second
 
 	r := prometheus.NewRegistry()
 
@@ -2376,6 +2377,27 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	// wait one second -- TSDB is now idle.
 	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
 
+	// First idle compaction will do nothing because the samples are not old enough.
+	i.compactBlocks(context.Background(), false)
+	verifyCompactedHead(t, i, false)
+	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+		# TYPE cortex_ingester_memory_series_created_total counter
+		cortex_ingester_memory_series_created_total{user="1"} 1
+
+		# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+		# TYPE cortex_ingester_memory_series_removed_total counter
+		cortex_ingester_memory_series_removed_total{user="1"} 0
+
+		# HELP cortex_ingester_memory_users The current number of users in memory.
+		# TYPE cortex_ingester_memory_users gauge
+		cortex_ingester_memory_users 1
+    `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
+
+	// Wait until the sample is old enought to be compacted.
+	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleMinAge - cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
+
+	// Second idle compaction will actually compact the sample.
 	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, true)
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`

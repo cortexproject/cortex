@@ -122,6 +122,7 @@ type TSDBConfig struct {
 	HeadCompactionInterval    time.Duration `yaml:"head_compaction_interval"`
 	HeadCompactionConcurrency int           `yaml:"head_compaction_concurrency"`
 	HeadCompactionIdleTimeout time.Duration `yaml:"head_compaction_idle_timeout"`
+	HeadCompactionIdleMinAge  time.Duration `yaml:"head_compaction_idle_min_age"`
 	HeadChunksWriteBufferSize int           `yaml:"head_chunks_write_buffer_size_bytes"`
 	StripeSize                int           `yaml:"stripe_size"`
 	WALCompressionEnabled     bool          `yaml:"wal_compression_enabled"`
@@ -155,6 +156,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.HeadCompactionInterval, "blocks-storage.tsdb.head-compaction-interval", 1*time.Minute, "How frequently does Cortex try to compact TSDB head. Block is only created if data covers smallest block range. Must be greater than 0 and max 5 minutes.")
 	f.IntVar(&cfg.HeadCompactionConcurrency, "blocks-storage.tsdb.head-compaction-concurrency", 5, "Maximum number of tenants concurrently compacting TSDB head into a new block")
 	f.DurationVar(&cfg.HeadCompactionIdleTimeout, "blocks-storage.tsdb.head-compaction-idle-timeout", 1*time.Hour, "If TSDB head is idle for this duration, it is compacted. 0 means disabled.")
+	f.DurationVar(&cfg.HeadCompactionIdleMinAge, "blocks-storage.tsdb.head-compaction-idle-min-age", 0, "When idle compacting the TSDB head, only compact samples older than this age, allowing newer samples to still be ingested. 0 means all samples are compacted.")
 	f.IntVar(&cfg.HeadChunksWriteBufferSize, "blocks-storage.tsdb.head-chunks-write-buffer-size-bytes", chunks.DefaultWriteBufferSize, "The write buffer size used by the head chunks mapper. Lower values reduce memory utilisation on clusters with a large number of tenants at the cost of increased disk I/O operations.")
 	f.IntVar(&cfg.StripeSize, "blocks-storage.tsdb.stripe-size", 16384, "The number of shards of series to use in TSDB (must be a power of 2). Reducing this will decrease memory footprint, but can negatively impact performance.")
 	f.BoolVar(&cfg.WALCompressionEnabled, "blocks-storage.tsdb.wal-compression-enabled", false, "True to enable TSDB WAL compression.")

@@ -159,7 +159,16 @@ func (u *userTSDB) casState(from, to tsdbState) bool {
 }
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
-func (u *userTSDB) compactHead(blockDuration int64) error {
+// The minimum age parameter dictates how old a sample must be before it is compacted. Passing
+// zero for this parameter, means that all samples are compacted.
+func (u *userTSDB) compactHead(blockDuration int64, sampleMinAge time.Duration) error {
+
+	// Determine the maximum sample timestamp to compact.
+	compactMaxTime := time.Now().Add(-sampleMinAge).UnixNano() / 1000000
+
+	// TODO: To enable queries whilst compacting, store the timestamp
+	// computed above. Samples newer than this can be admitted.
+
 	if !u.casState(active, forceCompacting) {
 		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed or blocks shipping in progress)")
 	}
@@ -174,10 +183,20 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 
 	minTime, maxTime := h.MinTime(), h.MaxTime()
 
+	// Helper to enforce sampleMinAge - we should stop compacting once
+	// the maximum time of the new block exceeds the allowed timestamp.
+	isCompactMaxTimeReached := func(t int64) bool {
+		return sampleMinAge > 0 && t > compactMaxTime
+	}
+
 	for (minTime/blockDuration)*blockDuration != (maxTime/blockDuration)*blockDuration {
 		// Data in Head spans across multiple block ranges, so we break it into blocks here.
 		// Block max time is exclusive, so we do a -1 here.
 		blockMaxTime := ((minTime/blockDuration)+1)*blockDuration - 1
+
+		if isCompactMaxTimeReached(blockMaxTime) {
+			return nil
+		}
 		if err := u.db.CompactHead(tsdb.NewRangeHead(h, minTime, blockMaxTime)); err != nil {
 			return err
 		}
@@ -186,6 +205,9 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 		minTime, maxTime = h.MinTime(), h.MaxTime()
 	}
 
+	if isCompactMaxTimeReached(maxTime) {
+		return nil
+	}
 	return u.db.CompactHead(tsdb.NewRangeHead(h, minTime, maxTime))
 }
 
@@ -1663,12 +1685,17 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 		switch {
 		case force:
 			reason = "forced"
-			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
+			// For client initiated force compaction, do not enforce a
+			// minimum sample age, therefore always compact the whole head.
+			// Push attempts will always fail as a result during compaction.
+			minAge := time.Duration(0)
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds(), minAge)
 
 		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
 			reason = "idle"
 			level.Info(i.logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
-			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
+			minAge := i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleMinAge
+			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds(), minAge)
 
 		default:
 			reason = "regular"

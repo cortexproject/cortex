@@ -7,7 +7,7 @@
 * [CHANGE] Query-frontend: removed `-querier.split-queries-by-day` (deprecated in Cortex 0.4.0). You should use `-querier.split-queries-by-interval` instead. #3813
 * [CHANGE] Store-gateway: the chunks pool controlled by `-blocks-storage.bucket-store.max-chunk-pool-bytes` is now shared across all tenants. #3830
 * [CHANGE] Ingester: return error code 400 instead of 429 when per-user/per-tenant series/metadata limits are reached. #3833
-* [FEATURE] Adds support to S3 server side encryption using KMS. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810 #3811
+* [FEATURE] Adds support to S3 server-side encryption using KMS. The S3 server-side encryption config can be overridden on a per-tenant basis. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810 #3811
   - `-<prefix>.s3.sse.type`
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`

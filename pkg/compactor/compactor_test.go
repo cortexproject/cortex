@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -1191,4 +1192,104 @@ func TestAllowedUser(t *testing.T) {
 			require.Equal(t, tc.expected, isAllowedUser(tc.enabled, tc.disabled, tc.user))
 		})
 	}
+}
+
+func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
+	numUsers := 10
+
+	// Setup user IDs
+	userIDs := make([]string, 0, numUsers)
+	for i := 1; i <= numUsers; i++ {
+		userIDs = append(userIDs, fmt.Sprintf("user-%d", i))
+	}
+
+	inmem := objstore.NewInMemBucket()
+	for _, userID := range userIDs {
+		id, err := ulid.New(ulid.Now(), rand.Reader)
+		require.NoError(t, err)
+		require.NoError(t, inmem.Upload(nil, userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+	}
+
+	// Create a shared KV Store
+	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+
+	// Create two compactors
+	var compactors []*Compactor
+	var logs []*concurrency.SyncBuffer
+
+	for i := 1; i <= 2; i++ {
+		cfg := prepareConfig()
+		cfg.CompactionInterval = 10 * time.Minute // We will only call compaction manually.
+
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+
+		c, _, tsdbPlanner, l, _, cleanup := prepare(t, cfg, inmem)
+		t.Cleanup(func() {
+			cleanup()
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+		})
+
+		compactors = append(compactors, c)
+		logs = append(logs, l)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	// Start first compactor.
+	c1 := compactors[0]
+	c2 := compactors[1]
+	require.Equal(t, 2, len(compactors))
+
+	// Start first compactor
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
+
+	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c1.compactionRunsCompleted)
+	})
+
+	// Verify that first compactor has synced all the users.
+	require.Equal(t, numUsers, countExistingUserDirs(t, c1, userIDs))
+
+	// Now start second compactor, and wait until it runs compaction.
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c2.compactionRunsCompleted)
+	})
+
+	// Let's check how many users second compactor has.
+	c2Users := countExistingUserDirs(t, c2, userIDs)
+	require.NotZero(t, c2Users)
+
+	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
+	c1.compactUsers(context.Background())
+	c1Users := countExistingUserDirs(t, c1, userIDs)
+
+	// Now compactor 1 should have cleaned old sync files.
+	require.NotEqual(t, numUsers, c1Users)
+	require.Equal(t, numUsers, c1Users+c2Users)
+}
+
+func countExistingUserDirs(t *testing.T, c *Compactor, userIDs []string) int {
+	result := 0
+	for _, u := range userIDs {
+		dir := c.metaSyncDirForUser(u)
+		fi, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+
+		require.True(t, fi.IsDir())
+		result++
+	}
+	return result
 }

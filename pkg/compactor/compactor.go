@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -480,6 +481,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		users[i], users[j] = users[j], users[i]
 	})
 
+	var skippedTenants []string
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
@@ -493,6 +495,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 			continue
 		} else if !owned {
+			skippedTenants = append(skippedTenants, userID)
 			c.compactionRunSkippedTenants.Inc()
 			level.Debug(c.logger).Log("msg", "skipping user because it is not owned by this shard", "user", userID)
 			continue
@@ -520,6 +523,24 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
+	// Delete local files for skipped tenants, if there are any.
+	for _, userID := range skippedTenants {
+		dir := c.metaSyncDirForUser(userID)
+		s, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+
+		if s.IsDir() {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				level.Info(c.logger).Log("msg", "deleted directory for user not owned by this shard", "dir", dir)
+			} else {
+				level.Warn(c.logger).Log("msg", "failed to delete directory for user not owned by this shard", "dir", dir, "err", err)
+			}
+		}
+	}
+
 	succeeded = true
 }
 
@@ -542,6 +563,14 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 	}
 
 	return lastErr
+}
+
+// metaSyncDirForUser returns directory to store cached meta files.
+// The fetcher stores cached metas in the "meta-syncer/" sub directory,
+// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
+// the directory used by the Thanos Syncer, whatever is the user ID.
+func (c *Compactor) metaSyncDirForUser(userID string) string {
+	return path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID)
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
@@ -567,10 +596,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
-		// The fetcher stores cached metas in the "meta-syncer/" sub directory,
-		// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
-		// the directory used by the Thanos Syncer, whatever is the user ID.
-		path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID),
+		c.metaSyncDirForUser(userID),
 		reg,
 		// List of filters to apply (order matters).
 		[]block.MetadataFilter{

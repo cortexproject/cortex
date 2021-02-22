@@ -64,12 +64,9 @@
   * `cortex_ha_tracker_replicas_cleanup_deleted_total`
   * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
 * [ENHANCEMENT] Tenant deletion endpoints now support deletion of ruler groups. This only works when using rule store that supports deletion. #3750
-<<<<<<< HEAD
 * [ENHANCEMENT] Query-frontend, query-scheduler: cleanup metrics for inactive tenants. #3826
 * [ENHANCEMENT] Distributor: Prevent failed ingestion from affecting rate limiting. #3825
-=======
 * [ENHANCEMENT] Blocks storage: added `-blocks-storage.s3.region` support to S3 client configuration. #3811
->>>>>>> 67f2dcb16... Added CHANGELOG entry
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

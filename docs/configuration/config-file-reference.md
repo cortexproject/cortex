@@ -3834,7 +3834,8 @@ s3:
   # CLI flag: -blocks-storage.s3.endpoint
   [endpoint: <string> | default = ""]
 
-  # S3 region. If unset an S3 API call is made to autodetect it.
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
   # CLI flag: -blocks-storage.s3.region
   [region: <string> | default = ""]
 

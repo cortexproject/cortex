@@ -776,6 +776,12 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
     [head_compaction_idle_timeout: <duration> | default = 1h]
 
+    # When idle compacting the TSDB head, only compact samples older than this
+    # age, allowing newer samples to still be ingested. 0 means all samples are
+    # compacted.
+    # CLI flag: -blocks-storage.tsdb.head-compaction-idle-min-age
+    [head_compaction_idle_min_age: <duration> | default = 0s]
+
     # The write buffer size used by the head chunks mapper. Lower values reduce
     # memory utilisation on clusters with a large number of tenants at the cost
     # of increased disk I/O operations.

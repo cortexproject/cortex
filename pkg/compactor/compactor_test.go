@@ -1207,7 +1207,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	for _, userID := range userIDs {
 		id, err := ulid.New(ulid.Now(), rand.Reader)
 		require.NoError(t, err)
-		require.NoError(t, inmem.Upload(nil, userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+		require.NoError(t, inmem.Upload(context.Background(), userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
 	}
 
 	// Create a shared KV Store
@@ -1215,7 +1215,6 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Create two compactors
 	var compactors []*Compactor
-	var logs []*concurrency.SyncBuffer
 
 	for i := 1; i <= 2; i++ {
 		cfg := prepareConfig()
@@ -1228,14 +1227,13 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, l, _, cleanup := prepare(t, cfg, inmem)
+		c, _, tsdbPlanner, _, _, cleanup := prepare(t, cfg, inmem)
 		t.Cleanup(func() {
 			cleanup()
 			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 		})
 
 		compactors = append(compactors, c)
-		logs = append(logs, l)
 
 		// Mock the planner as if there's no compaction to do,
 		// in order to simplify tests (all in all, we just want to

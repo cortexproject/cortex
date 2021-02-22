@@ -35,7 +35,7 @@ type BlocksCleaner struct {
 	services.Service
 
 	cfg          BlocksCleanerConfig
-	cfgProvider  bucket.TenantConfigProvider
+	cfgProvider  ConfigProvider
 	logger       log.Logger
 	bucketClient objstore.Bucket
 	usersScanner *cortex_tsdb.UsersScanner
@@ -56,7 +56,7 @@ type BlocksCleaner struct {
 	tenantBucketIndexLastUpdate *prometheus.GaugeVec
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,

@@ -305,6 +305,8 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) cleanupMetricsForUser(userID string) {
+	d.ingestersRing.CleanupShuffleShardCache(userID)
+
 	d.HATracker.cleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)

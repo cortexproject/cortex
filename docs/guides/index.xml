@@ -668,7 +668,11 @@ When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt
 &lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=default&lt;/code> (default). In this mode rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it &amp;ldquo;owns&amp;rdquo;.&lt;/li>
 &lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
 &lt;/ol>
-&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p>
+&lt;h2 id="faq">FAQ&lt;/h2>
+&lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
+&lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>
+&lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
 &lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p>

@@ -157,7 +157,7 @@ func TestLoadRules(t *testing.T) {
 
 	// Load with missing rule groups fails.
 	require.NoError(t, rs.DeleteRuleGroup(context.Background(), "user1", "hello", "first testGroup"))
-	require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "group does not exist")
+	require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "failed to get rule group: user=\"user2\", namespace=\"world\", name=\"first testGroup\", err=group does not exist")
 }
 
 func TestDelete(t *testing.T) {

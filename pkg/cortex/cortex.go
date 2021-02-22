@@ -47,6 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -115,6 +116,7 @@ type Config struct {
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
+	RulerStorage   rulestore.Config                           `yaml:"ruler_storage"`
 	Configs        configs.Config                             `yaml:"configs"`
 	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
@@ -162,6 +164,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.RulerStorage.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
@@ -194,6 +197,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.ChunkStore.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
+	}
+	if err := c.RulerStorage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid rulestore config")
 	}
 	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")

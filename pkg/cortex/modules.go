@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -37,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -643,7 +645,12 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
-	t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
+	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
+		t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
+	} else {
+		t.RulerStorage, err = rulestore.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	}
+
 	return
 }
 
@@ -869,7 +876,8 @@ func (t *Cortex) setupModuleManager() error {
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},
 		TableManager:             {API},
-		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Ruler:                    {DistributorService, Store, StoreQueryable, RulerStorage},
+		RulerStorage:             {Overrides},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV},
 		Compactor:                {API, MemberlistKV, Overrides},

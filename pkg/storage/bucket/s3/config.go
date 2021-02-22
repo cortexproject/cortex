@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
@@ -66,6 +67,7 @@ func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 // Config holds the config options for an S3 backend
 type Config struct {
 	Endpoint         string         `yaml:"endpoint"`
+	Region           string         `yaml:"region"`
 	BucketName       string         `yaml:"bucket_name"`
 	SecretAccessKey  flagext.Secret `yaml:"secret_access_key"`
 	AccessKeyID      string         `yaml:"access_key_id"`
@@ -86,6 +88,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "S3 access key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "S3 secret access key")
 	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "S3 bucket name")
+	f.StringVar(&cfg.Region, prefix+"s3.region", "", "S3 region. If unset, the client will issue a S3 GetBucketLocation API call to autodetect it.")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
@@ -120,7 +123,7 @@ func (cfg *SSEConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *SSEConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Type, prefix+"type", "", "Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported")
+	f.StringVar(&cfg.Type, prefix+"type", "", fmt.Sprintf("Enable AWS Server Side Encryption. Supported values: %s.", strings.Join(supportedSSETypes, ", ")))
 	f.StringVar(&cfg.KMSKeyID, prefix+"kms-key-id", "", "KMS Key ID used to encrypt objects in S3")
 	f.StringVar(&cfg.KMSEncryptionContext, prefix+"kms-encryption-context", "", "KMS Encryption Context used for object encryption. It expects JSON formatted string.")
 }
@@ -140,6 +143,8 @@ func (cfg *SSEConfig) Validate() error {
 // BuildThanosConfig builds the SSE config expected by the Thanos client.
 func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 	switch cfg.Type {
+	case "":
+		return s3.SSEConfig{}, nil
 	case SSEKMS:
 		encryptionCtx, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext)
 		if err != nil {
@@ -156,7 +161,30 @@ func (cfg *SSEConfig) BuildThanosConfig() (s3.SSEConfig, error) {
 			Type: s3.SSES3,
 		}, nil
 	default:
-		return s3.SSEConfig{}, nil
+		return s3.SSEConfig{}, errUnsupportedSSEType
+	}
+}
+
+// BuildMinioConfig builds the SSE config expected by the Minio client.
+func (cfg *SSEConfig) BuildMinioConfig() (encrypt.ServerSide, error) {
+	switch cfg.Type {
+	case "":
+		return nil, nil
+	case SSEKMS:
+		encryptionCtx, err := parseKMSEncryptionContext(cfg.KMSEncryptionContext)
+		if err != nil {
+			return nil, err
+		}
+
+		if encryptionCtx == nil {
+			// To overcome a limitation in Minio which checks interface{} == nil.
+			return encrypt.NewSSEKMS(cfg.KMSKeyID, nil)
+		}
+		return encrypt.NewSSEKMS(cfg.KMSKeyID, encryptionCtx)
+	case SSES3:
+		return encrypt.NewSSE(), nil
+	default:
+		return nil, errUnsupportedSSEType
 	}
 }
 

@@ -337,7 +337,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 
 	level.Info(userLogger).Log("msg", "creating user bucket store")
 
-	userBkt := bucket.NewUserBucketClient(userID, u.bucket)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	fetcherReg := prometheus.NewRegistry()
 
 	// The sharding strategy filter MUST be before the ones we create here (order matters).
@@ -367,6 +367,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			userID,
 			u.bucket,
 			u.shardingStrategy,
+			u.limits,
 			u.logger,
 			fetcherReg,
 			filters,

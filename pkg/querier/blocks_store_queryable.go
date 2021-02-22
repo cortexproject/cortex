@@ -86,6 +86,8 @@ type BlocksStoreClient interface {
 
 // BlocksStoreLimits is the interface that should be implemented by the limits provider.
 type BlocksStoreLimits interface {
+	bucket.TenantConfigProvider
+
 	MaxChunksPerQuery(userID string) int
 	StoreGatewayTenantShardSize(userID string) int
 }
@@ -180,7 +182,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			},
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-		}, bucketClient, logger, reg)
+		}, bucketClient, limits, logger, reg)
 	} else {
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
 			ScanInterval:             storageCfg.BucketStore.SyncInterval,
@@ -188,7 +190,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-		}, bucketClient, logger, reg)
+		}, bucketClient, limits, logger, reg)
 	}
 
 	if gatewayCfg.ShardingEnabled {

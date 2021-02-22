@@ -41,7 +41,7 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 	mark1 := &bucketindex.BlockDeletionMark{ID: block1.ID, DeletionTime: now.Add(-time.Hour).Unix()}     // Below the ignore delay threshold.
 	mark2 := &bucketindex.BlockDeletionMark{ID: block2.ID, DeletionTime: now.Add(-3 * time.Hour).Unix()} // Above the ignore delay threshold.
 
-	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, &bucketindex.Index{
+	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, &bucketindex.Index{
 		Version:            bucketindex.IndexVersion1,
 		Blocks:             bucketindex.Blocks{block1, block2, block3},
 		BlockDeletionMarks: bucketindex.BlockDeletionMarks{mark1, mark2},
@@ -50,10 +50,10 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 
 	// Create a metadata fetcher with filters.
 	filters := []block.MetadataFilter{
-		NewIgnoreDeletionMarkFilter(logger, bucket.NewUserBucketClient(userID, bkt), 2*time.Hour, 1),
+		NewIgnoreDeletionMarkFilter(logger, bucket.NewUserBucketClient(userID, bkt, nil), 2*time.Hour, 1),
 	}
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), logger, reg, filters, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, filters, nil)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, map[ulid.ULID]*metadata.Meta{
@@ -107,7 +107,7 @@ func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
 	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), logger, reg, nil, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, nil, nil)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, metas)
@@ -161,7 +161,7 @@ func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
 	// Upload a corrupted bucket index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, bucketindex.IndexCompressedFilename), strings.NewReader("invalid}!")))
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), logger, reg, nil, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, nil, nil)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, metas)
@@ -217,7 +217,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 	// Corrupted bucket index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, bucketindex.IndexCompressedFilename), strings.NewReader("invalid}!")))
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, strategy, logger, reg, nil, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, strategy, nil, logger, reg, nil, nil)
 	metas, _, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Len(t, metas, 0)
@@ -240,7 +240,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 	`), "blocks_meta_synced"))
 
 	// No bucket index.
-	require.NoError(t, bucketindex.DeleteIndex(ctx, bkt, userID))
+	require.NoError(t, bucketindex.DeleteIndex(ctx, bkt, userID, nil))
 
 	metas, _, err = fetcher.Fetch(ctx)
 	require.NoError(t, err)
@@ -268,7 +268,7 @@ func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) 
 	block2 := &bucketindex.Block{ID: ulid.MustNew(2, nil)}
 	block3 := &bucketindex.Block{ID: ulid.MustNew(3, nil)}
 
-	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, &bucketindex.Index{
+	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, &bucketindex.Index{
 		Version:   bucketindex.IndexVersion1,
 		Blocks:    bucketindex.Blocks{block1, block2, block3},
 		UpdatedAt: now.Unix(),

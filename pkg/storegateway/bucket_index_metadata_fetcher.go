@@ -15,37 +15,41 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 )
 
 // BucketIndexMetadataFetcher is a Thanos MetadataFetcher implementation leveraging on the Cortex bucket index.
 type BucketIndexMetadataFetcher struct {
-	userID    string
-	bkt       objstore.Bucket
-	strategy  ShardingStrategy
-	logger    log.Logger
-	filters   []block.MetadataFilter
-	modifiers []block.MetadataModifier
-	metrics   *fetcherMetrics
+	userID      string
+	bkt         objstore.Bucket
+	strategy    ShardingStrategy
+	cfgProvider bucket.TenantConfigProvider
+	logger      log.Logger
+	filters     []block.MetadataFilter
+	modifiers   []block.MetadataModifier
+	metrics     *fetcherMetrics
 }
 
 func NewBucketIndexMetadataFetcher(
 	userID string,
 	bkt objstore.Bucket,
 	strategy ShardingStrategy,
+	cfgProvider bucket.TenantConfigProvider,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	filters []block.MetadataFilter,
 	modifiers []block.MetadataModifier,
 ) *BucketIndexMetadataFetcher {
 	return &BucketIndexMetadataFetcher{
-		userID:    userID,
-		bkt:       bkt,
-		strategy:  strategy,
-		logger:    logger,
-		filters:   filters,
-		modifiers: modifiers,
-		metrics:   newFetcherMetrics(reg),
+		userID:      userID,
+		bkt:         bkt,
+		strategy:    strategy,
+		cfgProvider: cfgProvider,
+		logger:      logger,
+		filters:     filters,
+		modifiers:   modifiers,
+		metrics:     newFetcherMetrics(reg),
 	}
 }
 
@@ -70,7 +74,7 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 	f.metrics.syncs.Inc()
 
 	// Fetch the bucket index.
-	idx, err := bucketindex.ReadIndex(ctx, f.bkt, f.userID, f.logger)
+	idx, err := bucketindex.ReadIndex(ctx, f.bkt, f.userID, f.cfgProvider, f.logger)
 	if errors.Is(err, bucketindex.ErrIndexNotFound) {
 		// This is a legit case happening when the first blocks of a tenant have recently been uploaded by ingesters
 		// and their bucket index has not been created yet.

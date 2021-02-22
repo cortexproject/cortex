@@ -959,10 +959,10 @@ func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 }
 
 func createBucketIndex(t *testing.T, bkt objstore.Bucket, userID string) *bucketindex.Index {
-	updater := bucketindex.NewUpdater(bkt, userID, log.NewNopLogger())
+	updater := bucketindex.NewUpdater(bkt, userID, nil, log.NewNopLogger())
 	idx, _, err := updater.UpdateIndex(context.Background(), nil)
 	require.NoError(t, err)
-	require.NoError(t, bucketindex.WriteIndex(context.Background(), bkt, userID, idx))
+	require.NoError(t, bucketindex.WriteIndex(context.Background(), bkt, userID, nil, idx))
 
 	return idx
 }

@@ -140,7 +140,7 @@ api:
 # blocks storage.
 [store_gateway: <store_gateway_config>]
 
-# The purger_config configures the purger which takes care of delete requests
+# The purger_config configures the purger which takes care of delete requests.
 [purger: <purger_config>]
 
 tenant_federation:
@@ -1299,19 +1299,9 @@ storage:
     # CLI flag: -ruler.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
-    sse:
-      # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-      # CLI flag: -ruler.storage.s3.sse.type
-      [type: <string> | default = ""]
-
-      # KMS Key ID used to encrypt objects in S3
-      # CLI flag: -ruler.storage.s3.sse.kms-key-id
-      [kms_key_id: <string> | default = ""]
-
-      # KMS Encryption Context used for object encryption. It expects JSON
-      # formatted string.
-      # CLI flag: -ruler.storage.s3.sse.kms-encryption-context
-      [kms_encryption_context: <string> | default = ""]
+    # The s3_sse_config configures the S3 server-side encryption.
+    # The CLI flags prefix for this block config is: ruler.storage
+    [sse: <s3_sse_config>]
 
   swift:
     # OpenStack Swift authentication API version. 0 to autodetect.
@@ -1792,19 +1782,9 @@ storage:
     # CLI flag: -alertmanager.storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
-    sse:
-      # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-      # CLI flag: -alertmanager.storage.s3.sse.type
-      [type: <string> | default = ""]
-
-      # KMS Key ID used to encrypt objects in S3
-      # CLI flag: -alertmanager.storage.s3.sse.kms-key-id
-      [kms_key_id: <string> | default = ""]
-
-      # KMS Encryption Context used for object encryption. It expects JSON
-      # formatted string.
-      # CLI flag: -alertmanager.storage.s3.sse.kms-encryption-context
-      [kms_encryption_context: <string> | default = ""]
+    # The s3_sse_config configures the S3 server-side encryption.
+    # The CLI flags prefix for this block config is: alertmanager.storage
+    [sse: <s3_sse_config>]
 
   local:
     # Path at which alertmanager configurations are stored.
@@ -2358,19 +2338,8 @@ aws:
   # CLI flag: -s3.signature-version
   [signature_version: <string> | default = "v4"]
 
-  sse:
-    # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-    # CLI flag: -s3.sse.type
-    [type: <string> | default = ""]
-
-    # KMS Key ID used to encrypt objects in S3
-    # CLI flag: -s3.sse.kms-key-id
-    [kms_key_id: <string> | default = ""]
-
-    # KMS Encryption Context used for object encryption. It expects JSON
-    # formatted string.
-    # CLI flag: -s3.sse.kms-encryption-context
-    [kms_encryption_context: <string> | default = ""]
+  # The s3_sse_config configures the S3 server-side encryption.
+  [sse: <s3_sse_config>]
 
 azure:
   # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
@@ -3579,6 +3548,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.tenant-shard-size
 [store_gateway_tenant_shard_size: <int> | default = 0]
 
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
+
 # File name of per-user overrides. [deprecated, use -runtime-config.file
 # instead]
 # CLI flag: -limits.per-user-override-config
@@ -3851,6 +3834,11 @@ s3:
   # CLI flag: -blocks-storage.s3.endpoint
   [endpoint: <string> | default = ""]
 
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -blocks-storage.s3.region
+  [region: <string> | default = ""]
+
   # S3 bucket name
   # CLI flag: -blocks-storage.s3.bucket-name
   [bucket_name: <string> | default = ""]
@@ -3874,19 +3862,9 @@ s3:
   # CLI flag: -blocks-storage.s3.signature-version
   [signature_version: <string> | default = "v4"]
 
-  sse:
-    # Enable AWS Server Side Encryption. Only SSE-S3 and SSE-KMS are supported
-    # CLI flag: -blocks-storage.s3.sse.type
-    [type: <string> | default = ""]
-
-    # KMS Key ID used to encrypt objects in S3
-    # CLI flag: -blocks-storage.s3.sse.kms-key-id
-    [kms_key_id: <string> | default = ""]
-
-    # KMS Encryption Context used for object encryption. It expects JSON
-    # formatted string.
-    # CLI flag: -blocks-storage.s3.sse.kms-encryption-context
-    [kms_encryption_context: <string> | default = ""]
+  # The s3_sse_config configures the S3 server-side encryption.
+  # The CLI flags prefix for this block config is: blocks-storage
+  [sse: <s3_sse_config>]
 
   http:
     # The time an idle connection will remain idle before closing.
@@ -4669,7 +4647,7 @@ sharding_ring:
 
 ### `purger_config`
 
-The `purger_config` configures the purger which takes care of delete requests
+The `purger_config` configures the purger which takes care of delete requests.
 
 ```yaml
 # Enable purger to allow deletion of series. Be aware that Delete series feature
@@ -4690,4 +4668,30 @@ The `purger_config` configures the purger which takes care of delete requests
 # duration. Ideally this should be set to at least 24h.
 # CLI flag: -purger.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
+```
+
+### `s3_sse_config`
+
+The `s3_sse_config` configures the S3 server-side encryption. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `alertmanager.storage`
+- `blocks-storage`
+- `ruler.storage`
+
+&nbsp;
+
+```yaml
+# Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+# CLI flag: -<prefix>.s3.sse.type
+[type: <string> | default = ""]
+
+# KMS Key ID used to encrypt objects in S3
+# CLI flag: -<prefix>.s3.sse.kms-key-id
+[kms_key_id: <string> | default = ""]
+
+# KMS Encryption Context used for object encryption. It expects JSON formatted
+# string.
+# CLI flag: -<prefix>.s3.sse.kms-encryption-context
+[kms_encryption_context: <string> | default = ""]
 ```

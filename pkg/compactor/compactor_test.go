@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestConfig_ShouldSupportYamlConfig(t *testing.T) {
@@ -1068,6 +1069,11 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucketClient, nil
 	}
@@ -1076,7 +1082,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 		return tsdbCompactor, tsdbPlanner, nil
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
+	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry, cleanup

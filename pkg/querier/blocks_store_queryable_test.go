@@ -1302,8 +1302,20 @@ func (m *blocksStoreLimitsMock) MaxChunksPerQuery(_ string) int {
 	return m.maxChunksPerQuery
 }
 
-func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(userID string) int {
+func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) int {
 	return m.storeGatewayTenantShardSize
+}
+
+func (m *blocksStoreLimitsMock) S3SSEType(_ string) string {
+	return ""
+}
+
+func (m *blocksStoreLimitsMock) S3SSEKMSKeyID(_ string) string {
+	return ""
+}
+
+func (m *blocksStoreLimitsMock) S3SSEKMSEncryptionContext(_ string) string {
+	return ""
 }
 
 func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *storepb.SeriesResponse {

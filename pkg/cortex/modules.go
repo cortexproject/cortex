@@ -75,7 +75,7 @@ const (
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
 	ChunksPurger             string = "chunks-purger"
-	TenantDeletion           string = "blocks-purger"
+	TenantDeletion           string = "tenant-deletion"
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
 	TenantFederation         string = "tenant-federation"

@@ -106,14 +106,14 @@ func (b *UserBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 
 // Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (b *UserBucketReaderClient) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (b *UserBucketReaderClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, b.fullName(dir), func(s string) error {
 		/*
 			Since all objects are prefixed with the userID we need to strip the userID
 			upon passing to the processing function
 		*/
 		return f(strings.Join(strings.Split(s, "/")[1:], "/"))
-	})
+	}, options...)
 }
 
 // Get returns a reader for the given object name.

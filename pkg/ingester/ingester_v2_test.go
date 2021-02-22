@@ -2373,8 +2373,8 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 		cortex_ingester_memory_users 1
     `), memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users"))
 
-	// wait one second -- TSDB is now idle.
-	time.Sleep(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout)
+	// wait one second (plus maximum jitter) -- TSDB is now idle.
+	time.Sleep(time.Duration(float64(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout) * (1 + compactionIdleTimeoutJitter)))
 
 	i.compactBlocks(context.Background(), false)
 	verifyCompactedHead(t, i, true)

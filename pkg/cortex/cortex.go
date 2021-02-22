@@ -116,7 +116,7 @@ type Config struct {
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
-	RulerStorage   rulestore.Config                           `yaml:"ruler_storage" doc:"hidden"`
+	RulerStorage   rulestore.Config                           `yaml:"ruler_storage"`
 	Configs        configs.Config                             `yaml:"configs"`
 	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`

@@ -648,7 +648,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
 	} else {
-		t.RulerStorage, err = rulestore.NewRuleStore(context.Background(), t.Cfg.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
+		t.RulerStorage, err = rulestore.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	}
 
 	return
@@ -876,7 +876,8 @@ func (t *Cortex) setupModuleManager() error {
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},
 		TableManager:             {API},
-		Ruler:                    {Overrides, DistributorService, Store, StoreQueryable, RulerStorage},
+		Ruler:                    {DistributorService, Store, StoreQueryable, RulerStorage},
+		RulerStorage:             {Overrides},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV},
 		Compactor:                {API, MemberlistKV, Overrides},

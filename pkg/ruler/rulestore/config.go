@@ -15,7 +15,7 @@ import (
 const (
 	ConfigDB = "configdb"
 
-	name   = "rule-store"
+	name   = "ruler-storage"
 	prefix = "ruler-storage."
 )
 
@@ -33,7 +33,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewRuleStore creates a new bucket client based on the configured backend
-func NewRuleStore(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (rules.RuleStore, error) {
+func NewRuleStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rules.RuleStore, error) {
 	if cfg.Backend == ConfigDB {
 		c, err := client.New(cfg.ConfigDB)
 
@@ -49,7 +49,7 @@ func NewRuleStore(ctx context.Context, cfg Config, logger log.Logger, reg promet
 		return nil, err
 	}
 
-	store := NewBucketRuleStore(bucketClient, 10, logger)
+	store := NewBucketRuleStore(bucketClient, cfgProvider, logger)
 	if err != nil {
 		return nil, err
 	}

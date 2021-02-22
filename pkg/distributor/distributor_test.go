@@ -323,7 +323,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_samples_in_total{user="userA"} 5
 `), metrics...))
 
-	d.cleanupMetricsForUser("userA")
+	d.cleanupInactiveUser("userA")
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.

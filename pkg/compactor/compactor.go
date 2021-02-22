@@ -535,7 +535,10 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		dir := c.metaSyncDirForUser(userID)
 		s, err := os.Stat(dir)
-		if os.IsNotExist(err) {
+		if err != nil {
+			if !os.IsNotExist(err) {
+				level.Warn(c.logger).Log("msg", "failed to stat local directory with user data", "dir", dir, "err", err)
+			}
 			continue
 		}
 

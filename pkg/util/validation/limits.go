@@ -198,27 +198,6 @@ type TenantLimits interface {
 	AllByUserID() map[string]*Limits
 }
 
-// MockTenantLimits exposes per-tenant limits based on a provided map. Useful for unit testing
-type MockTenantLimits struct {
-	limits map[string]*Limits
-}
-
-// NewMockTenantLimits creates a new MockTenantLimits that returns per-tenant limits based on
-// the given map. Useful for unit testing
-func NewMockTenantLimits(limits map[string]*Limits) *MockTenantLimits {
-	return &MockTenantLimits{
-		limits: limits,
-	}
-}
-
-func (l *MockTenantLimits) ByUserID(userID string) *Limits {
-	return l.limits[userID]
-}
-
-func (l *MockTenantLimits) AllByUserID() map[string]*Limits {
-	return l.limits
-}
-
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {

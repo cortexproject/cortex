@@ -818,7 +818,7 @@ func (r *Ring) CleanupShuffleShardCache(identifier string) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	for k, _ := range r.shuffledSubringCache {
+	for k := range r.shuffledSubringCache {
 		if k.identifier == identifier {
 			delete(r.shuffledSubringCache, k)
 		}

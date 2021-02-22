@@ -1257,8 +1257,10 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		return prom_testutil.ToFloat64(c1.compactionRunsCompleted)
 	})
 
-	// Verify that first compactor has synced all the users.
-	require.Equal(t, numUsers, countExistingUserDirs(t, c1, userIDs))
+	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
+
+	// Verify that first compactor has synced all the users, plus there is one extra we have just created.
+	require.Equal(t, numUsers+1, len(c1.listTenantsWithMetaSyncDirectories()))
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
@@ -1267,29 +1269,14 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	})
 
 	// Let's check how many users second compactor has.
-	c2Users := countExistingUserDirs(t, c2, userIDs)
+	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
 	require.NotZero(t, c2Users)
 
 	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
 	c1.compactUsers(context.Background())
-	c1Users := countExistingUserDirs(t, c1, userIDs)
+	c1Users := len(c1.listTenantsWithMetaSyncDirectories())
 
 	// Now compactor 1 should have cleaned old sync files.
 	require.NotEqual(t, numUsers, c1Users)
 	require.Equal(t, numUsers, c1Users+c2Users)
-}
-
-func countExistingUserDirs(t *testing.T, c *Compactor, userIDs []string) int {
-	result := 0
-	for _, u := range userIDs {
-		dir := c.metaSyncDirForUser(u)
-		fi, err := os.Stat(dir)
-		if os.IsNotExist(err) {
-			continue
-		}
-
-		require.True(t, fi.IsDir())
-		result++
-	}
-	return result
 }

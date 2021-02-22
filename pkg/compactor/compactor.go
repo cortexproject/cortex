@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -481,7 +483,8 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		users[i], users[j] = users[j], users[i]
 	})
 
-	var skippedTenants []string
+	// Keep track of users owned by this shard, so that we can delete the local files for all other users.
+	ownedUsers := map[string]struct{}{}
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
@@ -495,11 +498,12 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 			continue
 		} else if !owned {
-			skippedTenants = append(skippedTenants, userID)
 			c.compactionRunSkippedTenants.Inc()
 			level.Debug(c.logger).Log("msg", "skipping user because it is not owned by this shard", "user", userID)
 			continue
 		}
+
+		ownedUsers[userID] = struct{}{}
 
 		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.compactionRunSkippedTenants.Inc()
@@ -524,7 +528,11 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	}
 
 	// Delete local files for skipped tenants, if there are any.
-	for _, userID := range skippedTenants {
+	for userID := range c.listTenantsWithMetaSyncDirectories() {
+		if _, owned := ownedUsers[userID]; owned {
+			continue
+		}
+
 		dir := c.metaSyncDirForUser(userID)
 		s, err := os.Stat(dir)
 		if os.IsNotExist(err) {
@@ -563,14 +571,6 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 	}
 
 	return lastErr
-}
-
-// metaSyncDirForUser returns directory to store cached meta files.
-// The fetcher stores cached metas in the "meta-syncer/" sub directory,
-// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
-// the directory used by the Thanos Syncer, whatever is the user ID.
-func (c *Compactor) metaSyncDirForUser(userID string) string {
-	return path.Join(c.compactorCfg.DataDir, "compactor-meta-"+userID)
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
@@ -725,4 +725,38 @@ func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID strin
 	}
 
 	return true
+}
+
+const compactorMetaPrefix = "compactor-meta-"
+
+// metaSyncDirForUser returns directory to store cached meta files.
+// The fetcher stores cached metas in the "meta-syncer/" sub directory,
+// but we prefix it with "compactor-meta-" in order to guarantee no clashing with
+// the directory used by the Thanos Syncer, whatever is the user ID.
+func (c *Compactor) metaSyncDirForUser(userID string) string {
+	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.
+func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
+	result := map[string]struct{}{}
+
+	files, err := ioutil.ReadDir(c.compactorCfg.DataDir)
+	if err != nil {
+		return nil
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		if !strings.HasPrefix(f.Name(), compactorMetaPrefix) {
+			continue
+		}
+
+		result[f.Name()[len(compactorMetaPrefix):]] = struct{}{}
+	}
+
+	return result
 }

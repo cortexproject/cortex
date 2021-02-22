@@ -3,6 +3,9 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -233,6 +236,8 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	close(jobs)
 	wg.Wait()
 
+	u.deleteLocalFilesForExcludedTenants(includeUserIDs)
+
 	return errs.Err()
 }
 
@@ -311,10 +316,34 @@ func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
-	store := u.stores[userID]
-	u.storesMu.RUnlock()
+	defer u.storesMu.RUnlock()
+	return u.stores[userID]
+}
 
-	return store
+// Removes bucket store for given user, if it is empty. Returns flag whether bucket store was removed from the map,
+// and bucket store itself.
+func (u *BucketStores) removeEmptyBucketStore(userID string) (bool, *store.BucketStore) {
+	u.storesMu.Lock()
+	defer u.storesMu.Unlock()
+
+	bs := u.stores[userID]
+	if bs == nil || !isEmptyBucketStore(bs) {
+		return false, bs
+	}
+
+	delete(u.stores, userID)
+	u.metaFetcherMetrics.RemoveUserRegistry(userID)
+	u.bucketStoreMetrics.RemoveUserRegistry(userID)
+	return true, bs
+}
+
+func isEmptyBucketStore(bs *store.BucketStore) bool {
+	min, max := bs.TimeRange()
+	return min == math.MaxInt64 && max == math.MinInt64
+}
+
+func (u *BucketStores) syncDirForUser(userID string) string {
+	return filepath.Join(u.cfg.BucketStore.SyncDir, userID)
 }
 
 func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, error) {
@@ -385,7 +414,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			userLogger,
 			u.cfg.BucketStore.MetaSyncConcurrency,
 			fetcherBkt,
-			filepath.Join(u.cfg.BucketStore.SyncDir, userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
+			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,
 			modifiers,
@@ -401,7 +430,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		bucketStoreReg,
 		userBkt,
 		fetcher,
-		filepath.Join(u.cfg.BucketStore.SyncDir, userID),
+		u.syncDirForUser(userID),
 		u.indexCache,
 		u.queryGate,
 		u.chunksPool,
@@ -426,6 +455,49 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	u.bucketStoreMetrics.AddUserRegistry(userID, bucketStoreReg)
 
 	return bs, nil
+}
+
+// deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
+// shard.
+func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
+	files, err := ioutil.ReadDir(u.cfg.BucketStore.SyncDir)
+	if err != nil {
+		return
+	}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+
+		userID := f.Name()
+		if _, included := includeUserIDs[userID]; included {
+			// Preserve directory for users owned by this shard.
+			continue
+		}
+
+		removed, bs := u.removeEmptyBucketStore(userID)
+		if bs != nil {
+			if !removed {
+				continue
+			}
+
+			err := bs.Close()
+			if err == nil {
+				level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
+			} else {
+				level.Info(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
+			}
+		}
+
+		userSyncDir := u.syncDirForUser(userID)
+		err := os.RemoveAll(userSyncDir)
+		if err != nil {
+			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
+		} else {
+			level.Info(u.logger).Log("msg", "delete user sync directory", "dir", userSyncDir)
+		}
+	}
 }
 
 func getUserIDFromGRPCContext(ctx context.Context) string {

@@ -194,7 +194,9 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 
 	tokensToOwn.WithLabelValues(l.RingName).Set(float64(cfg.NumTokens))
 
-	l.BasicService = services.NewBasicService(nil, l.loop, l.stopping)
+	l.BasicService = services.
+		NewBasicService(nil, l.loop, l.stopping).
+		WithName(fmt.Sprintf("%s ring lifecycler", ringName))
 
 	return l, nil
 }

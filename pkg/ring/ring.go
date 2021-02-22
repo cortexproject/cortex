@@ -252,7 +252,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		),
 	}
 
-	r.Service = services.NewBasicService(nil, r.loop, nil)
+	r.Service = services.NewBasicService(nil, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
 	return r, nil
 }
 

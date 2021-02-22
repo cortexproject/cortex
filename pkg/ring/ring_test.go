@@ -2014,6 +2014,16 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	require.False(t, subring == newSubring)
 	// Zone-aware shuffle-shard gives all zones the same number of instances (at least one).
 	require.Equal(t, zones, newSubring.InstancesCount())
+
+	// Verify that getting the same subring uses cached instance.
+	subring = newSubring
+	newSubring = ring.ShuffleShard("user", 1)
+	require.True(t, subring == newSubring)
+
+	// But after cleanup, it doesn't.
+	ring.CleanupShuffleShardCache("user")
+	newSubring = ring.ShuffleShard("user", 1)
+	require.False(t, subring == newSubring)
 }
 
 // User shuffle shard token.

@@ -273,7 +273,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}, []string{"user"}),
 	}
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupMetricsForUser)
+	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
@@ -304,7 +304,9 @@ func (d *Distributor) running(ctx context.Context) error {
 	}
 }
 
-func (d *Distributor) cleanupMetricsForUser(userID string) {
+func (d *Distributor) cleanupInactiveUser(userID string) {
+	d.ingestersRing.CleanupShuffleShardCache(userID)
+
 	d.HATracker.cleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)

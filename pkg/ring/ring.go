@@ -77,6 +77,9 @@ type ReadRing interface {
 
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
+
+	// CleanupShuffleShardCache should delete cached shuffle-shard subrings for given identifier.
+	CleanupShuffleShardCache(identifier string)
 }
 
 var (
@@ -804,6 +807,21 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+	}
+}
+
+func (r *Ring) CleanupShuffleShardCache(identifier string) {
+	if r.cfg.SubringCacheDisabled {
+		return
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	for k := range r.shuffledSubringCache {
+		if k.identifier == identifier {
+			delete(r.shuffledSubringCache, k)
+		}
 	}
 }
 

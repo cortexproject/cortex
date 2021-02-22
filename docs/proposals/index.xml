@@ -624,7 +624,33 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;li>Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.&lt;/li>
 &lt;li>Querier: Add support for querying both chunk store and blocks at the same time and test the support for querying both chunks and blocks from ingesters works correctly&lt;/li>
 &lt;li>Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
+&lt;li>Date: January 2021&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="retention-of-tenant-data">Retention of tenant data&lt;/h2>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Metric data is growing over time per-tenant, at the same time, the value of data decreases. We want to have a retention policy like prometheus does. In Cortex, data retention is typically achieved via a bucket policy. However, this has two main issues:&lt;/p>
+&lt;ol>
+&lt;li>Not every backend storage support bucket policies&lt;/li>
+&lt;li>Bucket policies don&amp;rsquo;t easily allow a per-tenant custom retention&lt;/li>
+&lt;/ol>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;h3 id="tenants">tenants&lt;/h3>
+&lt;p>When using blocks storage, Cortex stores tenant’s data in object store for long-term storage of blocks, tenant id as part of the object store path. We discover all tenants via scan the root dir of bucket.&lt;/p>
+&lt;h3 id="runtime-config">runtime config&lt;/h3>
+&lt;p>Using the &amp;ldquo;overrides&amp;rdquo; mechanism (part of runtime config) already allows for per-tenant settings. See &lt;a href="https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file">runtime-configuration-file&lt;/a> for more details. Using it for tenant retention would fit nicely. Admin could set per-tenant retention here, and also have a single global value for tenants that don&amp;rsquo;t have custom value set.&lt;/p>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;h3 id="retention-period-field">retention period field&lt;/h3>
+&lt;p>We propose to introduce just one new field &lt;code>RetentionPeriod&lt;/code> in the Limits struct(defined at pkg/util/validation/limits.go).&lt;/p>
+&lt;p>&lt;code>RetentionPeriod&lt;/code> setting how long historical metric data retention period per-tenant. &lt;code>0&lt;/code> is disable.&lt;/p>
+&lt;p>Runtime config is reloaded periodically (defaults to 10 seconds), so we can update the retention settings on-the-fly.&lt;/p>
+&lt;p>For each tenant, if a tenant-specific &lt;em>runtime_config&lt;/em> value exists, it will be used directly, otherwise, if a default &lt;em>limits_config&lt;/em> value exists, then the default value will be used; If neither exists, do nothing.&lt;/p>
+&lt;h3 id="implementation">Implementation&lt;/h3>
+&lt;p>A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block &lt;code>maxTime&lt;/code> and blocks that match &lt;code>maxTime &amp;lt; now - retention&lt;/code> will be marked for delete.&lt;/p>
+&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/gotjosh">Josh Abreu&lt;/a>&lt;/li>
 &lt;li>Date: December 2020&lt;/li>

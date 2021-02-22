@@ -6,15 +6,15 @@ import (
 
 // OverridesExporter exposes per-tenant resource limit overrides as Prometheus metrics
 type OverridesExporter struct {
-	limitSupplier func() map[string]*Limits
-	description   *prometheus.Desc
+	tenantLimits TenantLimits
+	description  *prometheus.Desc
 }
 
 // NewOverridesExporter creates an OverridesExporter that reads updates to per-tenant
 // limits using the provided function.
-func NewOverridesExporter(limitSupplier func() map[string]*Limits) *OverridesExporter {
+func NewOverridesExporter(tenantLimits TenantLimits) *OverridesExporter {
 	return &OverridesExporter{
-		limitSupplier: limitSupplier,
+		tenantLimits: tenantLimits,
 		description: prometheus.NewDesc(
 			"cortex_overrides",
 			"Resource limit overrides applied to tenants",
@@ -29,7 +29,7 @@ func (oe *OverridesExporter) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
-	allLimits := oe.limitSupplier()
+	allLimits := oe.tenantLimits.AllByUserID()
 	for tenant, limits := range allLimits {
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, limits.IngestionRate, "ingestion_rate", tenant)
 		ch <- prometheus.MustNewConstMetric(oe.description, prometheus.GaugeValue, float64(limits.IngestionBurstSize), "ingestion_burst_size", tenant)

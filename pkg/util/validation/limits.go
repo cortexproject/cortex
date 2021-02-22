@@ -189,9 +189,14 @@ func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
 }
 
-// TenantLimits is a function that returns limits for given tenant, or
-// nil, if there are no tenant-specific limits.
-type TenantLimits func(userID string) *Limits
+// TenantLimits exposes per-tenant limit overrides to various resource usage limits
+type TenantLimits interface {
+	// ByUserID gets limits specific to a particular tenant or nil if there are none
+	ByUserID(userID string) *Limits
+
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
+}
 
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
@@ -443,7 +448,7 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
-		l := o.tenantLimits(userID)
+		l := o.tenantLimits.ByUserID(userID)
 		if l != nil {
 			return l
 		}

@@ -159,28 +159,34 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
 	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	if err == nil {
+		// TenantLimits just delegates to RuntimeConfig and doesn't have any state or need to do
+		// anything in the start/stopping phase. Thus we can create it as part of runtime config
+		// setup without any service instance of its own.
+		t.TenantLimits = newTenantLimits(serv)
+	}
+
 	t.RuntimeConfig = serv
 	t.API.RegisterRuntimeConfig(runtimeConfigHandler(t.RuntimeConfig, t.Cfg.LimitsConfig))
 	return serv, err
 }
 
 func (t *Cortex) initOverrides() (serv services.Service, err error) {
-	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, tenantLimitsFromRuntimeConfig(t.RuntimeConfig))
+	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, err
 }
 
 func (t *Cortex) initOverridesExporter() (services.Service, error) {
-	supplier := tenantLimitsRuntimeConfigFunc(t.RuntimeConfig)
-	if t.Cfg.isModuleEnabled(OverridesExporter) && supplier == nil {
-		// This target isn't enabled by default ("all") and requires runtime configuration
-		// to work. Fail if it can't be setup correctly since the user explicitly wanted this
+	if t.Cfg.isModuleEnabled(OverridesExporter) && t.TenantLimits == nil {
+		// This target isn't enabled by default ("all") and requires per-tenant limits to
+		// work. Fail if it can't be setup correctly since the user explicitly wanted this
 		// target to run.
 		return nil, errors.New("overrides-exporter has been enabled, but no runtime configuration file was configured")
 	}
 
-	exporter := validation.NewOverridesExporter(supplier)
+	exporter := validation.NewOverridesExporter(t.TenantLimits)
 	prometheus.MustRegister(exporter)
 
 	// the overrides exporter has no state and reads overrides for runtime configuration each time it

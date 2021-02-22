@@ -482,6 +482,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
+	// Apply positive jitter only to ensure that the minimum timeout is adhered to.
+	i.TSDBState.compactionIdleTimeout = util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout, compactionIdleTimeoutJitter)
+	level.Info(i.logger).Log("msg", "TSDB idle compaction timeout set", "timeout", i.TSDBState.compactionIdleTimeout)
+
 	i.BasicService = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
 }
@@ -1617,10 +1621,6 @@ func (i *Ingester) shipBlocks(ctx context.Context) {
 func (i *Ingester) compactionLoop(ctx context.Context) error {
 	ticker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
 	defer ticker.Stop()
-
-	// Apply positive jitter only to ensure that the minimum timeout is adhered to.
-	i.TSDBState.compactionIdleTimeout = util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout, compactionIdleTimeoutJitter)
-	level.Info(i.logger).Log("msg", "TSDB idle compaction timeout set", "timeout", i.TSDBState.compactionIdleTimeout)
 
 	for ctx.Err() == nil {
 		select {

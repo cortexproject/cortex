@@ -70,6 +70,7 @@
 * [ENHANCEMENT] Blocks storage: added `-blocks-storage.s3.region` support to S3 client configuration. #3811
 * [ENHANCEMENT] Distributor: Remove cached subrings for inactive users when using shuffle sharding. #3849
 * [ENHANCEMENT] Store-gateway: Reduced memory used to fetch chunks at query time. #3855
+* [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

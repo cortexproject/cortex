@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -129,8 +130,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -272,8 +272,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
@@ -432,8 +431,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -559,8 +557,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -667,8 +664,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/index", nil)
 	bucketClient.MockDelete("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -776,8 +772,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
 
-	c, _, tsdbPlanner, logs, _, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -863,9 +858,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, l, _, cleanup := prepare(t, cfg, bucketClient)
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
-		defer cleanup()
 
 		compactors = append(compactors, c)
 		logs = append(logs, l)
@@ -1050,7 +1044,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -1059,9 +1053,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	require.NoError(t, err)
 
 	compactorCfg.DataDir = dataDir
-	cleanup := func() {
-		os.RemoveAll(dataDir)
-	}
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(dataDir))
+	})
 
 	tsdbCompactor := &tsdbCompactorMock{}
 	tsdbPlanner := &tsdbPlannerMock{}
@@ -1085,7 +1079,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
 	require.NoError(t, err)
 
-	return c, tsdbCompactor, tsdbPlanner, logs, registry, cleanup
+	return c, tsdbCompactor, tsdbPlanner, logs, registry
 }
 
 type tsdbCompactorMock struct {
@@ -1191,4 +1185,88 @@ func TestAllowedUser(t *testing.T) {
 			require.Equal(t, tc.expected, isAllowedUser(tc.enabled, tc.disabled, tc.user))
 		})
 	}
+}
+
+func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
+	numUsers := 10
+
+	// Setup user IDs
+	userIDs := make([]string, 0, numUsers)
+	for i := 1; i <= numUsers; i++ {
+		userIDs = append(userIDs, fmt.Sprintf("user-%d", i))
+	}
+
+	inmem := objstore.NewInMemBucket()
+	for _, userID := range userIDs {
+		id, err := ulid.New(ulid.Now(), rand.Reader)
+		require.NoError(t, err)
+		require.NoError(t, inmem.Upload(context.Background(), userID+"/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+	}
+
+	// Create a shared KV Store
+	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+
+	// Create two compactors
+	var compactors []*Compactor
+
+	for i := 1; i <= 2; i++ {
+		cfg := prepareConfig()
+		cfg.CompactionInterval = 10 * time.Minute // We will only call compaction manually.
+
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+
+		// Each compactor will get its own temp dir for storing local files.
+		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem)
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+		})
+
+		compactors = append(compactors, c)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	require.Equal(t, 2, len(compactors))
+	c1 := compactors[0]
+	c2 := compactors[1]
+
+	// Start first compactor
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
+
+	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c1.compactionRunsCompleted)
+	})
+
+	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
+
+	// Verify that first compactor has synced all the users, plus there is one extra we have just created.
+	require.Equal(t, numUsers+1, len(c1.listTenantsWithMetaSyncDirectories()))
+
+	// Now start second compactor, and wait until it runs compaction.
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
+	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c2.compactionRunsCompleted)
+	})
+
+	// Let's check how many users second compactor has.
+	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
+	require.NotZero(t, c2Users)
+
+	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
+	c1.compactUsers(context.Background())
+	c1Users := len(c1.listTenantsWithMetaSyncDirectories())
+
+	// Now compactor 1 should have cleaned old sync files.
+	require.NotEqual(t, numUsers, c1Users)
+	require.Equal(t, numUsers, c1Users+c2Users)
 }

@@ -79,6 +79,12 @@ The rule of thumb is that a production system shouldn't have the `file-max` ulim
 
 The compactor generally needs a lot of disk space in order to download source blocks from the bucket and store the compacted block before uploading it to the storage. Please refer to [Compactor disk utilization](./compactor.md#compactor-disk-utilization) for more information about how to do capacity planning.
 
+### Ensure deletion marks migration is disabled after first run
+
+Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant global `markers/` location in the object store. If your Cortex cluster has been created with a Cortex version older than 1.7.0, the compactor needs to migrate deletion marks to the global location.
+
+The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
+
 ## Caching
 
 ### Ensure memcached is properly scaled

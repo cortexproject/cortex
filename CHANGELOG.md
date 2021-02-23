@@ -12,6 +12,9 @@
 
 ## 1.7.0-rc.0
 
+Note the blocks storage compactor runs a migration task at startup in this version, which can take many minutes and use a lot of RAM.
+[Turn this off after first run](https://cortexmetrics.io/docs/blocks-storage/production-tips/#ensure-deletion-marks-migration-is-disabled-after-first-run).
+
 * [CHANGE] FramedSnappy encoding support has been removed from Push and Remote Read APIs. This means Prometheus 1.6 support has been removed and the oldest Prometheus version supported in the remote write is 1.7. #3682
 * [CHANGE] Ruler: removed the flag `-ruler.evaluation-delay-duration-deprecated` which was deprecated in 1.4.0. Please use the `ruler_evaluation_delay_duration` per-tenant limit instead. #3694
 * [CHANGE] Removed the flags `-<prefix>.grpc-use-gzip-compression` which were deprecated in 1.3.0: #3694

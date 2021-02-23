@@ -646,11 +646,10 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	}
 
 	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{})
+		t.RulerStorage, err = ruler.NewRuleStorage(t.Cfg.Ruler.StoreConfig, rules.FileLoader{}, util_log.Logger)
 	} else {
 		t.RulerStorage, err = rulestore.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	}
-
 	return
 }
 
@@ -688,7 +687,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 
 	// If the API is enabled, register the Ruler API
 	if t.Cfg.Ruler.EnableAPI {
-		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, t.RulerStorage))
+		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, t.RulerStorage, util_log.Logger))
 	}
 
 	return t.Ruler, nil

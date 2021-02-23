@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ type testGroup struct {
 
 func TestListRules(t *testing.T) {
 	obj := chunk.NewMockStorage()
-	rs := NewRuleStore(obj, 5)
+	rs := NewRuleStore(obj, 5, log.NewNopLogger())
 
 	groups := []testGroup{
 		{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup"}},
@@ -91,7 +92,7 @@ func TestListRules(t *testing.T) {
 
 func TestLoadRules(t *testing.T) {
 	obj := chunk.NewMockStorage()
-	rs := NewRuleStore(obj, 5)
+	rs := NewRuleStore(obj, 5, log.NewNopLogger())
 
 	groups := []testGroup{
 		{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
@@ -159,7 +160,7 @@ func TestLoadRules(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	obj := chunk.NewMockStorage()
-	rs := NewRuleStore(obj, 5)
+	rs := NewRuleStore(obj, 5, log.NewNopLogger())
 
 	groups := []testGroup{
 		{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},

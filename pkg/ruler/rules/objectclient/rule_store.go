@@ -8,13 +8,13 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Object Rule Storage Schema
@@ -35,6 +35,8 @@ const (
 type RuleStore struct {
 	client          chunk.ObjectClient
 	loadConcurrency int
+
+	logger log.Logger
 }
 
 func (o *RuleStore) SupportsModifications() bool {
@@ -42,10 +44,11 @@ func (o *RuleStore) SupportsModifications() bool {
 }
 
 // NewRuleStore returns a new RuleStore
-func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
+func NewRuleStore(client chunk.ObjectClient, loadConcurrency int, logger log.Logger) *RuleStore {
 	return &RuleStore{
 		client:          client,
 		loadConcurrency: loadConcurrency,
+		logger:          logger,
 	}
 }
 
@@ -53,7 +56,7 @@ func NewRuleStore(client chunk.ObjectClient, loadConcurrency int) *RuleStore {
 func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
-		level.Debug(util_log.Logger).Log("msg", "rule group does not exist", "name", objectKey)
+		level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
 		return nil, rules.ErrGroupNotFound
 	}
 
@@ -143,10 +146,10 @@ func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]
 
 				key := generateRuleObjectKey(user, namespace, group)
 
-				level.Debug(util_log.Logger).Log("msg", "loading rule group", "key", key, "user", user)
+				level.Debug(o.logger).Log("msg", "loading rule group", "key", key, "user", user)
 				gr, err := o.getRuleGroup(gCtx, key, gr) // reuse group pointer from the map.
 				if err != nil {
-					level.Error(util_log.Logger).Log("msg", "failed to get rule group", "key", key, "user", user)
+					level.Error(o.logger).Log("msg", "failed to get rule group", "key", key, "user", user)
 					return err
 				}
 
@@ -235,10 +238,10 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 			return err
 		}
 
-		level.Debug(util_log.Logger).Log("msg", "deleting rule group", "namespace", namespace, "key", obj.Key)
+		level.Debug(o.logger).Log("msg", "deleting rule group", "namespace", namespace, "key", obj.Key)
 		err = o.client.DeleteObject(ctx, obj.Key)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to delete rule group from namespace", "err", err, "namespace", namespace, "key", obj.Key)
+			level.Error(o.logger).Log("msg", "unable to delete rule group from namespace", "err", err, "namespace", namespace, "key", obj.Key)
 			return err
 		}
 	}

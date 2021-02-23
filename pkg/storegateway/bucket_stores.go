@@ -320,21 +320,32 @@ func (u *BucketStores) getStore(userID string) *store.BucketStore {
 	return u.stores[userID]
 }
 
-// Removes bucket store for given user, if it is empty. Returns flag whether bucket store was removed from the map,
-// and bucket store itself.
-func (u *BucketStores) removeEmptyBucketStore(userID string) (bool, *store.BucketStore) {
+var (
+	errBucketStoreNotEmpty = errors.New("bucket store not empty")
+	errBucketStoreNotFound = errors.New("bucket store not found")
+)
+
+// Removes bucket store for given user, if it is empty, and closes it.
+// If bucket store doesn't exist, returns errBucketStoreNotFound.
+// If bucket store was not empty, returns errBucketStoreNotEmpty.
+// Otherwise returns error from Close.
+func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	u.storesMu.Lock()
 	defer u.storesMu.Unlock()
 
 	bs := u.stores[userID]
-	if bs == nil || !isEmptyBucketStore(bs) {
-		return false, bs
+	if bs == nil {
+		return errBucketStoreNotFound
+	}
+
+	if !isEmptyBucketStore(bs) {
+		return errBucketStoreNotEmpty
 	}
 
 	delete(u.stores, userID)
 	u.metaFetcherMetrics.RemoveUserRegistry(userID)
 	u.bucketStoreMetrics.RemoveUserRegistry(userID)
-	return true, bs
+	return bs.Close()
 }
 
 func isEmptyBucketStore(bs *store.BucketStore) bool {
@@ -476,26 +487,24 @@ func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[str
 			continue
 		}
 
-		removed, bs := u.removeEmptyBucketStore(userID)
-		if bs != nil {
-			if !removed {
-				continue
-			}
-
-			err := bs.Close()
-			if err == nil {
-				level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
-			} else {
-				level.Info(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
-			}
+		err := u.closeEmptyBucketStore(userID)
+		switch {
+		case errors.Is(err, errBucketStoreNotEmpty):
+			continue
+		case errors.Is(err, errBucketStoreNotFound):
+			// This is OK, nothing was closed.
+		case err == nil:
+			level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
+		default:
+			level.Warn(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
 		}
 
 		userSyncDir := u.syncDirForUser(userID)
-		err := os.RemoveAll(userSyncDir)
-		if err != nil {
-			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
+		err = os.RemoveAll(userSyncDir)
+		if err == nil {
+			level.Info(u.logger).Log("msg", "deleted user sync directory", "dir", userSyncDir)
 		} else {
-			level.Info(u.logger).Log("msg", "delete user sync directory", "dir", userSyncDir)
+			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
 		}
 	}
 }

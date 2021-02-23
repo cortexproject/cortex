@@ -325,7 +325,8 @@ var (
 	errBucketStoreNotFound = errors.New("bucket store not found")
 )
 
-// closeEmptyBucketStore closes bucket store for given user, if it is empty, and removes it from
+// closeEmptyBucketStore closes bucket store for given user, if it is empty,
+// and removes it from bucket stores map and metrics.
 // If bucket store doesn't exist, returns errBucketStoreNotFound.
 // If bucket store is not empty, returns errBucketStoreNotEmpty.
 // Otherwise returns error from closing the bucket store.

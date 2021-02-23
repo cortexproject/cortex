@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -1461,33 +1460,30 @@ func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64) ([]
 	return buf.Bytes(), nil
 }
 
-func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64) (*[]byte, error) {
+func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64, chunkRanges byteRanges) (*[]byte, error) {
 	if seq < 0 || seq >= len(b.chunkObjs) {
 		return nil, errors.Errorf("unknown segment file for index %d", seq)
 	}
 
-	// Request bytes.MinRead extra space to ensure the copy operation will not trigger
-	// a memory reallocation.
-	c, err := b.chunkPool.Get(int(length) + bytes.MinRead)
+	// Get a reader for the required range.
+	reader, err := b.bkt.GetRange(ctx, b.chunkObjs[seq], off, length)
+	if err != nil {
+		return nil, errors.Wrap(err, "get range reader")
+	}
+	defer runutil.CloseWithLogOnErr(b.logger, reader, "readChunkRange close range reader")
+
+	// Get a buffer from the pool.
+	chunkBuffer, err := b.chunkPool.Get(chunkRanges.size())
 	if err != nil {
 		return nil, errors.Wrap(err, "allocate chunk bytes")
 	}
 
-	buf := bytes.NewBuffer(*c)
-
-	r, err := b.bkt.GetRange(ctx, b.chunkObjs[seq], off, length)
+	*chunkBuffer, err = readByteRanges(reader, *chunkBuffer, chunkRanges)
 	if err != nil {
-		b.chunkPool.Put(c)
-		return nil, errors.Wrap(err, "get range reader")
+		return nil, err
 	}
-	defer runutil.CloseWithLogOnErr(b.logger, r, "readChunkRange close range reader")
 
-	if _, err = io.Copy(buf, r); err != nil {
-		b.chunkPool.Put(c)
-		return nil, errors.Wrap(err, "read range")
-	}
-	internalBuf := buf.Bytes()
-	return &internalBuf, nil
+	return chunkBuffer, nil
 }
 
 func (b *bucketBlock) indexReader(ctx context.Context) *bucketIndexReader {
@@ -1815,11 +1811,11 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 
 	g, ctx := errgroup.WithContext(r.ctx)
 	for _, part := range parts {
-		i, j := part.elemRng[0], part.elemRng[1]
+		i, j := part.ElemRng[0], part.ElemRng[1]
 
-		start := int64(part.start)
+		start := int64(part.Start)
 		// We assume index does not have any ptrs that has 0 length.
-		length := int64(part.end) - start
+		length := int64(part.End) - start
 
 		// Fetch from object storage concurrently and update stats and posting list.
 		g.Go(func() error {
@@ -1975,8 +1971,8 @@ func (r *bucketIndexReader) PreloadSeries(ids []uint64) error {
 	})
 	g, ctx := errgroup.WithContext(r.ctx)
 	for _, p := range parts {
-		s, e := p.start, p.end
-		i, j := p.elemRng[0], p.elemRng[1]
+		s, e := p.Start, p.End
+		i, j := p.ElemRng[0], p.ElemRng[1]
 
 		g.Go(func() error {
 			return r.loadSeries(ctx, ids[i:j], false, s, e)
@@ -2028,11 +2024,11 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []uint64, refetc
 	return nil
 }
 
-type part struct {
-	start uint64
-	end   uint64
+type Part struct {
+	Start uint64
+	End   uint64
 
-	elemRng [2]int
+	ElemRng [2]int
 }
 
 type Partitioner interface {
@@ -2040,7 +2036,7 @@ type Partitioner interface {
 	// input ranges
 	// It supports overlapping ranges.
 	// NOTE: It expects range to be ted by start time.
-	Partition(length int, rng func(int) (uint64, uint64)) []part
+	Partition(length int, rng func(int) (uint64, uint64)) []Part
 }
 
 type gapBasedPartitioner struct {
@@ -2056,29 +2052,29 @@ func NewGapBasedPartitioner(maxGapSize uint64) Partitioner {
 // Partition partitions length entries into n <= length ranges that cover all
 // input ranges by combining entries that are separated by reasonably small gaps.
 // It is used to combine multiple small ranges from object storage into bigger, more efficient/cheaper ones.
-func (g gapBasedPartitioner) Partition(length int, rng func(int) (uint64, uint64)) (parts []part) {
+func (g gapBasedPartitioner) Partition(length int, rng func(int) (uint64, uint64)) (parts []Part) {
 	j := 0
 	k := 0
 	for k < length {
 		j = k
 		k++
 
-		p := part{}
-		p.start, p.end = rng(j)
+		p := Part{}
+		p.Start, p.End = rng(j)
 
 		// Keep growing the range until the end or we encounter a large gap.
 		for ; k < length; k++ {
 			s, e := rng(k)
 
-			if p.end+g.maxGapSize < s {
+			if p.End+g.maxGapSize < s {
 				break
 			}
 
-			if p.end <= e {
-				p.end = e
+			if p.End <= e {
+				p.End = e
 			}
 		}
-		p.elemRng = [2]int{j, k}
+		p.ElemRng = [2]int{j, k}
 		parts = append(parts, p)
 	}
 	return parts
@@ -2239,8 +2235,8 @@ func (r *bucketChunkReader) preload() error {
 		offsets := offsets
 
 		for _, p := range parts {
-			s, e := uint32(p.start), uint32(p.end)
-			m, n := p.elemRng[0], p.elemRng[1]
+			s, e := uint32(p.Start), uint32(p.End)
+			m, n := p.ElemRng[0], p.ElemRng[1]
 
 			g.Go(func() error {
 				return r.loadChunks(ctx, offsets[m:n], seq, s, e)
@@ -2255,7 +2251,11 @@ func (r *bucketChunkReader) preload() error {
 func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq int, start, end uint32) error {
 	fetchBegin := time.Now()
 
-	b, err := r.block.readChunkRange(ctx, seq, int64(start), int64(end-start))
+	// Compute the byte ranges of chunks we actually need. The total read data may be bigger
+	// than required because of the partitioner.
+	chunkRanges := chunkOffsetsToByteRanges(offs, start)
+
+	b, err := r.block.readChunkRange(ctx, seq, int64(start), int64(end-start), chunkRanges)
 	if err != nil {
 		return errors.Wrapf(err, "read range for %d", seq)
 	}
@@ -2275,8 +2275,13 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq i
 	r.stats.chunksFetchDurationSum += time.Since(fetchBegin)
 	r.stats.chunksFetchedSizeSum += int(end - start)
 
-	for _, o := range offs {
-		cb := (*b)[o-start:]
+	readOffset := 0
+	for idx, o := range offs {
+		chunkRange := chunkRanges[idx]
+
+		// The chunks byte ranges are stored contiguously in the data buffer.
+		cb := (*b)[readOffset : readOffset+chunkRange.length]
+		readOffset += chunkRange.length
 
 		l, n := binary.Uvarint(cb)
 		if n < 1 {
@@ -2293,15 +2298,14 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq i
 			continue
 		}
 
-		// If we didn't fetch enough data for the chunk, fetch more. This can only really happen for last
-		// chunk in the list of fetched chunks, otherwise partitioner would merge fetch ranges together.
+		// If we didn't fetch enough data for the chunk, fetch more.
 		r.mtx.Unlock()
 		locked = false
 
 		fetchBegin = time.Now()
 
 		// Read entire chunk into new buffer.
-		nb, err := r.block.readChunkRange(ctx, seq, int64(o), int64(chLen))
+		nb, err := r.block.readChunkRange(ctx, seq, int64(o), int64(chLen), []byteRange{{offset: 0, length: chLen}})
 		if err != nil {
 			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chLen)
 		}
@@ -2322,6 +2326,29 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, offs []uint32, seq i
 		r.chunks[chunkRef] = rawChunk(cb[n:])
 	}
 	return nil
+}
+
+// chunkOffsetsToByteRanges returns non-overlapping byte ranges with each range offset
+// relative to start. The provided input offsets must be sorted.
+func chunkOffsetsToByteRanges(offsets []uint32, start uint32) byteRanges {
+	ranges := make([]byteRange, len(offsets))
+
+	for idx := 0; idx < len(offsets); idx++ {
+		ranges[idx] = byteRange{
+			// The byte range offset is required to be relative to the start of the read slice.
+			offset: int(offsets[idx] - start),
+			length: maxChunkSize,
+		}
+
+		if idx > 0 {
+			// Ensure ranges are non overlapping.
+			if prev := ranges[idx-1]; prev.length > ranges[idx].offset-prev.offset {
+				ranges[idx-1].length = ranges[idx].offset - prev.offset
+			}
+		}
+	}
+
+	return ranges
 }
 
 func (r *bucketChunkReader) Chunk(id uint64) (chunkenc.Chunk, error) {

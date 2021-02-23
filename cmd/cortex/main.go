@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	stdlog "log"
 	"math/rand"
 	"os"
 	"runtime"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -140,9 +138,6 @@ func main() {
 	}
 
 	util_log.InitLogger(&cfg.Server)
-
-	// Set the Go standard library logger to use the same logger as Cortex.
-	stdlog.SetOutput(log.NewStdlibAdapter(util_log.Logger))
 
 	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
 	ballast := make([]byte, ballastBytes)

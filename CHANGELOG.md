@@ -2,15 +2,7 @@
 
 ## master / unreleased
 
-## 1.7.0-rc.2
-
-* [BUGFIX] Handle missing samples due to large steps and single point extents. #3818 #3835
-
-## 1.7.0-rc.1
-
-* [BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815
-
-## 1.7.0-rc.0
+## 1.7.0
 
 Note the blocks storage compactor runs a migration task at startup in this version, which can take many minutes and use a lot of RAM.
 [Turn this off after first run](https://cortexmetrics.io/docs/blocks-storage/production-tips/#ensure-deletion-marks-migration-is-disabled-after-first-run).

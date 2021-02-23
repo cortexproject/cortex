@@ -7,11 +7,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -20,6 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -30,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -390,4 +395,142 @@ func setUserIDToGRPCContext(ctx context.Context, userID string) context.Context 
 	// We have to store it in the incoming metadata because we have to emulate the
 	// case it's coming from a gRPC request, while here we're running everything in-memory.
 	return metadata.NewIncomingContext(ctx, metadata.Pairs(cortex_tsdb.TenantIDExternalLabel, userID))
+}
+
+func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
+	const (
+		user1 = "user-1"
+		user2 = "user-2"
+	)
+
+	userToMetric := map[string]string{
+		user1: "series_1",
+		user2: "series_2",
+	}
+
+	ctx := context.Background()
+	cfg, cleanup := prepareStorageConfig(t)
+	defer cleanup()
+
+	storageDir, err := ioutil.TempDir(os.TempDir(), "storage-*")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(storageDir))
+	})
+
+	for userID, metricName := range userToMetric {
+		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
+	}
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	sharding := userShardingStrategy{}
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, &sharding, bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Perform sync.
+	sharding.users = []string{user1, user2}
+	require.NoError(t, stores.InitialSync(ctx))
+	require.Equal(t, []string{user1, user2}, getUsersInDir(t, cfg.BucketStore.SyncDir))
+
+	metricNames := []string{"cortex_bucket_store_block_drops_total", "cortex_bucket_store_block_loads_total", "cortex_bucket_store_blocks_loaded"}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+        	            	# TYPE cortex_bucket_store_block_drops_total counter
+        	            	cortex_bucket_store_block_drops_total 0
+        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+        	            	# TYPE cortex_bucket_store_block_loads_total counter
+        	            	cortex_bucket_store_block_loads_total 2
+        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+        	            	cortex_bucket_store_blocks_loaded 2
+	`), metricNames...))
+
+	// Single user left in shard.
+	sharding.users = []string{user1}
+	require.NoError(t, stores.SyncBlocks(ctx))
+	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+        	            	# TYPE cortex_bucket_store_block_drops_total counter
+        	            	cortex_bucket_store_block_drops_total 1
+        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+        	            	# TYPE cortex_bucket_store_block_loads_total counter
+        	            	cortex_bucket_store_block_loads_total 2
+        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+        	            	cortex_bucket_store_blocks_loaded 1
+	`), metricNames...))
+
+	// No users left in this shard.
+	sharding.users = nil
+	require.NoError(t, stores.SyncBlocks(ctx))
+	require.Equal(t, []string(nil), getUsersInDir(t, cfg.BucketStore.SyncDir))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+        	            	# TYPE cortex_bucket_store_block_drops_total counter
+        	            	cortex_bucket_store_block_drops_total 2
+        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+        	            	# TYPE cortex_bucket_store_block_loads_total counter
+        	            	cortex_bucket_store_block_loads_total 2
+        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+        	            	cortex_bucket_store_blocks_loaded 0
+	`), metricNames...))
+
+	// We can always get user back.
+	sharding.users = []string{user1}
+	require.NoError(t, stores.SyncBlocks(ctx))
+	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+        	            	# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
+        	            	# TYPE cortex_bucket_store_block_drops_total counter
+        	            	cortex_bucket_store_block_drops_total 2
+        	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+        	            	# TYPE cortex_bucket_store_block_loads_total counter
+        	            	cortex_bucket_store_block_loads_total 3
+        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
+        	            	cortex_bucket_store_blocks_loaded 1
+	`), metricNames...))
+}
+
+func getUsersInDir(t *testing.T, dir string) []string {
+	fs, err := ioutil.ReadDir(dir)
+	require.NoError(t, err)
+
+	var result []string
+	for _, fi := range fs {
+		if fi.IsDir() {
+			result = append(result, fi.Name())
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+type userShardingStrategy struct {
+	users []string
+}
+
+func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string) []string {
+	return u.users
+}
+
+func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, synced *extprom.TxGaugeVec) error {
+	if util.StringsContain(u.users, userID) {
+		return nil
+	}
+
+	for k := range metas {
+		delete(metas, k)
+	}
+	return nil
 }

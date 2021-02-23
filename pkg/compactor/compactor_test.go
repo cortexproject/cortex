@@ -130,8 +130,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -273,8 +272,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, _, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
@@ -433,8 +431,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, prepareConfig(), bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -560,8 +557,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -668,8 +664,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/index", nil)
 	bucketClient.MockDelete("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -777,8 +772,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
 
-	c, _, tsdbPlanner, logs, _, cleanup := prepare(t, cfg, bucketClient)
-	defer cleanup()
+	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -864,9 +858,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, l, _, cleanup := prepare(t, cfg, bucketClient)
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
-		defer cleanup()
 
 		compactors = append(compactors, c)
 		logs = append(logs, l)
@@ -1051,7 +1044,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer, func()) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -1060,9 +1053,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	require.NoError(t, err)
 
 	compactorCfg.DataDir = dataDir
-	cleanup := func() {
-		os.RemoveAll(dataDir)
-	}
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(dataDir))
+	})
 
 	tsdbCompactor := &tsdbCompactorMock{}
 	tsdbPlanner := &tsdbPlannerMock{}
@@ -1086,7 +1079,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
 	require.NoError(t, err)
 
-	return c, tsdbCompactor, tsdbPlanner, logs, registry, cleanup
+	return c, tsdbCompactor, tsdbPlanner, logs, registry
 }
 
 type tsdbCompactorMock struct {
@@ -1227,9 +1220,8 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, _, _, cleanup := prepare(t, cfg, inmem)
+		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem)
 		t.Cleanup(func() {
-			cleanup()
 			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 		})
 
@@ -1242,10 +1234,9 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 	}
 
-	// Start first compactor.
+	require.Equal(t, 2, len(compactors))
 	c1 := compactors[0]
 	c2 := compactors[1]
-	require.Equal(t, 2, len(compactors))
 
 	// Start first compactor
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))

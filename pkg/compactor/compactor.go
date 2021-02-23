@@ -527,7 +527,9 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		level.Info(c.logger).Log("msg", "successfully compacted user blocks", "user", userID)
 	}
 
-	// Delete local files for skipped tenants, if there are any.
+	// Delete local files for unowned tenants, if there are any. This cleans up
+	// leftover local files for tenants that belong to different compactors now,
+	// or have been deleted completely.
 	for userID := range c.listTenantsWithMetaSyncDirectories() {
 		if _, owned := ownedUsers[userID]; owned {
 			continue

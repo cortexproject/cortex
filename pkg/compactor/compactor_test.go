@@ -1220,6 +1220,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
+		// Each compactor will get its own temp dir for storing local files.
 		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem)
 		t.Cleanup(func() {
 			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))

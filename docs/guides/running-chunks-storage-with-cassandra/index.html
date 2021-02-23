@@ -31,10 +31,8 @@ In this guide we&rsquo;re going to:
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesruler-sharding href=/docs/guides/ruler-sharding/>Config for horizontally scaling the Ruler</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesha-pair-handling href=/docs/guides/ha-pair-handling/>Config for sending HA Pairs data to Cortex</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesdeleting-series href=/docs/guides/deleting-series/>Deleting Series</a>
-<a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesencryption-at-rest href=/docs/guides/encryption-at-rest/>Encryption at Rest</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesgrpc-based-plugin href=/docs/guides/grpc-based-plugin/>gRPC storage plugin</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesingesters-rolling-updates href=/docs/guides/ingesters-rolling-updates/>Ingesters rolling updates</a>
-<a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesoverrides-exporter href=/docs/guides/overrides-exporter/>Overrides Exporter</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidestls href=/docs/guides/tls/>Securing communication between Cortex components with TLS</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesshuffle-sharding href=/docs/guides/shuffle-sharding/>Shuffle Sharding</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidestracing href=/docs/guides/tracing/>Tracing</a>
@@ -53,7 +51,6 @@ In this guide we&rsquo;re going to:
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsgeneralize-modules href=/docs/proposals/generalize-modules/>Generalize Modules Service to make it extensible</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalshttp-api-design href=/docs/proposals/http-api-design/>HTTP API Design</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsingesters-migration href=/docs/proposals/ingesters-migration/>Migrating ingesters from chunks to blocks and back.</a>
-<a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalstenant-retention href=/docs/proposals/tenant-retention/>Retention of Tenant Data from Blocks Storage</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-alertmanager href=/docs/proposals/scalable-alertmanager/>Scalable Alertmanager</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-query-frontend href=/docs/proposals/scalable-query-frontend/>Scalable Query Frontend</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsshuffle-sharding-and-zone-awareness href=/docs/proposals/shuffle-sharding-and-zone-awareness/>Shuffle sharding and zone awareness</a>
@@ -135,7 +132,7 @@ storage:
     addresses: LOCALHOST # configure cassandra addresses here.
     keyspace: KEYSPACE   # configure desired keyspace here.
 </code></pre><p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is <code>v1.6.0</code>).</p><p>Run Cortex using the latest stable version:</p><pre><code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.6.0 -config.file=/etc/single-process-config.yaml
+to find the latest stable version tag and use it in the command below (currently it is <code>v1.7.0</code>).</p><p>Run Cortex using the latest stable version:</p><pre><code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.7.0 -config.file=/etc/single-process-config.yaml
 </code></pre><p>In case you prefer to run the master version, please follow this <a href=/docs/getting-started/getting-started-chunks-storage/>documentation</a> on how to build Cortex from source.</p><h3 id=configure-the-index-and-chunk-table-options>Configure the index and chunk table options</h3><p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
 If you want to configure the table options, use the <code>storage.cassandra.table_options</code> property or <code>cassandra.table-options</code> flag.
 This configuration property is just <code>string</code> type and this value used as plain text on <code>WITH</code> option of table creation query.

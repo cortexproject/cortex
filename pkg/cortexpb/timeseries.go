@@ -55,7 +55,7 @@ type PreallocWriteRequest struct {
 
 // Unmarshal implements proto.Message.
 func (p *PreallocWriteRequest) Unmarshal(dAtA []byte) error {
-	p.Timeseries = slicePool.Get().([]PreallocTimeseries)
+	p.Timeseries = PreallocTimeseriesSliceFromPool()
 	return p.WriteRequest.Unmarshal(dAtA)
 }
 
@@ -66,7 +66,7 @@ type PreallocTimeseries struct {
 
 // Unmarshal implements proto.Message.
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
-	p.TimeSeries = timeSeriesPool.Get().(*TimeSeries)
+	p.TimeSeries = TimeseriesFromPool()
 	return p.TimeSeries.Unmarshal(dAtA)
 }
 
@@ -265,6 +265,12 @@ func (bs *LabelAdapter) Compare(other LabelAdapter) int {
 	return strings.Compare(bs.Value, other.Value)
 }
 
+// PreallocTimeseriesSliceFromPool retrieves a slice of PreallocTimeseries from a sync.Pool.
+// ReuseSlice should be called once done.
+func PreallocTimeseriesSliceFromPool() []PreallocTimeseries {
+	return slicePool.Get().([]PreallocTimeseries)
+}
+
 // ReuseSlice puts the slice back into a sync.Pool for reuse.
 func ReuseSlice(ts []PreallocTimeseries) {
 	for i := range ts {
@@ -272,6 +278,12 @@ func ReuseSlice(ts []PreallocTimeseries) {
 	}
 
 	slicePool.Put(ts[:0]) //nolint:staticcheck //see comment on slicePool for more details
+}
+
+// TimeseriesFromPool retrieves a pointer to a TimeSeries from a sync.Pool.
+// ReuseTimeseries should be called once done, unless ReuseSlice was called on the slice that contains this TimeSeries.
+func TimeseriesFromPool() *TimeSeries {
+	return timeSeriesPool.Get().(*TimeSeries)
 }
 
 // ReuseTimeseries puts the timeseries back into a sync.Pool for reuse.

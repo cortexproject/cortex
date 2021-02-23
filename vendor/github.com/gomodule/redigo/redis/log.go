@@ -30,29 +30,20 @@ func NewLoggingConn(conn Conn, logger *log.Logger, prefix string) Conn {
 	if prefix != "" {
 		prefix = prefix + "."
 	}
-	return &loggingConn{conn, logger, prefix, nil}
-}
-
-//NewLoggingConnFilter returns a logging wrapper around a connection and a filter function.
-func NewLoggingConnFilter(conn Conn, logger *log.Logger, prefix string, skip func(cmdName string) bool) Conn {
-	if prefix != "" {
-		prefix = prefix + "."
-	}
-	return &loggingConn{conn, logger, prefix, skip}
+	return &loggingConn{conn, logger, prefix}
 }
 
 type loggingConn struct {
 	Conn
 	logger *log.Logger
 	prefix string
-	skip   func(cmdName string) bool
 }
 
 func (c *loggingConn) Close() error {
 	err := c.Conn.Close()
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%sClose() -> (%v)", c.prefix, err)
-	c.logger.Output(2, buf.String()) // nolint: errcheck
+	c.logger.Output(2, buf.String())
 	return err
 }
 
@@ -94,9 +85,6 @@ func (c *loggingConn) printValue(buf *bytes.Buffer, v interface{}) {
 }
 
 func (c *loggingConn) print(method, commandName string, args []interface{}, reply interface{}, err error) {
-	if c.skip != nil && c.skip(commandName) {
-		return
-	}
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%s%s(", c.prefix, method)
 	if method != "Receive" {
@@ -112,7 +100,7 @@ func (c *loggingConn) print(method, commandName string, args []interface{}, repl
 		buf.WriteString(", ")
 	}
 	fmt.Fprintf(&buf, "%v)", err)
-	c.logger.Output(3, buf.String()) // nolint: errcheck
+	c.logger.Output(3, buf.String())
 }
 
 func (c *loggingConn) Do(commandName string, args ...interface{}) (interface{}, error) {

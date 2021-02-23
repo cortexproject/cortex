@@ -28,8 +28,10 @@ This short guide shows how to start Cortex in single-binary mode with memberlist
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesruler-sharding href=/docs/guides/ruler-sharding/>Config for horizontally scaling the Ruler</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesha-pair-handling href=/docs/guides/ha-pair-handling/>Config for sending HA Pairs data to Cortex</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesdeleting-series href=/docs/guides/deleting-series/>Deleting Series</a>
+<a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesencryption-at-rest href=/docs/guides/encryption-at-rest/>Encryption at Rest</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesgrpc-based-plugin href=/docs/guides/grpc-based-plugin/>gRPC storage plugin</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesingesters-rolling-updates href=/docs/guides/ingesters-rolling-updates/>Ingesters rolling updates</a>
+<a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesoverrides-exporter href=/docs/guides/overrides-exporter/>Overrides Exporter</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidestls href=/docs/guides/tls/>Securing communication between Cortex components with TLS</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidesshuffle-sharding href=/docs/guides/shuffle-sharding/>Shuffle Sharding</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsguidestracing href=/docs/guides/tracing/>Tracing</a>
@@ -48,6 +50,7 @@ This short guide shows how to start Cortex in single-binary mode with memberlist
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsgeneralize-modules href=/docs/proposals/generalize-modules/>Generalize Modules Service to make it extensible</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalshttp-api-design href=/docs/proposals/http-api-design/>HTTP API Design</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsingesters-migration href=/docs/proposals/ingesters-migration/>Migrating ingesters from chunks to blocks and back.</a>
+<a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalstenant-retention href=/docs/proposals/tenant-retention/>Retention of Tenant Data from Blocks Storage</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-alertmanager href=/docs/proposals/scalable-alertmanager/>Scalable Alertmanager</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-query-frontend href=/docs/proposals/scalable-query-frontend/>Scalable Query Frontend</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsshuffle-sharding-and-zone-awareness href=/docs/proposals/shuffle-sharding-and-zone-awareness/>Shuffle sharding and zone awareness</a>
@@ -64,7 +67,7 @@ This short guide shows how to start Cortex in single-binary mode with memberlist
 <a href="https://github.com/cortexproject/cortex/issues/new?title=Getting%20Started%20with%20Gossiped%20Ring" target=_blank><i class="fab fa-github fa-fw"></i>Create documentation issue</a>
 <a href=https://github.com/cortexproject/cortex/issues/new target=_blank><i class="fas fa-tasks fa-fw"></i>Create project issue</a></div><nav id=TableOfContents><ul><li><a href=#single-binary-two-cortex-instances>Single-binary, two Cortex instances</a></li><li><a href=#how-it-works>How it works</a></li><li><a href=#how-to-add-another-instance>How to add another instance?</a></li></ul></nav></div><main class="col-12 col-md-9 col-xl-8 pl-md-5" role=main><nav aria-label=breadcrumb class="d-none d-md-block d-print-none"><ol class="breadcrumb spb-1"><li class=breadcrumb-item><a href=/docs/>Documentation</a></li><li class=breadcrumb-item><a href=/docs/getting-started/>Getting Started</a></li><li class="breadcrumb-item active" aria-current=page><a href=/docs/getting-started/getting-started-with-gossiped-ring/>Gossip Ring</a></li></ol></nav><div class=td-content><h1>Getting Started with Gossiped Ring</h1><p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.</p><p>This short guide shows how to start Cortex in <a href=/docs/architecture/>single-binary mode</a> with memberlist-based ring.
-To reduce number of required dependencies in this guide, it will use <a href=../blocks-storage/>blocks storage</a> with no shipping to external stores.
+To reduce number of required dependencies in this guide, it will use <a href=/docs/blocks-storage/>blocks storage</a> with no shipping to external stores.
 Storage engine and external storage configuration are not dependant on the ring configuration.</p><h2 id=single-binary-two-cortex-instances>Single-binary, two Cortex instances</h2><p>For simplicity and to get started, we&rsquo;ll run it as a two instances of Cortex on local computer.
 We will use prepared configuration files (<a href=../../configuration/single-process-config-blocks-gossip-1.yaml>file 1</a>, <a href=../../configuration/single-process-config-blocks-gossip-2.yaml>file 2</a>), with no external
 dependencies.</p><p>Build Cortex first:</p><div class=highlight><pre style=background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>$ go build ./cmd/cortex

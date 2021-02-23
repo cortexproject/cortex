@@ -127,9 +127,9 @@ cassandra:
 addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.7.0&lt;/code>).&lt;/p>
+to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.6.0&lt;/code>).&lt;/p>
 &lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.7.0 -config.file=/etc/single-process-config.yaml
+&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.6.0 -config.file=/etc/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/getting-started/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
 &lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
 &lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
@@ -393,7 +393,51 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;pre>&lt;code>curl -X GET \
 &amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
 -H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
-&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
+&lt;p>Cortex supports data encryption at rest for some storage backends.&lt;/p>
+&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
+&lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
+&lt;h3 id="s3">S3&lt;/h3>
+&lt;p>The Cortex S3 client used by the blocks storage supports the following SSE types:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h3 id="s3_sse_config">&lt;code>s3_sse_config&lt;/code>&lt;/h3>
+&lt;p>The &lt;code>s3_sse_config&lt;/code> configures the S3 server-side encryption.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">sse&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.type&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Key ID used to encrypt objects in S3&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-key-id&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_key_id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Encryption Context used for object encryption. It expects JSON formatted&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="s3-per-tenant-overrides">S3 per-tenant overrides&lt;/h4>
+&lt;p>The S3 client used by the blocks storage supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
+The following settings can ben overridden for each tenant:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>&lt;code>s3_sse_type&lt;/code>&lt;/strong>&lt;br />
+S3 server-side encryption type. It must be set to enable the SSE config override for a given tenant.&lt;/li>
+&lt;li>&lt;strong>&lt;code>s3_sse_kms_key_id&lt;/code>&lt;/strong>&lt;br />
+S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
+&lt;li>&lt;strong>&lt;code>s3_sse_kms_encryption_context&lt;/code>&lt;/strong>&lt;br />
+S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
+&lt;/ul>
+&lt;h2 id="chunks-storage">Chunks storage&lt;/h2>
+&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
+&lt;h3 id="s3-1">S3&lt;/h3>
+&lt;p>The Cortex S3 client used by the chunks storage supports the following SSE types:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>The server-side encryption in the S3 client used by the chunks storage can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
 &lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
 &lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
@@ -484,7 +528,48 @@ Number of chunks sent by leaving ingester.&lt;/li>
 Number of chunks received by joining ingester.&lt;/li>
 &lt;/ul>
 &lt;p>You can see the current state of the ring via http browser request to
-&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
+&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
+&lt;p>Since Cortex is a multi-tenant system, it supports applying limits to each tenant to prevent
+any single one from using too many resources. In order to help operators understand how close
+to their limits tenants are, the &lt;code>overrides-exporter&lt;/code> module can expose limits as Prometheus metrics.&lt;/p>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>To update configuration without restarting, Cortex allows operators to supply a &lt;code>runtime_config&lt;/code>
+file that will be periodically reloaded. This file can be specified under the &lt;code>runtime_config&lt;/code> section
+of the main &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">configuration file&lt;/a> or using the &lt;code>-runtime-config.file&lt;/code>
+command line flag. This file is used to apply tenant-specific limits.&lt;/p>
+&lt;h2 id="example">Example&lt;/h2>
+&lt;p>The &lt;code>overrides-exporter&lt;/code> is not enabled by default, it must be explicitly enabled. We recommend
+only running a single instance of it in your cluster due to the cardinality of the metrics
+emitted.&lt;/p>
+&lt;p>With a &lt;code>runtime.yaml&lt;/code> file given below&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># file: runtime.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># In this example, we&amp;#39;re overriding ingestion limits for a single tenant.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;user1&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_burst_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_samples_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows&lt;/p>
+&lt;pre>&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
+&lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can to use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-text" data-lang="text">curl -s http://localhost:8080/metrics | grep cortex_overrides
+# HELP cortex_overrides Resource limit overrides applied to tenants
+# TYPE cortex_overrides gauge
+cortex_overrides{limit_name=&amp;#34;ingestion_burst_size&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
+cortex_overrides{limit_name=&amp;#34;ingestion_rate&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
+cortex_overrides{limit_name=&amp;#34;max_global_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
+cortex_overrides{limit_name=&amp;#34;max_global_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
+cortex_overrides{limit_name=&amp;#34;max_local_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
+cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
+cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
+cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
+before they exceed them.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
 &lt;p>Cortex is a distributed system with significant traffic between its services.
 To allow for secure communication, Cortex supports TLS between all its
 components. This guide describes the process of setting up TLS.&lt;/p>
@@ -573,6 +658,7 @@ through the following config parameters:&lt;/p>
 &lt;li>An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.&lt;/li>
 &lt;li>A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it&amp;rsquo;s statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.&lt;/li>
 &lt;/ul>
+&lt;p>Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.&lt;/p>
 &lt;h3 id="low-overlapping-instances-probability">Low overlapping instances probability&lt;/h3>
 &lt;p>For example, given a Cortex cluster running &lt;strong>50 ingesters&lt;/strong> and assigning &lt;strong>each tenant 4&lt;/strong> out of 50 ingesters, shuffling instances between each tenant, we get &lt;strong>230K possible combinations&lt;/strong>.&lt;/p>
 &lt;p>Randomly picking two different tenants we have the:&lt;/p>
@@ -626,7 +712,11 @@ When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt
 &lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=default&lt;/code> (default). In this mode rulers register themselves into the ring. Each ruler will then select and evaluate only those rules that it &amp;ldquo;owns&amp;rdquo;.&lt;/li>
 &lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
 &lt;/ol>
-&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
+&lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p>
+&lt;h2 id="faq">FAQ&lt;/h2>
+&lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
+&lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>
+&lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
 &lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> to implement distributed
 tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p>

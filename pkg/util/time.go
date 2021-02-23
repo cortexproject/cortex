@@ -60,3 +60,16 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 
 	return input + time.Duration(jitter)
 }
+
+// DurationWithPositiveJitter returns random duration from "input" to "input + input*variance" interval.
+func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.Duration {
+	// No duration? No jitter.
+	if input == 0 {
+		return 0
+	}
+
+	variance := int64(float64(input) * variancePerc)
+	jitter := rand.Int63n(variance)
+
+	return input + time.Duration(jitter)
+}

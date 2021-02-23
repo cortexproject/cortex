@@ -45,6 +45,9 @@ import (
 const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
+
+	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
+	compactionIdleTimeoutJitter = 0.25
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -355,6 +358,9 @@ type TSDBState struct {
 	forceCompactTrigger chan chan<- struct{}
 	shipTrigger         chan chan<- struct{}
 
+	// Timeout chosen for idle compactions.
+	compactionIdleTimeout time.Duration
+
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
 	compactionsFailed      prometheus.Counter
@@ -475,6 +481,10 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
+
+	// Apply positive jitter only to ensure that the minimum timeout is adhered to.
+	i.TSDBState.compactionIdleTimeout = util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout, compactionIdleTimeoutJitter)
+	level.Info(i.logger).Log("msg", "TSDB idle compaction timeout set", "timeout", i.TSDBState.compactionIdleTimeout)
 
 	i.BasicService = services.NewBasicService(i.startingV2, i.updateLoop, i.stoppingV2)
 	return i, nil
@@ -1666,7 +1676,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool) {
 			reason = "forced"
 			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
-		case i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout):
+		case i.TSDBState.compactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.TSDBState.compactionIdleTimeout):
 			reason = "idle"
 			level.Info(i.logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
 			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())

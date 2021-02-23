@@ -325,13 +325,18 @@ var (
 	errBucketStoreNotFound = errors.New("bucket store not found")
 )
 
-// Removes bucket store for given user, if it is empty, and closes it.
+// closeEmptyBucketStore closes bucket store for given user, if it is empty, and removes it from
 // If bucket store doesn't exist, returns errBucketStoreNotFound.
-// If bucket store was not empty, returns errBucketStoreNotEmpty.
-// Otherwise returns error from Close.
+// If bucket store is not empty, returns errBucketStoreNotEmpty.
+// Otherwise returns error from closing the bucket store.
 func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	u.storesMu.Lock()
-	defer u.storesMu.Unlock()
+	unlockInDefer := true
+	defer func() {
+		if unlockInDefer {
+			u.storesMu.Unlock()
+		}
+	}()
 
 	bs := u.stores[userID]
 	if bs == nil {
@@ -343,6 +348,9 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	}
 
 	delete(u.stores, userID)
+	unlockInDefer = false
+	u.storesMu.Unlock()
+
 	u.metaFetcherMetrics.RemoveUserRegistry(userID)
 	u.bucketStoreMetrics.RemoveUserRegistry(userID)
 	return bs.Close()

@@ -715,6 +715,7 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 	errs := tsdb_errors.NewMulti()
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
+	lbls := labels.NewBuilder(nil)
 
 nextMetric:
 	for m := range ch {
@@ -725,7 +726,7 @@ nextMetric:
 			continue
 		}
 
-		lbls := labels.NewBuilder(nil)
+		lbls.Reset(nil)
 		for _, lp := range dtoMetric.Label {
 			n := lp.GetName()
 			v := lp.GetValue()

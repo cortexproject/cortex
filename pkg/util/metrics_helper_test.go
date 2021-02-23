@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -997,6 +998,60 @@ func float64p(v float64) *float64 {
 
 func uint64p(v uint64) *uint64 {
 	return &v
+}
+
+func BenchmarkGetLabels_SmallSet(b *testing.B) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	m.WithLabelValues("bad", "user1").Inc()
+	m.WithLabelValues("worse", "user1").Inc()
+	m.WithLabelValues("worst", "user1").Inc()
+
+	m.WithLabelValues("bad", "user2").Inc()
+	m.WithLabelValues("worst", "user2").Inc()
+
+	m.WithLabelValues("worst", "user3").Inc()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGetLabels_MediumSet(b *testing.B) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	for i := 1; i <= 1000; i++ {
+		m.WithLabelValues("bad", fmt.Sprintf("user%d", i)).Inc()
+		m.WithLabelValues("worse", fmt.Sprintf("user%d", i)).Inc()
+		m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+
+		if i%2 == 0 {
+			m.WithLabelValues("bad", fmt.Sprintf("user%d", i)).Inc()
+			m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+		} else {
+			m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+		}
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestGetLabels(t *testing.T) {

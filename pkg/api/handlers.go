@@ -238,7 +238,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
 	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
@@ -250,7 +250,7 @@ func NewQuerierHandler(
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable))
+	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)

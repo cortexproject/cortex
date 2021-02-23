@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -23,7 +23,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, util_log.Logger)
+	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger())
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)

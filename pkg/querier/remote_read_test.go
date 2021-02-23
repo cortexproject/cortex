@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -36,7 +37,7 @@ func TestRemoteReadHandler(t *testing.T) {
 			},
 		}, nil
 	})
-	handler := RemoteReadHandler(q)
+	handler := RemoteReadHandler(q, log.NewNopLogger())
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{

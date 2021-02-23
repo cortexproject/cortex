@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -16,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
 		ActiveQueryTracker: nil,

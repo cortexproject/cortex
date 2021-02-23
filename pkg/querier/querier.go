@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -28,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -143,7 +143,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -167,9 +167,9 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             logger,
 		Reg:                reg,
-		ActiveQueryTracker: createActiveQueryTracker(cfg),
+		ActiveQueryTracker: createActiveQueryTracker(cfg, logger),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      cfg.LookbackDelta,
@@ -195,11 +195,11 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+func createActiveQueryTracker(cfg Config, logger log.Logger) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.Logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
 	}
 
 	return nil

@@ -17,7 +17,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -47,13 +46,13 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	tw, _, err := NewTripperware(Config{},
-		util_log.Logger,
+		log.NewNopLogger(),
 		mockLimits{},
 		PrometheusCodec,
 		nil,
 		chunk.SchemaConfig{},
 		promql.EngineOpts{
-			Logger:     util_log.Logger,
+			Logger:     log.NewNopLogger(),
 			Reg:        nil,
 			MaxSamples: 1000,
 			Timeout:    time.Minute,

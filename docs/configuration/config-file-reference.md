@@ -4567,7 +4567,9 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.head-compaction-concurrency
   [head_compaction_concurrency: <int> | default = 5]
 
-  # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+  # If TSDB head is idle for this duration, it is compacted. Note that up to 25%
+  # jitter is added to the value to avoid ingesters compacting concurrently. 0
+  # means disabled.
   # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
   [head_compaction_idle_timeout: <duration> | default = 1h]
 

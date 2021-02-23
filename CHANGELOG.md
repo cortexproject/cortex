@@ -69,6 +69,7 @@
 * [ENHANCEMENT] Distributor: Prevent failed ingestion from affecting rate limiting. #3825
 * [ENHANCEMENT] Blocks storage: added `-blocks-storage.s3.region` support to S3 client configuration. #3811
 * [ENHANCEMENT] Distributor: Remove cached subrings for inactive users when using shuffle sharding. #3849
+* [ENHANCEMENT] Ingester: attempt to prevent idle compaction from happening in concurrent ingesters by introducing a 25% jitter to the configured idle timeout (`-blocks-storage.tsdb.head-compaction-idle-timeout`). #3850
 * [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
 * [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenats that no longer belong to store-gateway. #3853
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778

@@ -88,8 +88,6 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [BUGFIX] Do not log "failed to load config" if runtime config file is empty. #3706
 * [BUGFIX] Do not allow to use a runtime config file containing multiple YAML documents. #3706
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
-* [BUGFIX] Fix ring tokens sorting regression introduced in #3601. #3815
-* [BUGFIX] Handle missing samples due to large steps and single point extents. #3818 #3835
 
 ## 1.6.0
 

@@ -160,7 +160,7 @@ func TestLoadRules(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	obj := chunk.NewMockStorage()
-	rs := NewRuleStore(obj, 5)
+	rs := NewRuleStore(obj, 5, log.NewNopLogger())
 
 	groups := []testGroup{
 		{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},

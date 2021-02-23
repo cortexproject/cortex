@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -108,6 +110,43 @@ func TestLimitsLoadingFromYaml(t *testing.T) {
 
 	assert.Equal(t, 0.5, l.IngestionRate, "from yaml")
 	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+}
+
+func TestLimitsLoadingFromJson(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
+		MaxLabelNameLength: 100,
+	})
+
+	inp := `{"ingestion_rate": 0.5}`
+
+	l := Limits{}
+	err := json.Unmarshal([]byte(inp), &l)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0.5, l.IngestionRate, "from json")
+	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+}
+
+func TestLimitsTagsYamlMatchJson(t *testing.T) {
+	limits := reflect.TypeOf(Limits{})
+	n := limits.NumField()
+
+	yamlTags := 0
+	jsonTags := 0
+
+	for i := 0; i < n; i++ {
+		field := limits.Field(i)
+
+		if field.Tag.Get("yaml") != "" {
+			yamlTags++
+		}
+
+		if field.Tag.Get("json") != "" {
+			jsonTags++
+		}
+	}
+
+	assert.Equal(t, yamlTags, jsonTags, "number of yaml and json tags should match")
 }
 
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {

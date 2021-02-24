@@ -19,7 +19,7 @@ import (
 )
 
 // Query multiple ingesters and returns a Matrix of samples.
-func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
+func (d *Distributor) Query(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	var matrix model.Matrix
 	err := instrument.CollectedRequest(ctx, "Distributor.Query", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
@@ -27,7 +27,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, userID, matchers...)
 		if err != nil {
 			return err
 		}
@@ -46,7 +46,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 }
 
 // QueryStream multiple ingesters via the streaming interface and returns big ol' set of chunks.
-func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) QueryStream(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
 	var result *ingester_client.QueryStreamResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
@@ -54,12 +54,12 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, userID, matchers...)
 		if err != nil {
 			return err
 		}
 
-		result, err = d.queryIngesterStream(ctx, replicationSet, req)
+		result, err = d.queryIngesterStream(ctx, userID, replicationSet, req)
 		if err != nil {
 			return err
 		}
@@ -74,12 +74,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 
 // GetIngestersForQuery returns a replication set including all ingesters that should be queried
 // to fetch series matching input label matchers.
-func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return ring.ReplicationSet{}, err
-	}
-
+func (d *Distributor) GetIngestersForQuery(ctx context.Context, userID string, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
 	// If shuffle sharding is enabled we should only query ingesters which are
 	// part of the tenant's subring.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {

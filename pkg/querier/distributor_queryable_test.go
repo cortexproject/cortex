@@ -25,6 +25,7 @@ import (
 
 const (
 	maxt, mint = 0, 10
+	testUserID = "test"
 )
 
 func TestDistributorQuerier(t *testing.T) {
@@ -45,8 +46,9 @@ func TestDistributorQuerier(t *testing.T) {
 		},
 		nil)
 
+	ctx := user.InjectOrgID(context.Background(), testUserID)
 	queryable := newDistributorQueryable(d, false, nil, 0)
-	querier, err := queryable.Querier(context.Background(), mint, maxt)
+	querier, err := queryable.Querier(ctx, mint, maxt)
 	require.NoError(t, err)
 
 	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
@@ -118,10 +120,10 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
 				distributor := &mockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
-				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
-				ctx := user.InjectOrgID(context.Background(), "test")
+				ctx := user.InjectOrgID(context.Background(), testUserID)
 				queryable := newDistributorQueryable(distributor, streamingEnabled, nil, testData.queryIngestersWithin)
 				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
@@ -330,11 +332,11 @@ type mockDistributor struct {
 	mock.Mock
 }
 
-func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
+func (m *mockDistributor) Query(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(model.Matrix), args.Error(1)
 }
-func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
+func (m *mockDistributor) QueryStream(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }

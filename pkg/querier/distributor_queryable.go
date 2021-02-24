@@ -24,8 +24,8 @@ import (
 // Distributor is the read interface to the distributor, made an interface here
 // to reduce package coupling.
 type Distributor interface {
-	Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
-	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
+	Query(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error)
+	QueryStream(ctx context.Context, userID string, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
 	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
@@ -116,11 +116,16 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 		}
 	}
 
-	if q.streaming {
-		return q.streamingSelect(ctx, minT, maxT, matchers)
+	userID, err := tenant.TenantID(q.ctx)
+	if err != nil {
+		return storage.ErrSeriesSet(err)
 	}
 
-	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
+	if q.streaming {
+		return q.streamingSelect(ctx, userID, minT, maxT, matchers)
+	}
+
+	matrix, err := q.distributor.Query(ctx, userID, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -129,13 +134,8 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	return series.MatrixToSeriesSet(matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
-	}
-
-	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
+func (q *distributorQuerier) streamingSelect(ctx context.Context, userID string, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
+	results, err := q.distributor.QueryStream(ctx, userID, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

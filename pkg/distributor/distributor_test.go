@@ -49,7 +49,8 @@ import (
 var (
 	errFail       = fmt.Errorf("Fail")
 	emptyResponse = &cortexpb.WriteResponse{}
-	ctx           = user.InjectOrgID(context.Background(), "user")
+	testUserID    = "user"
+	ctx           = user.InjectOrgID(context.Background(), testUserID)
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -710,12 +711,12 @@ func TestDistributor_PushQuery(t *testing.T) {
 			assert.Equal(t, &cortexpb.WriteResponse{}, writeResponse)
 			assert.Nil(t, err)
 
-			response, err := ds[0].Query(ctx, 0, 10, tc.matchers...)
+			response, err := ds[0].Query(ctx, testUserID, 0, 10, tc.matchers...)
 			sort.Sort(response)
 			assert.Equal(t, tc.expectedResponse, response)
 			assert.Equal(t, tc.expectedError, err)
 
-			series, err := ds[0].QueryStream(ctx, 0, 10, tc.matchers...)
+			series, err := ds[0].QueryStream(ctx, testUserID, 0, 10, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
 			if series == nil {
@@ -1006,10 +1007,10 @@ func TestSlowQueries(t *testing.T) {
 				})
 				defer stopAll(ds, r)
 
-				_, err := ds[0].Query(ctx, 0, 10, nameMatcher)
+				_, err := ds[0].Query(ctx, testUserID, 0, 10, nameMatcher)
 				assert.Equal(t, expectedErr, err)
 
-				_, err = ds[0].QueryStream(ctx, 0, 10, nameMatcher)
+				_, err = ds[0].QueryStream(ctx, testUserID, 0, 10, nameMatcher)
 				assert.Equal(t, expectedErr, err)
 			})
 		}

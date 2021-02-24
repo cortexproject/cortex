@@ -88,7 +88,8 @@ func PostRequest(url string) (*http.Response, error) {
 
 // TimeToMilliseconds returns the input time as milliseconds, using the same
 // formula used by Prometheus in order to get the same timestamp when asserting
-// on query results.
+// on query results. The formula we're mimicking here is Prometheus parseTime().
+// See: https://github.com/prometheus/prometheus/blob/df80dc4d3970121f2f76cba79050983ffb3cdbb0/web/api/v1/api.go#L1690-L1694
 func TimeToMilliseconds(t time.Time) int64 {
 	// Convert to seconds.
 	sec := float64(t.Unix()) + float64(t.Nanosecond())/1e9

@@ -249,6 +249,10 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 		}
 	}
 
+	if len(hashToChunkseries) > maxSeries || len(hashToTimeSeries) > maxSeries {
+		return nil, fmt.Errorf("exceeded maximum number of series in a query (limit %d)", maxSeries)
+	}
+
 	resp := &ingester_client.QueryStreamResponse{
 		Chunkseries: make([]ingester_client.TimeSeriesChunk, 0, len(hashToChunkseries)),
 		Timeseries:  make([]ingester_client.TimeSeries, 0, len(hashToTimeSeries)),

@@ -319,3 +319,57 @@ func TestParseRuleGroupObjectKey(t *testing.T) {
 		})
 	}
 }
+
+func TestParseRuleGroupObjectKeyWithUser(t *testing.T) {
+	decodedNamespace := "my-namespace"
+	encodedNamespace := base64.URLEncoding.EncodeToString([]byte(decodedNamespace))
+
+	decodedGroup := "my-group"
+	encodedGroup := base64.URLEncoding.EncodeToString([]byte(decodedGroup))
+
+	tests := map[string]struct {
+		key               string
+		expectedErr       error
+		expectedUser      string
+		expectedNamespace string
+		expectedGroup     string
+	}{
+		"empty object key": {
+			key:         "",
+			expectedErr: errInvalidRuleGroupKey,
+		},
+		"invalid object key pattern": {
+			key:         "way/too/much/long",
+			expectedErr: errInvalidRuleGroupKey,
+		},
+		"invalid namespace encoding": {
+			key:         fmt.Sprintf("user-1/invalid/%s", encodedGroup),
+			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"invalid group encoding": {
+			key:         fmt.Sprintf("user-1/%s/invalid", encodedNamespace),
+			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"valid object key": {
+			key:               fmt.Sprintf("user-1/%s/%s", encodedNamespace, encodedGroup),
+			expectedUser:      "user-1",
+			expectedNamespace: decodedNamespace,
+			expectedGroup:     decodedGroup,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			user, namespace, group, err := parseRuleGroupObjectKeyWithUser(testData.key)
+
+			if testData.expectedErr != nil {
+				assert.EqualError(t, err, testData.expectedErr.Error())
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, testData.expectedUser, user)
+				assert.Equal(t, testData.expectedNamespace, namespace)
+				assert.Equal(t, testData.expectedGroup, group)
+			}
+		})
+	}
+}

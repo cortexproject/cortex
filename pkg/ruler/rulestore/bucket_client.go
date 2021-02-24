@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	delim      = "/" // TODO use objstore.DirDelim
-	rulePrefix = "rules"
+	// The bucket prefix under which all tenants rule groups are stored.
+	rulesPrefix = "rules"
 
 	loadConcurrency = 10
 )
@@ -40,7 +40,7 @@ type BucketRuleStore struct {
 
 func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketRuleStore {
 	return &BucketRuleStore{
-		bucket:      bucket.NewPrefixedBucketClient(bkt, rulePrefix),
+		bucket:      bucket.NewPrefixedBucketClient(bkt, rulesPrefix),
 		cfgProvider: cfgProvider,
 		logger:      logger,
 	}
@@ -84,7 +84,7 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	var users []string
 	err := b.bucket.Iter(ctx, "", func(user string) error {
-		users = append(users, strings.TrimSuffix(user, delim))
+		users = append(users, strings.TrimSuffix(user, objstore.DirDelim))
 		return nil
 	})
 	if err != nil {
@@ -95,22 +95,31 @@ func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	users, err := b.ListAllUsers(ctx)
+	out := map[string]rules.RuleGroupList{}
+
+	// List rule groups for all tenants.
+	err := b.bucket.Iter(ctx, "", func(key string) error {
+		userID, namespace, group, err := parseRuleGroupObjectKeyWithUser(key)
+		if err != nil {
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key)
+
+			// Do not fail just because of a spurious item in the bucket.
+			return nil
+		}
+
+		out[userID] = append(out[userID], &rules.RuleGroupDesc{
+			User:      userID,
+			Namespace: namespace,
+			Name:      group,
+		})
+		return nil
+	}, objstore.WithRecursiveIter)
+
 	if err != nil {
 		return nil, err
 	}
 
-	perUserRuleGroupListMap := map[string]rules.RuleGroupList{}
-
-	// TODO: Improve the following code path to run in parallel per-user
-	for _, user := range users {
-		perUserRuleGroupListMap[user], err = b.ListRuleGroupsForUserAndNamespace(ctx, user, "")
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return perUserRuleGroupListMap, nil
+	return out, nil
 }
 
 // ListRuleGroupsForUserAndNamespace returns all the active rule groups for a user from given namespace.
@@ -251,7 +260,7 @@ func (b *BucketRuleStore) SupportsModifications() bool {
 }
 
 func generateRuleObjectKey(namespace, groupName string) string {
-	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + delim
+	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + objstore.DirDelim
 	if groupName == "" {
 		return ns
 	}
@@ -259,18 +268,31 @@ func generateRuleObjectKey(namespace, groupName string) string {
 	return ns + base64.URLEncoding.EncodeToString([]byte(groupName))
 }
 
+// parseRuleGroupObjectKeyWithUser parses a bucket object key in the format "<user>/<namespace>/<rules group>".
+func parseRuleGroupObjectKeyWithUser(key string) (user, namespace, group string, err error) {
+	parts := strings.SplitN(key, objstore.DirDelim, 2)
+	if len(parts) != 2 {
+		return "", "", "", errInvalidRuleGroupKey
+	}
+
+	user = parts[0]
+	namespace, group, err = parseRuleGroupObjectKey(parts[1])
+	return
+}
+
+// parseRuleGroupObjectKey parses a bucket object key in the format "<namespace>/<rules group>".
 func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
-	components := strings.Split(key, objstore.DirDelim)
-	if len(components) != 2 {
+	parts := strings.Split(key, objstore.DirDelim)
+	if len(parts) != 2 {
 		return "", "", errInvalidRuleGroupKey
 	}
 
-	decodedNamespace, err := base64.URLEncoding.DecodeString(components[0])
+	decodedNamespace, err := base64.URLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return
 	}
 
-	decodedGroup, err := base64.URLEncoding.DecodeString(components[1])
+	decodedGroup, err := base64.URLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return
 	}

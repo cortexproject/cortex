@@ -193,12 +193,12 @@ func TestDelete(t *testing.T) {
 			require.Error(t, rs.DeleteNamespace(canceled, "user1", ""))
 
 			require.Equal(t, []string{
-				"rules/user1/" + generateRuleObjectKey("A", "1"),
-				"rules/user1/" + generateRuleObjectKey("A", "2"),
-				"rules/user1/" + generateRuleObjectKey("B", "3"),
-				"rules/user1/" + generateRuleObjectKey("C", "4"),
-				"rules/user2/" + generateRuleObjectKey("second", "group"),
-				"rules/user3/" + generateRuleObjectKey("third", "group"),
+				"rules/user1/" + getRulesGroupObjectKey("A", "1"),
+				"rules/user1/" + getRulesGroupObjectKey("A", "2"),
+				"rules/user1/" + getRulesGroupObjectKey("B", "3"),
+				"rules/user1/" + getRulesGroupObjectKey("C", "4"),
+				"rules/user2/" + getRulesGroupObjectKey("second", "group"),
+				"rules/user3/" + getRulesGroupObjectKey("third", "group"),
 			}, getSortedObjectKeys(bucketClient))
 		}
 
@@ -208,9 +208,9 @@ func TestDelete(t *testing.T) {
 			require.NoError(t, rs.DeleteNamespace(context.Background(), "user1", "A"))
 
 			require.Equal(t, []string{
-				"rules/user1/" + generateRuleObjectKey("B", "3"),
-				"rules/user1/" + generateRuleObjectKey("C", "4"),
-				"rules/user3/" + generateRuleObjectKey("third", "group"),
+				"rules/user1/" + getRulesGroupObjectKey("B", "3"),
+				"rules/user1/" + getRulesGroupObjectKey("C", "4"),
+				"rules/user3/" + getRulesGroupObjectKey("third", "group"),
 			}, getSortedObjectKeys(bucketClient))
 		}
 
@@ -219,7 +219,7 @@ func TestDelete(t *testing.T) {
 			require.NoError(t, rs.DeleteNamespace(context.Background(), "user1", ""))
 
 			require.Equal(t, []string{
-				"rules/user3/" + generateRuleObjectKey("third", "group"),
+				"rules/user3/" + getRulesGroupObjectKey("third", "group"),
 			}, getSortedObjectKeys(bucketClient))
 		}
 

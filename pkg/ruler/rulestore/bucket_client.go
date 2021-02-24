@@ -49,7 +49,7 @@ func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProv
 // If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
 func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
-	objectKey := generateRuleObjectKey(namespace, groupName)
+	objectKey := getRulesGroupObjectKey(namespace, groupName)
 
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
@@ -129,7 +129,12 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 
 	groupList := rules.RuleGroupList{}
 
-	prefix := generateRuleObjectKey(namespace, "")
+	// The prefix to list objects depends on whether the namespace has been
+	// specified in the request.
+	prefix := objstore.DirDelim
+	if namespace != "" {
+		prefix = getNamespacePrefix(namespace)
+	}
 
 	err := userBucket.Iter(ctx, prefix, func(key string) error {
 		namespace, group, err := parseRuleGroupObjectKey(key)
@@ -216,12 +221,12 @@ func (b *BucketRuleStore) SetRuleGroup(ctx context.Context, userID string, names
 		return err
 	}
 
-	return userBucket.Upload(ctx, generateRuleObjectKey(namespace, group.Name), bytes.NewBuffer(data))
+	return userBucket.Upload(ctx, getRulesGroupObjectKey(namespace, group.Name), bytes.NewBuffer(data))
 }
 
 func (b *BucketRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
-	err := userBucket.Delete(ctx, generateRuleObjectKey(namespace, group))
+	err := userBucket.Delete(ctx, getRulesGroupObjectKey(namespace, group))
 	if b.bucket.IsObjNotFoundErr(err) {
 		return rules.ErrGroupNotFound
 	}
@@ -243,7 +248,7 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		objectKey := generateRuleObjectKey(rg.Namespace, rg.Name)
+		objectKey := getRulesGroupObjectKey(rg.Namespace, rg.Name)
 		level.Debug(b.logger).Log("msg", "deleting rule group", "namespace", namespace, "key", objectKey)
 		err = userBucket.Delete(ctx, objectKey)
 		if err != nil {
@@ -259,13 +264,12 @@ func (b *BucketRuleStore) SupportsModifications() bool {
 	return true
 }
 
-func generateRuleObjectKey(namespace, groupName string) string {
-	ns := base64.URLEncoding.EncodeToString([]byte(namespace)) + objstore.DirDelim
-	if groupName == "" {
-		return ns
-	}
+func getNamespacePrefix(namespace string) string {
+	return base64.URLEncoding.EncodeToString([]byte(namespace)) + objstore.DirDelim
+}
 
-	return ns + base64.URLEncoding.EncodeToString([]byte(groupName))
+func getRulesGroupObjectKey(namespace, group string) string {
+	return getNamespacePrefix(namespace) + base64.URLEncoding.EncodeToString([]byte(group))
 }
 
 // parseRuleGroupObjectKeyWithUser parses a bucket object key in the format "<user>/<namespace>/<rules group>".

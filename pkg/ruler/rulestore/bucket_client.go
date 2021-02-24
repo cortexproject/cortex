@@ -132,7 +132,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 
 	// The prefix to list objects depends on whether the namespace has been
 	// specified in the request.
-	prefix := objstore.DirDelim
+	prefix := ""
 	if namespace != "" {
 		prefix = getNamespacePrefix(namespace)
 	}

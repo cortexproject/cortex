@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -167,7 +168,10 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.
-func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
+	maxSeries := d.limits.MaxSeriesPerQuery(userID)
+	maxSamples := d.limits.MaxSamplesPerQuery(userID)
+
 	// Fetch samples from multiple ingesters
 	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
@@ -199,6 +203,10 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)
 			result.Timeseries = append(result.Timeseries, resp.Timeseries...)
+
+			if len(result.Chunkseries) > maxSeries || len(result.Timeseries) > maxSeries {
+				return nil, fmt.Errorf("exceeded maximum number of series in a query (limit %d)", maxSeries)
+			}
 		}
 		return result, nil
 	})
@@ -209,6 +217,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	hashToChunkseries := map[string]ingester_client.TimeSeriesChunk{}
 	hashToTimeSeries := map[string]ingester_client.TimeSeries{}
 
+	sampleCount := 0
 	for _, result := range results {
 		response := result.(*ingester_client.QueryStreamResponse)
 
@@ -226,12 +235,17 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			key := ingester_client.LabelsToKeyString(ingester_client.FromLabelAdaptersToLabels(series.Labels))
 			existing := hashToTimeSeries[key]
 			existing.Labels = series.Labels
+			previousCount := len(existing.Samples)
 			if existing.Samples == nil {
 				existing.Samples = series.Samples
 			} else {
 				existing.Samples = mergeSamples(existing.Samples, series.Samples)
 			}
 			hashToTimeSeries[key] = existing
+			sampleCount += len(existing.Samples) - previousCount
+			if sampleCount > maxSamples {
+				return nil, fmt.Errorf("exceeded maximum number of samples in a query (limit %d)", maxSamples)
+			}
 		}
 	}
 

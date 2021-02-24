@@ -2,9 +2,7 @@ package bucket
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
@@ -28,35 +26,34 @@ type TenantConfigProvider interface {
 
 // UserBucketReaderClient is a wrapper around a objstore.BucketReader that reads from user-specific subfolder.
 type UserBucketReaderClient struct {
-	userID string
-	bucket objstore.BucketReader
+	userID         string
+	prefixedBucket objstore.BucketReader
 }
 
 // UserBucketClient is a wrapper around a objstore.Bucket that prepends writes with a userID
 type UserBucketClient struct {
 	UserBucketReaderClient
-	bucket      objstore.Bucket
-	cfgProvider TenantConfigProvider
+	prefixedBucket objstore.Bucket
+	cfgProvider    TenantConfigProvider
 }
 
 // NewUserBucketClient makes a new UserBucketClient. The cfgProvider can be nil.
 func NewUserBucketClient(userID string, bucket objstore.Bucket, cfgProvider TenantConfigProvider) *UserBucketClient {
+	// Inject the user/tenant prefix.
+	bucket = NewPrefixedBucketClient(bucket, userID)
+
 	return &UserBucketClient{
 		UserBucketReaderClient: UserBucketReaderClient{
-			userID: userID,
-			bucket: bucket,
+			userID:         userID,
+			prefixedBucket: bucket,
 		},
-		bucket:      bucket,
-		cfgProvider: cfgProvider,
+		prefixedBucket: bucket,
+		cfgProvider:    cfgProvider,
 	}
 }
 
-func (b *UserBucketReaderClient) fullName(name string) string {
-	return fmt.Sprintf("%s/%s", b.userID, name)
-}
-
 // Close implements io.Closer
-func (b *UserBucketClient) Close() error { return b.bucket.Close() }
+func (b *UserBucketClient) Close() error { return b.prefixedBucket.Close() }
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *UserBucketClient) Upload(ctx context.Context, name string, r io.Reader) error {
@@ -68,16 +65,16 @@ func (b *UserBucketClient) Upload(ctx context.Context, name string, r io.Reader)
 		ctx = s3.ContextWithSSEConfig(ctx, sse)
 	}
 
-	return b.bucket.Upload(ctx, b.fullName(name), r)
+	return b.prefixedBucket.Upload(ctx, name, r)
 }
 
 // Delete removes the object with the given name.
 func (b *UserBucketClient) Delete(ctx context.Context, name string) error {
-	return b.bucket.Delete(ctx, b.fullName(name))
+	return b.prefixedBucket.Delete(ctx, name)
 }
 
 // Name returns the bucket name for the provider.
-func (b *UserBucketClient) Name() string { return b.bucket.Name() }
+func (b *UserBucketClient) Name() string { return b.prefixedBucket.Name() }
 
 func (b *UserBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 	if b.cfgProvider == nil {
@@ -107,47 +104,41 @@ func (b *UserBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 // Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 // object name including the prefix of the inspected directory.
 func (b *UserBucketReaderClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
-	return b.bucket.Iter(ctx, b.fullName(dir), func(s string) error {
-		/*
-			Since all objects are prefixed with the userID we need to strip the userID
-			upon passing to the processing function
-		*/
-		return f(strings.Join(strings.Split(s, "/")[1:], "/"))
-	}, options...)
+	return b.prefixedBucket.Iter(ctx, dir, f, options...)
 }
 
 // Get returns a reader for the given object name.
 func (b *UserBucketReaderClient) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.bucket.Get(ctx, b.fullName(name))
+	return b.prefixedBucket.Get(ctx, name)
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *UserBucketReaderClient) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.bucket.GetRange(ctx, b.fullName(name), off, length)
+	return b.prefixedBucket.GetRange(ctx, name, off, length)
 }
 
 // Exists checks if the given object exists in the bucket.
 func (b *UserBucketReaderClient) Exists(ctx context.Context, name string) (bool, error) {
-	return b.bucket.Exists(ctx, b.fullName(name))
+	return b.prefixedBucket.Exists(ctx, name)
 }
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *UserBucketReaderClient) IsObjNotFoundErr(err error) bool {
-	return b.bucket.IsObjNotFoundErr(err)
+	return b.prefixedBucket.IsObjNotFoundErr(err)
 }
 
 // Attributes returns attributes of the specified object.
 func (b *UserBucketReaderClient) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	return b.bucket.Attributes(ctx, b.fullName(name))
+	return b.prefixedBucket.Attributes(ctx, name)
 }
 
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
 // thanos_objstore_bucket_operation_failures_total metric.
 func (b *UserBucketReaderClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
-	if ib, ok := b.bucket.(objstore.InstrumentedBucketReader); ok {
+	if ib, ok := b.prefixedBucket.(objstore.InstrumentedBucketReader); ok {
 		return &UserBucketReaderClient{
-			userID: b.userID,
-			bucket: ib.ReaderWithExpectedErrs(fn),
+			userID:         b.userID,
+			prefixedBucket: ib.ReaderWithExpectedErrs(fn),
 		}
 	}
 
@@ -157,15 +148,15 @@ func (b *UserBucketReaderClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureE
 // WithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
 // thanos_objstore_bucket_operation_failures_total metric.
 func (b *UserBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
-	if ib, ok := b.bucket.(objstore.InstrumentedBucket); ok {
+	if ib, ok := b.prefixedBucket.(objstore.InstrumentedBucket); ok {
 		nb := ib.WithExpectedErrs(fn)
 
 		return &UserBucketClient{
 			UserBucketReaderClient: UserBucketReaderClient{
-				userID: b.userID,
-				bucket: nb,
+				userID:         b.userID,
+				prefixedBucket: nb,
 			},
-			bucket: nb,
+			prefixedBucket: nb,
 		}
 	}
 

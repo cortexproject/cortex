@@ -37,6 +37,7 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
+- S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Azure blob storage.
 - Zone awareness based replication.
 - Shuffle sharding (both read and write path).
@@ -67,3 +68,6 @@ Currently experimental features are:
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Querier: tenant federation
 - Alertmanager: Sharding of tenants across multiple instances
+- The thanosconvert tool for converting Thanos block metadata to Cortex
+- HA Tracker: cleanup of old replicas from KV Store.
+- Ruler storage: backend client configuration options using a config fields similar to the TSDB object storage clients.

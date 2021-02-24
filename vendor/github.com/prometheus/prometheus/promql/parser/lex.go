@@ -121,6 +121,10 @@ var key = map[string]ItemType{
 	"group_left":  GROUP_LEFT,
 	"group_right": GROUP_RIGHT,
 	"bool":        BOOL,
+
+	// Preprocessors.
+	"start": START,
+	"end":   END,
 }
 
 // ItemTypeStr is the default string representations for common Items. It does not
@@ -440,7 +444,8 @@ func lexStatements(l *Lexer) stateFn {
 		}
 		l.emit(RIGHT_BRACKET)
 		l.bracketOpen = false
-
+	case r == '@':
+		l.emit(AT)
 	default:
 		return l.errorf("unexpected character: %q", r)
 	}

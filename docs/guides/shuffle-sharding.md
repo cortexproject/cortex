@@ -29,6 +29,8 @@ The idea is to assign each tenant a shard composed by a subset of the Cortex ser
 - An outage on some Cortex cluster instances/nodes will only affect a subset of tenants.
 - A misbehaving tenant will affect only its shard instances. Due to the low overlap of instances between different tenants, it's statistically quite likely that any other tenant will run on different instances or only a subset of instances will match the affected ones.
 
+Shuffle sharding requires no more resources than the default sharding strategy but instances may be less evenly balanced from time to time.
+
 ### Low overlapping instances probability
 
 For example, given a Cortex cluster running **50 ingesters** and assigning **each tenant 4** out of 50 ingesters, shuffling instances between each tenant, we get **230K possible combinations**.
@@ -103,3 +105,10 @@ Cortex ruler can run in three modes:
 3. **Shuffle sharding**, activated by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy=shuffle-sharding`. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (`-ruler.tenant-shard-size`, can also be set per tenant as `ruler_tenant_shard_size` in overrides).
 
 Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.
+
+## FAQ
+
+### Does shuffle sharding add additional overhead to the KV store?
+No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.
+
+However, each tenant's subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).

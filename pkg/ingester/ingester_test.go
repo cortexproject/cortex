@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -49,7 +50,7 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, clientConfig, overrides, store, reg)
+	ing, err := New(cfg, clientConfig, overrides, store, reg, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -532,7 +533,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := newIngesterMockWithTSDBStorageAndLimits(defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -576,7 +577,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 				}
 				// Append two metadata, expect no error since metadata is a best effort approach.
@@ -653,7 +654,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := newIngesterMockWithTSDBStorageAndLimits(defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -697,7 +698,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusTooManyRequests {
+				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding series per metric, got %v", err)
 				}
 

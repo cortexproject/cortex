@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -31,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
@@ -45,6 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -53,11 +56,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/process"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -95,7 +103,7 @@ type Config struct {
 	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
 	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig     validation.Limits               `yaml:"limits"`
-	Prealloc         client.PreallocConfig           `yaml:"prealloc" doc:"hidden"`
+	Prealloc         cortexpb.PreallocConfig         `yaml:"prealloc" doc:"hidden"`
 	Worker           querier_worker.Config           `yaml:"frontend_worker"`
 	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
 	QueryRange       queryrange.Config               `yaml:"query_range"`
@@ -108,6 +116,7 @@ type Config struct {
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
+	RulerStorage   rulestore.Config                           `yaml:"ruler_storage"`
 	Configs        configs.Config                             `yaml:"configs"`
 	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
@@ -155,6 +164,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
+	c.RulerStorage.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
@@ -172,6 +182,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return err
 	}
 
+	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
+		return errInvalidHTTPPrefix
+	}
+
 	if err := c.Schema.Validate(); err != nil {
 		return errors.Wrap(err, "invalid schema config")
 	}
@@ -183,6 +197,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.ChunkStore.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid chunk store config")
+	}
+	if err := c.RulerStorage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid rulestore config")
 	}
 	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
@@ -205,7 +222,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Worker.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid frontend_worker config")
 	}
-	if err := c.QueryRange.Validate(log); err != nil {
+	if err := c.QueryRange.Validate(); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
@@ -270,6 +287,7 @@ type Cortex struct {
 	API                      *api.API
 	Server                   *server.Server
 	Ring                     *ring.Ring
+	TenantLimits             validation.TenantLimits
 	Overrides                *validation.Overrides
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
@@ -310,7 +328,7 @@ func New(cfg Config) (*Cortex, error) {
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {
-		util.WarnExperimentalUse("tenant-federation")
+		util_log.WarnExperimentalUse("tenant-federation")
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
@@ -352,12 +370,12 @@ func (t *Cortex) Run() error {
 	if c, err := process.NewProcessCollector(); err == nil {
 		prometheus.MustRegister(c)
 	} else {
-		level.Warn(util.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
+		level.Warn(util_log.Logger).Log("msg", "skipped registration of custom process metrics collector", "err", err)
 	}
 
 	for _, module := range t.Cfg.Target {
 		if !t.ModuleManager.IsUserVisibleModule(module) {
-			level.Warn(util.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
+			level.Warn(util_log.Logger).Log("msg", "selected target is an internal module, is this intended?", "target", module)
 		}
 	}
 
@@ -386,8 +404,8 @@ func (t *Cortex) Run() error {
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util.Logger).Log("msg", "Cortex started") }
-	stopped := func() { level.Info(util.Logger).Log("msg", "Cortex stopped") }
+	healthy := func() { level.Info(util_log.Logger).Log("msg", "Cortex started") }
+	stopped := func() { level.Info(util_log.Logger).Log("msg", "Cortex stopped") }
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Cortex
 		sm.StopAsync()
@@ -396,15 +414,15 @@ func (t *Cortex) Run() error {
 		for m, s := range t.ServiceMap {
 			if s == service {
 				if service.FailureCase() == util.ErrStopProcess {
-					level.Info(util.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
+					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
 				} else {
-					level.Error(util.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
+					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
 				}
 				return
 			}
 		}
 
-		level.Error(util.Logger).Log("msg", "module failed", "module", "unknown", "err", service.FailureCase())
+		level.Error(util_log.Logger).Log("msg", "module failed", "module", "unknown", "err", service.FailureCase())
 	}
 
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))

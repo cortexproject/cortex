@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -166,15 +167,24 @@ func TestWatchPrefix(t *testing.T) {
 		const prefix = "test/"
 		const prefix2 = "ignore/"
 
+		// We are going to generate this number of updates, sleeping between each update.
 		const max = 100
 		const sleep = time.Millisecond * 10
-		const totalTestTimeout = 3 * max * sleep
+		// etcd seems to be quite slow. If we finish faster, test will end sooner.
+		// (We regularly see generators taking up to 5 seconds to produce all messages on some platforms!)
+		const totalTestTimeout = 10 * time.Second
 
 		observedKeysCh := make(chan string, max)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
+
+		wg := sync.WaitGroup{}
+
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+
 			// start watching before we even start generating values. values will be buffered
 			client.WatchPrefix(ctx, prefix, func(key string, val interface{}) bool {
 				observedKeysCh <- key
@@ -183,6 +193,9 @@ func TestWatchPrefix(t *testing.T) {
 		}()
 
 		gen := func(p string) {
+			defer wg.Done()
+
+			start := time.Now()
 			for i := 0; i < max && ctx.Err() == nil; i++ {
 				// Start with sleeping, so that watching client can see empty KV store at the beginning.
 				time.Sleep(sleep)
@@ -197,8 +210,10 @@ func TestWatchPrefix(t *testing.T) {
 				}
 				require.NoError(t, err)
 			}
+			t.Log("Generator finished in", time.Since(start))
 		}
 
+		wg.Add(2)
 		go gen(prefix)
 		go gen(prefix2) // we don't want to see these keys reported
 
@@ -206,6 +221,7 @@ func TestWatchPrefix(t *testing.T) {
 
 		totalDeadline := time.After(totalTestTimeout)
 
+		start := time.Now()
 		for watching := true; watching; {
 			select {
 			case <-totalDeadline:
@@ -217,8 +233,11 @@ func TestWatchPrefix(t *testing.T) {
 				}
 			}
 		}
+		t.Log("Watching finished in", time.Since(start))
 
-		cancel() // stop all goroutines
+		// Stop all goroutines and wait until terminated.
+		cancel()
+		wg.Wait()
 
 		// verify that each key was reported once, and keys outside prefix were not reported
 		for i := 0; i < max; i++ {

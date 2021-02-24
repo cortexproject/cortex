@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -61,6 +62,32 @@ func TestS3Client(t *testing.T) {
 				S3ForcePathStyle: true,
 				AccessKeyID:      e2edb.MinioAccessKey,
 				SecretAccessKey:  e2edb.MinioSecretKey,
+			},
+		},
+		{
+			name: "config-with-deprecated-sse",
+			cfg: s3.S3Config{
+				Endpoint:         minio.HTTPEndpoint(),
+				BucketNames:      bucketName,
+				S3ForcePathStyle: true,
+				Insecure:         true,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+				SSEEncryption:    true,
+			},
+		},
+		{
+			name: "config-with-sse-s3",
+			cfg: s3.S3Config{
+				Endpoint:         minio.HTTPEndpoint(),
+				BucketNames:      bucketName,
+				S3ForcePathStyle: true,
+				Insecure:         true,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+				SSEConfig: cortex_s3.SSEConfig{
+					Type: "SSE-S3",
+				},
 			},
 		},
 	}

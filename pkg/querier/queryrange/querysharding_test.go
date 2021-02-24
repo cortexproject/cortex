@@ -76,7 +76,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 	for _, c := range testExpr {
 		t.Run(c.name, func(t *testing.T) {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:     util.Logger,
+				Logger:     log.NewNopLogger(),
 				Reg:        nil,
 				MaxSamples: 1000,
 				Timeout:    time.Minute,
@@ -551,7 +551,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 			time.Millisecond / 10,
 		} {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:     util.Logger,
+				Logger:     log.NewNopLogger(),
 				Reg:        nil,
 				MaxSamples: 100000000,
 				Timeout:    time.Minute,

@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -34,6 +35,7 @@ type BlocksCleaner struct {
 	services.Service
 
 	cfg          BlocksCleanerConfig
+	cfgProvider  bucket.TenantConfigProvider
 	logger       log.Logger
 	bucketClient objstore.Bucket
 	usersScanner *cortex_tsdb.UsersScanner
@@ -54,11 +56,12 @@ type BlocksCleaner struct {
 	tenantBucketIndexLastUpdate *prometheus.GaugeVec
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,
 		usersScanner: usersScanner,
+		cfgProvider:  cfgProvider,
 		logger:       log.With(logger, "component", "cleaner"),
 		runsStarted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_started_total",
@@ -175,14 +178,14 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 
 // Remove blocks and remaining data for tenant marked for deletion.
 func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID string) error {
-	userLogger := util.WithUserID(userID, c.logger)
-	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
+	userLogger := util_log.WithUserID(userID, c.logger)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 
 	level.Info(userLogger).Log("msg", "deleting blocks for tenant marked for deletion")
 
 	// We immediately delete the bucket index, to signal to its consumers that
 	// the tenant has "no blocks" in the storage.
-	if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID); err != nil {
+	if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
 		return err
 	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
@@ -250,7 +253,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	if deletedBlocks > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
-		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
+		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, c.cfgProvider, mark), "failed to update tenant deletion mark")
 	}
 
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
@@ -277,8 +280,8 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 }
 
 func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun bool) (returnErr error) {
-	userLogger := util.WithUserID(userID, c.logger)
-	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient)
+	userLogger := util_log.WithUserID(userID, c.logger)
+	userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
 	startTime := time.Now()
 
 	level.Info(userLogger).Log("msg", "started blocks cleanup and maintenance")
@@ -292,7 +295,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 	// Migrate block deletion marks to the global markers location. This operation is a best-effort.
 	if firstRun && c.cfg.BlockDeletionMarksMigrationEnabled {
-		if err := bucketindex.MigrateBlockDeletionMarksToGlobalLocation(ctx, c.bucketClient, userID); err != nil {
+		if err := bucketindex.MigrateBlockDeletionMarksToGlobalLocation(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
 			level.Warn(userLogger).Log("msg", "failed to migrate block deletion marks to the global markers location", "err", err)
 		} else {
 			level.Info(userLogger).Log("msg", "migrated block deletion marks to the global markers location")
@@ -300,7 +303,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	// Read the bucket index.
-	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.logger)
+	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 	if errors.Is(err, bucketindex.ErrIndexCorrupted) {
 		level.Warn(userLogger).Log("msg", "found a corrupted bucket index, recreating it")
 	} else if err != nil && !errors.Is(err, bucketindex.ErrIndexNotFound) {
@@ -308,7 +311,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	// Generate an updated in-memory version of the bucket index.
-	w := bucketindex.NewUpdater(c.bucketClient, userID, c.logger)
+	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		return err
@@ -341,7 +344,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	// Upload the updated index to the storage.
-	if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, idx); err != nil {
+	if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
 		return err
 	}
 

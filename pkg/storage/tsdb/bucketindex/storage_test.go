@@ -17,7 +17,7 @@ import (
 func TestReadIndex_ShouldReturnErrorIfIndexDoesNotExist(t *testing.T) {
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
-	idx, err := ReadIndex(context.Background(), bkt, "user-1", log.NewNopLogger())
+	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
 	require.Equal(t, ErrIndexNotFound, err)
 	require.Nil(t, idx)
 }
@@ -31,7 +31,7 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 	// Write a corrupted index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, IndexCompressedFilename), strings.NewReader("invalid!}")))
 
-	idx, err := ReadIndex(ctx, bkt, userID, log.NewNopLogger())
+	idx, err := ReadIndex(ctx, bkt, userID, nil, log.NewNopLogger())
 	require.Equal(t, ErrIndexCorrupted, err)
 	require.Nil(t, idx)
 }
@@ -51,13 +51,13 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	testutil.MockStorageDeletionMark(t, bkt, userID, testutil.MockStorageBlock(t, bkt, userID, 30, 40))
 
 	// Write the index.
-	u := NewUpdater(bkt, userID, logger)
+	u := NewUpdater(bkt, userID, nil, logger)
 	expectedIdx, _, err := u.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
-	require.NoError(t, WriteIndex(ctx, bkt, userID, expectedIdx))
+	require.NoError(t, WriteIndex(ctx, bkt, userID, nil, expectedIdx))
 
 	// Read it back and compare.
-	actualIdx, err := ReadIndex(ctx, bkt, userID, logger)
+	actualIdx, err := ReadIndex(ctx, bkt, userID, nil, logger)
 	require.NoError(t, err)
 	assert.Equal(t, expectedIdx, actualIdx)
 }
@@ -88,13 +88,13 @@ func BenchmarkReadIndex(b *testing.B) {
 	}
 
 	// Write the index.
-	u := NewUpdater(bkt, userID, logger)
+	u := NewUpdater(bkt, userID, nil, logger)
 	idx, _, err := u.UpdateIndex(ctx, nil)
 	require.NoError(b, err)
-	require.NoError(b, WriteIndex(ctx, bkt, userID, idx))
+	require.NoError(b, WriteIndex(ctx, bkt, userID, nil, idx))
 
 	// Read it back once just to make sure the index contains the expected data.
-	idx, err = ReadIndex(ctx, bkt, userID, logger)
+	idx, err = ReadIndex(ctx, bkt, userID, nil, logger)
 	require.NoError(b, err)
 	require.Len(b, idx.Blocks, numBlocks)
 	require.Len(b, idx.BlockDeletionMarks, numBlockDeletionMarks)
@@ -102,7 +102,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_, err := ReadIndex(ctx, bkt, userID, logger)
+		_, err := ReadIndex(ctx, bkt, userID, nil, logger)
 		require.NoError(b, err)
 	}
 }
@@ -111,5 +111,5 @@ func TestDeleteIndex_ShouldNotReturnErrorIfIndexDoesNotExist(t *testing.T) {
 	ctx := context.Background()
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
-	assert.NoError(t, DeleteIndex(ctx, bkt, "user-1"))
+	assert.NoError(t, DeleteIndex(ctx, bkt, "user-1", nil))
 }

@@ -37,6 +37,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -84,6 +86,8 @@ type BlocksStoreClient interface {
 
 // BlocksStoreLimits is the interface that should be implemented by the limits provider.
 type BlocksStoreLimits interface {
+	bucket.TenantConfigProvider
+
 	MaxChunksPerQuery(userID string) int
 	StoreGatewayTenantShardSize(userID string) int
 }
@@ -178,7 +182,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			},
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-		}, bucketClient, logger, reg)
+		}, bucketClient, limits, logger, reg)
 	} else {
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
 			ScanInterval:             storageCfg.BucketStore.SyncInterval,
@@ -186,7 +190,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
-		}, bucketClient, logger, reg)
+		}, bucketClient, limits, logger, reg)
 	}
 
 	if gatewayCfg.ShardingEnabled {
@@ -209,7 +213,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			reg.MustRegister(storesRing)
 		}
 
-		stores, err = newBlocksStoreReplicationSet(storesRing, gatewayCfg.ShardingStrategy, limits, querierCfg.StoreGatewayClient, logger, reg)
+		stores, err = newBlocksStoreReplicationSet(storesRing, gatewayCfg.ShardingStrategy, randomLoadBalancing, limits, querierCfg.StoreGatewayClient, logger, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store set")
 		}
@@ -343,7 +347,7 @@ func (q *blocksStoreQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return strutil.MergeSlices(resNameSets...), resWarnings, nil
 }
 
-func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q *blocksStoreQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	spanLog, spanCtx := spanlogger.New(q.ctx, "blocksStoreQuerier.LabelValues")
 	defer spanLog.Span.Finish()
 
@@ -357,7 +361,7 @@ func (q *blocksStoreQuerier) LabelValues(name string) ([]string, storage.Warning
 	)
 
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
-		valueSets, warnings, queriedBlocks, err := q.fetchLabelValuesFromStore(spanCtx, name, clients, minT, maxT)
+		valueSets, warnings, queriedBlocks, err := q.fetchLabelValuesFromStore(spanCtx, name, clients, minT, maxT, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -447,7 +451,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	if q.queryStoreAfter > 0 {
 		now := time.Now()
 		origMaxT := maxT
-		maxT = util.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxT = math.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
 
 		if origMaxT != maxT {
 			level.Debug(logger).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
@@ -534,7 +538,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	}
 
 	// We've not been able to query all expected blocks after all retries.
-	level.Warn(util.WithContext(ctx, logger)).Log("msg", "failed consistency check", "err", err)
+	level.Warn(util_log.WithContext(ctx, logger)).Log("msg", "failed consistency check", "err", err)
 	return fmt.Errorf("consistency check failed because some blocks were not queried: %s", strings.Join(convertULIDsToString(remainingBlocks), " "))
 }
 
@@ -741,6 +745,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	clients map[BlocksStoreClient][]ulid.ULID,
 	minT int64,
 	maxT int64,
+	matchers ...*labels.Matcher,
 ) ([][]string, storage.Warnings, []ulid.ULID, error) {
 	var (
 		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
@@ -759,7 +764,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		blockIDs := blockIDs
 
 		g.Go(func() error {
-			req, err := createLabelValuesRequest(minT, maxT, name, blockIDs)
+			req, err := createLabelValuesRequest(minT, maxT, name, blockIDs, matchers...)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create label values request")
 			}
@@ -868,7 +873,8 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.L
 	return req, nil
 }
 
-func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.ULID) (*storepb.LabelValuesRequest, error) {
+func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.ULID, matchers ...*labels.Matcher) (*storepb.LabelValuesRequest, error) {
+	// TODO(replay): add matchers to LabelValuesRequest once it has that property
 	req := &storepb.LabelValuesRequest{
 		Start: minT,
 		End:   maxT,

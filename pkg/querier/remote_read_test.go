@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -36,7 +37,7 @@ func TestRemoteReadHandler(t *testing.T) {
 			},
 		}, nil
 	})
-	handler := RemoteReadHandler(q)
+	handler := RemoteReadHandler(q, log.NewNopLogger())
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{
@@ -95,7 +96,7 @@ func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels
 	return series.MatrixToSeriesSet(m.matrix)
 }
 
-func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m mockQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

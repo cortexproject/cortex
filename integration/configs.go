@@ -21,6 +21,7 @@ type storeConfig struct {
 const (
 	defaultNetworkName     = "e2e-cortex-test"
 	bucketName             = "cortex"
+	rulestoreBucketName    = "cortex-rules"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	blocksStorageEngine    = "blocks"
@@ -128,16 +129,30 @@ var (
 		}
 	}
 
-	RulerFlags = func() map[string]string {
+	RulerFlags = func(legacy bool) map[string]string {
+		if legacy {
+			return map[string]string{
+				"-api.response-compression-enabled":  "true",
+				"-ruler.enable-sharding":             "false",
+				"-ruler.poll-interval":               "2s",
+				"-experimental.ruler.enable-api":     "true",
+				"-ruler.storage.type":                "s3",
+				"-ruler.storage.s3.buckets":          rulestoreBucketName,
+				"-ruler.storage.s3.force-path-style": "true",
+				"-ruler.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+			}
+		}
 		return map[string]string{
-			"-api.response-compression-enabled":  "true",
-			"-ruler.enable-sharding":             "false",
-			"-ruler.poll-interval":               "2s",
-			"-experimental.ruler.enable-api":     "true",
-			"-ruler.storage.type":                "s3",
-			"-ruler.storage.s3.buckets":          "cortex-rules",
-			"-ruler.storage.s3.force-path-style": "true",
-			"-ruler.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+			"-api.response-compression-enabled":   "true",
+			"-ruler.enable-sharding":              "false",
+			"-ruler.poll-interval":                "2s",
+			"-experimental.ruler.enable-api":      "true",
+			"-ruler-storage.backend":              "s3",
+			"-ruler-storage.s3.access-key-id":     e2edb.MinioAccessKey,
+			"-ruler-storage.s3.secret-access-key": e2edb.MinioSecretKey,
+			"-ruler-storage.s3.bucket-name":       rulestoreBucketName,
+			"-ruler-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+			"-ruler-storage.s3.insecure":          "true",
 		}
 	}
 

@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -106,7 +108,7 @@ func createTestIngester(t *testing.T, cfg Config, store ChunkStore) *Ingester {
 	overrides, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, overrides, store, nil)
+	ing, err := New(cfg, client.Config{}, overrides, store, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
@@ -203,7 +205,8 @@ func TestIssue3139(t *testing.T) {
 
 	// Sleep long enough for period flush to happen. Also we want to return errors to the first attempts, so that
 	// series are flushed again.
-	st := &sleepyStoreWithErrors{d: 500 * time.Millisecond, errorsToGenerate: 1}
+	st := &sleepyStoreWithErrors{d: 500 * time.Millisecond}
+	st.errorsToGenerate.Store(1)
 
 	ing := createTestIngester(t, cfg, st)
 
@@ -215,11 +218,11 @@ func TestIssue3139(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	// Make sure nothing was flushed yet... sample should be in WAL
-	require.Equal(t, 0, st.samples)
-	require.Equal(t, 1, st.errorsToGenerate) // no error was "consumed"
+	require.Equal(t, int64(0), st.samples.Load())
+	require.Equal(t, int64(1), st.errorsToGenerate.Load()) // no error was "consumed"
 
 	// Start new ingester, for flushing only
-	ing, err = NewForFlusher(cfg, st, nil, nil)
+	ing, err = NewForFlusher(cfg, st, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	t.Cleanup(func() {
@@ -231,13 +234,13 @@ func TestIssue3139(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 
 	// Verify sample was flushed from WAL.
-	require.Equal(t, 1, st.samples)
+	require.Equal(t, int64(1), st.samples.Load())
 }
 
 type sleepyStoreWithErrors struct {
 	d                time.Duration
-	errorsToGenerate int
-	samples          int
+	errorsToGenerate atomic.Int64
+	samples          atomic.Int64
 }
 
 func (m *sleepyStoreWithErrors) Put(_ context.Context, chunks []chunk.Chunk) error {
@@ -245,13 +248,13 @@ func (m *sleepyStoreWithErrors) Put(_ context.Context, chunks []chunk.Chunk) err
 		time.Sleep(m.d)
 	}
 
-	if m.errorsToGenerate > 0 {
-		m.errorsToGenerate--
+	if m.errorsToGenerate.Load() > 0 {
+		m.errorsToGenerate.Dec()
 		return fmt.Errorf("put error")
 	}
 
 	for _, c := range chunks {
-		m.samples += c.Data.Len()
+		m.samples.Add(int64(c.Data.Len()))
 	}
 	return nil
 }

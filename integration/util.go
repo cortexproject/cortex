@@ -61,14 +61,30 @@ func getServerTLSFlags() map[string]string {
 	}
 }
 
-func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
+func getServerHTTPTLSFlags() map[string]string {
 	return map[string]string{
-		"-" + prefix + ".tls-cert-path": filepath.Join(e2e.ContainerSharedDir, clientCertFile),
-		"-" + prefix + ".tls-key-path":  filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
-		"-" + prefix + ".tls-ca-path":   filepath.Join(e2e.ContainerSharedDir, caCertFile),
-
-		// TODO: Remove this in the future to test if TLS verification works,
-		// this requires a TLSServerName flags to be specified
-		"-" + prefix + ".tls-insecure-skip-verify": "true",
+		"-server.http-tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, serverCertFile),
+		"-server.http-tls-key-path":    filepath.Join(e2e.ContainerSharedDir, serverKeyFile),
+		"-server.http-tls-client-auth": "RequireAndVerifyClientCert",
+		"-server.http-tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
 	}
+}
+
+func getClientTLSFlagsWithPrefix(prefix string) map[string]string {
+	return getTLSFlagsWithPrefix(prefix, "ingester.client", false)
+}
+
+func getTLSFlagsWithPrefix(prefix string, servername string, http bool) map[string]string {
+	flags := map[string]string{
+		"-" + prefix + ".tls-cert-path":   filepath.Join(e2e.ContainerSharedDir, clientCertFile),
+		"-" + prefix + ".tls-key-path":    filepath.Join(e2e.ContainerSharedDir, clientKeyFile),
+		"-" + prefix + ".tls-ca-path":     filepath.Join(e2e.ContainerSharedDir, caCertFile),
+		"-" + prefix + ".tls-server-name": servername,
+	}
+
+	if !http {
+		flags["-"+prefix+".tls-enabled"] = "true"
+	}
+
+	return flags
 }

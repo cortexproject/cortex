@@ -1,7 +1,10 @@
 package ring
 
 import (
+	"io/ioutil"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,4 +57,21 @@ func TestTokens_Equals(t *testing.T) {
 		assert.Equal(t, c.expected, c.first.Equals(c.second))
 		assert.Equal(t, c.expected, c.second.Equals(c.first))
 	}
+}
+
+func TestLoadTokensFromFile_ShouldGuaranteeSortedTokens(t *testing.T) {
+	tmpDir, err := ioutil.TempDir("", "test-tokens")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(tmpDir)
+	})
+
+	// Store tokens to file.
+	orig := Tokens{1, 5, 3}
+	require.NoError(t, orig.StoreToFile(filepath.Join(tmpDir, "tokens")))
+
+	// Read back and ensure they're sorted.
+	actual, err := LoadTokensFromFile(filepath.Join(tmpDir, "tokens"))
+	require.NoError(t, err)
+	assert.Equal(t, Tokens{1, 3, 5}, actual)
 }

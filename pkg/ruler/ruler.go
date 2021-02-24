@@ -64,7 +64,7 @@ type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
 	// GRPC Client configuration.
-	ClientTLSConfig grpcclient.ConfigWithTLS `yaml:"ruler_client"`
+	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// How frequently to poll for updated rules.
@@ -86,6 +86,8 @@ type Config struct {
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
+	// Client configs for interacting with the Alertmanager
+	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
 	// Max time to tolerate outage for restoring "for" state of alert.
 	OutageTolerance time.Duration `yaml:"for_outage_tolerance"`
@@ -130,6 +132,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
+	cfg.Notifier.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")
@@ -448,6 +451,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
+	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 

@@ -23,6 +23,10 @@ The rule of thumb is that a production system shouldn't have the `file-max` ulim
 
 The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
+### Ensure bucket index is enabled
+
+The bucket index reduces the number of API calls to the storage bucket and, when enabled, the querier is up and running immediately after the startup (no need to run an initial bucket scan). Ensure [bucket index](./bucket-index.md) is enabled for the querier.
+
 ### Avoid querying non compacted blocks
 
 When running Cortex blocks storage cluster at scale, querying non compacted blocks may be inefficient for two reasons:
@@ -59,6 +63,10 @@ Given these assumptions, in the worst case scenario it would take up to 6h and 4
 
 The store-gateway heavily relies on caching both to speed up the queries and to reduce the number of API calls to the storage bucket. Ensure [caching](./store-gateway.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
+### Ensure bucket index is enabled
+
+The bucket index reduces the number of API calls to the storage bucket and the startup time of the store-gateway. Ensure [bucket index](./bucket-index.md) is enabled for the store-gateway.
+
 ### Ensure a high number of max open file descriptors
 
 The store-gateway stores each block’s index-header on the local disk and loads it via mmap. This means that the store-gateway keeps a file descriptor open for each loaded block. If your Cortex cluster has many blocks in the bucket, the store-gateway may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or running more store-gateway instances with blocks sharding enabled.
@@ -70,6 +78,12 @@ The rule of thumb is that a production system shouldn't have the `file-max` ulim
 ### Ensure the compactor has enough disk space
 
 The compactor generally needs a lot of disk space in order to download source blocks from the bucket and store the compacted block before uploading it to the storage. Please refer to [Compactor disk utilization](./compactor.md#compactor-disk-utilization) for more information about how to do capacity planning.
+
+### Ensure deletion marks migration is disabled after first run
+
+Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant global `markers/` location in the object store. If your Cortex cluster has been created with a Cortex version older than 1.7.0, the compactor needs to migrate deletion marks to the global location.
+
+The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
 
 ## Caching
 

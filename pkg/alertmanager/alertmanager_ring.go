@@ -10,8 +10,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	RingNumTokens = 128
 )
 
-// RingOp is the operation used for distributing tenants between alertmanagers.
+// RingOp is the operation used for reading/writing to the alertmanagers.
 var RingOp = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, func(s ring.IngesterState) bool {
 	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
 	return s != ring.ACTIVE
@@ -60,7 +60,7 @@ type RingConfig struct {
 func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
+		level.Error(util_log.Logger).Log("msg", "failed to get hostname", "err", err)
 		os.Exit(1)
 	}
 
@@ -77,7 +77,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), rfprefix+"instance-interface-names", "Name of network interface to read address from.")
 	f.StringVar(&cfg.InstanceAddr, rfprefix+"instance-addr", "", "IP address to advertise in the ring.")
-	f.IntVar(&cfg.InstancePort, rfprefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.http-listen-port).")
+	f.IntVar(&cfg.InstancePort, rfprefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, rfprefix+"instance-id", hostname, "Instance ID to register in the ring.")
 
 	cfg.RingCheckPeriod = 5 * time.Second

@@ -86,6 +86,15 @@ ruler:
 
 alertmanager:
   enable_api: true
+  sharding_enabled: true
+  sharding_ring:
+    replication_factor: 3
+    heartbeat_period: 5s
+    heartbeat_timeout: 15s
+    kvstore:
+      store: consul
+      consul:
+        host: consul:8500
   storage:
     type: s3
     s3:

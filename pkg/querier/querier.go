@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -29,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -43,6 +43,7 @@ type Config struct {
 	MaxSamples           int           `yaml:"max_samples"`
 	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
 	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
+	AtModifierEnabled    bool          `yaml:"at_modifier_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -63,8 +64,8 @@ type Config struct {
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
 	// Blocks storage only.
-	StoreGatewayAddresses string           `yaml:"store_gateway_addresses"`
-	StoreGatewayClient    tls.ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayAddresses string       `yaml:"store_gateway_addresses"`
+	StoreGatewayClient    ClientConfig `yaml:"store_gateway_client"`
 
 	SecondStoreEngine        string       `yaml:"second_store_engine"`
 	UseSecondStoreBeforeTime flagext.Time `yaml:"use_second_store_before_time"`
@@ -89,6 +90,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
+	f.BoolVar(&cfg.AtModifierEnabled, "querier.at-modifier-enabled", false, "Enable the @ modifier in PromQL.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
@@ -141,7 +143,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -165,12 +167,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util.Logger,
+		Logger:             logger,
 		Reg:                reg,
-		ActiveQueryTracker: createActiveQueryTracker(cfg),
+		ActiveQueryTracker: createActiveQueryTracker(cfg, logger),
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      cfg.LookbackDelta,
+		EnableAtModifier:   cfg.AtModifierEnabled,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
@@ -192,11 +195,11 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-func createActiveQueryTracker(cfg Config) *promql.ActiveQueryTracker {
+func createActiveQueryTracker(cfg Config, logger log.Logger) *promql.ActiveQueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util.Logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
 	}
 
 	return nil
@@ -381,13 +384,13 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 }
 
 // LabelsValue implements storage.Querier.
-func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelValues(name)
+		return q.metadataQuerier.LabelValues(name, matchers...)
 	}
 
 	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelValues(name)
+		return q.queriers[0].LabelValues(name, matchers...)
 	}
 
 	var (
@@ -403,7 +406,7 @@ func (q querier) LabelValues(name string) ([]string, storage.Warnings, error) {
 		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
-			myValues, myWarnings, err := querier.LabelValues(name)
+			myValues, myWarnings, err := querier.LabelValues(name, matchers...)
 			if err != nil {
 				return err
 			}

@@ -232,7 +232,10 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	// v1 will be nil if DownstreamURL is defined.
 	require.Nil(t, v2)
 	if v1 != nil {
-		defer v1.Close()
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), v1))
+		})
 	}
 
 	grpcServer := grpc.NewServer(

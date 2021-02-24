@@ -34,10 +34,10 @@ func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
-	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -91,7 +91,7 @@ func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
-	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -130,7 +130,7 @@ func TestLoader_GetIndex_ShouldCacheIndexNotFoundError(t *testing.T) {
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Create the loader.
-	loader := NewLoader(prepareLoaderConfig(), bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -174,7 +174,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -184,7 +184,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -196,7 +196,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 
 	// Update the bucket index.
 	idx.Blocks = append(idx.Blocks, &Block{ID: ulid.MustNew(2, nil), MinTime: 20, MaxTime: 30})
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, 2, func() interface{} {
@@ -241,7 +241,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -259,7 +259,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
@@ -294,7 +294,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -312,7 +312,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
@@ -348,7 +348,7 @@ func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -358,7 +358,7 @@ func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -404,7 +404,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -414,7 +414,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -425,7 +425,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 	assert.Equal(t, idx, actualIdx)
 
 	// Delete the bucket index.
-	require.NoError(t, DeleteIndex(ctx, bkt, "user-1"))
+	require.NoError(t, DeleteIndex(ctx, bkt, "user-1", nil))
 
 	// Wait until the next index load attempt occurs.
 	prevLoads := testutil.ToFloat64(loader.loadAttempts)
@@ -464,7 +464,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -474,7 +474,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
@@ -485,7 +485,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 	assert.Equal(t, idx, actualIdx)
 
 	// Delete the index
-	require.NoError(t, DeleteIndex(ctx, bkt, "user-1"))
+	require.NoError(t, DeleteIndex(ctx, bkt, "user-1", nil))
 
 	// Wait until the index is offloaded.
 	test.Poll(t, 3*time.Second, float64(0), func() interface{} {
@@ -519,7 +519,7 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 		BlockDeletionMarks: nil,
 		UpdatedAt:          time.Now().Unix(),
 	}
-	require.NoError(t, WriteIndex(ctx, bkt, "user-1", idx))
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
 
 	// Create the loader.
 	cfg := LoaderConfig{
@@ -529,7 +529,7 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 		IdleTimeout:           0, // Offload at first check.
 	}
 
-	loader := NewLoader(cfg, bkt, log.NewNopLogger(), reg)
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))

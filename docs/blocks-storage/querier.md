@@ -132,6 +132,10 @@ querier:
   # CLI flag: -querier.query-store-for-labels-enabled
   [query_store_for_labels_enabled: <boolean> | default = false]
 
+  # Enable the @ modifier in PromQL.
+  # CLI flag: -querier.at-modifier-enabled
+  [at_modifier_enabled: <boolean> | default = false]
+
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
   # storage, if this option is enabled, the time range of the query sent to the
@@ -168,6 +172,10 @@ querier:
   [store_gateway_addresses: <string> | default = ""]
 
   store_gateway_client:
+    # Enable TLS for gRPC client connecting to store-gateway.
+    # CLI flag: -querier.store-gateway-client.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
     # Path to the client certificate file, which will be used for authenticating
     # with the server. Also requires the key path to be configured.
     # CLI flag: -querier.store-gateway-client.tls-cert-path
@@ -182,6 +190,10 @@ querier:
     # If not set, the host's root CA certificates are used.
     # CLI flag: -querier.store-gateway-client.tls-ca-path
     [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -querier.store-gateway-client.tls-server-name
+    [tls_server_name: <string> | default = ""]
 
     # Skip validating server certificate.
     # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
@@ -224,6 +236,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.endpoint
     [endpoint: <string> | default = ""]
 
+    # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+    # to autodetect it.
+    # CLI flag: -blocks-storage.s3.region
+    [region: <string> | default = ""]
+
     # S3 bucket name
     # CLI flag: -blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]
@@ -247,6 +264,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
+    # The s3_sse_config configures the S3 server-side encryption.
+    # The CLI flags prefix for this block config is: blocks-storage
+    [sse: <s3_sse_config>]
+
     http:
       # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -260,6 +281,30 @@ blocks_storage:
       # client will accept any certificate and hostname.
       # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -blocks-storage.s3.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -blocks-storage.s3.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
 
   gcs:
     # GCS bucket name
@@ -389,8 +434,8 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 15m]
 
-    # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
-    # allocations.
+    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+    # The pool is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
 
@@ -676,6 +721,17 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
 
+    # If enabled, store-gateway will lazy load an index-header only once
+    # required by a query.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+    [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+    # If index-header lazy loading is enabled and this setting is > 0, the
+    # store-gateway will offload unused index-headers after 'idle timeout'
+    # inactivity.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+    [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir
@@ -711,7 +767,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.head-compaction-concurrency
     [head_compaction_concurrency: <int> | default = 5]
 
-    # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+    # If TSDB head is idle for this duration, it is compacted. Note that up to
+    # 25% jitter is added to the value to avoid ingesters compacting
+    # concurrently. 0 means disabled.
     # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
     [head_compaction_idle_timeout: <duration> | default = 1h]
 

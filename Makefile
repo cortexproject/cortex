@@ -71,7 +71,9 @@ endef
 $(foreach exe, $(EXES), $(eval $(call dep_exe, $(exe))))
 
 # Manually declared dependencies And what goes into each exe
-pkg/ingester/client/cortex.pb.go: pkg/ingester/client/cortex.proto
+pkg/cortexpb/cortex.pb.go: pkg/cortexpb/cortex.proto
+pkg/ingester/client/ingester.pb.go: pkg/ingester/client/ingester.proto
+pkg/distributor/distributorpb/distributor.pb.go: pkg/distributor/distributorpb/distributor.proto
 pkg/ingester/wal.pb.go: pkg/ingester/wal.proto
 pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
@@ -87,6 +89,7 @@ pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.p
 pkg/storegateway/storegatewaypb/gateway.pb.go: pkg/storegateway/storegatewaypb/gateway.proto
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
+pkg/alertmanager/alertmanagerpb/alertmanager.pb.go: pkg/alertmanager/alertmanagerpb/alertmanager.proto
 
 all: $(UPTODATE_FILES)
 test: protos
@@ -180,6 +183,12 @@ lint:
 		./pkg/frontend/... \
 		./pkg/querier/tenantfederation/... \
 		./pkg/querier/queryrange/...
+	# Ensure packages that no longer use a global logger don't reintroduce it
+	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
+		./pkg/ingester/... \
+		./pkg/flusher/... \
+		./pkg/querier/... \
+		./pkg/ruler/...
 
 	# Validate Kubernetes spec files. Requires:
 	# https://kubeval.instrumenta.dev
@@ -220,8 +229,10 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/compactor.template            > ./docs/blocks-storage/compactor.md
 	go run ./tools/doc-generator ./docs/blocks-storage/store-gateway.template        > ./docs/blocks-storage/store-gateway.md
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
+	go run ./tools/doc-generator ./docs/guides/encryption-at-rest.template           > ./docs/guides/encryption-at-rest.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
 	embedmd -w docs/configuration/single-process-config.md
+	embedmd -w docs/guides/overrides-exporter.md
 
 endif
 
@@ -253,7 +264,8 @@ clean-doc:
 		./docs/configuration/config-file-reference.md \
 		./docs/blocks-storage/compactor.md \
 		./docs/blocks-storage/store-gateway.md \
-		./docs/blocks-storage/querier.md
+		./docs/blocks-storage/querier.md \
+		./docs/guides/encryption-at-rest.md
 
 check-doc: doc
 	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md

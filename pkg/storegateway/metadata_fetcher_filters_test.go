@@ -41,7 +41,7 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	// Create a bucket backed by filesystem.
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
-	userBkt := bucket.NewUserBucketClient(userID, bkt)
+	userBkt := bucket.NewUserBucketClient(userID, bkt, nil)
 
 	shouldFetch := &metadata.DeletionMark{
 		ID:           ulid.MustNew(1, nil),
@@ -67,10 +67,10 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	if bucketIndexEnabled {
 		var err error
 
-		u := bucketindex.NewUpdater(bkt, userID, logger)
+		u := bucketindex.NewUpdater(bkt, userID, nil, logger)
 		idx, _, err = u.UpdateIndex(ctx, nil)
 		require.NoError(t, err)
-		require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, idx))
+		require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, idx))
 	}
 
 	inputMetas := map[ulid.ULID]*metadata.Meta{

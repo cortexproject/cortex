@@ -230,7 +230,8 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	p.builder.blocksSize.Add(float64(blockSize))
 
 	if p.builder.cfg.UploadBlock {
-		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient)
+		// No per-tenant config provider because the blocksconvert tool doesn't support it.
+		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient, nil)
 
 		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {

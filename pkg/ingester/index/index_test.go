@@ -134,3 +134,68 @@ func mustParseMatcher(s string) []*labels.Matcher {
 	}
 	return ms
 }
+
+func TestIndex_Delete(t *testing.T) {
+	index := New()
+
+	testData := []struct {
+		m  model.Metric
+		fp model.Fingerprint
+	}{
+		{model.Metric{"common": "label", "foo": "bar", "flip": "flop"}, 0},
+		{model.Metric{"common": "label", "foo": "bar", "flip": "flap"}, 1},
+		{model.Metric{"common": "label", "foo": "baz", "flip": "flop"}, 2},
+		{model.Metric{"common": "label", "foo": "baz", "flip": "flap"}, 3},
+	}
+	for _, entry := range testData {
+		index.Add(client.FromMetricsToLabelAdapters(entry.m), entry.fp)
+	}
+
+	for _, tc := range []struct {
+		name           string
+		labelsToDelete labels.Labels
+		fpToDelete     model.Fingerprint
+		expectedFPs    []model.Fingerprint
+	}{
+		{
+			name:           "existing labels and fp",
+			labelsToDelete: metricToLabels(testData[0].m),
+			fpToDelete:     testData[0].fp,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+		{
+			name:           "non-existing labels",
+			labelsToDelete: metricToLabels(model.Metric{"app": "fizz"}),
+			fpToDelete:     testData[1].fp,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+		{
+			name:           "non-existing fp",
+			labelsToDelete: metricToLabels(testData[1].m),
+			fpToDelete:     99,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			index.Delete(tc.labelsToDelete, tc.fpToDelete)
+			assert.Equal(t, tc.expectedFPs, index.Lookup(mustParseMatcher(`{common="label"}`)))
+		})
+	}
+
+	assert.Equal(t, []string{"common", "flip", "foo"}, index.LabelNames())
+	assert.Equal(t, []string{"label"}, index.LabelValues("common"))
+	assert.Equal(t, []string{"bar", "baz"}, index.LabelValues("foo"))
+	assert.Equal(t, []string{"flap", "flop"}, index.LabelValues("flip"))
+}
+
+func metricToLabels(m model.Metric) labels.Labels {
+	ls := make(labels.Labels, 0, len(m))
+	for k, v := range m {
+		ls = append(ls, labels.Label{
+			Name:  string(k),
+			Value: string(v),
+		})
+	}
+
+	return ls
+}

@@ -16,8 +16,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/stretchr/testify/require"
@@ -134,7 +134,7 @@ template_files:
 
 	am := &MultitenantAlertmanager{
 		store:  noopAlertStore{},
-		logger: util.Logger,
+		logger: util_log.Logger,
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,6 +261,4 @@ receivers:
 
 	// It succeeds and the Alertmanager is started
 	require.Len(t, am.alertmanagers, 2)
-	require.True(t, am.alertmanagers["user1"].IsActive())
-	require.True(t, am.alertmanagers["user2"].IsActive())
 }

@@ -2,13 +2,18 @@ package validation
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type validateLabelsCfg struct {
@@ -106,6 +111,29 @@ func TestValidateLabels(t *testing.T) {
 		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
+
+	DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="label_invalid",user="testUser"} 1
+			cortex_discarded_samples_total{reason="label_name_too_long",user="testUser"} 1
+			cortex_discarded_samples_total{reason="label_value_too_long",user="testUser"} 1
+			cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
+			cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
+			cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
+
+			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_samples_total"))
+
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_samples_total"))
 }
 
 func TestValidateMetadata(t *testing.T) {
@@ -150,6 +178,27 @@ func TestValidateMetadata(t *testing.T) {
 			assert.Equal(t, c.err, err, "wrong error")
 		})
 	}
+
+	DiscardedMetadata.WithLabelValues("random reason", "different user").Inc()
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
+			# TYPE cortex_discarded_metadata_total counter
+			cortex_discarded_metadata_total{reason="help_too_long",user="testUser"} 1
+			cortex_discarded_metadata_total{reason="metric_name_too_long",user="testUser"} 1
+			cortex_discarded_metadata_total{reason="missing_metric_name",user="testUser"} 1
+			cortex_discarded_metadata_total{reason="unit_too_long",user="testUser"} 1
+
+			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_metadata_total"))
+
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
+			# TYPE cortex_discarded_metadata_total counter
+			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_metadata_total"))
 }
 
 func TestValidateLabelOrder(t *testing.T) {

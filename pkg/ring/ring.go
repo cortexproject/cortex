@@ -17,6 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -44,14 +46,14 @@ const (
 type ReadRing interface {
 	prometheus.Collector
 
-	// Get returns n (or more) ingesters which form the replicas for the given key.
+	// Get returns n (or more) instances which form the replicas for the given key.
 	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
 	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
-	Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error)
+	Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error)
 
 	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
 	// This function doesn't check if the quorum is honored, so doesn't fail if the number
-	// of unhealthy ingesters is greater than the tolerated max unavailable.
+	// of unhealthy instances is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
 
 	// GetReplicationSetForOperation returns all instances where the input operation should be executed.
@@ -61,7 +63,9 @@ type ReadRing interface {
 	GetReplicationSetForOperation(op Operation) (ReplicationSet, error)
 
 	ReplicationFactor() int
-	IngesterCount() int
+
+	// InstancesCount returns the number of instances in the ring.
+	InstancesCount() int
 
 	// ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
 	// and size (number of instances).
@@ -73,15 +77,18 @@ type ReadRing interface {
 
 	// HasInstance returns whether the ring contains an instance matching the provided instanceID.
 	HasInstance(instanceID string) bool
+
+	// CleanupShuffleShardCache should delete cached shuffle-shard subrings for given identifier.
+	CleanupShuffleShardCache(identifier string)
 }
 
 var (
-	// Write operation that also extends replica set, if ingester state is not ACTIVE.
+	// Write operation that also extends replica set, if instance state is not ACTIVE.
 	Write = NewOp([]IngesterState{ACTIVE}, func(s IngesterState) bool {
-		// We do not want to Write to Ingesters that are not ACTIVE, but we do want
+		// We do not want to Write to instances that are not ACTIVE, but we do want
 		// to write the extra replica somewhere.  So we increase the size of the set
 		// of replicas for the key.
-		// NB dead ingester will be filtered later by defaultReplicationStrategy.Filter().
+		// NB unhealthy instances will be filtered later by defaultReplicationStrategy.Filter().
 		return s != ACTIVE
 	})
 
@@ -106,9 +113,9 @@ var (
 	// not registered within the ring.
 	ErrInstanceNotFound = errors.New("instance not found in the ring")
 
-	// ErrTooManyFailedIngesters is the error returned when there are too many failed ingesters for a
+	// ErrTooManyUnhealthyInstances is the error returned when there are too many failed instances for a
 	// specific operation.
-	ErrTooManyFailedIngesters = errors.New("too many failed ingesters")
+	ErrTooManyUnhealthyInstances = errors.New("too many unhealthy instances in the ring")
 
 	// ErrInconsistentTokensInfo is the error returned if, due to an internal bug, the mapping between
 	// a token and its own instance is missing or unknown.
@@ -248,14 +255,14 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		),
 	}
 
-	r.Service = services.NewBasicService(nil, r.loop, nil)
+	r.Service = services.NewBasicService(nil, r.loop, nil).WithName(fmt.Sprintf("%s ring client", name))
 	return r, nil
 }
 
 func (r *Ring) loop(ctx context.Context) error {
 	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
 		if value == nil {
-			level.Info(util.Logger).Log("msg", "ring doesn't exist in KV store yet")
+			level.Info(log.Logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
 		}
 
@@ -299,8 +306,8 @@ func (r *Ring) loop(ctx context.Context) error {
 	return nil
 }
 
-// Get returns n (or more) ingesters which form the replicas for the given key.
-func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
+// Get returns n (or more) instances which form the replicas for the given key.
+func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
@@ -309,7 +316,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, 
 
 	var (
 		n          = r.cfg.ReplicationFactor
-		ingesters  = bufDescs[:0]
+		instances  = bufDescs[:0]
 		start      = searchToken(r.ringTokens, key)
 		iterations = 0
 
@@ -330,12 +337,12 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, 
 			return ReplicationSet{}, ErrInconsistentTokensInfo
 		}
 
-		// We want n *distinct* ingesters && distinct zones.
+		// We want n *distinct* instances && distinct zones.
 		if util.StringsContain(distinctHosts, info.InstanceID) {
 			continue
 		}
 
-		// Ignore if the ingesters don't have a zone set.
+		// Ignore if the instances don't have a zone set.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			if util.StringsContain(distinctZones, info.Zone) {
 				continue
@@ -344,24 +351,24 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []IngesterDesc, bufHosts, 
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
-		ingester := r.ringDesc.Ingesters[info.InstanceID]
+		instance := r.ringDesc.Ingesters[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
-		if op.ShouldExtendReplicaSetOnState(ingester.State) {
+		if op.ShouldExtendReplicaSetOnState(instance.State) {
 			n++
 		}
 
-		ingesters = append(ingesters, ingester)
+		instances = append(instances, instance)
 	}
 
-	liveIngesters, maxFailure, err := r.strategy.Filter(ingesters, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
+	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
 	if err != nil {
 		return ReplicationSet{}, err
 	}
 
 	return ReplicationSet{
-		Ingesters: liveIngesters,
+		Ingesters: healthyInstances,
 		MaxErrors: maxFailure,
 	}, nil
 }
@@ -376,15 +383,15 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}
 
 	now := time.Now()
-	ingesters := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-	for _, ingester := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&ingester, op, now) {
-			ingesters = append(ingesters, ingester)
+	instances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+	for _, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, now) {
+			instances = append(instances, instance)
 		}
 	}
 
 	return ReplicationSet{
-		Ingesters: ingesters,
+		Ingesters: instances,
 		MaxErrors: 0,
 	}, nil
 }
@@ -399,15 +406,15 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}
 
 	// Build the initial replication set, excluding unhealthy instances.
-	healthyInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
+	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
 	now := time.Now()
 
-	for _, ingester := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&ingester, op, now) {
-			healthyInstances = append(healthyInstances, ingester)
+	for _, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, now) {
+			healthyInstances = append(healthyInstances, instance)
 		} else {
-			zoneFailures[ingester.Zone] = struct{}{}
+			zoneFailures[instance.Zone] = struct{}{}
 		}
 	}
 
@@ -420,24 +427,24 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// Given data is replicated to RF different zones, we can tolerate a number of
 		// RF/2 failing zones. However, we need to protect from the case the ring currently
 		// contains instances in a number of zones < RF.
-		numReplicatedZones := util.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		numReplicatedZones := util_math.Min(len(r.ringZones), r.cfg.ReplicationFactor)
 		minSuccessZones := (numReplicatedZones / 2) + 1
 		maxUnavailableZones = minSuccessZones - 1
 
 		if len(zoneFailures) > maxUnavailableZones {
-			return ReplicationSet{}, ErrTooManyFailedIngesters
+			return ReplicationSet{}, ErrTooManyUnhealthyInstances
 		}
 
 		if len(zoneFailures) > 0 {
 			// We remove all instances (even healthy ones) from zones with at least
-			// 1 failing ingester. Due to how replication works when zone-awareness is
+			// 1 failing instance. Due to how replication works when zone-awareness is
 			// enabled (data is replicated to RF different zones), there's no benefit in
 			// querying healthy instances from "failing zones". A zone is considered
 			// failed if there is single error.
-			filteredInstances := make([]IngesterDesc, 0, len(r.ringDesc.Ingesters))
-			for _, ingester := range healthyInstances {
-				if _, ok := zoneFailures[ingester.Zone]; !ok {
-					filteredInstances = append(filteredInstances, ingester)
+			filteredInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+			for _, instance := range healthyInstances {
+				if _, ok := zoneFailures[instance.Zone]; !ok {
+					filteredInstances = append(filteredInstances, instance)
 				}
 			}
 
@@ -448,7 +455,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// instance, we have to decrease the max unavailable zones accordingly.
 		maxUnavailableZones -= len(zoneFailures)
 	} else {
-		// Calculate the number of required ingesters;
+		// Calculate the number of required instances;
 		// ensure we always require at least RF-1 when RF=3.
 		numRequired := len(r.ringDesc.Ingesters)
 		if numRequired < r.cfg.ReplicationFactor {
@@ -458,7 +465,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		numRequired -= r.cfg.ReplicationFactor / 2
 
 		if len(healthyInstances) < numRequired {
-			return ReplicationSet{}, ErrTooManyFailedIngesters
+			return ReplicationSet{}, ErrTooManyUnhealthyInstances
 		}
 
 		maxErrors = len(healthyInstances) - numRequired
@@ -541,14 +548,14 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 		oldestTimestampByState[s] = 0
 	}
 
-	for _, ingester := range r.ringDesc.Ingesters {
-		s := ingester.State.String()
-		if !r.IsHealthy(&ingester, Reporting, time.Now()) {
+	for _, instance := range r.ringDesc.Ingesters {
+		s := instance.State.String()
+		if !r.IsHealthy(&instance, Reporting, time.Now()) {
 			s = unhealthy
 		}
 		numByState[s]++
-		if oldestTimestampByState[s] == 0 || ingester.Timestamp < oldestTimestampByState[s] {
-			oldestTimestampByState[s] = ingester.Timestamp
+		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
+			oldestTimestampByState[s] = instance.Timestamp
 		}
 	}
 
@@ -597,7 +604,7 @@ func (r *Ring) Collect(ch chan<- prometheus.Metric) {
 // set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 	// Nothing to do if the shard size is not smaller then the actual ring.
-	if size <= 0 || r.IngesterCount() <= size {
+	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
@@ -620,7 +627,7 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 // This function doesn't support caching.
 func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
 	// Nothing to do if the shard size is not smaller then the actual ring.
-	if size <= 0 || r.IngesterCount() <= size {
+	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
@@ -644,7 +651,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		actualZones = []string{""}
 	}
 
-	shard := make(map[string]IngesterDesc, size)
+	shard := make(map[string]InstanceDesc, size)
 
 	// We need to iterate zones always in the same order to guarantee stability.
 	for _, zone := range actualZones {
@@ -800,6 +807,21 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
 		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+	}
+}
+
+func (r *Ring) CleanupShuffleShardCache(identifier string) {
+	if r.cfg.SubringCacheDisabled {
+		return
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	for k := range r.shuffledSubringCache {
+		if k.identifier == identifier {
+			delete(r.shuffledSubringCache, k)
+		}
 	}
 }
 

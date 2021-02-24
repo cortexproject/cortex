@@ -6,11 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -54,8 +51,7 @@ type RingConfig struct {
 func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to get hostname", "err", err)
-		os.Exit(1)
+		panic(fmt.Errorf("failed to get hostname, %w", err))
 	}
 
 	// Ring flags

@@ -3,6 +3,7 @@ package util
 import (
 	"bytes"
 	"math/rand"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -995,4 +997,70 @@ func float64p(v float64) *float64 {
 
 func uint64p(v uint64) *uint64 {
 	return &v
+}
+
+func TestGetLabels(t *testing.T) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	m.WithLabelValues("bad", "user1").Inc()
+	m.WithLabelValues("worse", "user1").Inc()
+	m.WithLabelValues("worst", "user1").Inc()
+
+	m.WithLabelValues("bad", "user2").Inc()
+	m.WithLabelValues("worst", "user2").Inc()
+
+	m.WithLabelValues("worst", "user3").Inc()
+
+	verifyLabels(t, m, nil, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user3"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"cluster": "abc"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user3"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"reason": "bad"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"user": "user1"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"user": "user1", "reason": "worse"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+	})
+}
+
+func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string, expectedLabels []labels.Labels) {
+	result, err := GetLabels(m, filter)
+	require.NoError(t, err)
+
+	sort.Slice(result, func(i, j int) bool {
+		return labels.Compare(result[i], result[j]) < 0
+	})
+
+	sort.Slice(expectedLabels, func(i, j int) bool {
+		return labels.Compare(expectedLabels[i], expectedLabels[j]) < 0
+	})
+
+	require.Equal(t, expectedLabels, result)
 }

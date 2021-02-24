@@ -24,7 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
@@ -123,18 +123,21 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 type API struct {
 	ruler *Ruler
 	store rules.RuleStore
+
+	logger log.Logger
 }
 
 // NewAPI returns a new API struct with the provided ruler and rule store
-func NewAPI(r *Ruler, s rules.RuleStore) *API {
+func NewAPI(r *Ruler, s rules.RuleStore, logger log.Logger) *API {
 	return &API{
-		ruler: r,
-		store: s,
+		ruler:  r,
+		store:  s,
+		logger: logger,
 	}
 }
 
 func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
@@ -226,7 +229,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
@@ -381,7 +384,7 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 }
 
 func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 
 	userID, namespace, _, err := parseRequest(req, false, false)
 	if err != nil {
@@ -415,7 +418,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -437,7 +440,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -506,7 +509,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
@@ -528,7 +531,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
@@ -550,7 +553,7 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func (a *API) ListAllRules(w http.ResponseWriter, req *http.Request) {
-	logger := util.WithContext(req.Context(), util.Logger)
+	logger := util_log.WithContext(req.Context(), a.logger)
 
 	level.Debug(logger).Log("msg", "retrieving all rule groups")
 	rgs, err := a.store.ListAllRuleGroups(req.Context())

@@ -350,6 +350,26 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 	)
 }
 
+func NewAlertmanagerWithTLS(name string, flags map[string]string, image string) *CortexService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":                               "alertmanager",
+			"-log.level":                            "warn",
+			"-experimental.alertmanager.enable-api": "true",
+		}, flags))...),
+		e2e.NewTCPReadinessProbe(httpPort),
+		httpPort,
+		grpcPort,
+		GossipPort,
+	)
+}
+
 func NewRuler(name string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()

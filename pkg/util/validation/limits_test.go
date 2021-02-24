@@ -11,6 +11,27 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// mockTenantLimits exposes per-tenant limits based on a provided map
+type mockTenantLimits struct {
+	limits map[string]*Limits
+}
+
+// newMockTenantLimits creates a new mockTenantLimits that returns per-tenant limits based on
+// the given map
+func newMockTenantLimits(limits map[string]*Limits) *mockTenantLimits {
+	return &mockTenantLimits{
+		limits: limits,
+	}
+}
+
+func (l *mockTenantLimits) ByUserID(userID string) *Limits {
+	return l.limits[userID]
+}
+
+func (l *mockTenantLimits) AllByUserID() map[string]*Limits {
+	return l.limits
+}
+
 func TestLimits_Validate(t *testing.T) {
 	t.Parallel()
 
@@ -51,10 +72,7 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	defaults := Limits{
 		MaxLabelNamesPerSeries: 100,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
-
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	require.Equal(t, 100, ov.MaxLabelNamesPerSeries("user1"))
@@ -128,9 +146,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryParallelism: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -162,9 +178,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueriersPerTenant: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -196,9 +210,7 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	defaults := Limits{
 		MaxQueryLength: 0,
 	}
-	ov, err := NewOverrides(defaults, func(userID string) *Limits {
-		return tenantLimits[userID]
-	})
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
 	require.NoError(t, err)
 
 	for _, tc := range []struct {

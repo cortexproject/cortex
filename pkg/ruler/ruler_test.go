@@ -92,7 +92,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 		os.RemoveAll(dir)
 	}
 
-	tracker := promql.NewActiveQueryTracker(dir, 20, util.Logger)
+	tracker := promql.NewActiveQueryTracker(dir, 20, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,
@@ -124,12 +124,12 @@ func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	storage, err := NewRuleStorage(cfg.StoreConfig, promRules.FileLoader{})
+	storage, err := NewRuleStorage(cfg.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()
 	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides)
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, util.Logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := NewRuler(
@@ -335,7 +335,7 @@ func TestSharding(t *testing.T) {
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.Ingesters[ruler2] = ring.IngesterDesc{
+				desc.Ingesters[ruler2] = ring.InstanceDesc{
 					Addr:      ruler2Addr,
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,

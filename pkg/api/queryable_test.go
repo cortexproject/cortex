@@ -23,7 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -125,7 +125,7 @@ func TestApiStatusCodes(t *testing.T) {
 
 func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util.Logger,
+		Logger:             util_log.Logger,
 		Reg:                nil,
 		ActiveQueryTracker: nil,
 		MaxSamples:         100,
@@ -135,6 +135,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 	api := v1.NewAPI(
 		engine,
 		q,
+		nil,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -144,7 +145,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
-		util.Logger,
+		util_log.Logger,
 		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
@@ -180,7 +181,7 @@ type testQuerier struct {
 	err error
 }
 
-func (t testQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (t testQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, t.err
 }
 

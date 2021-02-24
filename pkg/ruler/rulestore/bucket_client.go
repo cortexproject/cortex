@@ -20,10 +20,14 @@ import (
 )
 
 const (
-	delim      = "/"
+	delim      = "/" // TODO use objstore.DirDelim
 	rulePrefix = "rules"
 
 	loadConcurrency = 10
+)
+
+var (
+	errInvalidRuleGroupKey = errors.New("invalid rule group object key")
 )
 
 // BucketRuleStore is used to support the RuleStore interface against an object storage backend. It is implemented
@@ -40,28 +44,6 @@ func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProv
 		cfgProvider: cfgProvider,
 		logger:      logger,
 	}
-}
-
-func (b *BucketRuleStore) listNamespacesForUser(ctx context.Context, user string) ([]string, error) {
-	userBucket := bucket.NewUserBucketClient(user, b.bucket, b.cfgProvider)
-
-	var namespaces []string
-	err := userBucket.Iter(ctx, "", func(namespace string) error {
-		namespace = strings.TrimSuffix(namespace, delim)
-		decodedNamespace, err := base64.URLEncoding.DecodeString(namespace)
-		if err != nil {
-			return fmt.Errorf("failed to decode namespace '%s': %w", namespace, err)
-		}
-
-		namespaces = append(namespaces, string(decodedNamespace))
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return namespaces, nil
 }
 
 // If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
@@ -136,38 +118,28 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 
-	var namespaces []string
-	var err error
-
-	if namespace != "" {
-		namespaces = []string{namespace}
-	} else {
-		namespaces, err = b.listNamespacesForUser(ctx, userID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list namespaces for user %s: %w", userID, err)
-		}
-	}
-
 	groupList := rules.RuleGroupList{}
 
-	for _, namespace := range namespaces {
-		prefix := generateRuleObjectKey(namespace, "")
-		err = userBucket.Iter(ctx, prefix, func(group string) error {
-			group = strings.TrimSuffix(strings.TrimPrefix(group, prefix), delim)
-			decodedGroup, err := base64.URLEncoding.DecodeString(group)
-			if err != nil {
-				return fmt.Errorf("failed to decode group '%s': %w", group, err)
-			}
-			groupList = append(groupList, &rules.RuleGroupDesc{
-				User:      userID,
-				Namespace: namespace,
-				Name:      string(decodedGroup),
-			})
-			return nil
-		})
+	prefix := generateRuleObjectKey(namespace, "")
+
+	err := userBucket.Iter(ctx, prefix, func(key string) error {
+		namespace, group, err := parseRuleGroupObjectKey(key)
 		if err != nil {
-			return nil, err
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "user", userID, "key", key)
+
+			// Do not fail just because of a spurious item in the bucket.
+			return nil
 		}
+
+		groupList = append(groupList, &rules.RuleGroupDesc{
+			User:      userID,
+			Namespace: namespace,
+			Name:      group,
+		})
+		return nil
+	}, objstore.WithRecursiveIter)
+	if err != nil {
+		return nil, err
 	}
 
 	return groupList, nil
@@ -285,4 +257,23 @@ func generateRuleObjectKey(namespace, groupName string) string {
 	}
 
 	return ns + base64.URLEncoding.EncodeToString([]byte(groupName))
+}
+
+func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
+	components := strings.Split(key, objstore.DirDelim)
+	if len(components) != 2 {
+		return "", "", errInvalidRuleGroupKey
+	}
+
+	decodedNamespace, err := base64.URLEncoding.DecodeString(components[0])
+	if err != nil {
+		return
+	}
+
+	decodedGroup, err := base64.URLEncoding.DecodeString(components[1])
+	if err != nil {
+		return
+	}
+
+	return string(decodedNamespace), string(decodedGroup), nil
 }

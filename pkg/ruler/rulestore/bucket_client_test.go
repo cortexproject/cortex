@@ -2,18 +2,22 @@ package rulestore
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	github_com_cortexproject_cortex_pkg_ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
 )
@@ -83,6 +87,12 @@ func TestListRules(t *testing.T) {
 		}
 
 		{
+			invalidNamespaceGroups, err := rs.ListRuleGroupsForUserAndNamespace(context.Background(), "user1", "invalid")
+			require.NoError(t, err)
+			require.Empty(t, invalidNamespaceGroups)
+		}
+
+		{
 			user2Groups, err := rs.ListRuleGroupsForUserAndNamespace(context.Background(), "user2", "")
 			require.NoError(t, err)
 			require.ElementsMatch(t, []*rules.RuleGroupDesc{
@@ -137,7 +147,7 @@ func TestLoadRules(t *testing.T) {
 				{User: "user1", Namespace: "hello", Name: "first testGroup", Interval: time.Minute, Rules: []*rules.RuleDesc{
 					{
 						For:    5 * time.Minute,
-						Labels: []github_com_cortexproject_cortex_pkg_ingester_client.LabelAdapter{{Name: "label1", Value: "value1"}},
+						Labels: []cortexpb.LabelAdapter{{Name: "label1", Value: "value1"}},
 					},
 				}},
 				{User: "user1", Namespace: "hello", Name: "second testGroup", Interval: 2 * time.Minute},
@@ -257,4 +267,55 @@ func getSortedObjectKeys(bucketClient interface{}) []string {
 	}
 
 	return nil
+}
+
+func TestParseRuleGroupObjectKey(t *testing.T) {
+	decodedNamespace := "my-namespace"
+	encodedNamespace := base64.URLEncoding.EncodeToString([]byte(decodedNamespace))
+
+	decodedGroup := "my-group"
+	encodedGroup := base64.URLEncoding.EncodeToString([]byte(decodedGroup))
+
+	tests := map[string]struct {
+		key               string
+		expectedErr       error
+		expectedNamespace string
+		expectedGroup     string
+	}{
+		"empty object key": {
+			key:         "",
+			expectedErr: errInvalidRuleGroupKey,
+		},
+		"invalid object key pattern": {
+			key:         "way/too/long",
+			expectedErr: errInvalidRuleGroupKey,
+		},
+		"invalid namespace encoding": {
+			key:         fmt.Sprintf("invalid/%s", encodedGroup),
+			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"invalid group encoding": {
+			key:         fmt.Sprintf("%s/invalid", encodedNamespace),
+			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"valid object key": {
+			key:               fmt.Sprintf("%s/%s", encodedNamespace, encodedGroup),
+			expectedNamespace: decodedNamespace,
+			expectedGroup:     decodedGroup,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			namespace, group, err := parseRuleGroupObjectKey(testData.key)
+
+			if testData.expectedErr != nil {
+				assert.EqualError(t, err, testData.expectedErr.Error())
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, testData.expectedNamespace, namespace)
+				assert.Equal(t, testData.expectedGroup, group)
+			}
+		})
+	}
 }

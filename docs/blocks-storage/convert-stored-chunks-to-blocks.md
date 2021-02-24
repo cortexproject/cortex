@@ -41,6 +41,7 @@ Scanner is started by running `blocksconvert -target=scanner`. Scanner requires 
 - `-scanner.ignore-users-regex` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
 - `-scanner.tables-limit` – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.
 - `-scanner.tables` – Comma-separated list of tables to be scanned. Can be used to scan specific tables only. Note that schema is still used to find all tables first, and then this list is consulted to select only specified tables.
+- `-scanner.scan-period-start` & `-scanner.scan-period-end` - limit the scan to a particular date range (format like `2020-12-31`)
 
 Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
 For each table, it will fully read the table and generate a plan for each user and day stored in the table.

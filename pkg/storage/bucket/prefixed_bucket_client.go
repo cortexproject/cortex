@@ -3,7 +3,6 @@ package bucket
 import (
 	"context"
 	"io"
-	"path"
 	"strings"
 
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -23,7 +22,7 @@ func NewPrefixedBucketClient(bucket objstore.Bucket, prefix string) *PrefixedBuc
 }
 
 func (b *PrefixedBucketClient) fullName(name string) string {
-	return path.Join(b.prefix, name)
+	return b.prefix + objstore.DirDelim + name
 }
 
 // Close implements io.Closer
@@ -50,7 +49,7 @@ func (b *PrefixedBucketClient) Name() string { return b.bucket.Name() }
 // before supplied function is applied.
 func (b *PrefixedBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, b.fullName(dir), func(s string) error {
-		return f(strings.TrimPrefix(s, b.prefix+"/"))
+		return f(strings.TrimPrefix(s, b.prefix+objstore.DirDelim))
 	}, options...)
 }
 

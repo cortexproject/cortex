@@ -53,7 +53,7 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
-		level.Debug(b.logger).Log("msg", "rule group does not exist", "name", objectKey)
+		level.Debug(b.logger).Log("msg", "rule group does not exist", "user", userID, "key", objectKey)
 		return nil, rules.ErrGroupNotFound
 	}
 
@@ -252,10 +252,10 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 			return err
 		}
 		objectKey := getRulesGroupObjectKey(rg.Namespace, rg.Name)
-		level.Debug(b.logger).Log("msg", "deleting rule group", "namespace", namespace, "key", objectKey)
+		level.Debug(b.logger).Log("msg", "deleting rule group", "user", userID, "namespace", namespace, "key", objectKey)
 		err = userBucket.Delete(ctx, objectKey)
 		if err != nil {
-			level.Error(b.logger).Log("msg", "unable to delete rule group from namespace", "err", err, "namespace", namespace, "key", objectKey)
+			level.Error(b.logger).Log("msg", "unable to delete rule group from namespace", "user", userID, "namespace", namespace, "key", objectKey, "err", err)
 			return err
 		}
 	}

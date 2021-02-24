@@ -48,10 +48,10 @@ func (b *PrefixedBucketClient) Name() string { return b.bucket.Name() }
 // Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 // object name including the prefix of the inspected directory. The configured prefix will be stripped
 // before supplied function is applied.
-func (b *PrefixedBucketClient) Iter(ctx context.Context, dir string, f func(string) error) error {
+func (b *PrefixedBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, b.fullName(dir), func(s string) error {
 		return f(strings.TrimPrefix(s, b.prefix+"/"))
-	})
+	}, options...)
 }
 
 // Get returns a reader for the given object name.

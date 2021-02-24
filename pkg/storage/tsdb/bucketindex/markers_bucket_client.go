@@ -81,8 +81,8 @@ func (b *globalMarkersBucket) Close() error {
 }
 
 // Iter implements objstore.Bucket.
-func (b *globalMarkersBucket) Iter(ctx context.Context, dir string, f func(string) error) error {
-	return b.parent.Iter(ctx, dir, f)
+func (b *globalMarkersBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	return b.parent.Iter(ctx, dir, f, options...)
 }
 
 // Get implements objstore.Bucket.

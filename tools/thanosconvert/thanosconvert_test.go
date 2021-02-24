@@ -228,7 +228,7 @@ func mockBucket(data fakeBucket) *bucket.ClientMock {
 	// UsersScanner checks for deletion marks using Exist
 	bkt.On("Exists", mock.Anything, mock.Anything).Return(false, nil)
 
-	bkt.On("Iter", mock.Anything, "", mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+	bkt.On("Iter", mock.Anything, "", mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		// we're iterating over the top level users
 		f := args.Get(2).(func(string) error)
 		for user := range data {
@@ -238,7 +238,7 @@ func mockBucket(data fakeBucket) *bucket.ClientMock {
 		}
 	})
 
-	bkt.On("Iter", mock.Anything, mock.MatchedBy(stringNotEmpty), mock.Anything).Return(nil).Run(func(args mock.Arguments) {
+	bkt.On("Iter", mock.Anything, mock.MatchedBy(stringNotEmpty), mock.Anything, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		// we're iterating over blocks within a user
 		user := strings.TrimSuffix(args.String(1), "/")
 		f := args.Get(2).(func(string) error)

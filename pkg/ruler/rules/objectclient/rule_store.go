@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -57,7 +58,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
 		level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
-		return nil, rules.ErrGroupNotFound
+		return nil, errors.Wrapf(rules.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
 	}
 
 	if err != nil {

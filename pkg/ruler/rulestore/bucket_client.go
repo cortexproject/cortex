@@ -49,7 +49,7 @@ func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProv
 // getRuleGroup loads and return a rules group. If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
 func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
-	objectKey := getRulesGroupObjectKey(namespace, groupName)
+	objectKey := getRuleGroupObjectKey(namespace, groupName)
 
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
@@ -222,13 +222,13 @@ func (b *BucketRuleStore) SetRuleGroup(ctx context.Context, userID string, names
 		return err
 	}
 
-	return userBucket.Upload(ctx, getRulesGroupObjectKey(namespace, group.Name), bytes.NewBuffer(data))
+	return userBucket.Upload(ctx, getRuleGroupObjectKey(namespace, group.Name), bytes.NewBuffer(data))
 }
 
 // DeleteRuleGroup implements rules.RuleStore.
 func (b *BucketRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
-	err := userBucket.Delete(ctx, getRulesGroupObjectKey(namespace, group))
+	err := userBucket.Delete(ctx, getRuleGroupObjectKey(namespace, group))
 	if b.bucket.IsObjNotFoundErr(err) {
 		return rules.ErrGroupNotFound
 	}
@@ -251,7 +251,7 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		objectKey := getRulesGroupObjectKey(rg.Namespace, rg.Name)
+		objectKey := getRuleGroupObjectKey(rg.Namespace, rg.Name)
 		level.Debug(b.logger).Log("msg", "deleting rule group", "user", userID, "namespace", namespace, "key", objectKey)
 		err = userBucket.Delete(ctx, objectKey)
 		if err != nil {
@@ -271,7 +271,7 @@ func getNamespacePrefix(namespace string) string {
 	return base64.URLEncoding.EncodeToString([]byte(namespace)) + objstore.DirDelim
 }
 
-func getRulesGroupObjectKey(namespace, group string) string {
+func getRuleGroupObjectKey(namespace, group string) string {
 	return getNamespacePrefix(namespace) + base64.URLEncoding.EncodeToString([]byte(group))
 }
 

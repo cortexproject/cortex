@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -192,7 +193,7 @@ func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 
 				gr, err := b.getRuleGroup(gCtx, user, namespace, group, gr) // reuse group pointer from the map.
 				if err != nil {
-					return fmt.Errorf("failed to get rule group: user=%q, namespace=%q, name=%q, err=%w", user, namespace, group, err)
+					return errors.Wrapf(err, "get rule group user=%q, namespace=%q, name=%q", user, namespace, group)
 				}
 
 				if user != gr.User || namespace != gr.Namespace || group != gr.Name {

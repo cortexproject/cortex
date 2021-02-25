@@ -83,9 +83,6 @@ replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 
-// We can't upgrade until grpc upgrade is unblocked.
-replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
-
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 

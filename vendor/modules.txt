@@ -522,7 +522,7 @@ github.com/sean-/seed
 # github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 ## explicit
 github.com/segmentio/fasthash/fnv1a
-# github.com/sercand/kuberesolver v2.4.0+incompatible => github.com/sercand/kuberesolver v2.4.0+incompatible
+# github.com/sercand/kuberesolver v2.4.0+incompatible
 github.com/sercand/kuberesolver
 # github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 github.com/shurcooL/httpfs/filter
@@ -1027,7 +1027,6 @@ sigs.k8s.io/yaml
 # k8s.io/api => k8s.io/api v0.19.4
 # github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-# github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 # github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
 # github.com/go-openapi/loads => github.com/go-openapi/loads v0.19.5

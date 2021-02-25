@@ -15,6 +15,8 @@ In this document we describe the techniques employed to safely handle rolling up
 - [Chunks storage with WAL enabled](#chunks-storage-with-wal-enabled)
 - [Chunks storage with WAL disabled](#chunks-storage-with-wal-disabled-hand-over)
 
+_If you're looking how to scale up / down ingesters, please refer to the [dedicated guide](./ingesters-scaling-up-and-down.md)._
+
 ## Blocks storage
 
 The Cortex [blocks storage](../blocks-storage/_index.md) requires ingesters to run with a persistent disk where the TSDB WAL and blocks are stored (eg. a StatefulSet when deployed on Kubernetes).
@@ -31,7 +33,7 @@ The rolling update procedure for a Cortex cluster running the chunks storage dep
 
 ### Chunks storage with WAL enabled
 
-Similarly to the blocks storage, when Cortex is running the chunks storage with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).
+Similarly to the blocks storage, when Cortex is running the [chunks storage](../chunks-storage/_index.md) with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).
 
 During a rolling update, the leaving ingester closes the WAL, synchronize the data to disk (`fsync`) and releases the disk resources.
 The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series data.
@@ -40,7 +42,7 @@ _For more information about the WAL, please refer to [Ingesters with WAL](../chu
 
 ### Chunks storage with WAL disabled (hand-over)
 
-When Cortex is running the chunks storage with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.
+When Cortex is running the [chunks storage](../chunks-storage/_index.md) with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.
 
 The hand-over is based on the ingesters state stored in the ring. Each ingester could be in one of the following **states**:
 

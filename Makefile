@@ -28,10 +28,6 @@ UPTODATE := .uptodate
 image-tag:
 	@echo $(IMAGE_TAG)
 
-# Support gsed on OSX (installed via brew), falling back to sed. On Linux
-# systems gsed won't be installed, so will use sed as expected.
-SED ?= $(shell which gsed 2>/dev/null || which sed)
-
 # Building Docker images is now automated. The convention is every directory
 # with a Dockerfile in it builds an image calls quay.io/cortexproject/<dirname>.
 # Dependencies (i.e. things that go in the image) still need to be explicitly
@@ -272,7 +268,7 @@ check-doc: doc
 
 clean-white-noise:
 	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \
-	SED_BIN="$(SED)" xargs ./tools/cleanup-white-noise.sh
+	  xargs ./tools/cleanup-white-noise.sh
 
 check-white-noise: clean-white-noise
 	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)

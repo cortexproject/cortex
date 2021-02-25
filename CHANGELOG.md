@@ -26,6 +26,7 @@
     * `-alertmanager.alertmanager-client.tls-ca-path`
     * `-alertmanager.alertmanager-client.tls-server-name`
     * `-alertmanager.alertmanager-client.tls-insecure-skip-verify`
+* [FEATURE] Compactor: implement per-tenant retention periods by performing block deletion in the Compactor. This is configured via `-compactor.retention-period`, and can be overriden on a per-tenant basis. #3879
 * [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
   * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
   * `-ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.

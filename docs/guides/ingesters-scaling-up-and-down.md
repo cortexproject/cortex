@@ -17,7 +17,7 @@ No special care is required to take when scaling up ingesters.
 
 ## Scaling down
 
-A running ingester holds several hours of time series data in memory, before they're flushed to the long-term storage.  When an ingester shutdowns, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.
+A running ingester holds several hours of time series data in memory, before they're flushed to the long-term storage.  When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.
 
 The procedure to adopt when scaling down ingesters depends on your Cortex setup:
 

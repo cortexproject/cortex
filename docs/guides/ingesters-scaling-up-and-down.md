@@ -55,7 +55,7 @@ When Cortex is running the [chunks storage](../chunks-storage/_index.md) with WA
 The procedure to scale down ingesters -- one by one -- should be:
 
 1. Call `/shutdown` endpoint on the ingester to shutdown
-2. Wait until the API terminates or "flushing of chunks complete" is logged
+2.  Wait until the HTTP call returns successfully or "flushing of chunks complete" is logged
 3. Terminate the ingester process (the `/shutdown` will not do it)
 
 _For more information about the chunks storage WAL, please refer to [Ingesters with WAL](../chunks-storage/ingesters-with-wal.md)._

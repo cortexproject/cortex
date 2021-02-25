@@ -44,7 +44,7 @@ The ingesters scale down is deemed an infrequent operation and no automation is 
   - `-blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl=1m`
 - Ingesters should be scaled down one by one:
   1. Call `/shutdown` endpoint on the ingester to shutdown
-  2. Wait until the API terminates or "finished flushing and shipping TSDB blocks" is logged
+  2. Wait until the HTTP call returns successfully or "finished flushing and shipping TSDB blocks" is logged
   3. Terminate the ingester process (the `/shutdown` will not do it)
   4. Wait 2x the maximum between `-blocks-storage.bucket-store.sync-interval` and `-compactor.cleanup-interval`
 

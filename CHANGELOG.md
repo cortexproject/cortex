@@ -73,6 +73,9 @@
 * [ENHANCEMENT] Ingester: attempt to prevent idle compaction from happening in concurrent ingesters by introducing a 25% jitter to the configured idle timeout (`-blocks-storage.tsdb.head-compaction-idle-timeout`). #3850
 * [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
 * [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenats that no longer belong to store-gateway. #3853
+* [ENHANCEMENT] Store-gateway: added metrics to chunk buffer pool behaviour. #3880
+  * `cortex_bucket_store_chunk_pool_requested_bytes_total`
+  * `cortex_bucket_store_chunk_pool_returned_bytes_total`
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

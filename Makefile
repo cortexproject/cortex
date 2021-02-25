@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := all
 
 # Version number
-VERSION=$(shell cat "./VERSION" 2> /dev/null)
+VERSION=$(file < ./VERSION)
 
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.

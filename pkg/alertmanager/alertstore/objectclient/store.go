@@ -8,7 +8,7 @@ import (
 
 	"github.com/thanos-io/thanos/pkg/runutil"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -34,14 +34,14 @@ func NewAlertStore(client chunk.ObjectClient) *AlertStore {
 	}
 }
 
-// ListAlertConfigs returns all of the active alert configs in this store
-func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+// ListAlertConfigs implements alertstore.AlertStore.
+func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	objs, _, err := a.client.List(ctx, alertPrefix, "")
 	if err != nil {
 		return nil, err
 	}
 
-	cfgs := map[string]alerts.AlertConfigDesc{}
+	cfgs := map[string]alertspb.AlertConfigDesc{}
 
 	for _, obj := range objs {
 		cfg, err := a.getAlertConfig(ctx, obj.Key)
@@ -54,40 +54,40 @@ func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.Al
 	return cfgs, nil
 }
 
-func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alerts.AlertConfigDesc, error) {
+func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.AlertConfigDesc, error) {
 	readCloser, err := a.client.GetObject(ctx, key)
 	if err != nil {
-		return alerts.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, err
 	}
 
 	defer runutil.CloseWithLogOnErr(util_log.Logger, readCloser, "close alert config reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return alerts.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, err
 	}
 
-	config := alerts.AlertConfigDesc{}
+	config := alertspb.AlertConfigDesc{}
 	err = config.Unmarshal(buf)
 	if err != nil {
-		return alerts.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, err
 	}
 
 	return config, nil
 }
 
-// GetAlertConfig returns a specified user's alertmanager configuration
-func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+// GetAlertConfig implements alertstore.AlertStore.
+func (a *AlertStore) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
 	cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, user))
 	if err == chunk.ErrStorageObjectNotFound {
-		return cfg, alerts.ErrNotFound
+		return cfg, alertspb.ErrNotFound
 	}
 
 	return cfg, err
 }
 
-// SetAlertConfig sets a specified user's alertmanager configuration
-func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+// SetAlertConfig implements alertstore.AlertStore.
+func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
 	cfgBytes, err := cfg.Marshal()
 	if err != nil {
 		return err
@@ -96,7 +96,7 @@ func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigD
 	return a.client.PutObject(ctx, path.Join(alertPrefix, cfg.User), bytes.NewReader(cfgBytes))
 }
 
-// DeleteAlertConfig deletes a specified user's alertmanager configuration
+// DeleteAlertConfig implements alertstore.AlertStore.
 func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
 	return a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
 }

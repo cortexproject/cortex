@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
 )
 
@@ -176,7 +176,7 @@ func TestAlertmanagerClustering(t *testing.T) {
 
 	// Create and upload an Alertmanager configuration.
 	user := "user-1"
-	desc := alerts.AlertConfigDesc{RawConfig: simpleAlertmanagerConfig, User: user, Templates: []*alerts.TemplateDesc{}}
+	desc := alertspb.AlertConfigDesc{RawConfig: simpleAlertmanagerConfig, User: user, Templates: []*alertspb.TemplateDesc{}}
 
 	d, err := desc.Marshal()
 	require.NoError(t, err)
@@ -232,10 +232,10 @@ func TestAlertmanagerSharding(t *testing.T) {
 	// Create and upload Alertmanager configurations.
 	for i := 1; i <= 30; i++ {
 		user := fmt.Sprintf("user-%d", i)
-		desc := alerts.AlertConfigDesc{
+		desc := alertspb.AlertConfigDesc{
 			RawConfig: simpleAlertmanagerConfig,
 			User:      user,
-			Templates: []*alerts.TemplateDesc{},
+			Templates: []*alertspb.TemplateDesc{},
 		}
 
 		d, err := desc.Marshal()

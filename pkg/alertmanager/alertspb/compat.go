@@ -1,4 +1,4 @@
-package alerts
+package alertspb
 
 import "errors"
 

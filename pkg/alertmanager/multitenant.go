@@ -24,7 +24,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -111,8 +112,8 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store   AlertStoreConfig `yaml:"storage"`
-	Cluster ClusterConfig    `yaml:"cluster"`
+	Store   alertstore.Config `yaml:"storage"`
+	Cluster ClusterConfig     `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
 
@@ -254,7 +255,7 @@ type MultitenantAlertmanager struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	store AlertStore
+	store alertstore.AlertStore
 
 	// The fallback config is stored as a string and parsed every time it's needed
 	// because we mutate the parsed results and don't want those changes to take
@@ -265,7 +266,7 @@ type MultitenantAlertmanager struct {
 	alertmanagers    map[string]*Alertmanager
 	// Stores the current set of configurations we're running in each tenant's Alertmanager.
 	// Used for comparing configurations as we synchronize them.
-	cfgs map[string]alerts.AlertConfigDesc
+	cfgs map[string]alertspb.AlertConfigDesc
 
 	logger              log.Logger
 	alertmanagerMetrics *alertmanagerMetrics
@@ -331,7 +332,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		go peer.Settle(context.Background(), cluster.DefaultGossipInterval)
 	}
 
-	store, err := NewAlertStore(cfg.Store)
+	store, err := alertstore.NewAlertStore(cfg.Store)
 	if err != nil {
 		return nil, err
 	}
@@ -351,11 +352,11 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, logger, registerer)
 }
 
-func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store alertstore.AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	am := &MultitenantAlertmanager{
 		cfg:                 cfg,
 		fallbackConfig:      string(fallbackConfig),
-		cfgs:                map[string]alerts.AlertConfigDesc{},
+		cfgs:                map[string]alertspb.AlertConfigDesc{},
 		alertmanagers:       map[string]*Alertmanager{},
 		alertmanagerMetrics: newAlertmanagerMetrics(),
 		multitenantMetrics:  newMultitenantAlertmanagerMetrics(registerer),
@@ -574,7 +575,7 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 }
 
 // loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
-func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	configs, err := am.store.ListAlertConfigs(ctx)
 	if err != nil {
 		return nil, err
@@ -587,7 +588,7 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 		return configs, nil
 	}
 
-	ownedConfigs := map[string]alerts.AlertConfigDesc{}
+	ownedConfigs := map[string]alertspb.AlertConfigDesc{}
 	for userID, cfg := range configs {
 		owned, err := am.isConfigOwned(userID)
 		if err != nil {
@@ -622,7 +623,7 @@ func (am *MultitenantAlertmanager) isConfigOwned(userID string) (bool, error) {
 	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr()), nil
 }
 
-func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfigDesc) {
+func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alertspb.AlertConfigDesc) {
 	level.Debug(am.logger).Log("msg", "adding configurations", "num_configs", len(cfgs))
 	for user, cfg := range cfgs {
 		err := am.setConfig(cfg)
@@ -654,7 +655,7 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alerts.AlertConfi
 
 // setConfig applies the given configuration to the alertmanager for `userID`,
 // creating an alertmanager if it doesn't already exist.
-func (am *MultitenantAlertmanager) setConfig(cfg alerts.AlertConfigDesc) error {
+func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error {
 	var userAmConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
@@ -820,7 +821,7 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
 	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
-	cfgDesc := alerts.ToProto("", nil, userID)
+	cfgDesc := alertspb.ToProto("", nil, userID)
 	err := am.store.SetAlertConfig(context.Background(), cfgDesc)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
@@ -17,7 +17,7 @@ var (
 type Store struct {
 	configClient client.Client
 	since        userconfig.ID
-	alertConfigs map[string]alerts.AlertConfigDesc
+	alertConfigs map[string]alertspb.AlertConfigDesc
 }
 
 // NewStore constructs a Store
@@ -25,12 +25,12 @@ func NewStore(c client.Client) *Store {
 	return &Store{
 		configClient: c,
 		since:        0,
-		alertConfigs: make(map[string]alerts.AlertConfigDesc),
+		alertConfigs: make(map[string]alertspb.AlertConfigDesc),
 	}
 }
 
-// ListAlertConfigs implements RuleStore
-func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+// ListAlertConfigs implements alertstore.AlertStore.
+func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 
 	configs, err := c.configClient.GetAlerts(ctx, c.since)
 
@@ -44,15 +44,15 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 			continue
 		}
 
-		var templates []*alerts.TemplateDesc
+		var templates []*alertspb.TemplateDesc
 		for fn, template := range cfg.Config.TemplateFiles {
-			templates = append(templates, &alerts.TemplateDesc{
+			templates = append(templates, &alertspb.TemplateDesc{
 				Filename: fn,
 				Body:     template,
 			})
 		}
 
-		c.alertConfigs[user] = alerts.AlertConfigDesc{
+		c.alertConfigs[user] = alertspb.AlertConfigDesc{
 			User:      user,
 			RawConfig: cfg.Config.AlertmanagerConfig,
 			Templates: templates,
@@ -64,28 +64,30 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	return c.alertConfigs, nil
 }
 
-// GetAlertConfig finds and returns the AlertManager configuration of an user.
-func (c *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+// GetAlertConfig implements alertstore.AlertStore.
+func (c *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
 
 	// Refresh the local state before fetching an specific one.
 	_, err := c.ListAlertConfigs(ctx)
 	if err != nil {
-		return alerts.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, err
 	}
 
 	cfg, exists := c.alertConfigs[user]
 
 	if !exists {
-		return alerts.AlertConfigDesc{}, alerts.ErrNotFound
+		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
 	}
 
 	return cfg, nil
 }
 
-func (c *Store) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+// SetAlertConfig implements alertstore.AlertStore.
+func (c *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
 	return errReadOnly
 }
 
+// DeleteAlertConfig implements alertstore.AlertStore.
 func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
 	return errReadOnly
 }

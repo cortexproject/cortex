@@ -69,12 +69,6 @@ blocks_storage:
 
 ruler:
   enable_api: true
-  storage:
-    type: s3
-    s3:
-      bucketnames: cortex-ruler
-      s3forcepathstyle: true
-      s3: http://cortex:supersecret@minio.:9000
   enable_sharding: true
   ring:
     heartbeat_period:   5s
@@ -83,6 +77,15 @@ ruler:
       store: consul
       consul:
         host: consul:8500
+
+ruler_storage:
+  backend: s3
+  s3:
+    bucket_name:       cortex-ruler
+    endpoint:          minio:9000
+    access_key_id:     cortex
+    secret_access_key: supersecret
+    insecure: true
 
 alertmanager:
   enable_api: true

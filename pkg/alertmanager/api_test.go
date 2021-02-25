@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/require"
@@ -153,13 +153,13 @@ template_files:
 
 type noopAlertStore struct{}
 
-func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
+func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	return nil, nil
 }
-func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
-	return alerts.AlertConfigDesc{}, nil
+func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
+	return alertspb.AlertConfigDesc{}, nil
 }
-func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
 	return nil
 }
 func (noopAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {

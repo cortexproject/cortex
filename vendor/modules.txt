@@ -388,7 +388,7 @@ github.com/oklog/run
 # github.com/oklog/ulid v1.3.1
 ## explicit
 github.com/oklog/ulid
-# github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02 => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
+# github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
 ## explicit
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v1.0.0
@@ -1021,7 +1021,6 @@ sigs.k8s.io/yaml
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.0+incompatible
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-# github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
 # github.com/go-openapi/errors => github.com/go-openapi/errors v0.19.4
 # github.com/go-openapi/loads => github.com/go-openapi/loads v0.19.5
 # github.com/go-openapi/runtime => github.com/go-openapi/runtime v0.19.15

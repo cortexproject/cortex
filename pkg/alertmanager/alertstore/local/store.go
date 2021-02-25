@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 )
 
 var (
@@ -38,9 +38,9 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{cfg}, nil
 }
 
-// ListAlertConfigs returns a list of each users alertmanager config.
-func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
-	configs := map[string]alerts.AlertConfigDesc{}
+// ListAlertConfigs implements alertstore.AlertStore.
+func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+	configs := map[string]alertspb.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return errors.Wrap(err, "unable to walk file path")
@@ -67,7 +67,7 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 		// The file name must correspond to the user tenant ID
 		user := strings.TrimSuffix(info.Name(), ext)
 
-		configs[user] = alerts.AlertConfigDesc{
+		configs[user] = alertspb.AlertConfigDesc{
 			User:      user,
 			RawConfig: string(content),
 		}
@@ -81,25 +81,28 @@ func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertCo
 	return configs, nil
 }
 
-func (f *Store) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
+// GetAlertConfig implements alertstore.AlertStore.
+func (f *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
 	cfgs, err := f.ListAlertConfigs(ctx)
 	if err != nil {
-		return alerts.AlertConfigDesc{}, err
+		return alertspb.AlertConfigDesc{}, err
 	}
 
 	cfg, exists := cfgs[user]
 
 	if !exists {
-		return alerts.AlertConfigDesc{}, alerts.ErrNotFound
+		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
 	}
 
 	return cfg, nil
 }
 
-func (f *Store) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
+// SetAlertConfig implements alertstore.AlertStore.
+func (f *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
 	return errReadOnly
 }
 
+// DeleteAlertConfig implements alertstore.AlertStore.
 func (f *Store) DeleteAlertConfig(ctx context.Context, user string) error {
 	return errReadOnly
 }

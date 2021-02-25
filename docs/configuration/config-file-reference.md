@@ -4237,7 +4237,7 @@ bucket_store:
   [sync_interval: <duration> | default = 15m]
 
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-  # The pool is shared across all tenants.
+  # The pool is shared across all tenants. 0 to disable the limit.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
   [max_chunk_pool_bytes: <int> | default = 2147483648]
 

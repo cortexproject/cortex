@@ -97,7 +97,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		queryGate:          queryGate,
-		partitioner:        NewGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",

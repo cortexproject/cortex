@@ -16,7 +16,7 @@ type gapBasedPartitioner struct {
 	expandedRanges  prometheus.Counter
 }
 
-func NewGapBasedPartitioner(maxGapBytes uint64, reg prometheus.Registerer) *gapBasedPartitioner {
+func newGapBasedPartitioner(maxGapBytes uint64, reg prometheus.Registerer) *gapBasedPartitioner {
 	return &gapBasedPartitioner{
 		upstream: store.NewGapBasedPartitioner(maxGapBytes),
 		requestedBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{

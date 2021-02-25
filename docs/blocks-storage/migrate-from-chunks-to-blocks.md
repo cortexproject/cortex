@@ -131,6 +131,8 @@ Querier (and ruler) can be reconfigured to use `blocks` as "primary" store to se
 The CLI flag `-querier.use-second-store-before-time` (or its respective YAML config option) is only available for secondary store.
 This flag can be set to a timestamp when migration has finished, and it avoids querying secondary store (chunks) for data when running queries that don't need data before given time.
 
+Both primary and secondary stores are queried before this time, so the overlap where some data is in chunks and some in blocks is covered.
+
 ## Rollback
 
 If rollback to chunks is needed for any reason, it is possible to use the same migration script with reversed arguments:

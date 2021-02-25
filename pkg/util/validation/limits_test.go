@@ -137,10 +137,10 @@ func TestLimitsTagsYamlMatchJson(t *testing.T) {
 
 		// Note that we aren't requiring YAML and JSON tags to match, just that
 		// they either both exist or both don't exist.
-		hasYamlTag := field.Tag.Get("yaml") != ""
-		hasJsonTag := field.Tag.Get("json") != ""
+		hasYAMLTag := field.Tag.Get("yaml") != ""
+		hasJSONTag := field.Tag.Get("json") != ""
 
-		if hasYamlTag != hasJsonTag {
+		if hasYAMLTag != hasJSONTag {
 			mismatch = append(mismatch, field.Name)
 		}
 	}

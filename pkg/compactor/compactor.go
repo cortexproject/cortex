@@ -298,8 +298,9 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_blocks_marked_for_deletion_total",
-			Help: "Total number of blocks marked for deletion in compactor.",
+			Name:        "cortex_compactor_blocks_marked_for_deletion_total",
+			Help:        "Total number of blocks marked for deletion in compactor.",
+			ConstLabels: prometheus.Labels{"reason": "compaction"},
 		}),
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_garbage_collected_blocks_total",

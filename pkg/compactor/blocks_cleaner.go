@@ -50,6 +50,7 @@ type BlocksCleaner struct {
 	runsLastSuccess             prometheus.Gauge
 	blocksCleanedTotal          prometheus.Counter
 	blocksFailedTotal           prometheus.Counter
+	blocksMarkedForDeletion     prometheus.Counter
 	tenantBlocks                *prometheus.GaugeVec
 	tenantMarkedBlocks          *prometheus.GaugeVec
 	tenantPartialBlocks         *prometheus.GaugeVec
@@ -86,6 +87,11 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 		blocksFailedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_failures_total",
 			Help: "Total number of blocks failed to be deleted.",
+		}),
+		blocksMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name:        "cortex_compactor_blocks_marked_for_deletion_total",
+			Help:        "Total number of blocks marked for deletion in compactor.",
+			ConstLabels: prometheus.Labels{"reason": "retention"},
 		}),
 
 		// The following metrics don't have the "cortex_compactor" prefix because not strictly related to

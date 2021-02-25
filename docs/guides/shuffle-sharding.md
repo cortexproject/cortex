@@ -97,7 +97,7 @@ Assuming shuffle-sharding has been enabled for the write path, to enable shuffle
 
 #### Rollout strategy
 
-If you're running a Cortex cluster with shuffle-sharding disabled and you wanna enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters memory:
+If you're running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters memory:
 
 1. Enable ingesters shuffle-sharding on the **write path**
 2. **Wait** at least `-querier.shuffle-sharding-ingesters-lookback-period` time

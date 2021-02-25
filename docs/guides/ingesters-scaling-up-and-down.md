@@ -11,7 +11,7 @@ _If you're looking how to run ingesters rolling updates, please refer to the [de
 
 ## Scaling up
 
-Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester startups, it will register to the [hash ring](../architecture.md#the-hash-ring) and the distributors will reshard received series accordingly.
+Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the [hash ring](../architecture.md#the-hash-ring) and the distributors will reshard received series accordingly.
 
 No special care is required to take when scaling up ingesters.
 

@@ -105,25 +105,26 @@ GO_FLAGS := -ldflags "-X main.Branch=$(GIT_BRANCH) -X main.Revision=$(GIT_REVISI
 
 ifeq ($(BUILD_IN_CONTAINER),true)
 
-GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
-			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
-			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
+PWD=$(shell pwd)
+GOVOLUMES=	-v $(PWD)/.cache:/go/cache:delegated,z \
+			-v $(PWD)/.pkg:/go/pkg:delegated,z \
+			-v $(PWD):/go/src/github.com/cortexproject/cortex:delegated,z
 
 exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
+	@mkdir -p $(PWD)/.pkg
+	@mkdir -p $(PWD)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
 	@$(SUDO) time docker run --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
+	@mkdir -p $(PWD)/.pkg
+	@mkdir -p $(PWD)/.cache
 	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6.16)"; \
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
 	$(SUDO) docker run --rm $(TTY) -i $(GOVOLUMES) \
-		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
+		-v $(PWD)/cmd/cortex/migrations:/migrations:z \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
 		-e DB_ADDR=configs-db.cortex.local \

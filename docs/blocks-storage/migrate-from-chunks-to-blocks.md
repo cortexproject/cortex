@@ -78,6 +78,14 @@ During and after the migration to blocks (and also after possible rollback), thi
 Migration script presented in Step 2 assumes that there are two StatefulSets of ingesters: existing one configured with chunks, and the new one with blocks.
 New StatefulSet with blocks ingesters should have 0 replicas at the beginning of migration.
 
+### Table-Manager - chunks
+
+If you use a store with provisioned IO, e.g. DynamoDB, scale up the provision before starting the migration.
+Each ingester will need to flush all chunks before exiting, so will write to the store at many times the normal rate.
+
+Stop or reconfigure the table-manager to stop it adjusting the provision back to normal.
+(Don't do the migration on Wednesday night when a new weekly table might be required.)
+
 ## Step 2: Ingesters migration
 
 We have developed a script available in Cortex [`tools/migrate-ingester-statefulsets.sh`](https://github.com/cortexproject/cortex/blob/master/tools/migrate-ingester-statefulsets.sh) to migrate ingesters between two StatefulSets, shutting down ingesters one by one.

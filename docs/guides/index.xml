@@ -395,14 +395,14 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 -H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
 &lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
 &lt;p>Cortex supports data encryption at rest for some storage backends.&lt;/p>
-&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
-&lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
-&lt;h3 id="s3">S3&lt;/h3>
-&lt;p>The Cortex S3 client used by the blocks storage supports the following SSE types:&lt;/p>
+&lt;h2 id="s3">S3&lt;/h2>
+&lt;p>The Cortex S3 client supports the following server-side encryption (SSE) modes:&lt;/p>
 &lt;ul>
 &lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
 &lt;/ul>
+&lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
+&lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> S3 server-side encryption can be configured as follows.&lt;/p>
 &lt;h3 id="s3_sse_config">&lt;code>s3_sse_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>s3_sse_config&lt;/code> configures the S3 server-side encryption.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">sse&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -418,8 +418,12 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="s3-per-tenant-overrides">S3 per-tenant overrides&lt;/h4>
-&lt;p>The S3 client used by the blocks storage supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="chunks-storage">Chunks storage&lt;/h3>
+&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> S3 server-side encryption can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p>
+&lt;h3 id="ruler">Ruler&lt;/h3>
+&lt;p>The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-ruler-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
+&lt;h3 id="per-tenant-config-overrides">Per-tenant config overrides&lt;/h3>
+&lt;p>The S3 client used by the blocks storage and ruler supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
 The following settings can ben overridden for each tenant:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>&lt;code>s3_sse_type&lt;/code>&lt;/strong>&lt;br />
@@ -429,15 +433,8 @@ S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not se
 &lt;li>&lt;strong>&lt;code>s3_sse_kms_encryption_context&lt;/code>&lt;/strong>&lt;br />
 S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
 &lt;/ul>
-&lt;h2 id="chunks-storage">Chunks storage&lt;/h2>
-&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
-&lt;h3 id="s3-1">S3&lt;/h3>
-&lt;p>The Cortex S3 client used by the chunks storage supports the following SSE types:&lt;/p>
-&lt;ul>
-&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
-&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
-&lt;/ul>
-&lt;p>The server-side encryption in the S3 client used by the chunks storage can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;h2 id="other-storages">Other storages&lt;/h2>
+&lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
 &lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
 &lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
@@ -475,6 +472,7 @@ When an ingester shutdowns, because of a rolling update or maintenance, the in-m
 &lt;li>&lt;a href="#chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled&lt;/a>&lt;/li>
 &lt;/ul>
+&lt;p>&lt;em>If you&amp;rsquo;re looking how to scale up / down ingesters, please refer to the &lt;a href="/docs/guides/ingesters-scaling-up-and-down/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
 &lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
 &lt;p>The Cortex &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> requires ingesters to run with a persistent disk where the TSDB WAL and blocks are stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
 &lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
@@ -484,12 +482,12 @@ The new ingester, which is expected to reuse the same disk of the leaving one, w
 &lt;p>The Cortex chunks storage optionally supports a write-ahead log (WAL).
 The rolling update procedure for a Cortex cluster running the chunks storage depends whether the WAL is enabled or not.&lt;/p>
 &lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
-&lt;p>Similarly to the blocks storage, when Cortex is running the chunks storage with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
+&lt;p>Similarly to the blocks storage, when Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
 &lt;p>During a rolling update, the leaving ingester closes the WAL, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
 The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series data.&lt;/p>
 &lt;p>&lt;em>For more information about the WAL, please refer to &lt;a href="/docs/chunks-storage/ingesters-with-wal/">Ingesters with WAL&lt;/a>.&lt;/em>&lt;/p>
 &lt;h3 id="chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled (hand-over)&lt;/h3>
-&lt;p>When Cortex is running the chunks storage with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.&lt;/p>
+&lt;p>When Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.&lt;/p>
 &lt;p>The hand-over is based on the ingesters state stored in the ring. Each ingester could be in one of the following &lt;strong>states&lt;/strong>:&lt;/p>
 &lt;ul>
 &lt;li>&lt;code>PENDING&lt;/code>&lt;/li>
@@ -528,7 +526,63 @@ Number of chunks sent by leaving ingester.&lt;/li>
 Number of chunks received by joining ingester.&lt;/li>
 &lt;/ul>
 &lt;p>You can see the current state of the ring via http browser request to
-&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
+&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Ingesters scaling up and down</title><link>/docs/guides/ingesters-scaling-up-and-down/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-scaling-up-and-down/</guid><description>
+&lt;p>This guide explains how to scale up and down ingesters.&lt;/p>
+&lt;p>&lt;em>If you&amp;rsquo;re looking how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
+&lt;h2 id="scaling-up">Scaling up&lt;/h2>
+&lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.&lt;/p>
+&lt;p>No special care is required to take when scaling up ingesters.&lt;/p>
+&lt;h2 id="scaling-down">Scaling down&lt;/h2>
+&lt;p>A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+&lt;p>The procedure to adopt when scaling down ingesters depends on your Cortex setup:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#blocks-storage">Blocks storage&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
+&lt;p>When Cortex is running the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>, ingesters don&amp;rsquo;t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
+&lt;p>Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven&amp;rsquo;t been discovered yet.&lt;/p>
+&lt;p>The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:&lt;/p>
+&lt;ul>
+&lt;li>Configure queriers and rulers to always query the storage
+&lt;ul>
+&lt;li>&lt;code>-querier.query-store-after=0s&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Frequently scan the storage bucket
+&lt;ul>
+&lt;li>&lt;code>-blocks-storage.bucket-store.sync-interval=5m&lt;/code>&lt;/li>
+&lt;li>&lt;code>-compactor.cleanup-interval=5m&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Lower bucket scanning cache TTLs
+&lt;ul>
+&lt;li>&lt;code>-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl=1m&lt;/code>&lt;/li>
+&lt;li>&lt;code>-blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl=1m&lt;/code>&lt;/li>
+&lt;li>&lt;code>-blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl=1m&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Ingesters should be scaled down one by one:
+&lt;ol>
+&lt;li>Call &lt;code>/shutdown&lt;/code> endpoint on the ingester to shutdown&lt;/li>
+&lt;li>Wait until the HTTP call returns successfully or &amp;ldquo;finished flushing and shipping TSDB blocks&amp;rdquo; is logged&lt;/li>
+&lt;li>Terminate the ingester process (the &lt;code>/shutdown&lt;/code> will not do it)&lt;/li>
+&lt;li>Before proceeding to the next ingester, wait 2x the maximum between &lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code> and &lt;code>-compactor.cleanup-interval&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ul>
+&lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
+&lt;p>When Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL enabled, ingesters don&amp;rsquo;t flush series chunks to storage at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush chunks to the long-term storage before the ingester terminates.&lt;/p>
+&lt;p>The procedure to scale down ingesters &amp;ndash; one by one &amp;ndash; should be:&lt;/p>
+&lt;ol>
+&lt;li>Call &lt;code>/shutdown&lt;/code> endpoint on the ingester to shutdown&lt;/li>
+&lt;li>Wait until the HTTP call returns successfully or &amp;ldquo;flushing of chunks complete&amp;rdquo; is logged&lt;/li>
+&lt;li>Terminate the ingester process (the &lt;code>/shutdown&lt;/code> will not do it)&lt;/li>
+&lt;/ol>
+&lt;p>&lt;em>For more information about the chunks storage WAL, please refer to &lt;a href="/docs/chunks-storage/ingesters-with-wal/">Ingesters with WAL&lt;/a>.&lt;/em>&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-disabled">Chunks storage with WAL disabled&lt;/h3>
+&lt;p>When Cortex is running the chunks storage with WAL disabled, ingesters flush series chunks to the storage at shutdown if no &lt;code>PENDING&lt;/code> ingester (to transfer series to) is found. Because of this, it&amp;rsquo;s safe to scale down ingesters with no special care in this setup.&lt;/p></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
 &lt;p>Since Cortex is a multi-tenant system, it supports applying limits to each tenant to prevent
 any single one from using too many resources. In order to help operators understand how close
 to their limits tenants are, the &lt;code>overrides-exporter&lt;/code> module can expose limits as Prometheus metrics.&lt;/p>

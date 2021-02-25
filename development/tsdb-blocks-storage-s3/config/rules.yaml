@@ -1,0 +1,6 @@
+# Example rules file to load to Cortex via the ruler API.
+groups:
+  - name: example
+    rules:
+      - record: up:count
+        expr: count(up)

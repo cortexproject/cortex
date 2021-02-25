@@ -18,7 +18,7 @@ This article **assumes** that:
 - Cortex cluster is managed by Kubernetes
 - Cortex is using chunks storage
 - Ingesters are using WAL
-- Cortex version 1.3.0 or later.
+- Cortex version 1.4.0 or later.
 
 _If your ingesters are not using WAL, the documented procedure will still apply, but the presented migration script will not work properly without changes, as it assumes that ingesters are managed via StatefulSet._
 
@@ -42,7 +42,6 @@ Querier and ruler need to be reconfigured as follow:
 
 - `-querier.second-store-engine=blocks`
 - `-querier.query-store-after=0`
-- `-querier.ingester-streaming=false`
 
 #### `-querier.second-store-engine=blocks`
 
@@ -57,13 +56,6 @@ During the migration, this flag needs to be set to 0, to make queriers always co
 As chunks ingesters shut down, they flush chunks to the storage. They are then replaced with new ingesters configured
 to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don't reload chunks),
 and need to use storage instead.
-
-#### `-querier.ingester-streaming=false`
-
-Querier (and ruler) in Cortex version 1.3.0 has a [bug](https://github.com/cortexproject/cortex/issues/2935) and doesn't properly
-merge streamed results from chunks and blocks-based ingesters. Instead it only returns data from blocks instesters.
-To avoid this problem we can use newer Cortex release, or temporarily disable this feature by setting `-querier.ingester-streaming=false`.
-After migration is complete (i.e. all ingesters are running blocks only), this can be turned back to true, which is the default value.
 
 ### Query-frontend
 
@@ -85,6 +77,14 @@ During and after the migration to blocks (and also after possible rollback), thi
 
 Migration script presented in Step 2 assumes that there are two StatefulSets of ingesters: existing one configured with chunks, and the new one with blocks.
 New StatefulSet with blocks ingesters should have 0 replicas at the beginning of migration.
+
+### Table-Manager - chunks
+
+If you use a store with provisioned IO, e.g. DynamoDB, scale up the provision before starting the migration.
+Each ingester will need to flush all chunks before exiting, so will write to the store at many times the normal rate.
+
+Stop or reconfigure the table-manager to stop it adjusting the provision back to normal.
+(Don't do the migration on Wednesday night when a new weekly table might be required.)
 
 ## Step 2: Ingesters migration
 
@@ -131,9 +131,7 @@ Querier (and ruler) can be reconfigured to use `blocks` as "primary" store to se
 The CLI flag `-querier.use-second-store-before-time` (or its respective YAML config option) is only available for secondary store.
 This flag can be set to a timestamp when migration has finished, and it avoids querying secondary store (chunks) for data when running queries that don't need data before given time.
 
-#### `-querier.ingester-streaming=true`
-
-If querier was configured to disable ingester streaming during migration (required for Cortex 1.3.0), Querier can be configured to make use of streamed responses from ingester at this point (`-querier.ingester-streaming=true`).
+Both primary and secondary stores are queried before this time, so the overlap where some data is in chunks and some in blocks is covered.
 
 ## Rollback
 

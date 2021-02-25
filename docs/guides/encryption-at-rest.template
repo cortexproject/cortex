@@ -7,22 +7,30 @@ slug: encryption-at-rest
 
 Cortex supports data encryption at rest for some storage backends.
 
-## Blocks storage
+## S3
 
-The [blocks storage](../blocks-storage/_index.md) supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.
-
-### S3
-
-The Cortex S3 client used by the blocks storage supports the following SSE types:
+The Cortex S3 client supports the following server-side encryption (SSE) modes:
 
 - [SSE-S3](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html)
 - [SSE-KMS](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html)
 
+### Blocks storage
+
+The [blocks storage](../blocks-storage/_index.md) S3 server-side encryption can be configured as follows.
+
 {{ .S3SSEConfigBlock }}
 
-#### S3 per-tenant overrides
+### Chunks storage
 
-The S3 client used by the blocks storage supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
+The [chunks storage](../chunks-storage/_index.md) S3 server-side encryption can be configured similarly to the blocks storage, but **per-tenant overrides are not supported**.
+
+### Ruler
+
+The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-ruler-storage.` flag prefix (or their respective YAML config options).
+
+### Per-tenant config overrides
+
+The S3 client used by the blocks storage and ruler supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
 The following settings can ben overridden for each tenant:
 
 - **`s3_sse_type`**<br />
@@ -32,15 +40,6 @@ The following settings can ben overridden for each tenant:
 - **`s3_sse_kms_encryption_context`**<br />
   S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not `SSE-KMS`.
 
-## Chunks storage
+## Other storages
 
-The [chunks storage](../chunks-storage/_index.md) supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.
-
-### S3
-
-The Cortex S3 client used by the chunks storage supports the following SSE types:
-
-- [SSE-S3](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html)
-- [SSE-KMS](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html)
-
-The server-side encryption in the S3 client used by the chunks storage can be configured similarly to the blocks storage, but **per-tenant overrides are not supported**.
+Other storage backends may support encryption at rest configuring it directly at the storage level.

@@ -395,14 +395,14 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 -H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
 &lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
 &lt;p>Cortex supports data encryption at rest for some storage backends.&lt;/p>
-&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
-&lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
-&lt;h3 id="s3">S3&lt;/h3>
-&lt;p>The Cortex S3 client used by the blocks storage supports the following SSE types:&lt;/p>
+&lt;h2 id="s3">S3&lt;/h2>
+&lt;p>The Cortex S3 client supports the following server-side encryption (SSE) modes:&lt;/p>
 &lt;ul>
 &lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
 &lt;/ul>
+&lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
+&lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> S3 server-side encryption can be configured as follows.&lt;/p>
 &lt;h3 id="s3_sse_config">&lt;code>s3_sse_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>s3_sse_config&lt;/code> configures the S3 server-side encryption.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">sse&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -418,8 +418,12 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="s3-per-tenant-overrides">S3 per-tenant overrides&lt;/h4>
-&lt;p>The S3 client used by the blocks storage supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="chunks-storage">Chunks storage&lt;/h3>
+&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> S3 server-side encryption can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p>
+&lt;h3 id="ruler">Ruler&lt;/h3>
+&lt;p>The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-ruler-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
+&lt;h3 id="per-tenant-config-overrides">Per-tenant config overrides&lt;/h3>
+&lt;p>The S3 client used by the blocks storage and ruler supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
 The following settings can ben overridden for each tenant:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>&lt;code>s3_sse_type&lt;/code>&lt;/strong>&lt;br />
@@ -429,15 +433,8 @@ S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not se
 &lt;li>&lt;strong>&lt;code>s3_sse_kms_encryption_context&lt;/code>&lt;/strong>&lt;br />
 S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
 &lt;/ul>
-&lt;h2 id="chunks-storage">Chunks storage&lt;/h2>
-&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> supports encryption at rest only for S3. Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p>
-&lt;h3 id="s3-1">S3&lt;/h3>
-&lt;p>The Cortex S3 client used by the chunks storage supports the following SSE types:&lt;/p>
-&lt;ul>
-&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html">SSE-S3&lt;/a>&lt;/li>
-&lt;li>&lt;a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html">SSE-KMS&lt;/a>&lt;/li>
-&lt;/ul>
-&lt;p>The server-side encryption in the S3 client used by the chunks storage can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;h2 id="other-storages">Other storages&lt;/h2>
+&lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
 &lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
 &lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.

@@ -130,23 +130,22 @@ func TestLimitsLoadingFromJson(t *testing.T) {
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	limits := reflect.TypeOf(Limits{})
 	n := limits.NumField()
-
-	yamlTags := 0
-	jsonTags := 0
+	var mismatch []string
 
 	for i := 0; i < n; i++ {
 		field := limits.Field(i)
 
-		if field.Tag.Get("yaml") != "" {
-			yamlTags++
-		}
+		// Note that we aren't requiring YAML and JSON tags to match, just that
+		// they either both exist or both don't exist.
+		hasYamlTag := field.Tag.Get("yaml") != ""
+		hasJsonTag := field.Tag.Get("json") != ""
 
-		if field.Tag.Get("json") != "" {
-			jsonTags++
+		if hasYamlTag != hasJsonTag {
+			mismatch = append(mismatch, field.Name)
 		}
 	}
 
-	assert.Equal(t, yamlTags, jsonTags, "number of yaml and json tags should match")
+	assert.Empty(t, mismatch, "expected no mismatched JSON and YAML tags")
 }
 
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {

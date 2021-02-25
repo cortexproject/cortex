@@ -39,7 +39,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.52
 	github.com/oklog/ulid v1.3.1
-	github.com/opentracing-contrib/go-grpc v0.0.0-20180928155321-4b5a12d3ff02
+	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
@@ -89,9 +89,6 @@ replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver v2.4.
 
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-
-// Fix a panic (see: https://github.com/opentracing-contrib/go-grpc/pull/12)
-replace github.com/opentracing-contrib/go-grpc => github.com/pracucci/go-grpc v0.0.0-20201022134131-ef559b8db645
 
 // Pin github.com/go-openapi versions to match Prometheus alertmanager to avoid
 // breaking changing affecting the alertmanager.

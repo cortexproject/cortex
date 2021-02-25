@@ -729,7 +729,7 @@ through the following config parameters:&lt;/p>
 &lt;p>Cortex currently supports shuffle sharding in the following services:&lt;/p>
 &lt;ul>
 &lt;li>&lt;a href="#ingesters-shuffle-sharding">Ingesters&lt;/a>&lt;/li>
-&lt;li>&lt;a href="#query-frontend-shuffle-sharding">Query-frontend&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#query-frontend-and-query-scheduler-shuffle-sharding">Query-frontend / Query-scheduler&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#store-gateway-shuffle-sharding">Store-gateway&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#ruler-shuffle-sharding">Ruler&lt;/a>&lt;/li>
 &lt;/ul>
@@ -748,15 +748,48 @@ When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt
 &lt;/ul>
 &lt;h3 id="ingesters-shuffle-sharding">Ingesters shuffle sharding&lt;/h3>
 &lt;p>By default the Cortex distributor spreads the received series across all running ingesters.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), the distributor spreads each tenant series across &lt;code>-distributor.ingestion-tenant-shard-size&lt;/code> number of ingesters.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> for the ingesters, the distributor and ruler on the &lt;strong>write path&lt;/strong> spread each tenant series across &lt;code>-distributor.ingestion-tenant-shard-size&lt;/code> number of ingesters, while on the &lt;strong>read path&lt;/strong> the querier and ruler queries only the subset of ingesters holding the series for a given tenant.&lt;/p>
 &lt;p>&lt;em>The shard size can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
-&lt;h3 id="query-frontend-shuffle-sharding">Query-frontend shuffle sharding&lt;/h3>
+&lt;h4 id="ingesters-write-path">Ingesters write path&lt;/h4>
+&lt;p>To enable shuffle-sharding for ingesters on the write path you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>distributor&lt;/strong>, &lt;strong>ingester&lt;/strong> and &lt;strong>ruler&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code>&lt;/li>
+&lt;li>&lt;code>-distributor.ingestion-tenant-shard-size=&amp;lt;size&amp;gt;&lt;/code>&lt;br />
+&lt;code>&amp;lt;size&amp;gt;&lt;/code> set to the number of ingesters each tenant series should be sharded to. If &lt;code>&amp;lt;size&amp;gt;&lt;/code> is greater than the number of available ingesters in the Cortex cluster, the tenant series are sharded across all ingesters.&lt;/li>
+&lt;/ul>
+&lt;h4 id="ingesters-read-path">Ingesters read path&lt;/h4>
+&lt;p>Assuming shuffle-sharding has been enabled for the write path, to enable shuffle-sharding for ingesters on the read path too you need to configure the following CLI flags (or their respective YAML config options) to &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code>&lt;/li>
+&lt;li>&lt;code>-distributor.ingestion-tenant-shard-size=&amp;lt;size&amp;gt;&lt;/code>&lt;/li>
+&lt;li>&lt;code>-querier.shuffle-sharding-ingesters-lookback-period=&amp;lt;period&amp;gt;&lt;/code>&lt;br />
+Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since &amp;lsquo;now - lookback period&amp;rsquo;. The configured lookback &lt;code>&amp;lt;period&amp;gt;&lt;/code> should be greater or equal than &lt;code>-querier.query-store-after&lt;/code> and &lt;code>-querier.query-ingesters-within&lt;/code> if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).&lt;/li>
+&lt;/ul>
+&lt;h4 id="rollout-strategy">Rollout strategy&lt;/h4>
+&lt;p>If you&amp;rsquo;re running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters memory:&lt;/p>
+&lt;ol>
+&lt;li>Enable ingesters shuffle-sharding on the &lt;strong>write path&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>Wait&lt;/strong> at least &lt;code>-querier.shuffle-sharding-ingesters-lookback-period&lt;/code> time&lt;/li>
+&lt;li>Enable ingesters shuffle-sharding on the &lt;strong>read path&lt;/strong>&lt;/li>
+&lt;/ol>
+&lt;h4 id="limitation-decreasing-the-tenant-shard-size">Limitation: decreasing the tenant shard size&lt;/h4>
+&lt;p>The current shuffle-sharding implementation in Cortex has a limitation which prevents to safely decrease the tenant shard size if the ingesters shuffle-sharding is enabled on the read path.&lt;/p>
+&lt;p>The problem is that if a tenant’s subring decreases in size, there is currently no way for the queriers and rulers to know how big the tenant subring was previously, and hence they will potentially miss an ingester with data for that tenant. In other words, the lookback mechanism to select the ingesters which may have received series since &amp;lsquo;now - lookback period&amp;rsquo; doesn&amp;rsquo;t work correctly if the tenant shard size is decreased.&lt;/p>
+&lt;p>This is deemed an infrequent operation that we considered banning, but a workaround still exists:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Disable&lt;/strong> shuffle-sharding on the read path&lt;/li>
+&lt;li>&lt;strong>Decrease&lt;/strong> the configured tenant shard size&lt;/li>
+&lt;li>&lt;strong>Wait&lt;/strong> at least &lt;code>-querier.shuffle-sharding-ingesters-lookback-period&lt;/code> time&lt;/li>
+&lt;li>&lt;strong>Re-enable&lt;/strong> shuffle-sharding on the read path&lt;/li>
+&lt;/ol>
+&lt;h3 id="query-frontend-and-query-scheduler-shuffle-sharding">Query-frontend and Query-scheduler shuffle sharding&lt;/h3>
 &lt;p>By default all Cortex queriers can execute received queries for given tenant.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-tenant&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant. Note that this distribution happens in query-frontend, or query-scheduler if used. When using query-scheduler, &lt;code>-frontend.max-queriers-per-tenant&lt;/code> option must be set for query-scheduler component. When not using query-frontend (with or without scheduler), this option is not available.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-tenant&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant.&lt;/p>
+&lt;p>Note that this distribution happens in query-frontend, or query-scheduler if used. When using query-scheduler, &lt;code>-frontend.max-queriers-per-tenant&lt;/code> option must be set for query-scheduler component. When not using query-frontend (with or without scheduler), this option is not available.&lt;/p>
 &lt;p>&lt;em>The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
 &lt;h3 id="store-gateway-shuffle-sharding">Store-gateway shuffle sharding&lt;/h3>
 &lt;p>The Cortex store-gateway &amp;ndash; used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> &amp;ndash; by default spreads each tenant&amp;rsquo;s blocks across all running store-gateways.&lt;/p>
-&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances.&lt;/p>
+&lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances. This configuration needs to be set to &lt;strong>store-gateway&lt;/strong>, &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>.&lt;/p>
 &lt;p>&lt;em>The shard size can be overridden on a per-tenant basis setting &lt;code>store_gateway_tenant_shard_size&lt;/code> in the limits overrides configuration.&lt;/em>&lt;/p>
 &lt;p>&lt;em>Please check out the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p>
 &lt;h3 id="ruler-shuffle-sharding">Ruler shuffle sharding&lt;/h3>

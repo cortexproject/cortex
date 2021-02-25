@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"google.golang.org/grpc/naming"
 
+	"github.com/cortexproject/cortex/pkg/util/naming"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 

@@ -27,16 +27,18 @@ import (
 const (
 	CacheBackendMemcached = "memcached"
 	CacheBackendRedis     = "redis"
+	CacheBackendInmemory  = "inmemory"
 )
 
 var (
-	supportedCacheBackends = []string{CacheBackendMemcached, CacheBackendRedis}
+	supportedCacheBackends = []string{CacheBackendMemcached, CacheBackendRedis, CacheBackendInmemory}
 )
 
 type CacheBackend struct {
 	Backend   string                 `yaml:"backend"`
 	Memcached MemcachedClientConfig  `yaml:"memcached"`
 	Redis     chunkCache.RedisConfig `yaml:"redis"`
+	InMemory  InMemoryCacheConfig    `yaml:"inmemory"`
 }
 
 // Validate the config.
@@ -52,6 +54,8 @@ func (cfg *CacheBackend) Validate() error {
 		}
 	case CacheBackendRedis:
 		// redis config not provide validation
+	case CacheBackendInmemory:
+		// inmemory config not provide validation
 	}
 
 	return nil
@@ -71,6 +75,7 @@ func (cfg *ChunksCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, "Cache config for chunks in blocks storage. ", f)
+	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix)
 
 	f.Int64Var(&cfg.SubrangeSize, prefix+"subrange-size", 16000, "Size of each subrange that bucket object is split into for better caching.")
 	f.IntVar(&cfg.MaxGetRangeRequests, prefix+"max-get-range-requests", 3, "Maximum number of sub-GetRange requests that a single GetRange request can be split into when fetching chunks. Zero or negative value = unlimited number of sub-requests.")
@@ -103,6 +108,7 @@ func (cfg *MetadataCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix 
 
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, "Cache config for metadata in blocks storage. ", f)
+	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix)
 
 	f.DurationVar(&cfg.TenantsListTTL, prefix+"tenants-list-ttl", 15*time.Minute, "How long to cache list of tenants in the bucket.")
 	f.DurationVar(&cfg.TenantBlocksListTTL, prefix+"tenant-blocks-list-ttl", 5*time.Minute, "How long to cache list of blocks for each tenant.")
@@ -180,6 +186,9 @@ func createCache(cacheName string, config CacheBackend, logger log.Logger, reg p
 	case CacheBackendRedis:
 		client := chunkCache.NewRedisClient(&config.Redis)
 		return NewRedisCache(cacheName, client, logger), nil
+
+	case CacheBackendInmemory:
+		return cache.NewInMemoryCacheWithConfig(cacheName, logger, reg, config.InMemory.ToThanosConfig())
 
 	default:
 		return nil, errors.Errorf("unsupported cache type for cache %s: %s", cacheName, config.Backend)

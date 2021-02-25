@@ -576,7 +576,7 @@ blocks_storage:
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached,
-      # redis.
+      # redis, inmemory.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
       [backend: <string> | default = ""]
 
@@ -627,6 +627,16 @@ blocks_storage:
       # blocks-storage.bucket-store.chunks-cache
       [redis: <redis_config>]
 
+      inmemory:
+        # The overall maximum size of stored in memory.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-size
+        [max_size: <int> | default = 262144000]
+
+        # The maximum size of an item stored in memory. Bigger items are not
+        # stored. Must specify a value less than max_size.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.inmemory.max-item-size
+        [max_item_size: <int> | default = 131072000]
+
       # Size of each subrange that bucket object is split into for better
       # caching.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -648,7 +658,7 @@ blocks_storage:
 
     metadata_cache:
       # Backend for metadata cache, if not empty. Supported values: memcached,
-      # redis.
+      # redis, inmemory.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
       [backend: <string> | default = ""]
 
@@ -698,6 +708,16 @@ blocks_storage:
       # The CLI flags prefix for this block config is:
       # blocks-storage.bucket-store.metadata-cache
       [redis: <redis_config>]
+
+      inmemory:
+        # The overall maximum size of stored in memory.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.inmemory.max-size
+        [max_size: <int> | default = 262144000]
+
+        # The maximum size of an item stored in memory. Bigger items are not
+        # stored. Must specify a value less than max_size.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.inmemory.max-item-size
+        [max_item_size: <int> | default = 131072000]
 
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl

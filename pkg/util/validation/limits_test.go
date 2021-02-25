@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -108,6 +110,42 @@ func TestLimitsLoadingFromYaml(t *testing.T) {
 
 	assert.Equal(t, 0.5, l.IngestionRate, "from yaml")
 	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+}
+
+func TestLimitsLoadingFromJson(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
+		MaxLabelNameLength: 100,
+	})
+
+	inp := `{"ingestion_rate": 0.5}`
+
+	l := Limits{}
+	err := json.Unmarshal([]byte(inp), &l)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0.5, l.IngestionRate, "from json")
+	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+}
+
+func TestLimitsTagsYamlMatchJson(t *testing.T) {
+	limits := reflect.TypeOf(Limits{})
+	n := limits.NumField()
+	var mismatch []string
+
+	for i := 0; i < n; i++ {
+		field := limits.Field(i)
+
+		// Note that we aren't requiring YAML and JSON tags to match, just that
+		// they either both exist or both don't exist.
+		hasYAMLTag := field.Tag.Get("yaml") != ""
+		hasJSONTag := field.Tag.Get("json") != ""
+
+		if hasYAMLTag != hasJSONTag {
+			mismatch = append(mismatch, field.Name)
+		}
+	}
+
+	assert.Empty(t, mismatch, "expected no mismatched JSON and YAML tags")
 }
 
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {

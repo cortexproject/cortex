@@ -27,7 +27,7 @@ The procedure to adopt when scaling down ingesters depends on your Cortex setup:
 
 ### Blocks storage
 
-When Cortex is running the [blocks storage](../blocks-storage/_index.md), ingesters don't flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush series to blocks and upload them to the long-term storage before the ingester terminates.
+When Cortex is running the [blocks storage](../blocks-storage/_index.md), ingesters don't flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.
 
 Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven't been discovered yet.
 

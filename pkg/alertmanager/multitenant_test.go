@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -45,12 +45,12 @@ receivers:
 
 // basic easily configurable mock
 type mockAlertStore struct {
-	configs     map[string]alerts.AlertConfigDesc
+	configs     map[string]alertspb.AlertConfigDesc
 	OnList      func()
 	WithListErr error
 }
 
-func (m *mockAlertStore) ListAlertConfigs(_ context.Context) (map[string]alerts.AlertConfigDesc, error) {
+func (m *mockAlertStore) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	if m.OnList != nil {
 		m.OnList()
 	}
@@ -62,11 +62,11 @@ func (m *mockAlertStore) ListAlertConfigs(_ context.Context) (map[string]alerts.
 	return m.configs, nil
 }
 
-func (m *mockAlertStore) GetAlertConfig(_ context.Context, _ string) (alerts.AlertConfigDesc, error) {
-	return alerts.AlertConfigDesc{}, fmt.Errorf("not implemented")
+func (m *mockAlertStore) GetAlertConfig(_ context.Context, _ string) (alertspb.AlertConfigDesc, error) {
+	return alertspb.AlertConfigDesc{}, fmt.Errorf("not implemented")
 }
 
-func (m *mockAlertStore) SetAlertConfig(_ context.Context, cfg alerts.AlertConfigDesc) error {
+func (m *mockAlertStore) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) error {
 	m.configs[cfg.User] = cfg
 	return nil
 }
@@ -104,16 +104,16 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 
 func TestLoadAllConfigs(t *testing.T) {
 	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{
+		configs: map[string]alertspb.AlertConfigDesc{
 			"user1": {
 				User:      "user1",
 				RawConfig: simpleConfigOne,
-				Templates: []*alerts.TemplateDesc{},
+				Templates: []*alertspb.TemplateDesc{},
 			},
 			"user2": {
 				User:      "user2",
 				RawConfig: simpleConfigOne,
-				Templates: []*alerts.TemplateDesc{},
+				Templates: []*alertspb.TemplateDesc{},
 			},
 		},
 	}
@@ -140,10 +140,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
-	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+	mockStore.configs["user3"] = alertspb.AlertConfigDesc{
 		User:      "user3",
 		RawConfig: simpleConfigOne,
-		Templates: []*alerts.TemplateDesc{},
+		Templates: []*alertspb.TemplateDesc{},
 	}
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
@@ -159,10 +159,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure the config is updated
-	mockStore.configs["user1"] = alerts.AlertConfigDesc{
+	mockStore.configs["user1"] = alertspb.AlertConfigDesc{
 		User:      "user1",
 		RawConfig: simpleConfigTwo,
-		Templates: []*alerts.TemplateDesc{},
+		Templates: []*alertspb.TemplateDesc{},
 	}
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
@@ -191,10 +191,10 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
-	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+	mockStore.configs["user3"] = alertspb.AlertConfigDesc{
 		User:      "user3",
 		RawConfig: simpleConfigOne,
-		Templates: []*alerts.TemplateDesc{},
+		Templates: []*alertspb.TemplateDesc{},
 	}
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
@@ -230,7 +230,7 @@ func TestAlertmanager_NoExternalURL(t *testing.T) {
 func TestAlertmanager_ServeHTTP(t *testing.T) {
 	amConfig := mockAlertmanagerConfig(t)
 	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
+		configs: map[string]alertspb.AlertConfigDesc{},
 	}
 
 	externalURL := flagext.URLValue{}
@@ -262,10 +262,10 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	}
 
 	// Create a configuration for the user in storage.
-	mockStore.configs["user1"] = alerts.AlertConfigDesc{
+	mockStore.configs["user1"] = alertspb.AlertConfigDesc{
 		User:      "user1",
 		RawConfig: simpleConfigTwo,
-		Templates: []*alerts.TemplateDesc{},
+		Templates: []*alertspb.TemplateDesc{},
 	}
 
 	// Make the alertmanager pick it up.
@@ -332,7 +332,7 @@ func verify404(ctx context.Context, t *testing.T, am *MultitenantAlertmanager, m
 func TestAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
 	amConfig := mockAlertmanagerConfig(t)
 	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
+		configs: map[string]alertspb.AlertConfigDesc{},
 	}
 
 	externalURL := flagext.URLValue{}
@@ -441,7 +441,7 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 			amConfig.ShardingEnabled = true
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
+				configs: map[string]alertspb.AlertConfigDesc{},
 			}
 
 			// Setup the initial instance state in the ring.
@@ -543,7 +543,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 			ctx := context.Background()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
+				configs: map[string]alertspb.AlertConfigDesc{},
 			}
 
 			var instances []*MultitenantAlertmanager
@@ -553,10 +553,10 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 			// First, add the number of configs to the store.
 			for i := 1; i <= tt.configs; i++ {
 				u := fmt.Sprintf("u-%d", i)
-				mockStore.configs[u] = alerts.AlertConfigDesc{
+				mockStore.configs[u] = alertspb.AlertConfigDesc{
 					User:      u,
 					RawConfig: simpleConfigOne,
-					Templates: []*alerts.TemplateDesc{},
+					Templates: []*alertspb.TemplateDesc{},
 				}
 			}
 
@@ -732,7 +732,7 @@ func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
+				configs: map[string]alertspb.AlertConfigDesc{},
 			}
 
 			reg := prometheus.NewPedanticRegistry()
@@ -788,7 +788,7 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
+		configs: map[string]alertspb.AlertConfigDesc{},
 	}
 
 	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
@@ -822,7 +822,7 @@ func TestAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	amConfig.ShardingEnabled = true
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	mockStore := &mockAlertStore{
-		configs:     map[string]alerts.AlertConfigDesc{},
+		configs:     map[string]alertspb.AlertConfigDesc{},
 		WithListErr: fmt.Errorf("a fetch list failure"),
 	}
 

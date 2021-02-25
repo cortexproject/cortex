@@ -1,4 +1,4 @@
-package alertmanager
+package alertstore
 
 import (
 	"context"
@@ -7,10 +7,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/configdb"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/local"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts/objectclient"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/configdb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
@@ -18,16 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
 
-// AlertStore stores and configures users rule configs
-type AlertStore interface {
-	ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error)
-	GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error)
-	SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error
-	DeleteAlertConfig(ctx context.Context, user string) error
-}
-
-// AlertStoreConfig configures the alertmanager backend
-type AlertStoreConfig struct {
+// Config configures the alertmanager backend
+type Config struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
 
@@ -39,7 +30,7 @@ type AlertStoreConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
 	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
@@ -50,7 +41,7 @@ func (cfg *AlertStoreConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-func (cfg *AlertStoreConfig) Validate() error {
+func (cfg *Config) Validate() error {
 	if err := cfg.Azure.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
@@ -61,7 +52,7 @@ func (cfg *AlertStoreConfig) Validate() error {
 }
 
 // NewAlertStore returns a new rule storage backend poller and store
-func NewAlertStore(cfg AlertStoreConfig) (AlertStore, error) {
+func NewAlertStore(cfg Config) (AlertStore, error) {
 	switch cfg.Type {
 	case "configdb":
 		c, err := client.New(cfg.ConfigDB)

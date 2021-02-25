@@ -4,6 +4,7 @@ package alerts;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
+option go_package = "alertspb";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 

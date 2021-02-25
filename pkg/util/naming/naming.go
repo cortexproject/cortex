@@ -4,7 +4,6 @@ package naming
 
 // Operation defines the corresponding operations for a name resolution change.
 //
-// Deprecated: please use package resolver.
 type Operation uint8
 
 const (
@@ -16,8 +15,6 @@ const (
 
 // Update defines a name resolution update. Notice that it is not valid having both
 // empty string Addr and nil Metadata in an Update.
-//
-// Deprecated: please use package resolver.
 type Update struct {
 	// Op indicates the operation of the update.
 	Op Operation
@@ -30,15 +27,12 @@ type Update struct {
 
 // Resolver creates a Watcher for a target to track its resolution changes.
 //
-// Deprecated: please use package resolver.
 type Resolver interface {
 	// Resolve creates a Watcher for target.
 	Resolve(target string) (Watcher, error)
 }
 
 // Watcher watches for the updates on the specified target.
-//
-// Deprecated: please use package resolver.
 type Watcher interface {
 	// Next blocks until an update or error happens. It may return one or more
 	// updates. The first call should get the full set of the results. It should

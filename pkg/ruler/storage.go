@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -16,9 +17,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	configClient "github.com/cortexproject/cortex/pkg/configs/client"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/local"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -33,7 +37,7 @@ type RuleStoreConfig struct {
 	Swift openstack.SwiftConfig   `yaml:"swift"`
 	Local local.Config            `yaml:"local"`
 
-	mock rules.RuleStore `yaml:"-"`
+	mock rulestore.RuleStore `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -68,7 +72,7 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 }
 
 // NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rules.RuleStore, error) {
+func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -86,7 +90,7 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger lo
 		if err != nil {
 			return nil, err
 		}
-		return rules.NewConfigRuleStore(c), nil
+		return configdb.NewConfigRuleStore(c), nil
 	case "azure":
 		client, err = azure.NewBlobStorage(&cfg.Azure)
 	case "gcs":
@@ -106,4 +110,29 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger lo
 	}
 
 	return objectclient.NewRuleStore(client, loadRulesConcurrency, logger), nil
+}
+
+// NewRuleStore creates a new bucket client based on the configured backend
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
+	if cfg.Backend == rulestore.ConfigDB {
+		c, err := client.New(cfg.ConfigDB)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return configdb.NewConfigRuleStore(c), nil
+	}
+
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, rulestore.Name, logger, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	store := bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
 }

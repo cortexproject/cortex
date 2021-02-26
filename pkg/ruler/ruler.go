@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -168,7 +169,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
-	SyncRuleGroups(ctx context.Context, ruleGroups map[string]store.RuleGroupList)
+	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulestore.RuleGroupList)
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
@@ -210,7 +211,7 @@ type Ruler struct {
 	lifecycler  *ring.BasicLifecycler
 	ring        *ring.Ring
 	subservices *services.Manager
-	store       rules.RuleStore
+	store       rulestore.RuleStore
 	manager     MultiTenantManager
 	limits      RulesLimits
 
@@ -222,7 +223,7 @@ type Ruler struct {
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
-func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rules.RuleStore, limits RulesLimits) (*Ruler, error) {
+func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
 	ruler := &Ruler{
 		cfg:      cfg,
 		store:    ruleStore,
@@ -455,7 +456,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 
-func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRules(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	switch {
 	case !r.cfg.EnableSharding:
 		return r.listRulesNoSharding(ctx)
@@ -471,17 +472,17 @@ func (r *Ruler) listRules(ctx context.Context) (map[string]rules.RuleGroupList, 
 	}
 }
 
-func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	return r.store.ListAllRuleGroups(ctx)
 }
 
-func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	configs, err := r.store.ListAllRuleGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	filteredConfigs := make(map[string]rules.RuleGroupList)
+	filteredConfigs := make(map[string]rulestore.RuleGroupList)
 	for userID, groups := range configs {
 		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
@@ -491,7 +492,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rules.
 	return filteredConfigs, nil
 }
 
-func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	users, err := r.store.ListAllUsers(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to list users of ruler")
@@ -525,7 +526,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rules.
 	close(userCh)
 
 	mu := sync.Mutex{}
-	result := map[string]rules.RuleGroupList{}
+	result := map[string]rulestore.RuleGroupList{}
 
 	concurrency := loadRulesConcurrency
 	if len(userRings) < concurrency {

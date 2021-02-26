@@ -32,13 +32,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
+func defaultRulerConfig(store rulestore.RuleStore) (Config, func()) {
 	// Create a new temporary directory for the rules, so that
 	// each test will run in isolation.
 	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
@@ -257,15 +258,15 @@ func TestSharding(t *testing.T) {
 	user2Group1Token := tokenForGroup(user2Group1)
 	user3Group1Token := tokenForGroup(user3Group1)
 
-	noRules := map[string]rules.RuleGroupList{}
-	allRules := map[string]rules.RuleGroupList{
+	noRules := map[string]rulestore.RuleGroupList{}
+	allRules := map[string]rulestore.RuleGroupList{
 		user1: {user1Group1, user1Group2},
 		user2: {user2Group1},
 		user3: {user3Group1},
 	}
 
 	// ruler ID -> (user ID -> list of groups).
-	type expectedRulesMap map[string]map[string]rules.RuleGroupList
+	type expectedRulesMap map[string]map[string]rulestore.RuleGroupList
 
 	type testCase struct {
 		sharding         bool
@@ -317,12 +318,12 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
 
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user1: {user1Group2},
 					user3: {user3Group1},
 				},
@@ -345,7 +346,7 @@ func TestSharding(t *testing.T) {
 
 			expectedRules: expectedRulesMap{
 				// This ruler doesn't get rules from unhealthy ruler (RF=1).
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
@@ -443,10 +444,10 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -464,13 +465,13 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 				},
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user1: {user1Group2},
 				},
-				ruler3: map[string]rules.RuleGroupList{
+				ruler3: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -488,11 +489,11 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
 				ruler2: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
-				ruler3: map[string]rules.RuleGroupList{
+				ruler3: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -579,7 +580,7 @@ func TestSharding(t *testing.T) {
 					require.NoError(t, err)
 					// Normalize nil map to empty one.
 					if loaded == nil {
-						loaded = map[string]rules.RuleGroupList{}
+						loaded = map[string]rulestore.RuleGroupList{}
 					}
 					expected[id] = loaded
 				}

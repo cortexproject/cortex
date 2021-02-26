@@ -19,7 +19,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 )
 
 type testGroup struct {
@@ -28,7 +29,7 @@ type testGroup struct {
 }
 
 func TestListRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rules.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup"}},
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup"}},
@@ -103,7 +104,7 @@ func TestListRules(t *testing.T) {
 }
 
 func TestLoadRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rules.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
 				For:    model.Duration(5 * time.Minute),
@@ -170,7 +171,7 @@ func TestLoadRules(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rules.RuleStore, bucketClient interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, bucketClient interface{}) {
 		groups := []testGroup{
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "2"}},
@@ -225,12 +226,12 @@ func TestDelete(t *testing.T) {
 
 		{
 			// Trying to delete empty namespace again will result in error.
-			require.Equal(t, rules.ErrGroupNamespaceNotFound, rs.DeleteNamespace(context.Background(), "user1", ""))
+			require.Equal(t, rulestore.ErrGroupNamespaceNotFound, rs.DeleteNamespace(context.Background(), "user1", ""))
 		}
 	})
 }
 
-func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rules.RuleStore, bucketClient interface{})) {
+func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
 	legacyClient := chunk.NewMockStorage()
 	legacyStore := objectclient.NewRuleStore(legacyClient, 5, log.NewNopLogger())
 
@@ -238,7 +239,7 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rules.Rul
 	bucketStore := NewBucketRuleStore(bucketClient, nil, log.NewNopLogger())
 
 	stores := map[string]struct {
-		store  rules.RuleStore
+		store  rulestore.RuleStore
 		client interface{}
 	}{
 		"legacy": {store: legacyStore, client: legacyClient},

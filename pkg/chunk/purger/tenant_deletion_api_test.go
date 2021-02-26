@@ -17,7 +17,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/ruler/rules/objectclient"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -180,7 +181,7 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *TenantDeletionAPI
 	require.Equal(t, expected, deleteResp.RuleGroupsDeleted)
 }
 
-func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rules.RuleStore) {
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rulestore.RuleStore) {
 	obj := chunk.NewMockStorage()
 	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
 
@@ -198,7 +199,7 @@ type ruleGroupKey struct {
 }
 
 type readOnlyRuleStore struct {
-	rules.RuleStore
+	rulestore.RuleStore
 }
 
 func (r *readOnlyRuleStore) SupportsModifications() bool {

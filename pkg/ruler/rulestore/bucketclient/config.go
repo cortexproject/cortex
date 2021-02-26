@@ -1,4 +1,4 @@
-package rulestore
+package bucketclient
 
 import (
 	"context"

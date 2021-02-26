@@ -47,7 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -116,7 +116,7 @@ type Config struct {
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler          ruler.Config                               `yaml:"ruler"`
-	RulerStorage   rulestore.Config                           `yaml:"ruler_storage"`
+	RulerStorage   bucketclient.Config                        `yaml:"ruler_storage"`
 	Configs        configs.Config                             `yaml:"configs"`
 	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`

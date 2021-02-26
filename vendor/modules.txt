@@ -352,7 +352,7 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.0
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.2
+# github.com/minio/minio-go/v7 v7.0.10
 ## explicit
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
@@ -519,6 +519,8 @@ github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/web/api/v1
 # github.com/rs/cors v1.7.0
 github.com/rs/cors
+# github.com/rs/xid v1.2.1
+github.com/rs/xid
 # github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b => github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
@@ -554,7 +556,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20210224074000-659446cab117
+# github.com/thanos-io/thanos v0.13.1-0.20210226093915-2027fb3098e5
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -572,6 +574,7 @@ github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/http
+github.com/thanos-io/thanos/pkg/metadata/metadatapb
 github.com/thanos-io/thanos/pkg/model
 github.com/thanos-io/thanos/pkg/objstore
 github.com/thanos-io/thanos/pkg/objstore/azure

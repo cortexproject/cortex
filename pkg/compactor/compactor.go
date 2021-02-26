@@ -163,7 +163,7 @@ func (cfg *Config) Validate() error {
 // ConfigProvider defines the per-tenant config provider for the Compactor.
 type ConfigProvider interface {
 	bucket.TenantConfigProvider
-	CompactorRetentionPeriod(user string) time.Duration
+	CompactorBlocksRetentionPeriod(user string) time.Duration
 }
 
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.

@@ -411,18 +411,22 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 
 // applyUserRetentionPeriod marks blocks for deletion which have aged past the retention period.
 func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, userID string, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
-	retention := c.cfgProvider.CompactorRetentionPeriod(userID)
-	now := time.Now()
+	retention := c.cfgProvider.CompactorBlocksRetentionPeriod(userID)
+
+	// The retention period of zero is a special value indicating to never delete.
+	if retention <= 0 {
+		return
+	}
 
 	level.Debug(userLogger).Log("msg", "applying retention", "retention", retention.String())
-	blocks := listBlocksOutsideRetentionPeriod(idx, now, retention)
+	blocks := listBlocksOutsideRetentionPeriod(idx, time.Now(), retention)
 
 	// Attempt to mark all blocks. It is not critical if a marking fails, as
 	// the cleaner will retry applying the retention in its next cycle.
 	for _, b := range blocks {
 		level.Info(userLogger).Log("msg", "applied retention: marking block for deletion", "block", b.ID, "maxTime", b.MaxTime)
 		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion); err != nil {
-			level.Warn(userLogger).Log("msg", "failed to mark block", "block", b.ID, "err", err)
+			level.Warn(userLogger).Log("msg", "failed to mark block for deletion", "block", b.ID, "err", err)
 		}
 	}
 }
@@ -430,11 +434,6 @@ func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucke
 // listBlocksOutsideRetentionPeriod determines the blocks which have aged past
 // the specified retention period, and are not already marked for deletion.
 func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, now time.Time, retention time.Duration) (result bucketindex.Blocks) {
-	// The retention period of zero is a special value indicating to never delete.
-	if retention <= 0 {
-		return
-	}
-
 	// Whilst re-marking a block is not harmful, it is wasteful and generates
 	// a warning log message. Use the block deletion marks already in-memory
 	// to prevent marking blocks already marked for deletion.

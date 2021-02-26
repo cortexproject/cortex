@@ -426,12 +426,8 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, idx.Blocks.GetULIDs())
 
-	// Disabled (zero retention period)
-	result := listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 0)
-	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
-
 	// Excessive retention period (wrapping epoch)
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), time.Hour)
+	result := listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), time.Hour)
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
 	// Normal operation - varying retention period.
@@ -667,7 +663,7 @@ func newMockConfigProvider() *mockConfigProvider {
 	}
 }
 
-func (m *mockConfigProvider) CompactorRetentionPeriod(user string) time.Duration {
+func (m *mockConfigProvider) CompactorBlocksRetentionPeriod(user string) time.Duration {
 	if result, ok := m.userRetentionPeriods[user]; ok {
 		return result
 	}

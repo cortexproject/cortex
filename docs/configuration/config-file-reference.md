@@ -3754,7 +3754,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Delete blocks containing samples older than the specified retention period. 0
 # to disable.
-# CLI flag: -compactor.retention-period
+# CLI flag: -compactor.blocks-retention-period
 [compactor_blocks_retention_period: <duration> | default = 0s]
 
 # S3 server-side encryption type. Required to enable server-side encryption

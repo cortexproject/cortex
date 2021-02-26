@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
@@ -108,12 +108,12 @@ func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulestore.RuleGr
 }
 
 // GetRuleGroup implements RuleStore
-func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error) {
+func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error) {
 	return nil, errors.New("GetRuleGroup unsupported in rule local store")
 }
 
 // SetRuleGroup implements RuleStore
-func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error {
+func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error {
 	return errors.New("SetRuleGroup unsupported in rule local store")
 }
 
@@ -174,7 +174,7 @@ func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID
 	var list rulestore.RuleGroupList
 
 	for _, group := range rulegroups.Groups {
-		desc := rules.ToProto(userID, namespace, group)
+		desc := rulespb.ToProto(userID, namespace, group)
 		list = append(list, desc)
 	}
 

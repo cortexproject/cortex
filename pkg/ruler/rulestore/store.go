@@ -6,7 +6,7 @@ import (
 
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
 var (
@@ -36,8 +36,8 @@ type RuleStore interface {
 	// Reason is that some implementations don't do anything, since their List method already loads the rules.
 	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]RuleGroupList) error
 
-	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error)
-	SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error
+	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error)
+	SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error
 
 	// DeleteRuleGroup deletes single rule group.
 	DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error
@@ -51,7 +51,7 @@ type RuleStore interface {
 }
 
 // RuleGroupList contains a set of rule groups
-type RuleGroupList []*rules.RuleGroupDesc
+type RuleGroupList []*rulespb.RuleGroupDesc
 
 // Formatted returns the rule group list as a set of formatted rule groups mapped
 // by namespace
@@ -59,10 +59,10 @@ func (l RuleGroupList) Formatted() map[string][]rulefmt.RuleGroup {
 	ruleMap := map[string][]rulefmt.RuleGroup{}
 	for _, g := range l {
 		if _, exists := ruleMap[g.Namespace]; !exists {
-			ruleMap[g.Namespace] = []rulefmt.RuleGroup{rules.FromProto(g)}
+			ruleMap[g.Namespace] = []rulefmt.RuleGroup{rulespb.FromProto(g)}
 			continue
 		}
-		ruleMap[g.Namespace] = append(ruleMap[g.Namespace], rules.FromProto(g))
+		ruleMap[g.Namespace] = append(ruleMap[g.Namespace], rulespb.FromProto(g))
 
 	}
 	return ruleMap

@@ -21,7 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	store "github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
@@ -19,11 +19,11 @@ var (
 	interval, _         = time.ParseDuration("1m")
 	mockRulesNamespaces = map[string]rulestore.RuleGroupList{
 		"user1": {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "namespace1",
 				User:      "user1",
-				Rules: []*rules.RuleDesc{
+				Rules: []*rulespb.RuleDesc{
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
@@ -35,11 +35,11 @@ var (
 				},
 				Interval: interval,
 			},
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "fail",
 				Namespace: "namespace2",
 				User:      "user1",
-				Rules: []*rules.RuleDesc{
+				Rules: []*rulespb.RuleDesc{
 					{
 						Record: "UP2_RULE",
 						Expr:   "up",
@@ -55,11 +55,11 @@ var (
 	}
 	mockRules = map[string]rulestore.RuleGroupList{
 		"user1": {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "namespace1",
 				User:      "user1",
-				Rules: []*rules.RuleDesc{
+				Rules: []*rulespb.RuleDesc{
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
@@ -73,11 +73,11 @@ var (
 			},
 		},
 		"user2": {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "namespace1",
 				User:      "user2",
-				Rules: []*rules.RuleDesc{
+				Rules: []*rulespb.RuleDesc{
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
@@ -90,11 +90,11 @@ var (
 
 	mockSpecialCharRules = map[string]rulestore.RuleGroupList{
 		"user1": {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      ")(_+?/|group1+/?",
 				Namespace: ")(_+?/|namespace1+/?",
 				User:      "user1",
-				Rules: []*rules.RuleDesc{
+				Rules: []*rulespb.RuleDesc{
 					{
 						Record: "UP_RULE",
 						Expr:   "up",
@@ -176,7 +176,7 @@ func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[str
 	return nil
 }
 
-func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rulespb.RuleGroupDesc, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -198,7 +198,7 @@ func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace
 	return nil, rulestore.ErrGroupNotFound
 }
 
-func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rules.RuleGroupDesc) error {
+func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rulespb.RuleGroupDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

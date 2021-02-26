@@ -31,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -230,7 +230,7 @@ func TestRuler_Rules(t *testing.T) {
 	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 }
 
-func compareRuleGroupDescToStateDesc(t *testing.T, expected *rules.RuleGroupDesc, got *GroupStateDesc) {
+func compareRuleGroupDescToStateDesc(t *testing.T, expected *rulespb.RuleGroupDesc, got *GroupStateDesc) {
 	require.Equal(t, got.Group.Name, expected.Name)
 	require.Equal(t, got.Group.Namespace, expected.Namespace)
 	require.Len(t, expected.Rules, len(got.ActiveRules))
@@ -247,10 +247,10 @@ func TestSharding(t *testing.T) {
 		user3 = "user3"
 	)
 
-	user1Group1 := &rules.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
-	user1Group2 := &rules.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second"}
-	user2Group1 := &rules.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first"}
-	user3Group1 := &rules.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first"}
+	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
+	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second"}
+	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first"}
+	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first"}
 
 	// Must be distinct for test to work.
 	user1Group1Token := tokenForGroup(user1Group1)

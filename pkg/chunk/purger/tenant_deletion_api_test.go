@@ -16,7 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -187,7 +187,7 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockS
 
 	// "upload" rule groups
 	for _, key := range ruleGroups {
-		desc := rules.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
 		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
 	}
 

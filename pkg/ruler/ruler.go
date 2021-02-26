@@ -28,8 +28,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	store "github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	store "github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -365,7 +365,7 @@ func tokenForGroup(g *store.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rules.RuleGroupDesc, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
@@ -566,7 +566,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulest
 // but only ring passed as parameter.
 func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
-	var result []*rules.RuleGroupDesc
+	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
 		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
@@ -617,7 +617,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 		}
 
 		groupDesc := &GroupStateDesc{
-			Group: &rules.RuleGroupDesc{
+			Group: &rulespb.RuleGroupDesc{
 				Name:      group.Name(),
 				Namespace: string(decodedNamespace),
 				Interval:  interval,
@@ -652,7 +652,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					})
 				}
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Expr:        rule.Query().String(),
 						Alert:       rule.Name(),
 						For:         rule.HoldDuration(),
@@ -668,7 +668,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				}
 			case *promRules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
-					Rule: &rules.RuleDesc{
+					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
 						Expr:   rule.Query().String(),
 						Labels: client.FromLabelsToLabelAdapters(rule.Labels()),

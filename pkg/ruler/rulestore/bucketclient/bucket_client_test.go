@@ -18,7 +18,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 )
@@ -38,7 +38,7 @@ func TestListRules(t *testing.T) {
 		}
 
 		for _, g := range groups {
-			desc := rules.ToProto(g.user, g.namespace, g.ruleGroup)
+			desc := rulespb.ToProto(g.user, g.namespace, g.ruleGroup)
 			require.NoError(t, rs.SetRuleGroup(context.Background(), g.user, g.namespace, desc))
 		}
 
@@ -52,12 +52,12 @@ func TestListRules(t *testing.T) {
 			allGroupsMap, err := rs.ListAllRuleGroups(context.Background())
 			require.NoError(t, err)
 			require.Len(t, allGroupsMap, 2)
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user1", Namespace: "hello", Name: "first testGroup"},
 				{User: "user1", Namespace: "hello", Name: "second testGroup"},
 				{User: "user1", Namespace: "world", Name: "another namespace testGroup"},
 			}, allGroupsMap["user1"])
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user"},
 			}, allGroupsMap["user2"])
 		}
@@ -65,7 +65,7 @@ func TestListRules(t *testing.T) {
 		{
 			user1Groups, err := rs.ListRuleGroupsForUserAndNamespace(context.Background(), "user1", "")
 			require.NoError(t, err)
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user1", Namespace: "hello", Name: "first testGroup"},
 				{User: "user1", Namespace: "hello", Name: "second testGroup"},
 				{User: "user1", Namespace: "world", Name: "another namespace testGroup"},
@@ -75,7 +75,7 @@ func TestListRules(t *testing.T) {
 		{
 			helloGroups, err := rs.ListRuleGroupsForUserAndNamespace(context.Background(), "user1", "hello")
 			require.NoError(t, err)
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user1", Namespace: "hello", Name: "first testGroup"},
 				{User: "user1", Namespace: "hello", Name: "second testGroup"},
 			}, helloGroups)
@@ -96,7 +96,7 @@ func TestListRules(t *testing.T) {
 		{
 			user2Groups, err := rs.ListRuleGroupsForUserAndNamespace(context.Background(), "user2", "")
 			require.NoError(t, err)
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user"},
 			}, user2Groups)
 		}
@@ -116,7 +116,7 @@ func TestLoadRules(t *testing.T) {
 		}
 
 		for _, g := range groups {
-			desc := rules.ToProto(g.user, g.namespace, g.ruleGroup)
+			desc := rulespb.ToProto(g.user, g.namespace, g.ruleGroup)
 			require.NoError(t, rs.SetRuleGroup(context.Background(), g.user, g.namespace, desc))
 		}
 
@@ -126,12 +126,12 @@ func TestLoadRules(t *testing.T) {
 		{
 			require.NoError(t, err)
 			require.Len(t, allGroupsMap, 2)
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user1", Namespace: "hello", Name: "first testGroup"},
 				{User: "user1", Namespace: "hello", Name: "second testGroup"},
 				{User: "user1", Namespace: "world", Name: "another namespace testGroup"},
 			}, allGroupsMap["user1"])
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user"},
 			}, allGroupsMap["user2"])
 		}
@@ -144,8 +144,8 @@ func TestLoadRules(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, allGroupsMap, 2)
 
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
-				{User: "user1", Namespace: "hello", Name: "first testGroup", Interval: time.Minute, Rules: []*rules.RuleDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
+				{User: "user1", Namespace: "hello", Name: "first testGroup", Interval: time.Minute, Rules: []*rulespb.RuleDesc{
 					{
 						For:    5 * time.Minute,
 						Labels: []cortexpb.LabelAdapter{{Name: "label1", Value: "value1"}},
@@ -155,13 +155,13 @@ func TestLoadRules(t *testing.T) {
 				{User: "user1", Namespace: "world", Name: "another namespace testGroup", Interval: 1 * time.Hour},
 			}, allGroupsMap["user1"])
 
-			require.ElementsMatch(t, []*rules.RuleGroupDesc{
+			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user2", Namespace: "+-!@#$%. ", Name: "different user", Interval: 5 * time.Minute},
 			}, allGroupsMap["user2"])
 		}
 
 		// Loading group with mismatched info fails.
-		require.NoError(t, rs.SetRuleGroup(context.Background(), "user1", "hello", &rules.RuleGroupDesc{User: "user2", Namespace: "world", Name: "first testGroup"}))
+		require.NoError(t, rs.SetRuleGroup(context.Background(), "user1", "hello", &rulespb.RuleGroupDesc{User: "user2", Namespace: "world", Name: "first testGroup"}))
 		require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "mismatch between requested rule group and loaded rule group, requested: user=\"user1\", namespace=\"hello\", group=\"first testGroup\", loaded: user=\"user2\", namespace=\"world\", group=\"first testGroup\"")
 
 		// Load with missing rule groups fails.
@@ -182,7 +182,7 @@ func TestDelete(t *testing.T) {
 		}
 
 		for _, g := range groups {
-			desc := rules.ToProto(g.user, g.namespace, g.ruleGroup)
+			desc := rulespb.ToProto(g.user, g.namespace, g.ruleGroup)
 			require.NoError(t, rs.SetRuleGroup(context.Background(), g.user, g.namespace, desc))
 		}
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
@@ -62,7 +62,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 		}
 		for file, rgs := range rMap {
 			for _, rg := range rgs.Groups {
-				userRules = append(userRules, rules.ToProto(user, file, rg))
+				userRules = append(userRules, rulespb.ToProto(user, file, rg))
 			}
 		}
 		c.ruleGroupList[user] = userRules
@@ -113,12 +113,12 @@ func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 }
 
 // GetRuleGroup is not implemented
-func (c *ConfigRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error) {
+func (c *ConfigRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error) {
 	return nil, errors.New("not implemented by the config service rule store")
 }
 
 // SetRuleGroup is not implemented
-func (c *ConfigRuleStore) SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error {
+func (c *ConfigRuleStore) SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error {
 	return errors.New("not implemented by the config service rule store")
 }
 

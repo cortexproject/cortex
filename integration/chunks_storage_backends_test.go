@@ -25,7 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	cortex_swift "github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -282,12 +282,12 @@ func TestSwiftRuleStorage(t *testing.T) {
 	require.Equal(t, r2, rls[userID][0])
 }
 
-func newRuleGroup(userID, namespace, group string) *rules.RuleGroupDesc {
-	return &rules.RuleGroupDesc{
+func newRuleGroup(userID, namespace, group string) *rulespb.RuleGroupDesc {
+	return &rulespb.RuleGroupDesc{
 		Name:      group,
 		Interval:  time.Minute,
 		Namespace: namespace,
-		Rules: []*rules.RuleDesc{
+		Rules: []*rulespb.RuleDesc{
 			{
 				Expr:   fmt.Sprintf(`{%s="bar"}`, group),
 				Record: group + ":bar",

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
 func TestClient_LoadAllRuleGroups(t *testing.T) {
@@ -82,7 +82,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 		require.Equal(t, 2, len(actual))
 		// We rely on the fact that files are parsed in alphabetical order, and our namespace1 < namespace2.
-		require.Equal(t, rules.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
-		require.Equal(t, rules.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
+		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
+		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
 	}
 }

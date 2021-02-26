@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/util/naming"
+	"github.com/cortexproject/cortex/pkg/util/grpc/naming"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 

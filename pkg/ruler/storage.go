@@ -71,8 +71,10 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 	return cfg.Type == "configdb" && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
-// NewRuleStorage returns a new rule storage backend poller and store
-func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
+// NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
+// The client used by the function is based a legacy object store clients that shouldn't
+// be used anymore.
+func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -102,7 +104,7 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger lo
 	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
-		return nil, fmt.Errorf("Unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
+		return nil, fmt.Errorf("unrecognized rule storage mode %v, choose one of: configdb, gcs, s3, swift, azure, local", cfg.Type)
 	}
 
 	if err != nil {
@@ -112,7 +114,7 @@ func NewRuleStorage(cfg RuleStoreConfig, loader promRules.GroupLoader, logger lo
 	return objectclient.NewRuleStore(client, loadRulesConcurrency, logger), nil
 }
 
-// NewRuleStore creates a new bucket client based on the configured backend
+// NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == rulestore.ConfigDB {
 		c, err := client.New(cfg.ConfigDB)

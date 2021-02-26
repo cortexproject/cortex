@@ -243,7 +243,7 @@ func TestSwiftRuleStorage(t *testing.T) {
 
 	require.NoError(t, s.StartAndWaitReady(swift))
 
-	store, err := ruler.NewRuleStorage(ruler.RuleStoreConfig{
+	store, err := ruler.NewLegacyRuleStore(ruler.RuleStoreConfig{
 		Type:  "swift",
 		Swift: swiftConfig(swift),
 	}, nil, log.NewNopLogger())

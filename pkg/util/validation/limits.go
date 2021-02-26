@@ -87,7 +87,7 @@ type Limits struct {
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
 
 	// Compactor.
-	CompactorRetentionPeriod time.Duration `yaml:"compactor_blocks_retention_period"`
+	CompactorRetentionPeriod time.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.

@@ -98,5 +98,9 @@ func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfi
 
 // DeleteAlertConfig implements alertstore.AlertStore.
 func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
-	return a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
+	err := a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
+	if err == chunk.ErrStorageObjectNotFound {
+		return nil
+	}
+	return err
 }

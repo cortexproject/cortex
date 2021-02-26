@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/objectclient"
@@ -15,9 +18,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
-// LegacyConfig configures the alertmanager backend using the legacy storage clients.
+const (
+	ConfigDB = "configdb"
+)
+
+// LegacyConfig configures the alertmanager storage backend using the legacy storage clients.
 type LegacyConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
@@ -32,7 +40,7 @@ type LegacyConfig struct {
 // RegisterFlags registers flags.
 func (cfg *LegacyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", ConfigDB, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
 	cfg.Azure.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
@@ -78,4 +86,42 @@ func newLegacyObjAlertStore(client chunk.ObjectClient, err error) (AlertStore, e
 		return nil, err
 	}
 	return objectclient.NewAlertStore(client), nil
+}
+
+// Config configures a the alertmanager storage backend.
+type Config struct {
+	bucket.Config `yaml:",inline"`
+	ConfigDB      client.Config `yaml:"configdb"`
+}
+
+// RegisterFlags registers the backend storage config.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	prefix := "alertmanager-storage."
+
+	cfg.ExtraBackends = []string{ConfigDB}
+	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
+	cfg.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// NewAlertStore returns a rule store backend client based on the provided cfg.
+func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (AlertStore, error) {
+	if cfg.Backend == ConfigDB {
+		c, err := client.New(cfg.ConfigDB)
+		if err != nil {
+			return nil, err
+		}
+		return configdb.NewStore(c), nil
+	}
+
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "alertmanager-storage", logger, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	store := bucketclient.NewBucketAlertStore(bucketClient, cfgProvider, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return store, nil
 }

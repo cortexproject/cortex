@@ -55,7 +55,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	// Ensure NO KMS header has been injected.
 	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption"))
 	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-aws-kms-key-id"))
-	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-encryption-context"))
+	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-context"))
 
 	// Configure the config provider with a KMS key ID and without encryption context.
 	cfgProvider.s3SseType = s3.SSEKMS
@@ -67,7 +67,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	// Ensure the KMS header has been injected.
 	assert.Equal(t, "aws:kms", req.Header.Get("x-amz-server-side-encryption"))
 	assert.Equal(t, kmsKeyID, req.Header.Get("x-amz-server-side-encryption-aws-kms-key-id"))
-	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-encryption-context"))
+	assert.Equal(t, "", req.Header.Get("x-amz-server-side-encryption-context"))
 
 	// Configure the config provider with a KMS key ID and encryption context.
 	cfgProvider.s3SseType = s3.SSEKMS
@@ -80,7 +80,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	// Ensure the KMS header has been injected.
 	assert.Equal(t, "aws:kms", req.Header.Get("x-amz-server-side-encryption"))
 	assert.Equal(t, kmsKeyID, req.Header.Get("x-amz-server-side-encryption-aws-kms-key-id"))
-	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(kmsEncryptionContext)), req.Header.Get("x-amz-server-side-encryption-encryption-context"))
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(kmsEncryptionContext)), req.Header.Get("x-amz-server-side-encryption-context"))
 }
 
 type mockTenantConfigProvider struct {

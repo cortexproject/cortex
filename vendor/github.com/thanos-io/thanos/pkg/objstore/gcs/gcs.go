@@ -47,6 +47,11 @@ func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component st
 	if err := yaml.Unmarshal(conf, &gc); err != nil {
 		return nil, err
 	}
+
+	return NewBucketWithConfig(ctx, logger, gc, component)
+}
+
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
@@ -95,7 +100,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 
 	// If recursive iteration is enabled we should pass an empty delimiter.
 	delimiter := DirDelim
-	if !objstore.ApplyIterOptions(options...).Recursive {
+	if objstore.ApplyIterOptions(options...).Recursive {
 		delimiter = ""
 	}
 

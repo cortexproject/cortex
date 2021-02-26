@@ -17,8 +17,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 )
 
-// Config configures the alertmanager backend
-type Config struct {
+// LegacyConfig configures the alertmanager backend using the legacy storage clients.
+type LegacyConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
 
@@ -30,7 +30,7 @@ type Config struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+func (cfg *LegacyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
 	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
@@ -41,7 +41,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate() error {
+func (cfg *LegacyConfig) Validate() error {
 	if err := cfg.Azure.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
@@ -51,8 +51,8 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// NewAlertStore returns a new rule storage backend poller and store
-func NewAlertStore(cfg Config) (AlertStore, error) {
+// NewLegacyAlertStore returns a new rule storage backend poller and store
+func NewLegacyAlertStore(cfg LegacyConfig) (AlertStore, error) {
 	switch cfg.Type {
 	case "configdb":
 		c, err := client.New(cfg.ConfigDB)
@@ -61,11 +61,11 @@ func NewAlertStore(cfg Config) (AlertStore, error) {
 		}
 		return configdb.NewStore(c), nil
 	case "azure":
-		return newObjAlertStore(azure.NewBlobStorage(&cfg.Azure))
+		return newLegacyObjAlertStore(azure.NewBlobStorage(&cfg.Azure))
 	case "gcs":
-		return newObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
+		return newLegacyObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
 	case "s3":
-		return newObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
+		return newLegacyObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
 	case "local":
 		return local.NewStore(cfg.Local)
 	default:
@@ -73,7 +73,7 @@ func NewAlertStore(cfg Config) (AlertStore, error) {
 	}
 }
 
-func newObjAlertStore(client chunk.ObjectClient, err error) (AlertStore, error) {
+func newLegacyObjAlertStore(client chunk.ObjectClient, err error) (AlertStore, error) {
 	if err != nil {
 		return nil, err
 	}

@@ -112,8 +112,8 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store   alertstore.Config `yaml:"storage"`
-	Cluster ClusterConfig     `yaml:"cluster"`
+	Store   alertstore.LegacyConfig `yaml:"storage"`
+	Cluster ClusterConfig           `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
 
@@ -332,7 +332,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, logger log.L
 		go peer.Settle(context.Background(), cluster.DefaultGossipInterval)
 	}
 
-	store, err := alertstore.NewAlertStore(cfg.Store)
+	store, err := alertstore.NewLegacyAlertStore(cfg.Store)
 	if err != nil {
 		return nil, err
 	}

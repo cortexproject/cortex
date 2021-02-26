@@ -222,7 +222,7 @@ func TestAlertmanager_NoExternalURL(t *testing.T) {
 
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
-	_, err := NewMultitenantAlertmanager(amConfig, log.NewNopLogger(), reg)
+	_, err := NewMultitenantAlertmanager(amConfig, nil, log.NewNopLogger(), reg)
 
 	require.EqualError(t, err, "unable to create Alertmanager because the external URL has not been configured")
 }

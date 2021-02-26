@@ -59,6 +59,11 @@ func (cfg *LegacyConfig) Validate() error {
 	return nil
 }
 
+// IsDefaults returns true if the storage options have not been set.
+func (cfg *LegacyConfig) IsDefaults() bool {
+	return cfg.Type == ConfigDB && cfg.ConfigDB.ConfigsAPIURL.URL == nil
+}
+
 // NewLegacyAlertStore returns a new rule storage backend poller and store
 func NewLegacyAlertStore(cfg LegacyConfig) (AlertStore, error) {
 	switch cfg.Type {

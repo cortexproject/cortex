@@ -1287,8 +1287,8 @@ github.com/thanos-io/thanos v0.13.1-0.20210108102609-f85e4003ba51/go.mod h1:kPvI
 github.com/thanos-io/thanos v0.13.1-0.20210204123931-82545cdd16fe/go.mod h1:ZLDGYRNkgM+FCwYNOD+6tOV+DE2fpjzfV6iqXyOgFIw=
 github.com/thanos-io/thanos v0.13.1-0.20210224074000-659446cab117 h1:+rTDtekRPNMsLgCpReU13zJfBEScxGB+w0N4rHGWnRA=
 github.com/thanos-io/thanos v0.13.1-0.20210224074000-659446cab117/go.mod h1:kdqFpzdkveIKpNNECVJd75RPvgsAifQgJymwCdfev1w=
-github.com/thanos-io/thanos v0.13.1-0.20210226093915-2027fb3098e5 h1:5/zDK+wXZfFNOkYCKUk33AZNEmU0ev15dcG5G73/3FE=
-github.com/thanos-io/thanos v0.13.1-0.20210226093915-2027fb3098e5/go.mod h1:gMCy4oCteKTT7VuXVvXLTPGzzjovX1VPE5p+HgL1hyU=
+github.com/thanos-io/thanos v0.13.1-0.20210226164558-03dace0a1aa1 h1:ebr5jjRA6al28bNWhouwHC7hQqC1wexo2uac1+utOus=
+github.com/thanos-io/thanos v0.13.1-0.20210226164558-03dace0a1aa1/go.mod h1:gMCy4oCteKTT7VuXVvXLTPGzzjovX1VPE5p+HgL1hyU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/pretty v0.0.0-20180105212114-65a9db5fad51/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

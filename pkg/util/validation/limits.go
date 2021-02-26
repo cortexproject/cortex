@@ -87,7 +87,7 @@ type Limits struct {
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
 
 	// Compactor.
-	CompactorRetentionPeriod time.Duration `yaml:"compactor_retention_period"`
+	CompactorRetentionPeriod time.Duration `yaml:"compactor_blocks_retention_period"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -147,7 +147,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 
-	f.DurationVar(&l.CompactorRetentionPeriod, "compactor.retention-period", 0, "Delete data which is older than the specified retention period. 0 to disable.")
+	f.DurationVar(&l.CompactorRetentionPeriod, "compactor.retention-period", 0, "Delete blocks containing samples older than the specified retention period. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")

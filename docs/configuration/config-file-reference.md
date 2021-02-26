@@ -3752,9 +3752,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.tenant-shard-size
 [store_gateway_tenant_shard_size: <int> | default = 0]
 
-# Delete data which is older than the specified retention period. 0 to disable.
+# Delete blocks containing samples older than the specified retention period. 0
+# to disable.
 # CLI flag: -compactor.retention-period
-[compactor_retention_period: <duration> | default = 0s]
+[compactor_blocks_retention_period: <duration> | default = 0s]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

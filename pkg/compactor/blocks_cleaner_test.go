@@ -522,8 +522,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Existing behaviour - retention period disabled.
 
-	cfgProvider.UserRetentionPeriods["user-1"] = 0
-	cfgProvider.UserRetentionPeriods["user-2"] = 0
+	cfgProvider.userRetentionPeriods["user-1"] = 0
+	cfgProvider.userRetentionPeriods["user-2"] = 0
 
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 	assertBlocksExist(true, true, true, true)
@@ -548,7 +548,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled only for a single user, but does nothing.
 
-	cfgProvider.UserRetentionPeriods["user-1"] = 9 * time.Hour
+	cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
 
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 	assertBlocksExist(true, true, true, true)
@@ -556,7 +556,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	// Retention enabled only for a single user, marking a single block.
 	// Note the block won't be deleted yet due to deletion delay.
 
-	cfgProvider.UserRetentionPeriods["user-1"] = 7 * time.Hour
+	cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
 
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 	assertBlocksExist(true, true, true, true)
@@ -611,7 +611,7 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	// Retention enabled for other user; test deleting multiple blocks.
 
-	cfgProvider.UserRetentionPeriods["user-2"] = 5 * time.Hour
+	cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
 
 	require.NoError(t, cleaner.cleanUsers(ctx, false))
 	assertBlocksExist(false, true, false, false)
@@ -649,17 +649,17 @@ func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
 }
 
 type mockConfigProvider struct {
-	UserRetentionPeriods map[string]time.Duration
+	userRetentionPeriods map[string]time.Duration
 }
 
 func newMockConfigProvider() *mockConfigProvider {
 	return &mockConfigProvider{
-		UserRetentionPeriods: make(map[string]time.Duration),
+		userRetentionPeriods: make(map[string]time.Duration),
 	}
 }
 
 func (m *mockConfigProvider) CompactorRetentionPeriod(user string) time.Duration {
-	if result, ok := m.UserRetentionPeriods[user]; ok {
+	if result, ok := m.userRetentionPeriods[user]; ok {
 		return result
 	}
 	return 0

@@ -34,6 +34,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+const (
+	blocksMarkedForDeletionName = "cortex_compactor_blocks_marked_for_deletion_total"
+	blocksMarkedForDeletionHelp = "Total number of blocks marked for deletion in compactor."
+)
+
 var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
 	RingOp                = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
@@ -298,8 +303,8 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name:        "cortex_compactor_blocks_marked_for_deletion_total",
-			Help:        "Total number of blocks marked for deletion in compactor.",
+			Name:        blocksMarkedForDeletionName,
+			Help:        blocksMarkedForDeletionHelp,
 			ConstLabels: prometheus.Labels{"reason": "compaction"},
 		}),
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{

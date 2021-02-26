@@ -159,7 +159,7 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, amCfg alertmanager.MultitenantAlertmanagerConfig, target, apiEnabled bool) {
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
 	alertmanagerpb.RegisterAlertmanagerServer(a.server.GRPC, am)
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")

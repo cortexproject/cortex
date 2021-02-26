@@ -726,7 +726,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 		return
 	}
 
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 

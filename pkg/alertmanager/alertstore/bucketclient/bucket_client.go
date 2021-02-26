@@ -16,7 +16,7 @@ import (
 
 const (
 	// The bucket prefix under which all tenants alertmanager configs are stored.
-	alertsPrefix = "alerts/"
+	alertsPrefix = "alerts"
 )
 
 // BucketAlertStore is used to support the AlertStore interface against an object storage backend. It is implemented

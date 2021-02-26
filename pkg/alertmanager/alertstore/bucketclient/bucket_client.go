@@ -12,7 +12,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -94,7 +93,7 @@ func (s *BucketAlertStore) getAlertConfig(ctx context.Context, key string) (aler
 		return alertspb.AlertConfigDesc{}, err
 	}
 
-	defer runutil.CloseWithLogOnErr(util_log.Logger, readCloser, "close alertmanager config reader")
+	defer runutil.CloseWithLogOnErr(s.logger, readCloser, "close alertmanager config reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {

@@ -65,32 +65,37 @@ func (cfg *LegacyConfig) IsDefaults() bool {
 }
 
 // NewLegacyAlertStore returns a new rule storage backend poller and store
-func NewLegacyAlertStore(cfg LegacyConfig) (AlertStore, error) {
-	switch cfg.Type {
-	case "configdb":
+func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error) {
+	if cfg.Type == "configdb" {
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
 		}
 		return configdb.NewStore(c), nil
-	case "azure":
-		return newLegacyObjAlertStore(azure.NewBlobStorage(&cfg.Azure))
-	case "gcs":
-		return newLegacyObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
-	case "s3":
-		return newLegacyObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
-	case "local":
+	}
+
+	if cfg.Type == "local" {
 		return local.NewStore(cfg.Local)
+	}
+
+	// Create the object store client.
+	var client chunk.ObjectClient
+	var err error
+	switch cfg.Type {
+	case "azure":
+		client, err = azure.NewBlobStorage(&cfg.Azure)
+	case "gcs":
+		client, err = gcp.NewGCSObjectClient(context.Background(), cfg.GCS)
+	case "s3":
+		client, err = aws.NewS3ObjectClient(cfg.S3)
 	default:
 		return nil, fmt.Errorf("unrecognized alertmanager storage backend %v, choose one of: azure, configdb, gcs, local, s3", cfg.Type)
 	}
-}
-
-func newLegacyObjAlertStore(client chunk.ObjectClient, err error) (AlertStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return objectclient.NewAlertStore(client), nil
+
+	return objectclient.NewAlertStore(client, logger), nil
 }
 
 // Config configures a the alertmanager storage backend.

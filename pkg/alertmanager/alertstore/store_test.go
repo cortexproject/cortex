@@ -104,7 +104,7 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 
 func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, bucketClient interface{})) {
 	legacyClient := chunk.NewMockStorage()
-	legacyStore := objectclient.NewAlertStore(legacyClient)
+	legacyStore := objectclient.NewAlertStore(legacyClient, log.NewNopLogger())
 
 	bucketClient := objstore.NewInMemBucket()
 	bucketStore := bucketclient.NewBucketAlertStore(bucketClient, nil, log.NewNopLogger())

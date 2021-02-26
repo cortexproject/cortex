@@ -64,7 +64,7 @@ func (cfg *LegacyConfig) IsDefaults() bool {
 	return cfg.Type == ConfigDB && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
-// NewLegacyAlertStore returns a new rule storage backend poller and store
+// NewLegacyAlertStore returns a new alertmanager storage backend poller and store
 func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error) {
 	if cfg.Type == "configdb" {
 		c, err := client.New(cfg.ConfigDB)
@@ -113,7 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 
-// NewAlertStore returns a rule store backend client based on the provided cfg.
+// NewAlertStore returns a alertmanager store backend client based on the provided cfg.
 func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (AlertStore, error) {
 	if cfg.Backend == ConfigDB {
 		c, err := client.New(cfg.ConfigDB)

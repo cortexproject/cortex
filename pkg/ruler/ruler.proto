@@ -9,7 +9,7 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
-import "github.com/cortexproject/cortex/pkg/ruler/rules/rules.proto";
+import "github.com/cortexproject/cortex/pkg/ruler/rulespb/rules.proto";
 
 
 option (gogoproto.marshaler_all) = true;

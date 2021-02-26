@@ -499,140 +499,149 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
 
-	assertBlocksExist := func(exists1, exists2, exists3, exists4 bool) {
-		exists, err := bucketClient.Exists(ctx, path.Join("user-1", block1.String(), metadata.MetaFilename))
+	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
+		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))
 		require.NoError(t, err)
-		assert.Equal(t, exists1, exists)
-
-		exists, err = bucketClient.Exists(ctx, path.Join("user-1", block2.String(), metadata.MetaFilename))
-		require.NoError(t, err)
-		assert.Equal(t, exists2, exists)
-
-		exists, err = bucketClient.Exists(ctx, path.Join("user-2", block3.String(), metadata.MetaFilename))
-		require.NoError(t, err)
-		assert.Equal(t, exists3, exists)
-
-		exists, err = bucketClient.Exists(ctx, path.Join("user-2", block4.String(), metadata.MetaFilename))
-		require.NoError(t, err)
-		assert.Equal(t, exists4, exists)
+		assert.Equal(t, expectExists, exists)
 	}
 
-	require.NoError(t, cleaner.cleanUsers(ctx, true))
-	assertBlocksExist(true, true, true, true)
-
 	// Existing behaviour - retention period disabled.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 0
+		cfgProvider.userRetentionPeriods["user-2"] = 0
 
-	cfgProvider.userRetentionPeriods["user-1"] = 0
-	cfgProvider.userRetentionPeriods["user-2"] = 0
+		require.NoError(t, cleaner.cleanUsers(ctx, true))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
 
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(true, true, true, true)
-
-	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
-		# TYPE cortex_bucket_blocks_count gauge
-		cortex_bucket_blocks_count{user="user-1"} 2
-		cortex_bucket_blocks_count{user="user-2"} 2
-		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
-		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
-		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
-		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
-	`),
-		"cortex_bucket_blocks_count",
-		"cortex_bucket_blocks_marked_for_deletion_count",
-		"cortex_compactor_blocks_marked_for_deletion_total",
-	))
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 2
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
 
 	// Retention enabled only for a single user, but does nothing.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
 
-	cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
-
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(true, true, true, true)
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+	}
 
 	// Retention enabled only for a single user, marking a single block.
 	// Note the block won't be deleted yet due to deletion delay.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
 
-	cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
 
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(true, true, true, true)
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 2
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
 
 	// Marking the block again, before the deletion occurs, should not cause an error.
-	// This has the side-effect of including our mark in the metrics output.
-
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(true, true, true, true)
-
-	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
-		# TYPE cortex_bucket_blocks_count gauge
-		cortex_bucket_blocks_count{user="user-1"} 2
-		cortex_bucket_blocks_count{user="user-2"} 2
-		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
-		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
-		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
-		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
-	`),
-		"cortex_bucket_blocks_count",
-		"cortex_bucket_blocks_marked_for_deletion_count",
-		"cortex_compactor_blocks_marked_for_deletion_total",
-	))
+	{
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+	}
 
 	// Reduce the deletion delay. Now the block will be deleted.
+	{
+		cleaner.cfg.DeletionDelay = 0
 
-	cleaner.cfg.DeletionDelay = 0
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(false, true, true, true)
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, false)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
 
-	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
-		# TYPE cortex_bucket_blocks_count gauge
-		cortex_bucket_blocks_count{user="user-1"} 1
-		cortex_bucket_blocks_count{user="user-2"} 2
-		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
-		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
-		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
-		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
-	`),
-		"cortex_bucket_blocks_count",
-		"cortex_bucket_blocks_marked_for_deletion_count",
-		"cortex_compactor_blocks_marked_for_deletion_total",
-	))
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 1
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
 
 	// Retention enabled for other user; test deleting multiple blocks.
+	{
+		cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
 
-	cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, false)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, false)
+		assertBlockExists("user-2", block4, false)
 
-	require.NoError(t, cleaner.cleanUsers(ctx, false))
-	assertBlocksExist(false, true, false, false)
-
-	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
-		# TYPE cortex_bucket_blocks_count gauge
-		cortex_bucket_blocks_count{user="user-1"} 1
-		cortex_bucket_blocks_count{user="user-2"} 0
-		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
-		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
-		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
-		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
-		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 3
-	`),
-		"cortex_bucket_blocks_count",
-		"cortex_bucket_blocks_marked_for_deletion_count",
-		"cortex_compactor_blocks_marked_for_deletion_total",
-	))
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 1
+			cortex_bucket_blocks_count{user="user-2"} 0
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 3
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
 }
 
 type mockBucketFailure struct {

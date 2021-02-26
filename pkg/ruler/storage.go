@@ -114,7 +114,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, loader promRules.GroupLoader, logge
 	return objectclient.NewRuleStore(client, loadRulesConcurrency, logger), nil
 }
 
-// NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
+// NewRuleStore returns a rule store backend client based on the provided cfg.
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == rulestore.ConfigDB {
 		c, err := client.New(cfg.ConfigDB)

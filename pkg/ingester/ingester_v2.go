@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -28,6 +29,8 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -128,6 +131,10 @@ func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
 
 func (u *userTSDB) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	return u.db.Querier(ctx, mint, maxt)
+}
+
+func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+	return u.db.ChunkQuerier(ctx, mint, maxt)
 }
 
 func (u *userTSDB) Head() *tsdb.Head {
@@ -1128,7 +1135,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return nil
 	}
 
-	q, err := db.Querier(ctx, int64(from), int64(through))
+	q, err := db.ChunkQuerier(ctx, int64(from), int64(through))
 	if err != nil {
 		return err
 	}
@@ -1140,7 +1147,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return ss.Err()
 	}
 
-	timeseries := make([]client.TimeSeries, 0, queryStreamBatchSize)
+	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	batchSizeBytes := 0
 	numSamples := 0
 	numSeries := 0
@@ -1148,34 +1155,53 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		series := ss.At()
 
 		// convert labels to LabelAdapter
-		ts := client.TimeSeries{
-			Labels: client.FromLabelsToLabelAdapters(series.Labels()),
+		ts := client.TimeSeriesChunk{
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
 		it := series.Iterator()
 		for it.Next() {
-			t, v := it.At()
-			ts.Samples = append(ts.Samples, client.Sample{Value: v, TimestampMs: t})
+			// Chunks are ordered by min time.
+			meta := it.At()
+
+			// It is not guaranteed that chunk returned by iterator is populated.
+			// For now just return error. We could also try to figure out how to read the chunk.
+			if meta.Chunk == nil {
+				return errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+			}
+
+			ch := client.Chunk{
+				StartTimestampMs: meta.MinTime,
+				EndTimestampMs:   meta.MaxTime,
+				Data:             meta.Chunk.Bytes(),
+			}
+			switch meta.Chunk.Encoding() {
+			case chunkenc.EncXOR:
+				ch.Encoding = int32(encoding.PrometheusXorChunk)
+			default:
+				return errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+			}
+			ts.Chunks = append(ts.Chunks, ch)
+			numSamples += meta.Chunk.NumSamples()
 		}
-		numSamples += len(ts.Samples)
 		numSeries++
 		tsSize := ts.Size()
 
-		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
+		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(chunkSeries) >= queryStreamBatchSize {
 			// Adding this series to the batch would make it too big,
 			// flush the data and add it to new batch instead.
 			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
-				Timeseries: timeseries,
+				Chunkseries: chunkSeries,
 			})
 			if err != nil {
 				return err
 			}
 
 			batchSizeBytes = 0
-			timeseries = timeseries[:0]
+			chunkSeries = chunkSeries[:0]
 		}
 
-		timeseries = append(timeseries, ts)
+		chunkSeries = append(chunkSeries, ts)
 		batchSizeBytes += tsSize
 	}
 
@@ -1187,7 +1213,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	// Final flush any existing metrics
 	if batchSizeBytes != 0 {
 		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
-			Timeseries: timeseries,
+			Chunkseries: chunkSeries,
 		})
 		if err != nil {
 			return err

@@ -1336,7 +1336,7 @@ func TestIngester_v2QueryStream(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
-		count += len(resp.Timeseries)
+		count += len(resp.Chunkseries)
 		lastResp = resp
 	}
 	require.Equal(t, 1, count)
@@ -1419,7 +1419,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
-		require.True(t, len(resp.Timeseries) > 0) // No empty messages.
+		require.True(t, len(resp.Chunkseries) > 0) // No empty messages.
 
 		recvMsgs++
 		series += len(resp.Timeseries)

@@ -44,7 +44,7 @@ func TestTsdbBuilder(t *testing.T) {
 	samplesCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	inMemory := prometheus.NewGauge(prometheus.GaugeOpts{})
 
-	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, 33, util_log.Logger, seriesCounter, samplesCounter, inMemory)
+	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, 33, 0, util_log.Logger, seriesCounter, samplesCounter, inMemory)
 	require.NoError(t, err)
 
 	seriesCount := 200

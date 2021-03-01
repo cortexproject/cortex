@@ -72,6 +72,7 @@ var (
 		{"DoubleDelta", promchunk.DoubleDelta},
 		{"Varbit", promchunk.Varbit},
 		{"Bigchunk", promchunk.Bigchunk},
+		{"PrometheusXorChunk", promchunk.PrometheusXorChunk},
 	}
 
 	queries = []query{

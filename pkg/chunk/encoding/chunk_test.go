@@ -29,7 +29,7 @@ import (
 
 func TestLen(t *testing.T) {
 	chunks := []Chunk{}
-	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk} {
+	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk, PrometheusXorChunk} {
 		c, err := NewForEncoding(encoding)
 		if err != nil {
 			t.Fatal(err)
@@ -63,6 +63,7 @@ func TestChunk(t *testing.T) {
 		{DoubleDelta, 989},
 		{Varbit, 2048},
 		{Bigchunk, 4096},
+		{PrometheusXorChunk, 2048},
 	} {
 		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
 

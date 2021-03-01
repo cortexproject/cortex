@@ -8,7 +8,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
-// Read-only wrapper around Prometheus chunk.
+// Wrapper around Prometheus chunk. While it supports adding more samples, that is only implemented
+// to make tests work, and should not be used in production.
 type prometheusXorChunk struct {
 	chunk chunkenc.Chunk
 }
@@ -17,22 +18,32 @@ func newPrometheusXorChunk() *prometheusXorChunk {
 	return &prometheusXorChunk{}
 }
 
-func (p *prometheusXorChunk) Add(_ model.SamplePair) (Chunk, error) {
-	return nil, errors.New("cannot add new samples to Prometheus chunk")
+func (p *prometheusXorChunk) Add(m model.SamplePair) (Chunk, error) {
+	if p.chunk == nil {
+		p.chunk = chunkenc.NewXORChunk()
+	}
+
+	app, err := p.chunk.Appender()
+	if err != nil {
+		return nil, err
+	}
+
+	app.Append(int64(m.Timestamp), float64(m.Value))
+	return nil, nil
 }
 
 func (p *prometheusXorChunk) NewIterator(iterator Iterator) Iterator {
 	if p.chunk == nil {
-		// TODO: return error iterator
-		return nil
+		return errorIterator("Prometheus chunk is not set")
 	}
 
 	if pit, ok := iterator.(*prometheusChunkIterator); ok {
+		pit.c = p.chunk
 		pit.it = p.chunk.Iterator(pit.it)
 		return pit
 	}
 
-	return &prometheusChunkIterator{p.chunk.Iterator(nil)}
+	return &prometheusChunkIterator{c: p.chunk, it: p.chunk.Iterator(nil)}
 }
 
 func (p *prometheusXorChunk) Marshal(i io.Writer) error {
@@ -63,16 +74,43 @@ func (p *prometheusXorChunk) Utilization() float64 {
 }
 
 func (p *prometheusXorChunk) Slice(_, _ model.Time) Chunk {
-	// Not implemented.
 	return p
 }
 
-func (p *prometheusXorChunk) Rebound(_, _ model.Time) (Chunk, error) {
-	return nil, errors.New("rebound not supported by Prometheus chunk")
+func (p *prometheusXorChunk) Rebound(from, to model.Time) (Chunk, error) {
+	if p.chunk == nil {
+		return p, nil
+	}
+
+	nc := chunkenc.NewXORChunk()
+	app, err := nc.Appender()
+	if err != nil {
+		return nil, err
+	}
+
+	it := p.chunk.Iterator(nil)
+	for ok := it.Seek(int64(from)); ok; ok = it.Next() {
+		t, v := it.At()
+		if t <= int64(to) {
+			app.Append(t, v)
+		} else {
+			break
+		}
+	}
+
+	nc.Compact()
+	if nc.NumSamples() == 0 {
+		return nil, ErrSliceNoDataInRange
+	}
+
+	return &prometheusXorChunk{chunk: nc}, nil
 }
 
 func (p *prometheusXorChunk) Len() int {
-	return p.Size()
+	if p.chunk == nil {
+		return 0
+	}
+	return p.chunk.NumSamples()
 }
 
 func (p *prometheusXorChunk) Size() int {
@@ -83,6 +121,7 @@ func (p *prometheusXorChunk) Size() int {
 }
 
 type prometheusChunkIterator struct {
+	c  chunkenc.Chunk // we need chunk, because FindAtOrAfter needs to start with fresh iterator.
 	it chunkenc.Iterator
 }
 
@@ -91,6 +130,9 @@ func (p *prometheusChunkIterator) Scan() bool {
 }
 
 func (p *prometheusChunkIterator) FindAtOrAfter(time model.Time) bool {
+	// FindAtOrAfter must return OLDEST value at given time. That means we need to start with a fresh iterator,
+	// otherwise we cannot guarantee OLDEST.
+	p.it = p.c.Iterator(p.it)
 	return p.it.Seek(int64(time))
 }
 
@@ -122,3 +164,11 @@ func (p *prometheusChunkIterator) Batch(size int) Batch {
 func (p *prometheusChunkIterator) Err() error {
 	return p.it.Err()
 }
+
+type errorIterator string
+
+func (e errorIterator) Scan() bool                         { return false }
+func (e errorIterator) FindAtOrAfter(time model.Time) bool { return false }
+func (e errorIterator) Value() model.SamplePair            { panic("no values") }
+func (e errorIterator) Batch(size int) Batch               { panic("no values") }
+func (e errorIterator) Err() error                         { return errors.New(string(e)) }

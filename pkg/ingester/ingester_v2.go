@@ -89,6 +89,15 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 	return r == tsdbIdle || r == tsdbTenantMarkedForDeletion
 }
 
+// QueryStreamType defines type of function to use when doing query-stream operation.
+type QueryStreamType int
+
+const (
+	QueryStreamDefault QueryStreamType = iota // Use default configured value.
+	QueryStreamSamples                        // Stream individual samples.
+	QueryStreamChunks                         // Stream entire chunks.
+)
+
 type userTSDB struct {
 	db             *tsdb.DB
 	userID         string
@@ -1138,9 +1147,28 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	numSamples := 0
 	numSeries := 0
 
+	streamType := QueryStreamSamples
 	if i.cfg.StreamChunksWhenUsingBlocks {
+		streamType = QueryStreamChunks
+	}
+
+	if i.cfg.StreamTypeFn != nil {
+		runtimeType := i.cfg.StreamTypeFn()
+		switch runtimeType {
+		case QueryStreamChunks:
+			streamType = QueryStreamChunks
+		case QueryStreamSamples:
+			streamType = QueryStreamSamples
+		default:
+			// no change from config value.
+		}
+	}
+
+	if streamType == QueryStreamChunks {
+		level.Debug(spanlog).Log("msg", "using v2QueryStreamChunks")
 		numSeries, numSamples, err = i.v2QueryStreamChunks(ctx, db, int64(from), int64(through), matchers, stream)
 	} else {
+		level.Debug(spanlog).Log("msg", "using v2QueryStreamSamples")
 		numSeries, numSamples, err = i.v2QueryStreamSamples(ctx, db, int64(from), int64(through), matchers, stream)
 	}
 	if err != nil {

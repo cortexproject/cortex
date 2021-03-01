@@ -1284,73 +1284,15 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timest
 	return i
 }
 
-func TestIngester_v2QueryStreamSamples(t *testing.T) {
-	// Create ingester.
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	// Wait until it's ACTIVE.
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
-	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-	req, _, expectedResponse, _ := mockWriteRequest(t, lbls, 123000, 456)
-	_, err = i.v2Push(ctx, req)
-	require.NoError(t, err)
-
-	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
-	defer serv.GracefulStop()
-	client.RegisterIngesterServer(serv, i)
-
-	listener, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-
-	go func() {
-		require.NoError(t, serv.Serve(listener))
-	}()
-
-	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
-	require.NoError(t, err)
-	defer c.Close()
-
-	s, err := c.QueryStream(ctx, &client.QueryRequest{
-		StartTimestampMs: 0,
-		EndTimestampMs:   200000,
-		Matchers: []*client.LabelMatcher{{
-			Type:  client.EQUAL,
-			Name:  model.MetricNameLabel,
-			Value: "foo",
-		}},
-	})
-	require.NoError(t, err)
-
-	count := 0
-	var lastResp *client.QueryStreamResponse
-	for {
-		resp, err := s.Recv()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		require.Zero(t, len(resp.Chunkseries))
-		count += len(resp.Timeseries)
-		lastResp = resp
-	}
-	require.Equal(t, 1, count)
-	require.Equal(t, expectedResponse, lastResp)
-}
-
-func TestIngester_v2QueryStreamChunks(t *testing.T) {
+func TestIngester_v2QueryStream(t *testing.T) {
 	// Create ingester.
 	cfg := defaultIngesterTestConfig()
-	cfg.StreamChunksWhenUsingBlocks = true
+
+	// change stream type in runtime.
+	var streamType QueryStreamType
+	cfg.StreamTypeFn = func() QueryStreamType {
+		return streamType
+	}
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 	require.NoError(t, err)
@@ -1365,7 +1307,7 @@ func TestIngester_v2QueryStreamChunks(t *testing.T) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-	req, _, _, expectedResponse := mockWriteRequest(t, lbls, 123000, 456)
+	req, _, expectedResponseSamples, expectedResponseChunks := mockWriteRequest(t, lbls, 123000, 456)
 	_, err = i.v2Push(ctx, req)
 	require.NoError(t, err)
 
@@ -1386,7 +1328,7 @@ func TestIngester_v2QueryStreamChunks(t *testing.T) {
 	require.NoError(t, err)
 	defer c.Close()
 
-	s, err := c.QueryStream(ctx, &client.QueryRequest{
+	queryRequest := &client.QueryRequest{
 		StartTimestampMs: 0,
 		EndTimestampMs:   200000,
 		Matchers: []*client.LabelMatcher{{
@@ -1394,23 +1336,56 @@ func TestIngester_v2QueryStreamChunks(t *testing.T) {
 			Name:  model.MetricNameLabel,
 			Value: "foo",
 		}},
-	})
-	require.NoError(t, err)
-
-	count := 0
-	var lastResp *client.QueryStreamResponse
-	for {
-		resp, err := s.Recv()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		require.Zero(t, len(resp.Timeseries))
-		count += len(resp.Chunkseries)
-		lastResp = resp
 	}
-	require.Equal(t, 1, count)
-	require.Equal(t, expectedResponse, lastResp)
+
+	samplesTest := func(t *testing.T) {
+		s, err := c.QueryStream(ctx, queryRequest)
+		require.NoError(t, err)
+
+		count := 0
+		var lastResp *client.QueryStreamResponse
+		for {
+			resp, err := s.Recv()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			require.Zero(t, len(resp.Chunkseries)) // No chunks expected
+			count += len(resp.Timeseries)
+			lastResp = resp
+		}
+		require.Equal(t, 1, count)
+		require.Equal(t, expectedResponseSamples, lastResp)
+	}
+
+	chunksTest := func(t *testing.T) {
+		s, err := c.QueryStream(ctx, queryRequest)
+		require.NoError(t, err)
+
+		count := 0
+		var lastResp *client.QueryStreamResponse
+		for {
+			resp, err := s.Recv()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			require.Zero(t, len(resp.Timeseries)) // No samples expected
+			count += len(resp.Chunkseries)
+			lastResp = resp
+		}
+		require.Equal(t, 1, count)
+		require.Equal(t, expectedResponseChunks, lastResp)
+	}
+
+	streamType = QueryStreamDefault
+	t.Run("default", samplesTest)
+
+	streamType = QueryStreamSamples
+	t.Run("samples", samplesTest)
+
+	streamType = QueryStreamChunks
+	t.Run("chunks", chunksTest)
 }
 
 func TestIngester_v2QueryStreamManySamples(t *testing.T) {

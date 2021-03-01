@@ -82,6 +82,8 @@ type Config struct {
 	BlocksStorageEnabled        bool                     `yaml:"-"`
 	BlocksStorageConfig         tsdb.BlocksStorageConfig `yaml:"-"`
 	StreamChunksWhenUsingBlocks bool                     `yaml:"-"`
+	// Runtime-override for type of streaming query to use (chunks or samples).
+	StreamTypeFn func() QueryStreamType `yaml:"-"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.

@@ -22,6 +22,7 @@ const (
 	defaultNetworkName     = "e2e-cortex-test"
 	bucketName             = "cortex"
 	rulestoreBucketName    = "cortex-rules"
+	alertsBucketName       = "cortex-alerts"
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	blocksStorageEngine    = "blocks"
@@ -120,12 +121,23 @@ var (
 		}
 	}
 
-	AlertmanagerS3Flags = func() map[string]string {
+	AlertmanagerS3Flags = func(legacy bool) map[string]string {
+		if legacy {
+			return map[string]string{
+				"-alertmanager.storage.type":                "s3",
+				"-alertmanager.storage.s3.buckets":          alertsBucketName,
+				"-alertmanager.storage.s3.force-path-style": "true",
+				"-alertmanager.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+			}
+		}
+
 		return map[string]string{
-			"-alertmanager.storage.type":                "s3",
-			"-alertmanager.storage.s3.buckets":          "cortex-alerts",
-			"-alertmanager.storage.s3.force-path-style": "true",
-			"-alertmanager.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
+			"-alertmanager-storage.backend":              "s3",
+			"-alertmanager-storage.s3.access-key-id":     e2edb.MinioAccessKey,
+			"-alertmanager-storage.s3.secret-access-key": e2edb.MinioSecretKey,
+			"-alertmanager-storage.s3.bucket-name":       alertsBucketName,
+			"-alertmanager-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+			"-alertmanager-storage.s3.insecure":          "true",
 		}
 	}
 

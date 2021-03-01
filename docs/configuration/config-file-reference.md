@@ -364,7 +364,7 @@ ruler_storage:
 
 alertmanager_storage:
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
-  # filesystem, configdb.
+  # filesystem, configdb, local.
   # CLI flag: -alertmanager-storage.backend
   [backend: <string> | default = "s3"]
 
@@ -564,6 +564,11 @@ alertmanager_storage:
   # alerts, and is used by the Cortex alertmanager.
   # The CLI flags prefix for this block config is: alertmanager-storage
   [configdb: <configstore_config>]
+
+  local:
+    # Path at which alertmanager configurations are stored.
+    # CLI flag: -alertmanager-storage.local.path
+    [path: <string> | default = ""]
 
 runtime_config:
   # How often to check runtime config file.

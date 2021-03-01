@@ -21,10 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
-const (
-	configDB = "configdb"
-)
-
 // LegacyConfig configures the alertmanager storage backend using the legacy storage clients.
 type LegacyConfig struct {
 	Type     string        `yaml:"type"`
@@ -40,12 +36,12 @@ type LegacyConfig struct {
 // RegisterFlags registers flags.
 func (cfg *LegacyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", configDB, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", configdb.Name, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
 	cfg.Azure.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("alertmanager.storage.", f)
-	cfg.Local.RegisterFlags(f)
+	cfg.Local.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 }
 
 // Validate config and returns error on failure
@@ -61,12 +57,12 @@ func (cfg *LegacyConfig) Validate() error {
 
 // IsDefaults returns true if the storage options have not been set.
 func (cfg *LegacyConfig) IsDefaults() bool {
-	return cfg.Type == configDB && cfg.ConfigDB.ConfigsAPIURL.URL == nil
+	return cfg.Type == configdb.Name && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
 // NewLegacyAlertStore returns a new alertmanager storage backend poller and store
 func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error) {
-	if cfg.Type == configDB {
+	if cfg.Type == configdb.Name {
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
@@ -74,7 +70,7 @@ func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error
 		return configdb.NewStore(c), nil
 	}
 
-	if cfg.Type == "local" {
+	if cfg.Type == local.Name {
 		return local.NewStore(cfg.Local)
 	}
 
@@ -101,26 +97,32 @@ func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error
 // Config configures a the alertmanager storage backend.
 type Config struct {
 	bucket.Config `yaml:",inline"`
-	ConfigDB      client.Config `yaml:"configdb"`
+	ConfigDB      client.Config     `yaml:"configdb"`
+	Local         local.StoreConfig `yaml:"local"`
 }
 
 // RegisterFlags registers the backend storage config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	prefix := "alertmanager-storage."
 
-	cfg.ExtraBackends = []string{configDB}
+	cfg.ExtraBackends = []string{configdb.Name, local.Name}
 	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // NewAlertStore returns a alertmanager store backend client based on the provided cfg.
 func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (AlertStore, error) {
-	if cfg.Backend == configDB {
+	if cfg.Backend == configdb.Name {
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
 		}
 		return configdb.NewStore(c), nil
+	}
+
+	if cfg.Backend == local.Name {
+		return local.NewStore(cfg.Local)
 	}
 
 	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "alertmanager-storage", logger, reg)

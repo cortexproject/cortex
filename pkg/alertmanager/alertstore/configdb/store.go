@@ -9,6 +9,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
+const (
+	Name = "configdb"
+)
+
 var (
 	errReadOnly = errors.New("configdb alertmanager config storage is read-only")
 )

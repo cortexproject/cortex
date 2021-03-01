@@ -14,6 +14,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 )
 
+const (
+	Name = "local"
+)
+
 var (
 	errReadOnly = errors.New("local alertmanager config storage is read-only")
 )
@@ -23,9 +27,9 @@ type StoreConfig struct {
 	Path string `yaml:"path"`
 }
 
-// RegisterFlags registers flags related to the alertmanager file store
-func (cfg *StoreConfig) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Path, "alertmanager.storage.local.path", "", "Path at which alertmanager configurations are stored.")
+// RegisterFlags registers flags related to the alertmanager local storage.
+func (cfg *StoreConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Path, prefix+"local.path", "", "Path at which alertmanager configurations are stored.")
 }
 
 // Store is used to load user alertmanager configs from a local disk
@@ -39,7 +43,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 // ListAlertConfigs implements alertstore.AlertStore.
-func (f *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+func (f *Store) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	configs := map[string]alertspb.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -98,11 +102,11 @@ func (f *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.Alert
 }
 
 // SetAlertConfig implements alertstore.AlertStore.
-func (f *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
+func (f *Store) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) error {
 	return errReadOnly
 }
 
 // DeleteAlertConfig implements alertstore.AlertStore.
-func (f *Store) DeleteAlertConfig(ctx context.Context, user string) error {
+func (f *Store) DeleteAlertConfig(_ context.Context, user string) error {
 	return errReadOnly
 }

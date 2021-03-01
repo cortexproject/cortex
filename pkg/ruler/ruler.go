@@ -29,7 +29,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	store "github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -352,7 +351,7 @@ func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
 
 var sep = []byte("/")
 
-func tokenForGroup(g *store.RuleGroupDesc) uint32 {
+func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	ringHasher := fnv.New32a()
 
 	// Hasher never returns err.
@@ -564,7 +563,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulest
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*store.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*store.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {

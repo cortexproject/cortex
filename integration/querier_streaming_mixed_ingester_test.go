@@ -118,22 +118,22 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 		{Value: 5, Timestamp: 5000},
 	}
 
-	//s1AndS2ValuesMerged := []model.SamplePair{
-	//	{Value: 1, Timestamp: 1000},
-	//	{Value: 2, Timestamp: 2000},
-	//	{Value: 2.5, Timestamp: 2500},
-	//	{Value: 3, Timestamp: 3000},
-	//	{Value: 4, Timestamp: 4000},
-	//	{Value: 5, Timestamp: 5000},
-	//	{Value: 5.5, Timestamp: 5500},
-	//}
+	s1AndS2ValuesMerged := []model.SamplePair{
+		{Value: 1, Timestamp: 1000},
+		{Value: 2, Timestamp: 2000},
+		{Value: 2.5, Timestamp: 2500},
+		{Value: 3, Timestamp: 3000},
+		{Value: 4, Timestamp: 4000},
+		{Value: 5, Timestamp: 5000},
+		{Value: 5.5, Timestamp: 5500},
+	}
 
 	expectedMatrix := model.Matrix{
-		//// From chunks ingester only.
-		//&model.SampleStream{
-		//	Metric: model.Metric{labels.MetricName: "s", "l": "1"},
-		//	Values: s1Values,
-		//},
+		// From chunks ingester only.
+		&model.SampleStream{
+			Metric: model.Metric{labels.MetricName: "s", "l": "1"},
+			Values: s1Values,
+		},
 
 		// From blocks ingester only.
 		&model.SampleStream{
@@ -142,10 +142,10 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 		},
 
 		// Merged from both ingesters.
-		//&model.SampleStream{
-		//	Metric: model.Metric{labels.MetricName: "s", "l": "2"},
-		//	Values: s1AndS2ValuesMerged,
-		//},
+		&model.SampleStream{
+			Metric: model.Metric{labels.MetricName: "s", "l": "2"},
+			Values: s1AndS2ValuesMerged,
+		},
 	}
 
 	require.Equal(t, model.ValMatrix, result.Type())

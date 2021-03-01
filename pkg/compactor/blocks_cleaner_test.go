@@ -427,20 +427,20 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, idx.Blocks.GetULIDs())
 
 	// Excessive retention period (wrapping epoch)
-	result := listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), time.Hour)
+	result := listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0).Add(-time.Hour))
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
 	// Normal operation - varying retention period.
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 4*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(6, 0))
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 3*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
 	assert.ElementsMatch(t, []ulid.ULID{id1}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 2*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
 	assert.ElementsMatch(t, []ulid.ULID{id1, id2}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 1*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(9, 0))
 	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, result.GetULIDs())
 
 	// Avoiding redundant marking - blocks already marked for deletion.
@@ -450,21 +450,21 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 
 	idx.BlockDeletionMarks = bucketindex.BlockDeletionMarks{mark1}
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 3*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 2*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
 	assert.ElementsMatch(t, []ulid.ULID{id2}, result.GetULIDs())
 
 	idx.BlockDeletionMarks = bucketindex.BlockDeletionMarks{mark1, mark2}
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 3*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 2*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
 	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
 
-	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0), 1*time.Second)
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(9, 0))
 	assert.ElementsMatch(t, []ulid.ULID{id3}, result.GetULIDs())
 }
 

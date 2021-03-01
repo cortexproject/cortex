@@ -324,7 +324,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	if idx != nil {
 		// We do not want to stop the remaining work in the cleaner if an
 		// error occurs here. Errors are logged in the function.
-		c.applyUserRetentionPeriod(ctx, idx, userID, userBucket, userLogger)
+		retention := c.cfgProvider.CompactorBlocksRetentionPeriod(userID)
+		c.applyUserRetentionPeriod(ctx, idx, retention, userBucket, userLogger)
 	}
 
 	// Generate an updated in-memory version of the bucket index.
@@ -410,16 +411,14 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 }
 
 // applyUserRetentionPeriod marks blocks for deletion which have aged past the retention period.
-func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, userID string, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
-	retention := c.cfgProvider.CompactorBlocksRetentionPeriod(userID)
-
+func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
 	// The retention period of zero is a special value indicating to never delete.
 	if retention <= 0 {
 		return
 	}
 
 	level.Debug(userLogger).Log("msg", "applying retention", "retention", retention.String())
-	blocks := listBlocksOutsideRetentionPeriod(idx, time.Now(), retention)
+	blocks := listBlocksOutsideRetentionPeriod(idx, time.Now().Add(-retention))
 
 	// Attempt to mark all blocks. It is not critical if a marking fails, as
 	// the cleaner will retry applying the retention in its next cycle.
@@ -433,7 +432,7 @@ func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucke
 
 // listBlocksOutsideRetentionPeriod determines the blocks which have aged past
 // the specified retention period, and are not already marked for deletion.
-func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, now time.Time, retention time.Duration) (result bucketindex.Blocks) {
+func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, threshold time.Time) (result bucketindex.Blocks) {
 	// Whilst re-marking a block is not harmful, it is wasteful and generates
 	// a warning log message. Use the block deletion marks already in-memory
 	// to prevent marking blocks already marked for deletion.
@@ -442,7 +441,6 @@ func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, now time.Time, ret
 		marked[d.ID] = struct{}{}
 	}
 
-	threshold := now.Add(-retention)
 	for _, b := range idx.Blocks {
 		maxTime := time.Unix(b.MaxTime/1000, 0)
 		if maxTime.Before(threshold) {

@@ -226,7 +226,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
@@ -371,7 +372,8 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
@@ -504,7 +506,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
@@ -625,7 +628,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
@@ -729,7 +733,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 		# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
 		# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
-		cortex_compactor_blocks_marked_for_deletion_total 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
+		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.

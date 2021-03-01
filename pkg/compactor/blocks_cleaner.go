@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -35,7 +36,7 @@ type BlocksCleaner struct {
 	services.Service
 
 	cfg          BlocksCleanerConfig
-	cfgProvider  bucket.TenantConfigProvider
+	cfgProvider  ConfigProvider
 	logger       log.Logger
 	bucketClient objstore.Bucket
 	usersScanner *cortex_tsdb.UsersScanner
@@ -50,13 +51,14 @@ type BlocksCleaner struct {
 	runsLastSuccess             prometheus.Gauge
 	blocksCleanedTotal          prometheus.Counter
 	blocksFailedTotal           prometheus.Counter
+	blocksMarkedForDeletion     prometheus.Counter
 	tenantBlocks                *prometheus.GaugeVec
 	tenantMarkedBlocks          *prometheus.GaugeVec
 	tenantPartialBlocks         *prometheus.GaugeVec
 	tenantBucketIndexLastUpdate *prometheus.GaugeVec
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,
@@ -86,6 +88,11 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 		blocksFailedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_failures_total",
 			Help: "Total number of blocks failed to be deleted.",
+		}),
+		blocksMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name:        blocksMarkedForDeletionName,
+			Help:        blocksMarkedForDeletionHelp,
+			ConstLabels: prometheus.Labels{"reason": "retention"},
 		}),
 
 		// The following metrics don't have the "cortex_compactor" prefix because not strictly related to
@@ -310,6 +317,17 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		return err
 	}
 
+	// Mark blocks for future deletion based on the retention period for the user.
+	// Note doing this before UpdateIndex, so it reads in the deletion marks.
+	// The trade-off being that retention is not applied if the index has to be
+	// built, but this is rare.
+	if idx != nil {
+		// We do not want to stop the remaining work in the cleaner if an
+		// error occurs here. Errors are logged in the function.
+		retention := c.cfgProvider.CompactorBlocksRetentionPeriod(userID)
+		c.applyUserRetentionPeriod(ctx, idx, retention, userBucket, userLogger)
+	}
+
 	// Generate an updated in-memory version of the bucket index.
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, err := w.UpdateIndex(ctx, idx)
@@ -390,4 +408,47 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		c.blocksCleanedTotal.Inc()
 		level.Info(userLogger).Log("msg", "deleted partial block marked for deletion", "block", blockID)
 	}
+}
+
+// applyUserRetentionPeriod marks blocks for deletion which have aged past the retention period.
+func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
+	// The retention period of zero is a special value indicating to never delete.
+	if retention <= 0 {
+		return
+	}
+
+	level.Debug(userLogger).Log("msg", "applying retention", "retention", retention.String())
+	blocks := listBlocksOutsideRetentionPeriod(idx, time.Now().Add(-retention))
+
+	// Attempt to mark all blocks. It is not critical if a marking fails, as
+	// the cleaner will retry applying the retention in its next cycle.
+	for _, b := range blocks {
+		level.Info(userLogger).Log("msg", "applied retention: marking block for deletion", "block", b.ID, "maxTime", b.MaxTime)
+		if err := block.MarkForDeletion(ctx, userLogger, userBucket, b.ID, fmt.Sprintf("block exceeding retention of %v", retention), c.blocksMarkedForDeletion); err != nil {
+			level.Warn(userLogger).Log("msg", "failed to mark block for deletion", "block", b.ID, "err", err)
+		}
+	}
+}
+
+// listBlocksOutsideRetentionPeriod determines the blocks which have aged past
+// the specified retention period, and are not already marked for deletion.
+func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, threshold time.Time) (result bucketindex.Blocks) {
+	// Whilst re-marking a block is not harmful, it is wasteful and generates
+	// a warning log message. Use the block deletion marks already in-memory
+	// to prevent marking blocks already marked for deletion.
+	marked := make(map[ulid.ULID]struct{}, len(idx.BlockDeletionMarks))
+	for _, d := range idx.BlockDeletionMarks {
+		marked[d.ID] = struct{}{}
+	}
+
+	for _, b := range idx.Blocks {
+		maxTime := time.Unix(b.MaxTime/1000, 0)
+		if maxTime.Before(threshold) {
+			if _, isMarked := marked[b.ID]; !isMarked {
+				result = append(result, b)
+			}
+		}
+	}
+
+	return
 }

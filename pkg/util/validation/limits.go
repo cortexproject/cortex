@@ -86,6 +86,9 @@ type Limits struct {
 	// Store-gateway.
 	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
 
+	// Compactor.
+	CompactorBlocksRetentionPeriod time.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
+
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
@@ -143,6 +146,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
+
+	f.DurationVar(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", 0, "Delete blocks containing samples older than the specified retention period. 0 to disable.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "File name of per-user overrides. [deprecated, use -runtime-config.file instead]")
 	f.DurationVar(&l.PerTenantOverridePeriod, "limits.per-user-override-period", 10*time.Second, "Period with which to reload the overrides. [deprecated, use -runtime-config.reload-period instead]")
@@ -413,6 +418,11 @@ func (o *Overrides) IngestionTenantShardSize(userID string) int {
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return o.getOverridesForUser(userID).RulerEvaluationDelay
+}
+
+// CompactorBlocksRetentionPeriod returns the retention period for a given user.
+func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration {
+	return o.getOverridesForUser(userID).CompactorBlocksRetentionPeriod
 }
 
 // MetricRelabelConfigs returns the metric relabel configs for a given user.

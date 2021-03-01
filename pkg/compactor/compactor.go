@@ -34,6 +34,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+const (
+	blocksMarkedForDeletionName = "cortex_compactor_blocks_marked_for_deletion_total"
+	blocksMarkedForDeletionHelp = "Total number of blocks marked for deletion in compactor."
+)
+
 var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
 	RingOp                = ring.NewOp([]ring.IngesterState{ring.ACTIVE}, nil)
@@ -155,13 +160,19 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
+// ConfigProvider defines the per-tenant config provider for the Compactor.
+type ConfigProvider interface {
+	bucket.TenantConfigProvider
+	CompactorBlocksRetentionPeriod(user string) time.Duration
+}
+
 // Compactor is a multi-tenant TSDB blocks compactor based on Thanos.
 type Compactor struct {
 	services.Service
 
 	compactorCfg Config
 	storageCfg   cortex_tsdb.BlocksStorageConfig
-	cfgProvider  bucket.TenantConfigProvider
+	cfgProvider  ConfigProvider
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
@@ -214,7 +225,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -240,7 +251,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
-	cfgProvider bucket.TenantConfigProvider,
+	cfgProvider ConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
@@ -292,8 +303,9 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_compactor_blocks_marked_for_deletion_total",
-			Help: "Total number of blocks marked for deletion in compactor.",
+			Name:        blocksMarkedForDeletionName,
+			Help:        blocksMarkedForDeletionHelp,
+			ConstLabels: prometheus.Labels{"reason": "compaction"},
 		}),
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_garbage_collected_blocks_total",

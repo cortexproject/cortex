@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	ConfigDB = "configdb"
+	configDB = "configdb"
 )
 
 // LegacyConfig configures the alertmanager storage backend using the legacy storage clients.
@@ -40,7 +40,7 @@ type LegacyConfig struct {
 // RegisterFlags registers flags.
 func (cfg *LegacyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", ConfigDB, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", configDB, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
 	cfg.Azure.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
@@ -61,12 +61,12 @@ func (cfg *LegacyConfig) Validate() error {
 
 // IsDefaults returns true if the storage options have not been set.
 func (cfg *LegacyConfig) IsDefaults() bool {
-	return cfg.Type == ConfigDB && cfg.ConfigDB.ConfigsAPIURL.URL == nil
+	return cfg.Type == configDB && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
 // NewLegacyAlertStore returns a new alertmanager storage backend poller and store
 func NewLegacyAlertStore(cfg LegacyConfig, logger log.Logger) (AlertStore, error) {
-	if cfg.Type == "configdb" {
+	if cfg.Type == configDB {
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
@@ -108,14 +108,14 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	prefix := "alertmanager-storage."
 
-	cfg.ExtraBackends = []string{ConfigDB}
+	cfg.ExtraBackends = []string{configDB}
 	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // NewAlertStore returns a alertmanager store backend client based on the provided cfg.
 func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (AlertStore, error) {
-	if cfg.Backend == ConfigDB {
+	if cfg.Backend == configDB {
 		c, err := client.New(cfg.ConfigDB)
 		if err != nil {
 			return nil, err
@@ -128,10 +128,5 @@ func NewAlertStore(ctx context.Context, cfg Config, cfgProvider bucket.TenantCon
 		return nil, err
 	}
 
-	store := bucketclient.NewBucketAlertStore(bucketClient, cfgProvider, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return store, nil
+	return bucketclient.NewBucketAlertStore(bucketClient, cfgProvider, logger), nil
 }

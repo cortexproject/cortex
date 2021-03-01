@@ -90,7 +90,7 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 		require.NoError(t, store.DeleteAlertConfig(ctx, "user-1"))
 
 		// Ensure the correct config has been deleted.
-		config, err = store.GetAlertConfig(ctx, "user-1")
+		_, err = store.GetAlertConfig(ctx, "user-1")
 		assert.Equal(t, alertspb.ErrNotFound, err)
 
 		config, err = store.GetAlertConfig(ctx, "user-2")

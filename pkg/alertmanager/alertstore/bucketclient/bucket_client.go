@@ -44,7 +44,7 @@ func (s *BucketAlertStore) ListAlertConfigs(ctx context.Context) (map[string]ale
 
 		cfg, err := s.getAlertConfig(ctx, userID)
 		if err != nil {
-			return errors.Wrapf(nil, "failed to fetch alertmanager config for user %s", userID)
+			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
 		}
 
 		cfgs[cfg.User] = cfg

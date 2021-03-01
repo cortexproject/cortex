@@ -52,7 +52,7 @@ const (
 	Varbit
 	// Bigchunk encoding
 	Bigchunk
-	// Read-only wrapper around Prometheus XOR-encoded chunk.
+	// PrometheusXorChunk is a wrapper around Prometheus XOR-encoded chunk.
 	PrometheusXorChunk
 )
 

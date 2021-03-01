@@ -10,7 +10,8 @@ import (
 	"github.com/pkg/errors"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
 type Config struct {
@@ -73,13 +74,13 @@ func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore. This method also loads the rules.
-func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
+func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
 	users, err := l.ListAllUsers(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	lists := make(map[string]rules.RuleGroupList)
+	lists := make(map[string]rulestore.RuleGroupList)
 	for _, user := range users {
 		list, err := l.loadAllRulesGroupsForUser(ctx, user)
 		if err != nil {
@@ -93,7 +94,7 @@ func (l *Client) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGr
 }
 
 // ListRuleGroupsForUserAndNamespace implements rules.RuleStore. This method also loads the rules.
-func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
 	if namespace != "" {
 		return l.loadAllRulesGroupsForUserAndNamespace(ctx, userID, namespace)
 	}
@@ -101,18 +102,18 @@ func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID s
 	return l.loadAllRulesGroupsForUser(ctx, userID)
 }
 
-func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rules.RuleGroupList) error {
+func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulestore.RuleGroupList) error {
 	// This Client already loads the rules in its List methods, there is nothing left to do here.
 	return nil
 }
 
 // GetRuleGroup implements RuleStore
-func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rules.RuleGroupDesc, error) {
+func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error) {
 	return nil, errors.New("GetRuleGroup unsupported in rule local store")
 }
 
 // SetRuleGroup implements RuleStore
-func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rules.RuleGroupDesc) error {
+func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error {
 	return errors.New("SetRuleGroup unsupported in rule local store")
 }
 
@@ -126,8 +127,8 @@ func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) 
 	return errors.New("DeleteNamespace unsupported in rule local store")
 }
 
-func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (rules.RuleGroupList, error) {
-	var allLists rules.RuleGroupList
+func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (rulestore.RuleGroupList, error) {
+	var allLists rulestore.RuleGroupList
 
 	root := filepath.Join(l.cfg.Directory, userID)
 	infos, err := ioutil.ReadDir(root)
@@ -162,7 +163,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 	return allLists, nil
 }
 
-func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
 	rulegroups, allErrors := l.loader.Load(filename)
@@ -170,10 +171,10 @@ func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}
 
-	var list rules.RuleGroupList
+	var list rulestore.RuleGroupList
 
 	for _, group := range rulegroups.Groups {
-		desc := rules.ToProto(userID, namespace, group)
+		desc := rulespb.ToProto(userID, namespace, group)
 		list = append(list, desc)
 	}
 

@@ -1,4 +1,4 @@
-package rulestore
+package bucketclient
 
 import (
 	"bytes"
@@ -15,7 +15,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
@@ -47,14 +48,14 @@ func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProv
 }
 
 // getRuleGroup loads and return a rules group. If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
-func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, rg *rules.RuleGroupDesc) (*rules.RuleGroupDesc, error) {
+func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, rg *rulespb.RuleGroupDesc) (*rulespb.RuleGroupDesc, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	objectKey := getRuleGroupObjectKey(namespace, groupName)
 
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
 		level.Debug(b.logger).Log("msg", "rule group does not exist", "user", userID, "key", objectKey)
-		return nil, rules.ErrGroupNotFound
+		return nil, rulestore.ErrGroupNotFound
 	}
 
 	if err != nil {
@@ -68,7 +69,7 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 	}
 
 	if rg == nil {
-		rg = &rules.RuleGroupDesc{}
+		rg = &rulespb.RuleGroupDesc{}
 	} else {
 		rg.Reset()
 	}
@@ -96,8 +97,8 @@ func (b *BucketRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rules.RuleGroupList, error) {
-	out := map[string]rules.RuleGroupList{}
+func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
+	out := map[string]rulestore.RuleGroupList{}
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
@@ -109,7 +110,7 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 			return nil
 		}
 
-		out[userID] = append(out[userID], &rules.RuleGroupDesc{
+		out[userID] = append(out[userID], &rulespb.RuleGroupDesc{
 			User:      userID,
 			Namespace: namespace,
 			Name:      group,
@@ -125,10 +126,10 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 }
 
 // ListRuleGroupsForUserAndNamespace implements rules.RuleStore.
-func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rules.RuleGroupList, error) {
+func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulestore.RuleGroupList, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 
-	groupList := rules.RuleGroupList{}
+	groupList := rulestore.RuleGroupList{}
 
 	// The prefix to list objects depends on whether the namespace has been
 	// specified in the request.
@@ -146,7 +147,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 			return nil
 		}
 
-		groupList = append(groupList, &rules.RuleGroupDesc{
+		groupList = append(groupList, &rulespb.RuleGroupDesc{
 			User:      userID,
 			Namespace: namespace,
 			Name:      group,
@@ -161,8 +162,8 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 }
 
 // LoadRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rules.RuleGroupList) error {
-	ch := make(chan *rules.RuleGroupDesc)
+func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+	ch := make(chan *rulespb.RuleGroupDesc)
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
 	// download all rule groups in parallel. We limit the number of workers to avoid a
@@ -210,12 +211,12 @@ outer:
 }
 
 // GetRuleGroup implements rules.RuleStore.
-func (b *BucketRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rules.RuleGroupDesc, error) {
+func (b *BucketRuleStore) GetRuleGroup(ctx context.Context, userID string, namespace string, group string) (*rulespb.RuleGroupDesc, error) {
 	return b.getRuleGroup(ctx, userID, namespace, group, nil)
 }
 
 // SetRuleGroup implements rules.RuleStore.
-func (b *BucketRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rules.RuleGroupDesc) error {
+func (b *BucketRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rulespb.RuleGroupDesc) error {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	data, err := proto.Marshal(group)
 	if err != nil {
@@ -230,7 +231,7 @@ func (b *BucketRuleStore) DeleteRuleGroup(ctx context.Context, userID string, na
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	err := userBucket.Delete(ctx, getRuleGroupObjectKey(namespace, group))
 	if b.bucket.IsObjNotFoundErr(err) {
-		return rules.ErrGroupNotFound
+		return rulestore.ErrGroupNotFound
 	}
 	return err
 }
@@ -243,7 +244,7 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 	}
 
 	if len(ruleGroupList) == 0 {
-		return rules.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)

@@ -107,7 +107,7 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 	require.NoError(t, err)
 
 	// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
-	result, err := c.Query("s{l=\"3\"}[1m]", time.Unix(10, 0))
+	result, err := c.Query("s[1m]", time.Unix(10, 0))
 	require.NoError(t, err)
 
 	s1Values := []model.SamplePair{

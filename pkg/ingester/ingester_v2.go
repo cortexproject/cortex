@@ -1135,22 +1135,108 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 		return nil
 	}
 
-	q, err := db.ChunkQuerier(ctx, int64(from), int64(through))
+	numSamples := 0
+	numSeries := 0
+
+	if i.cfg.StreamChunksWhenUsingBlocks {
+		numSeries, numSamples, err = i.v2QueryStreamChunks(ctx, db, int64(from), int64(through), matchers, stream)
+	} else {
+		numSeries, numSamples, err = i.v2QueryStreamSamples(ctx, db, int64(from), int64(through), matchers, stream)
+	}
 	if err != nil {
 		return err
+	}
+
+	i.metrics.queriedSeries.Observe(float64(numSeries))
+	i.metrics.queriedSamples.Observe(float64(numSamples))
+	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples)
+	return nil
+}
+
+func (i *Ingester) v2QueryStreamSamples(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
+	q, err := db.Querier(ctx, from, through)
+	if err != nil {
+		return 0, 0, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(false, nil, matchers...)
 	if ss.Err() != nil {
-		return ss.Err()
+		return 0, 0, ss.Err()
+	}
+
+	timeseries := make([]cortexpb.TimeSeries, 0, queryStreamBatchSize)
+	batchSizeBytes := 0
+	for ss.Next() {
+		series := ss.At()
+
+		// convert labels to LabelAdapter
+		ts := cortexpb.TimeSeries{
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
+		}
+
+		it := series.Iterator()
+		for it.Next() {
+			t, v := it.At()
+			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
+		}
+		numSamples += len(ts.Samples)
+		numSeries++
+		tsSize := ts.Size()
+
+		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
+			// Adding this series to the batch would make it too big,
+			// flush the data and add it to new batch instead.
+			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
+				Timeseries: timeseries,
+			})
+			if err != nil {
+				return 0, 0, err
+			}
+
+			batchSizeBytes = 0
+			timeseries = timeseries[:0]
+		}
+
+		timeseries = append(timeseries, ts)
+		batchSizeBytes += tsSize
+	}
+
+	// Ensure no error occurred while iterating the series set.
+	if err := ss.Err(); err != nil {
+		return 0, 0, err
+	}
+
+	// Final flush any existing metrics
+	if batchSizeBytes != 0 {
+		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
+			Timeseries: timeseries,
+		})
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	return numSeries, numSamples, nil
+}
+
+// v2QueryStream streams metrics from a TSDB. This implements the client.IngesterServer interface
+func (i *Ingester) v2QueryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
+	q, err := db.ChunkQuerier(ctx, from, through)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer q.Close()
+
+	// It's not required to return sorted series because series are sorted by the Cortex querier.
+	ss := q.Select(false, nil, matchers...)
+	if ss.Err() != nil {
+		return 0, 0, ss.Err()
 	}
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	batchSizeBytes := 0
-	numSamples := 0
-	numSeries := 0
 	for ss.Next() {
 		series := ss.At()
 
@@ -1167,7 +1253,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 			// It is not guaranteed that chunk returned by iterator is populated.
 			// For now just return error. We could also try to figure out how to read the chunk.
 			if meta.Chunk == nil {
-				return errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+				return 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
 			}
 
 			ch := client.Chunk{
@@ -1175,12 +1261,14 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 				EndTimestampMs:   meta.MaxTime,
 				Data:             meta.Chunk.Bytes(),
 			}
+
 			switch meta.Chunk.Encoding() {
 			case chunkenc.EncXOR:
 				ch.Encoding = int32(encoding.PrometheusXorChunk)
 			default:
-				return errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+				return 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
+
 			ts.Chunks = append(ts.Chunks, ch)
 			numSamples += meta.Chunk.NumSamples()
 		}
@@ -1194,7 +1282,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 				Chunkseries: chunkSeries,
 			})
 			if err != nil {
-				return err
+				return 0, 0, err
 			}
 
 			batchSizeBytes = 0
@@ -1207,7 +1295,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	// Final flush any existing metrics
@@ -1216,14 +1304,11 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 			Chunkseries: chunkSeries,
 		})
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 	}
 
-	i.metrics.queriedSeries.Observe(float64(numSeries))
-	i.metrics.queriedSamples.Observe(float64(numSamples))
-	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples)
-	return nil
+	return numSeries, numSamples, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {

@@ -56,7 +56,7 @@ func NewBucketIndexMetadataFetcher(
 	}
 }
 
-// Fetch implements metadata.MetadataFetcher.
+// Fetch implements block.MetadataFetcher. Not goroutine-safe.
 func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.ULID]*metadata.Meta, partial map[ulid.ULID]error, err error) {
 	f.metrics.ResetTx()
 

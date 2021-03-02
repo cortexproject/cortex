@@ -30,6 +30,9 @@
     * `-alertmanager.alertmanager-client.tls-server-name`
     * `-alertmanager.alertmanager-client.tls-insecure-skip-verify`
 * [FEATURE] Compactor: added blocks storage per-tenant retention support. This is configured via `-compactor.retention-period`, and can be overridden on a per-tenant basis. #3879
+* [ENHANCEMENT] Queries: Instrument queries that were discarded due to the configured `max_outstanding_requests_per_tenant`. #3894
+  * `cortex_query_frontend_discarded_requests_total`
+  * `cortex_query_scheduler_discarded_requests_total`
 * [ENHANCEMENT] Ruler: Add TLS and explicit basis authentication configuration options for the HTTP client the ruler uses to communicate with the alertmanager. #3752
   * `-ruler.alertmanager-client.basic-auth-username`: Configure the basic authentication username used by the client. Takes precedent over a URL configured username.
   * `-ruler.alertmanager-client.basic-auth-password`: Configure the basic authentication password used by the client. Takes precedent over a URL configured password.

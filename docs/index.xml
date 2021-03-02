@@ -9833,6 +9833,8 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;h3 id="ensure-deletion-marks-migration-is-disabled-after-first-run">Ensure deletion marks migration is disabled after first run&lt;/h3>
 &lt;p>Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant global &lt;code>markers/&lt;/code> location in the object store. If your Cortex cluster has been created with a Cortex version older than 1.7.0, the compactor needs to migrate deletion marks to the global location.&lt;/p>
 &lt;p>The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via &lt;code>-compactor.block-deletion-marks-migration-enabled=false&lt;/code> (or its respective YAML config option).&lt;/p>
+&lt;p>You can see that the initial migration is done by looking for the following message in the compactor&amp;rsquo;s logs:
+&lt;code>msg=&amp;quot;migrated block deletion marks to the global markers location&amp;quot;&lt;/code>.&lt;/p>
 &lt;h2 id="caching">Caching&lt;/h2>
 &lt;h3 id="ensure-memcached-is-properly-scaled">Ensure memcached is properly scaled&lt;/h3>
 &lt;p>The rule of thumb to ensure memcached is properly scaled is to make sure evictions happen infrequently. When that&amp;rsquo;s not the case and they affect query performances, the suggestion is to scale out the memcached cluster adding more nodes or increasing the memory limit of existing ones.&lt;/p>

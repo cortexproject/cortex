@@ -13,7 +13,7 @@ import (
 )
 
 func TestQueues(t *testing.T) {
-	uq := newUserQueues(0)
+	uq := newUserQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -68,7 +68,7 @@ func TestQueues(t *testing.T) {
 }
 
 func TestQueuesWithQueriers(t *testing.T) {
-	uq := newUserQueues(0)
+	uq := newUserQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -136,7 +136,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 }
 
 func TestQueuesConsistency(t *testing.T) {
-	uq := newUserQueues(0)
+	uq := newUserQueues(0, 0)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -199,7 +199,7 @@ func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIn
 }
 
 func isConsistent(uq *queues) error {
-	if len(uq.sortedQueriers) != len(uq.querierConnections) {
+	if len(uq.sortedQueriers) != len(uq.queriers) {
 		return fmt.Errorf("inconsistent number of sorted queriers and querier connections")
 	}
 

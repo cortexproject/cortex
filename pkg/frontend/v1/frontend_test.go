@@ -130,7 +130,7 @@ func TestFrontendCheckReady(t *testing.T) {
 				log: log.NewNopLogger(),
 				requestQueue: queue.NewRequestQueue(5,
 					prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "reason"}),
+					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 				),
 			}
 			for i := 0; i < tt.connectedClients; i++ {

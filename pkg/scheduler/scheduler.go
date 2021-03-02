@@ -105,7 +105,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.discardedQueries = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_scheduler_discarded_queries_total",
 		Help: "Total number of query requests discarded.",
-	}, []string{"user", "reason"})
+	}, []string{"user"})
 	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedQueries)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -477,6 +477,7 @@ func (s *Scheduler) stopping(_ error) error {
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
 	s.queueLength.DeleteLabelValues(user)
+	s.discardedQueries.DeleteLabelValues(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

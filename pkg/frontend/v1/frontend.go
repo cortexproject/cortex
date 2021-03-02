@@ -87,7 +87,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		discardedQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_frontend_discarded_queries_total",
 			Help: "Total number of query requests discarded.",
-		}, []string{"user", "reason"}),
+		}, []string{"user"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -119,6 +119,7 @@ func (f *Frontend) stopping(_ error) error {
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 	f.queueLength.DeleteLabelValues(user)
+	f.discardedQueries.DeleteLabelValues(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).

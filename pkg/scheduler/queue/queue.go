@@ -7,8 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
@@ -95,7 +93,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		}
 		return nil
 	default:
-		q.discardedQueries.WithLabelValues(userID, validation.RateLimited).Inc()
+		q.discardedQueries.WithLabelValues(userID).Inc()
 		return ErrTooManyRequests
 	}
 }

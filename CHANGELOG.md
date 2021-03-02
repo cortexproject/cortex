@@ -8,7 +8,9 @@
 * [CHANGE] Store-gateway: the chunks pool controlled by `-blocks-storage.bucket-store.max-chunk-pool-bytes` is now shared across all tenants. #3830
 * [CHANGE] Ingester: return error code 400 instead of 429 when per-user/per-tenant series/metadata limits are reached. #3833
 * [CHANGE] Compactor: add `reason` label to `cortex_compactor_blocks_marked_for_deletion_total` metric. Source blocks marked for deletion by compactor are labelled as `compaction`, while blocks passing the retention period are labelled as `retention`. #3879
+* [CHANGE] Alertmanager: the `DELETE /api/v1/alerts` is now idempotent. No error is returned if the alertmanager config doesn't exist. #3888
 * [FEATURE] Experimental Ruler Storage: Add a separate set of configuration options to configure the ruler storage backend under the `-ruler-storage.` flag prefix. All blocks storage bucket clients and the config service are currently supported. Clients using this implementation will only be enabled if the existing `-ruler.storage` flags are left unset. #3805 #3864
+* [FEATURE] Experimental Alertmanager Storage: Add a separate set of configuration options to configure the alertmanager storage backend under the `-alertmanager-storage.` flag prefix. All blocks storage bucket clients and the config service are currently supported. Clients using this implementation will only be enabled if the existing `-alertmanager.storage` flags are left unset. #3888
 * [FEATURE] Adds support to S3 server-side encryption using KMS. The S3 server-side encryption config can be overridden on a per-tenant basis for the blocks storage and ruler. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810 #3811 #3870 #3886
   - `-<prefix>.s3.sse.type`
   - `-<prefix>.s3.sse.kms-key-id`

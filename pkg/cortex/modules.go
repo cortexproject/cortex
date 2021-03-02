@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -709,12 +710,23 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, util_log.Logger, prometheus.DefaultRegisterer)
+	// Initialise the store.
+	var store alertstore.AlertStore
+	if !t.Cfg.Alertmanager.Store.IsDefaults() {
+		store, err = alertstore.NewLegacyAlertStore(t.Cfg.Alertmanager.Store, util_log.Logger)
+	} else {
+		store, err = alertstore.NewAlertStore(context.Background(), t.Cfg.AlertmanagerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	}
 	if err != nil {
 		return
 	}
 
-	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
+	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return
+	}
+
+	t.API.RegisterAlertmanager(t.Alertmanager, t.Cfg.isModuleEnabled(AlertManager), t.Cfg.Alertmanager.EnableAPI)
 	return t.Alertmanager, nil
 }
 
@@ -878,7 +890,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ruler:                    {DistributorService, Store, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
 		Configs:                  {API},
-		AlertManager:             {API, MemberlistKV},
+		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},

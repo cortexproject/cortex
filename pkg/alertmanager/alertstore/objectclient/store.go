@@ -6,11 +6,11 @@ import (
 	"io/ioutil"
 	"path"
 
+	"github.com/go-kit/kit/log"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Object Alert Storage Schema
@@ -25,12 +25,14 @@ const (
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.
 type AlertStore struct {
 	client chunk.ObjectClient
+	logger log.Logger
 }
 
 // NewAlertStore returns a new AlertStore
-func NewAlertStore(client chunk.ObjectClient) *AlertStore {
+func NewAlertStore(client chunk.ObjectClient, logger log.Logger) *AlertStore {
 	return &AlertStore{
 		client: client,
+		logger: logger,
 	}
 }
 
@@ -60,7 +62,7 @@ func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.A
 		return alertspb.AlertConfigDesc{}, err
 	}
 
-	defer runutil.CloseWithLogOnErr(util_log.Logger, readCloser, "close alert config reader")
+	defer runutil.CloseWithLogOnErr(a.logger, readCloser, "close alert config reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
@@ -98,5 +100,9 @@ func (a *AlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfi
 
 // DeleteAlertConfig implements alertstore.AlertStore.
 func (a *AlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
-	return a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
+	err := a.client.DeleteObject(ctx, path.Join(alertPrefix, user))
+	if err == chunk.ErrStorageObjectNotFound {
+		return nil
+	}
+	return err
 }

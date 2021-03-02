@@ -1,24 +1,21 @@
 package alertstore
 
 import (
-	"context"
 	"flag"
-	"fmt"
 
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/configdb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/azure"
 	"github.com/cortexproject/cortex/pkg/chunk/gcp"
 	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
-// Config configures the alertmanager backend
-type Config struct {
+// LegacyConfig configures the alertmanager storage backend using the legacy storage clients.
+type LegacyConfig struct {
 	Type     string        `yaml:"type"`
 	ConfigDB client.Config `yaml:"configdb"`
 
@@ -30,18 +27,18 @@ type Config struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+func (cfg *LegacyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ConfigDB.RegisterFlagsWithPrefix("alertmanager.", f)
-	f.StringVar(&cfg.Type, "alertmanager.storage.type", "configdb", "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
+	f.StringVar(&cfg.Type, "alertmanager.storage.type", configdb.Name, "Type of backend to use to store alertmanager configs. Supported values are: \"configdb\", \"gcs\", \"s3\", \"local\".")
 
 	cfg.Azure.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.GCS.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 	cfg.S3.RegisterFlagsWithPrefix("alertmanager.storage.", f)
-	cfg.Local.RegisterFlags(f)
+	cfg.Local.RegisterFlagsWithPrefix("alertmanager.storage.", f)
 }
 
 // Validate config and returns error on failure
-func (cfg *Config) Validate() error {
+func (cfg *LegacyConfig) Validate() error {
 	if err := cfg.Azure.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
@@ -51,31 +48,24 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// NewAlertStore returns a new rule storage backend poller and store
-func NewAlertStore(cfg Config) (AlertStore, error) {
-	switch cfg.Type {
-	case "configdb":
-		c, err := client.New(cfg.ConfigDB)
-		if err != nil {
-			return nil, err
-		}
-		return configdb.NewStore(c), nil
-	case "azure":
-		return newObjAlertStore(azure.NewBlobStorage(&cfg.Azure))
-	case "gcs":
-		return newObjAlertStore(gcp.NewGCSObjectClient(context.Background(), cfg.GCS))
-	case "s3":
-		return newObjAlertStore(aws.NewS3ObjectClient(cfg.S3))
-	case "local":
-		return local.NewStore(cfg.Local)
-	default:
-		return nil, fmt.Errorf("unrecognized alertmanager storage backend %v, choose one of: azure, configdb, gcs, local, s3", cfg.Type)
-	}
+// IsDefaults returns true if the storage options have not been set.
+func (cfg *LegacyConfig) IsDefaults() bool {
+	return cfg.Type == configdb.Name && cfg.ConfigDB.ConfigsAPIURL.URL == nil
 }
 
-func newObjAlertStore(client chunk.ObjectClient, err error) (AlertStore, error) {
-	if err != nil {
-		return nil, err
-	}
-	return objectclient.NewAlertStore(client), nil
+// Config configures a the alertmanager storage backend.
+type Config struct {
+	bucket.Config `yaml:",inline"`
+	ConfigDB      client.Config     `yaml:"configdb"`
+	Local         local.StoreConfig `yaml:"local"`
+}
+
+// RegisterFlags registers the backend storage config.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	prefix := "alertmanager-storage."
+
+	cfg.ExtraBackends = []string{configdb.Name, local.Name}
+	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
+	cfg.RegisterFlagsWithPrefix(prefix, f)
 }

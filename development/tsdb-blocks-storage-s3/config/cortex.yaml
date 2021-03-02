@@ -85,7 +85,7 @@ ruler_storage:
     endpoint:          minio:9000
     access_key_id:     cortex
     secret_access_key: supersecret
-    insecure: true
+    insecure:          true
 
 alertmanager:
   enable_api: true
@@ -98,12 +98,15 @@ alertmanager:
       store: consul
       consul:
         host: consul:8500
-  storage:
-    type: s3
-    s3:
-      bucketnames: cortex-alertmanager
-      s3forcepathstyle: true
-      s3: http://cortex:supersecret@minio.:9000
+
+alertmanager_storage:
+  backend: s3
+  s3:
+    bucket_name:       cortex-alertmanager
+    endpoint:          minio:9000
+    access_key_id:     cortex
+    secret_access_key: supersecret
+    insecure:          true
 
 storage:
   engine: blocks

@@ -57,10 +57,10 @@ type Frontend struct {
 	activeUsers  *util.ActiveUsersCleanupService
 
 	// Metrics.
-	queueLength      *prometheus.GaugeVec
+	queueLength       *prometheus.GaugeVec
 	discardedRequests *prometheus.CounterVec
-	numClients       prometheus.GaugeFunc
-	queueDuration    prometheus.Histogram
+	numClients        prometheus.GaugeFunc
+	queueDuration     prometheus.Histogram
 }
 
 type request struct {

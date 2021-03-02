@@ -85,6 +85,9 @@ Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant g
 
 The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
 
+You can see that the initial migration is done by looking for the following message in the compactor's logs:
+`msg="migrated block deletion marks to the global markers location"`.
+
 ## Caching
 
 ### Ensure memcached is properly scaled

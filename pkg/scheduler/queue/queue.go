@@ -4,10 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (

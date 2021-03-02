@@ -55,6 +55,7 @@ type Scheduler struct {
 
 	// Metrics.
 	queueLength              *prometheus.GaugeVec
+	discardedQueries         *prometheus.CounterVec
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
@@ -100,7 +101,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Name: "cortex_query_scheduler_queue_length",
 		Help: "Number of queries in the queue.",
 	}, []string{"user"})
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength)
+
+	s.discardedQueries = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_scheduler_discarded_queries_total",
+		Help: "Total number of query requests discarded.",
+	}, []string{"user", "reason"})
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedQueries)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",

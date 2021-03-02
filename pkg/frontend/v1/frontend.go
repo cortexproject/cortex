@@ -57,9 +57,10 @@ type Frontend struct {
 	activeUsers  *util.ActiveUsersCleanupService
 
 	// Metrics.
-	queueLength   *prometheus.GaugeVec
-	numClients    prometheus.GaugeFunc
-	queueDuration prometheus.Histogram
+	queueLength      *prometheus.GaugeVec
+	discardedQueries *prometheus.CounterVec
+	numClients       prometheus.GaugeFunc
+	queueDuration    prometheus.Histogram
 }
 
 type request struct {
@@ -83,6 +84,10 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
 		}, []string{"user"}),
+		discardedQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_frontend_discarded_queries_total",
+			Help: "Total number of query requests discarded.",
+		}, []string{"user", "reason"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -90,7 +95,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength, f.discardedQueries)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{

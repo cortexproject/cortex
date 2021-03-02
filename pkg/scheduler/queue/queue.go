@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -47,14 +48,16 @@ type RequestQueue struct {
 	queues  *queues
 	stopped bool
 
-	queueLength *prometheus.GaugeVec // Per user.
+	queueLength      *prometheus.GaugeVec   // Per user and reason.
+	discardedQueries *prometheus.CounterVec // Per user.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, queueLength *prometheus.GaugeVec, discardedQueries *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newUserQueues(maxOutstandingPerTenant),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
+		discardedQueries:        discardedQueries,
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
@@ -91,6 +94,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		}
 		return nil
 	default:
+		q.discardedQueries.WithLabelValues(userID, validation.RateLimited).Inc()
 		return ErrTooManyRequests
 	}
 }

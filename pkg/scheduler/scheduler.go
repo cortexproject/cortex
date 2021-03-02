@@ -55,7 +55,7 @@ type Scheduler struct {
 
 	// Metrics.
 	queueLength              *prometheus.GaugeVec
-	discardedQueries         *prometheus.CounterVec
+	discardedRequests        *prometheus.CounterVec
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
@@ -102,11 +102,11 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Number of queries in the queue.",
 	}, []string{"user"})
 
-	s.discardedQueries = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_query_scheduler_discarded_queries_total",
+	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		Name: "cortex_query_scheduler_discarded_requests_total",
 		Help: "Total number of query requests discarded.",
 	}, []string{"user"})
-	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedQueries)
+	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, s.queueLength, s.discardedRequests)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 		Name:    "cortex_query_scheduler_queue_duration_seconds",
@@ -477,7 +477,7 @@ func (s *Scheduler) stopping(_ error) error {
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
 	s.queueLength.DeleteLabelValues(user)
-	s.discardedQueries.DeleteLabelValues(user)
+	s.discardedRequests.DeleteLabelValues(user)
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

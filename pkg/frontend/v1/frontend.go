@@ -58,7 +58,7 @@ type Frontend struct {
 
 	// Metrics.
 	queueLength      *prometheus.GaugeVec
-	discardedQueries *prometheus.CounterVec
+	discardedRequests *prometheus.CounterVec
 	numClients       prometheus.GaugeFunc
 	queueDuration    prometheus.Histogram
 }
@@ -84,8 +84,8 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
 		}, []string{"user"}),
-		discardedQueries: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_frontend_discarded_queries_total",
+		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_frontend_discarded_requests_total",
 			Help: "Total number of query requests discarded.",
 		}, []string{"user"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -95,7 +95,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength, f.discardedQueries)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, f.queueLength, f.discardedRequests)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
@@ -119,7 +119,7 @@ func (f *Frontend) stopping(_ error) error {
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 	f.queueLength.DeleteLabelValues(user)
-	f.discardedQueries.DeleteLabelValues(user)
+	f.discardedRequests.DeleteLabelValues(user)
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).

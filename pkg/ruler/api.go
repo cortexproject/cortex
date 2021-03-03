@@ -551,3 +551,22 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	respondAccepted(w, logger)
 }
+
+func (a *API) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), a.logger)
+
+	userID, err := tenant.TenantID(req.Context())
+	if err != nil {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	err = a.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	w.WriteHeader(http.StatusOK)
+}

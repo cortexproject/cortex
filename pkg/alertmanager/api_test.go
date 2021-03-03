@@ -153,6 +153,12 @@ template_files:
 
 type noopAlertStore struct{}
 
+func (noopAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+func (noopAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	return nil, nil
+}
 func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	return nil, nil
 }

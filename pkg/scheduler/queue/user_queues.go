@@ -18,7 +18,7 @@ type querier struct {
 	// Number of active connections.
 	connections int
 
-	// True if the querier signalled it's gracefully shutting down.
+	// True if the querier notified it's gracefully shutting down.
 	shuttingDown bool
 
 	// When the last connection has been unregistered.
@@ -211,13 +211,13 @@ func (q *queues) removeQuerierConnection(querierID string) {
 	}
 
 	// There no more active connections. If the forget timeout is configured then
-	// we can remove it only if a graceful shutdown has been signalled.
+	// we can remove it only if a graceful shutdown has been notified.
 	if info.shuttingDown || q.forgetTimeout == 0 {
 		q.removeQuerier(querierID)
 		return
 	}
 
-	// No graceful shutdown has been signalled yet, so we should track the current time
+	// No graceful shutdown has been notified yet, so we should track the current time
 	// so that we'll remove the querier as soon as we receive the graceful shutdown
 	// notification (if any) or once the threshold expires.
 	info.disconnectedAt = time.Now()
@@ -236,8 +236,8 @@ func (q *queues) removeQuerier(querierID string) {
 	q.recomputeUserQueriers()
 }
 
-// signalQuerierShutdown records a querier has notified a graceful shutdown.
-func (q *queues) signalQuerierShutdown(querierID string) {
+// notifyQuerierShutdown records a querier has notified a graceful shutdown.
+func (q *queues) notifyQuerierShutdown(querierID string) {
 	info := q.queriers[querierID]
 	if info == nil {
 		// The querier may have already been removed, so we just ignore it.

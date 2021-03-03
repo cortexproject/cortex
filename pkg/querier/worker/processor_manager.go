@@ -36,6 +36,10 @@ func newProcessorManager(ctx context.Context, p processor, conn *grpc.ClientConn
 }
 
 func (pm *processorManager) stop() {
+	// Notify the remote query-frontend or query-scheduler we're shutting down.
+	// We use a new context to make sure it's not cancelled.
+	pm.p.notifyShutdown(context.Background(), pm.conn, pm.address)
+
 	// Stop all goroutines.
 	pm.concurrency(0)
 

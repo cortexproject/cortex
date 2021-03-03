@@ -258,6 +258,12 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 	}
 }
 
+func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {
+	f.requestQueue.NotifyQuerierShutdown(req.GetClientID())
+
+	return &frontendv1pb.NotifyClientShutdownResponse{}, nil
+}
+
 func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 	err := server.Send(&frontendv1pb.FrontendToClient{
 		Type: frontendv1pb.GET_ID,

@@ -381,6 +381,12 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 	return errSchedulerIsNotRunning
 }
 
+func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.NotifyQuerierShutdownRequest) (*schedulerpb.NotifyQuerierShutdownResponse, error) {
+	s.requestQueue.NotifyQuerierShutdown(req.GetQuerierID())
+
+	return &schedulerpb.NotifyQuerierShutdownResponse{}, nil
+}
+
 func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest) error {
 	// Make sure to cancel request at the end to cleanup resources.
 	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID)

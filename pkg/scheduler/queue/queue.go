@@ -182,6 +182,12 @@ func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
 	q.queues.removeQuerierConnection(querier)
 }
 
+func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+	q.queues.notifyQuerierShutdown(querierID)
+}
+
 // When querier is waiting for next request, this unblocks the method.
 func (q *RequestQueue) QuerierDisconnecting() {
 	q.cond.Broadcast()

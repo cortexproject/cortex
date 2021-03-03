@@ -8,20 +8,15 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -379,89 +374,4 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 	ctx := user.InjectOrgID(req.Context(), userID)
 
 	return req.WithContext(ctx)
-}
-
-func TestDeleteTenantRuleGroups(t *testing.T) {
-	ruleGroups := []ruleGroupKey{
-		{user: "userA", namespace: "namespace", group: "group"},
-		{user: "userB", namespace: "namespace1", group: "group"},
-		{user: "userB", namespace: "namespace2", group: "group"},
-	}
-
-	obj, rs := setupRuleGroupsStore(t, ruleGroups)
-	require.Equal(t, 3, obj.GetObjectCount())
-
-	api := NewAPI(nil, rs, log.NewNopLogger())
-
-	{
-		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
-		require.Equal(t, 3, obj.GetObjectCount())
-
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false)
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
-	}
-
-	{
-		callDeleteTenantAPI(t, api, "userA")
-		require.Equal(t, 2, obj.GetObjectCount())
-
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Just deleted.
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
-	}
-
-	{
-		callDeleteTenantAPI(t, api, "userB")
-		require.Equal(t, 0, obj.GetObjectCount())
-
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Deleted previously
-		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", true)                    // Just deleted
-	}
-}
-
-func callDeleteTenantAPI(t *testing.T, api *API, userID string) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	req := &http.Request{}
-	resp := httptest.NewRecorder()
-	api.DeleteTenantConfiguration(resp, req.WithContext(ctx))
-
-	require.Equal(t, http.StatusOK, resp.Code)
-}
-
-func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, api *API, userID string, expectedDeleted bool) {
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	req := &http.Request{}
-	var err error
-	req.URL, err = url.ParseRequestURI("/api/v1/rules")
-	require.NoError(t, err)
-	resp := httptest.NewRecorder()
-	api.ListRules(resp, req.WithContext(ctx))
-
-	if expectedDeleted {
-		// If no rules are found, 404 is returned.
-		require.Equal(t, http.StatusNotFound, resp.Code)
-	} else {
-		require.Equal(t, http.StatusOK, resp.Code)
-	}
-}
-
-func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rulestore.RuleStore) {
-	obj := chunk.NewMockStorage()
-	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
-
-	// "upload" rule groups
-	for _, key := range ruleGroups {
-		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
-		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
-	}
-
-	return obj, rs
-}
-
-type ruleGroupKey struct {
-	user, namespace, group string
 }

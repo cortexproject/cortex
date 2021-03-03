@@ -5,6 +5,7 @@ import (
 	"context"
 	"io/ioutil"
 	"path"
+	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -34,6 +35,22 @@ func NewAlertStore(client chunk.ObjectClient, logger log.Logger) *AlertStore {
 		client: client,
 		logger: logger,
 	}
+}
+
+// ListAllUsers implements alertstore.AlertStore.
+func (a *AlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	objs, _, err := a.client.List(ctx, alertPrefix, "")
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(objs))
+	for _, obj := range objs {
+		userID := strings.TrimPrefix(obj.Key, alertPrefix)
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs, nil
 }
 
 // ListAlertConfigs implements alertstore.AlertStore.

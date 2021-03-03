@@ -22,6 +22,9 @@ import (
 
 // AlertStore stores and configures users rule configs
 type AlertStore interface {
+	// ListAllUsers returns all users with alertmanager configuration.
+	ListAllUsers(ctx context.Context) ([]string, error)
+
 	// ListAlertConfigs loads and returns the alertmanager configuration for all users.
 	ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error)
 

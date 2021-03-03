@@ -33,9 +33,53 @@ func NewStore(c client.Client) *Store {
 	}
 }
 
+// ListAllUsers implements alertstore.AlertStore.
+func (c *Store) ListAllUsers(ctx context.Context) ([]string, error) {
+	configs, err := c.reloadConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(configs))
+	for userID := range configs {
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs, nil
+}
+
 // ListAlertConfigs implements alertstore.AlertStore.
 func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+	return c.reloadConfigs(ctx)
+}
 
+// GetAlertConfig implements alertstore.AlertStore.
+func (c *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
+	// Refresh the local state before fetching a specific one.
+	configs, err := c.reloadConfigs(ctx)
+	if err != nil {
+		return alertspb.AlertConfigDesc{}, err
+	}
+
+	cfg, exists := configs[user]
+	if !exists {
+		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
+	}
+
+	return cfg, nil
+}
+
+// SetAlertConfig implements alertstore.AlertStore.
+func (c *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
+	return errReadOnly
+}
+
+// DeleteAlertConfig implements alertstore.AlertStore.
+func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
+	return errReadOnly
+}
+
+func (c *Store) reloadConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	configs, err := c.configClient.GetAlerts(ctx, c.since)
 
 	if err != nil {
@@ -66,32 +110,4 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.Alert
 	c.since = configs.GetLatestConfigID()
 
 	return c.alertConfigs, nil
-}
-
-// GetAlertConfig implements alertstore.AlertStore.
-func (c *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
-
-	// Refresh the local state before fetching an specific one.
-	_, err := c.ListAlertConfigs(ctx)
-	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
-	}
-
-	cfg, exists := c.alertConfigs[user]
-
-	if !exists {
-		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
-	}
-
-	return cfg, nil
-}
-
-// SetAlertConfig implements alertstore.AlertStore.
-func (c *Store) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
-	return errReadOnly
-}
-
-// DeleteAlertConfig implements alertstore.AlertStore.
-func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
-	return errReadOnly
 }

@@ -42,8 +42,53 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	return &Store{cfg}, nil
 }
 
+// ListAllUsers implements alertstore.AlertStore.
+func (f *Store) ListAllUsers(_ context.Context) ([]string, error) {
+	configs, err := f.reloadConfigs()
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(configs))
+	for userID := range configs {
+		userIDs = append(userIDs, userID)
+	}
+
+	return userIDs, nil
+}
+
 // ListAlertConfigs implements alertstore.AlertStore.
 func (f *Store) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+	return f.reloadConfigs()
+}
+
+// GetAlertConfig implements alertstore.AlertStore.
+func (f *Store) GetAlertConfig(_ context.Context, user string) (alertspb.AlertConfigDesc, error) {
+	cfgs, err := f.reloadConfigs()
+	if err != nil {
+		return alertspb.AlertConfigDesc{}, err
+	}
+
+	cfg, exists := cfgs[user]
+
+	if !exists {
+		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
+	}
+
+	return cfg, nil
+}
+
+// SetAlertConfig implements alertstore.AlertStore.
+func (f *Store) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) error {
+	return errReadOnly
+}
+
+// DeleteAlertConfig implements alertstore.AlertStore.
+func (f *Store) DeleteAlertConfig(_ context.Context, user string) error {
+	return errReadOnly
+}
+
+func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 	configs := map[string]alertspb.AlertConfigDesc{}
 	err := filepath.Walk(f.cfg.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -83,30 +128,4 @@ func (f *Store) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertCo
 	}
 
 	return configs, nil
-}
-
-// GetAlertConfig implements alertstore.AlertStore.
-func (f *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
-	cfgs, err := f.ListAlertConfigs(ctx)
-	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
-	}
-
-	cfg, exists := cfgs[user]
-
-	if !exists {
-		return alertspb.AlertConfigDesc{}, alertspb.ErrNotFound
-	}
-
-	return cfg, nil
-}
-
-// SetAlertConfig implements alertstore.AlertStore.
-func (f *Store) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) error {
-	return errReadOnly
-}
-
-// DeleteAlertConfig implements alertstore.AlertStore.
-func (f *Store) DeleteAlertConfig(_ context.Context, user string) error {
-	return errReadOnly
 }

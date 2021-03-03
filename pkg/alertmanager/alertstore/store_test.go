@@ -15,6 +15,31 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
+func TestAlertStore_ListAllUsers(t *testing.T) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+		ctx := context.Background()
+		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
+		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
+
+		// The storage is empty.
+		{
+			users, err := store.ListAllUsers(ctx)
+			require.NoError(t, err)
+			assert.Empty(t, users)
+		}
+
+		// The storage contains some users.
+		{
+			require.NoError(t, store.SetAlertConfig(ctx, user1Cfg))
+			require.NoError(t, store.SetAlertConfig(ctx, user2Cfg))
+
+			users, err := store.ListAllUsers(ctx)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, []string{"user-1", "user-2"}, users)
+		}
+	})
+}
+
 func TestAlertStore_ListAlertConfigs(t *testing.T) {
 	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
 		ctx := context.Background()

@@ -22,6 +22,7 @@ var (
 // Methods starting with "List" prefix may return partially loaded groups: with only group Name, Namespace and User fields set.
 // To make sure that rules within each group are loaded, client must use LoadRuleGroups method.
 type RuleStore interface {
+	// ListAllUsers returns all users with rule groups configured.
 	ListAllUsers(ctx context.Context) ([]string, error)
 
 	// ListAllRuleGroups returns all rule groups for all users.

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/alertmanager/timeinterval"
+
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
@@ -242,11 +244,17 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return nil
 	}
 
+	muteTimes := make(map[string][]timeinterval.TimeInterval, len(conf.MuteTimeIntervals))
+	for _, ti := range conf.MuteTimeIntervals {
+		muteTimes[ti.Name] = ti.TimeIntervals
+	}
+
 	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
+		muteTimes,
 		am.nflog,
 		am.cfg.Peer,
 	)

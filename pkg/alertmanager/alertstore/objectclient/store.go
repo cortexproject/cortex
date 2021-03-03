@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 // Object Alert Storage Schema
@@ -21,7 +23,11 @@ import (
 // Storage Format: Encoded AlertConfigDesc
 
 const (
+	// The bucket prefix under which all tenants alertmanager configs are stored.
 	alertPrefix = "alerts/"
+
+	// How many users to load concurrently.
+	fetchConcurrency = 16
 )
 
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.
@@ -56,17 +62,28 @@ func (a *AlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 
 // GetAlertConfigs implements alertstore.AlertStore.
 func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
-	cfgs := make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	var (
+		cfgsMx = sync.Mutex{}
+		cfgs   = make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	)
 
-	for _, userID := range userIDs {
+	err := concurrency.ForEachUser(ctx, userIDs, fetchConcurrency, func(ctx context.Context, userID string) error {
 		cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, userID))
 		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
-			continue
+			return nil
 		} else if err != nil {
-			return nil, errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
+			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
 		}
 
+		cfgsMx.Lock()
 		cfgs[userID] = cfg
+		cfgsMx.Unlock()
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return cfgs, nil

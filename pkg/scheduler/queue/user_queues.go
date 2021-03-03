@@ -187,6 +187,11 @@ func (q *queues) addQuerierConnection(querierID string) {
 	info := q.queriers[querierID]
 	if info != nil {
 		info.connections++
+
+		// Reset in case the querier re-connected while was in the forget waiting period.
+		info.shuttingDown = false
+		info.disconnectedAt = time.Time{}
+
 		return
 	}
 

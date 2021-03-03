@@ -143,6 +143,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 	if err != nil {
 		respondFromError(err, w, logger)
+		return
 	}
 
 	firstSuccessfulResponseMtx.Lock() // Another request might be ongoing after quorum.

@@ -17,7 +17,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	queues := make([]*RequestQueue, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		queue := NewRequestQueue(maxOutstandingPerTenant,
+		queue := NewRequestQueue(maxOutstandingPerTenant, 0,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 		)
@@ -74,7 +74,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant,
+		q := NewRequestQueue(maxOutstandingPerTenant, 0,
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 		)

@@ -589,6 +589,13 @@ query_scheduler:
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
   [max_outstanding_requests_per_tenant: <int> | default = 100]
 
+  # When configured, if a querier disconnects without notifying a graceful
+  # shutdown, the query-scheduler keeps the querier in the tenant's shard until
+  # the forget timeout expires. This feature is useful to reduce the blast
+  # radius when shuffle-sharding is enabled.
+  # CLI flag: -query-scheduler.querier-forget-timeout
+  [querier_forget_timeout: <duration> | default = 0s]
+
   # This configures the gRPC client used to report errors back to the
   # query-frontend.
   grpc_client_config:
@@ -1321,6 +1328,13 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
+
+# When configured, if a querier disconnects without notifying a graceful
+# shutdown, the query-frontend keeps the querier in the tenant's shard until the
+# forget timeout expires. This feature is useful to reduce the blast radius when
+# shuffle-sharding is enabled.
+# CLI flag: -query-frontend.querier-forget-timeout
+[querier_forget_timeout: <duration> | default = 0s]
 
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address

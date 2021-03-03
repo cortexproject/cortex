@@ -159,9 +159,6 @@ func (noopAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 func (noopAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
 	return nil, nil
 }
-func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	return nil, nil
-}
 func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
 	return alertspb.AlertConfigDesc{}, nil
 }

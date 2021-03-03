@@ -66,11 +66,6 @@ func (c *Store) GetAlertConfigs(ctx context.Context, userIDs []string) (map[stri
 	return filtered, nil
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	return c.reloadConfigs(ctx)
-}
-
 // GetAlertConfig implements alertstore.AlertStore.
 func (c *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
 	// Refresh the local state.

@@ -72,26 +72,6 @@ func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map
 	return cfgs, nil
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	objs, _, err := a.client.List(ctx, alertPrefix, "")
-	if err != nil {
-		return nil, err
-	}
-
-	cfgs := map[string]alertspb.AlertConfigDesc{}
-
-	for _, obj := range objs {
-		cfg, err := a.getAlertConfig(ctx, obj.Key)
-		if err != nil {
-			return nil, err
-		}
-		cfgs[cfg.User] = cfg
-	}
-
-	return cfgs, nil
-}
-
 func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.AlertConfigDesc, error) {
 	readCloser, err := a.client.GetObject(ctx, key)
 	if err != nil {

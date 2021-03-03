@@ -57,11 +57,6 @@ func (f *Store) ListAllUsers(_ context.Context) ([]string, error) {
 	return userIDs, nil
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (f *Store) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	return f.reloadConfigs()
-}
-
 // GetAlertConfigs implements alertstore.AlertStore.
 func (c *Store) GetAlertConfigs(_ context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
 	configs, err := c.reloadConfigs()

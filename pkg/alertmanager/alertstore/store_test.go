@@ -40,34 +40,6 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 	})
 }
 
-func TestAlertStore_ListAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
-		ctx := context.Background()
-		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
-		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
-
-		// The storage is empty.
-		{
-			configs, err := store.ListAlertConfigs(ctx)
-			require.NoError(t, err)
-			assert.Empty(t, configs)
-		}
-
-		// The storage contains some configs.
-		{
-			require.NoError(t, store.SetAlertConfig(ctx, user1Cfg))
-			require.NoError(t, store.SetAlertConfig(ctx, user2Cfg))
-
-			configs, err := store.ListAlertConfigs(ctx)
-			require.NoError(t, err)
-			assert.Equal(t, map[string]alertspb.AlertConfigDesc{
-				"user-1": user1Cfg,
-				"user-2": user2Cfg,
-			}, configs)
-		}
-	})
-}
-
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
 		ctx := context.Background()

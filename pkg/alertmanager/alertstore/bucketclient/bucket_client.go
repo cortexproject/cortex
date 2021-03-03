@@ -69,29 +69,6 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 	return cfgs, nil
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (s *BucketAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	cfgs := map[string]alertspb.AlertConfigDesc{}
-
-	err := s.bucket.Iter(ctx, "", func(key string) error {
-		userID := key
-
-		cfg, err := s.getAlertConfig(ctx, userID)
-		if err != nil {
-			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
-		}
-
-		cfgs[cfg.User] = cfg
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return cfgs, nil
-}
-
 // GetAlertConfig implements alertstore.AlertStore.
 func (s *BucketAlertStore) GetAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
 	cfg, err := s.getAlertConfig(ctx, userID)

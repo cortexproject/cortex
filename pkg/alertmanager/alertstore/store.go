@@ -30,9 +30,6 @@ type AlertStore interface {
 	// error but the returned configs will not include the missing users.
 	GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error)
 
-	// ListAlertConfigs loads and returns the alertmanager configuration for all users.
-	ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error)
-
 	// GetAlertConfig loads and returns the alertmanager configuration for the given user.
 	GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error)
 

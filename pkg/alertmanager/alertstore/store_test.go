@@ -60,6 +60,10 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 			config, err := store.GetAlertConfig(ctx, "user-1")
 			require.NoError(t, err)
 			assert.Equal(t, user1Cfg, config)
+
+			config, err = store.GetAlertConfig(ctx, "user-2")
+			require.NoError(t, err)
+			assert.Equal(t, user2Cfg, config)
 		}
 	})
 }

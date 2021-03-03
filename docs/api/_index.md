@@ -670,6 +670,14 @@ Displays the Alertmanager UI.
 
 _Requires [authentication](#authentication)._
 
+### Alertmanager Delete Tenant Configuration
+
+```
+POST /multitenant_alertmanager/delete_tenant_config
+```
+
+This endpoint deletes configuration for tenant identified by `X-Scope-OrgID` header. This is internal endpoint, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`.
+
 ### Get Alertmanager configuration
 
 ```

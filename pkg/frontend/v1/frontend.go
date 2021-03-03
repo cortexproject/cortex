@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -58,6 +58,10 @@ type Frontend struct {
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
 
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
 	// Metrics.
 	queueLength       *prometheus.GaugeVec
 	discardedRequests *prometheus.CounterVec
@@ -76,8 +80,7 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) *Frontend {
-
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
@@ -100,23 +103,45 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetTimeout, f.queueLength, f.discardedRequests)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
+	var err error
+	f.subservices, err = services.NewManager(f.requestQueue, f.activeUsers)
+	if err != nil {
+		return nil, err
+	}
+
 	f.numClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_frontend_connected_clients",
 		Help: "Number of worker clients currently connected to the frontend.",
 	}, f.requestQueue.GetConnectedQuerierWorkersMetric)
 
-	f.Service = services.NewIdleService(f.starting, f.stopping)
-	return f
+	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
+	return f, nil
 }
 
 func (f *Frontend) starting(ctx context.Context) error {
-	return services.StartAndAwaitRunning(ctx, f.activeUsers)
+	f.subservicesWatcher.WatchManager(f.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
+		return errors.Wrap(err, "unable to start frontend subservices")
+	}
+
+	return nil
+}
+
+func (f *Frontend) running(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-f.subservicesWatcher.Chan():
+			return errors.Wrap(err, "frontend subservice failed")
+		}
+	}
 }
 
 func (f *Frontend) stopping(_ error) error {
-	// Stops new requests and errors out any pending requests.
-	f.requestQueue.Stop()
-	return services.StopAndAwaitTerminated(context.Background(), f.activeUsers)
+	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {

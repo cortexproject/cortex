@@ -243,7 +243,8 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1 := New(config, limits{}, logger, reg)
+	v1, err := New(config, limits{}, logger, reg)
+	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
 	defer func() {

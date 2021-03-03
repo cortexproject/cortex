@@ -41,9 +41,6 @@ type queues struct {
 	// but hasn't notified a graceful shutdown.
 	forgetTimeout time.Duration
 
-	// Last time we checked for disconnected queriers to be forgotten.
-	lastForgetCheck time.Time
-
 	// Tracks queriers registered to the queue.
 	queriers map[string]*querier
 
@@ -110,10 +107,6 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 	if maxQueriers < 0 {
 		maxQueriers = 0
 	}
-
-	// To avoid having a ticker just for checking queriers to be forgotten, we trigger it whenever an user queue
-	// is requested. The function internally runs the check not more frequently than forgetCheckPeriod.
-	q.forgetDisconnectedQueriers()
 
 	uq := q.userQueues[userID]
 
@@ -261,30 +254,25 @@ func (q *queues) notifyQuerierShutdown(querierID string) {
 }
 
 // forgetDisconnectedQueriers removes all disconnected queriers that have gone since at least
-// the forget timeout.
-func (q *queues) forgetDisconnectedQueriers() {
+// the forget timeout. Returns the number of forgotten queriers.
+func (q *queues) forgetDisconnectedQueriers() int {
 	// Nothing to do if the forget timeout is disabled.
 	if q.forgetTimeout == 0 {
-		return
-	}
-
-	now := time.Now()
-
-	// Do not run it too frequently.
-	if q.lastForgetCheck.After(now.Add(-forgetCheckPeriod)) {
-		return
+		return 0
 	}
 
 	// Remove all queriers with no connections that have gone since at least the forget timeout.
-	threshold := now.Add(-q.forgetTimeout)
+	threshold := time.Now().Add(-q.forgetTimeout)
+	forgotten := 0
 
 	for querierID := range q.queriers {
 		if info := q.queriers[querierID]; info.connections == 0 && info.disconnectedAt.Before(threshold) {
 			q.removeQuerier(querierID)
+			forgotten++
 		}
 	}
 
-	q.lastForgetCheck = now
+	return forgotten
 }
 
 func (q *queues) recomputeUserQueriers() {

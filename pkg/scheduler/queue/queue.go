@@ -8,6 +8,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -41,6 +43,8 @@ type Request interface{}
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
 // in a fair fashion.
 type RequestQueue struct {
+	services.Service
+
 	connectedQuerierWorkers *atomic.Int32
 
 	mtx     sync.Mutex
@@ -61,6 +65,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetTimeout time.Duration, q
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
+	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping)
 
 	return q
 }
@@ -152,7 +157,20 @@ FindQueue:
 	goto FindQueue
 }
 
-func (q *RequestQueue) Stop() {
+func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+
+	if q.queues.forgetDisconnectedQueriers() > 0 {
+		// We need to notify goroutines cause having removed some queriers
+		// may have caused a resharding.
+		q.cond.Broadcast()
+	}
+
+	return nil
+}
+
+func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -165,6 +183,8 @@ func (q *RequestQueue) Stop() {
 
 	// If there are still goroutines in GetNextRequestForQuerier method, they get notified.
 	q.cond.Broadcast()
+
+	return nil
 }
 
 func (q *RequestQueue) RegisterQuerierConnection(querier string) {

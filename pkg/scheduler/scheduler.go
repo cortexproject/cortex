@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"io"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -52,6 +52,10 @@ type Scheduler struct {
 
 	pendingRequestsMu sync.Mutex
 	pendingRequests   map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
+
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	// Metrics.
 	queueLength              *prometheus.GaugeVec
@@ -125,7 +129,13 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 
 	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
-	s.Service = services.NewIdleService(s.starting, s.stopping)
+	var err error
+	s.subservices, err = services.NewManager(s.requestQueue, s.activeUsers)
+	if err != nil {
+		return nil, err
+	}
+
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
 }
 
@@ -474,13 +484,30 @@ func (s *Scheduler) isRunningOrStopping() bool {
 }
 
 func (s *Scheduler) starting(ctx context.Context) error {
-	return services.StartAndAwaitRunning(ctx, s.activeUsers)
+	s.subservicesWatcher.WatchManager(s.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, s.subservices); err != nil {
+		return errors.Wrap(err, "unable to start scheduler subservices")
+	}
+
+	return nil
+}
+
+func (s *Scheduler) running(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-s.subservicesWatcher.Chan():
+			return errors.Wrap(err, "scheduler subservice failed")
+		}
+	}
 }
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
-	s.requestQueue.Stop()
-	return services.StopAndAwaitTerminated(context.Background(), s.activeUsers)
+	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {

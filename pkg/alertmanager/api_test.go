@@ -123,7 +123,7 @@ template_files:
 	}
 
 	am := &MultitenantAlertmanager{
-		store:  prepareFilesystemAlertStore(t),
+		store:  prepareInMemoryAlertStore(),
 		logger: util_log.Logger,
 	}
 	for _, tc := range testCases {

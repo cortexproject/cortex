@@ -778,7 +778,9 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
-		respondError(logger, w, err.Error())
+		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
+		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 

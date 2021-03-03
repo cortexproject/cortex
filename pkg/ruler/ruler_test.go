@@ -628,6 +628,14 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 	require.NoError(t, err)
 
 	{
+		req := &http.Request{}
+		resp := httptest.NewRecorder()
+		api.DeleteTenantConfiguration(resp, req)
+
+		require.Equal(t, http.StatusUnauthorized, resp.Code)
+	}
+
+	{
 		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
 		require.Equal(t, 3, obj.GetObjectCount())
 
@@ -642,6 +650,16 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 
 		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
 		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Just deleted.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	// Deleting same user again works fine and reports no problems.
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Already deleted before.
 		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
 	}
 

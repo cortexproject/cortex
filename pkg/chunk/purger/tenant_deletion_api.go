@@ -46,7 +46,9 @@ func (api *TenantDeletionAPI) DeleteTenant(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
+		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 

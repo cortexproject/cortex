@@ -23,7 +23,7 @@ func TestDeleteTenant(t *testing.T) {
 	{
 		resp := httptest.NewRecorder()
 		api.DeleteTenant(resp, &http.Request{})
-		require.Equal(t, http.StatusBadRequest, resp.Code)
+		require.Equal(t, http.StatusUnauthorized, resp.Code)
 	}
 
 	{

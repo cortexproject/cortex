@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 // ForEachUser runs the provided userFunc for each userIDs up to concurrency concurrent workers.
@@ -61,4 +62,50 @@ sendLoop:
 	errsMx.Lock()
 	defer errsMx.Unlock()
 	return errs.Err()
+}
+
+// ForEach runs the provided jobFunc for each job up to concurrency concurrent workers.
+// The execution breaks on first error encountered.
+func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc func(ctx context.Context, job interface{}) error) error {
+	g, ctx := errgroup.WithContext(ctx)
+	ch := make(chan interface{})
+
+	// Start workers.
+	for ix := 0; ix < concurrency; ix++ {
+		g.Go(func() error {
+			for job := range ch {
+				if err := jobFunc(ctx, job); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+	}
+
+	// Push jobs to workers.
+sendLoop:
+	for _, job := range jobs {
+		select {
+		case ch <- job:
+			// ok
+		case <-ctx.Done():
+			// don't start new tasks.
+			break sendLoop
+		}
+	}
+
+	close(ch)
+
+	// Wait until done (or context has canceled).
+	return g.Wait()
+}
+
+// CreateJobsFromStrings is an utility to create jobs from an slice of strings.
+func CreateJobsFromStrings(values []string) []interface{} {
+	jobs := make([]interface{}, len(values))
+	for i := 0; i < len(values); i++ {
+		jobs[i] = values[i]
+	}
+	return jobs
 }

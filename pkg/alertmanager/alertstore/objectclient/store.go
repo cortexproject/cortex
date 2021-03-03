@@ -67,7 +67,9 @@ func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map
 		cfgs   = make(map[string]alertspb.AlertConfigDesc, len(userIDs))
 	)
 
-	err := concurrency.ForEachUser(ctx, userIDs, fetchConcurrency, func(ctx context.Context, userID string) error {
+	err := concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), fetchConcurrency, func(ctx context.Context, job interface{}) error {
+		userID := job.(string)
+
 		cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, userID))
 		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
 			return nil

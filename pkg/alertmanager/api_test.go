@@ -171,11 +171,31 @@ func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
 
 	require.Equal(t, 1, len(storage.Objects()))
 
-	ctx := user.InjectOrgID(context.Background(), "test_user")
-	req := httptest.NewRequest("POST", "/multitenant_alertmanager/delete_tenant_config", nil).WithContext(ctx)
-	rec := httptest.NewRecorder()
-	am.DeleteUserConfig(rec, req)
+	req := httptest.NewRequest("POST", "/multitenant_alertmanager/delete_tenant_config", nil)
+	// Missing user returns error 401. (DeleteUserConfig does this, but in practice, authentication middleware will do it first)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
+		require.Equal(t, 1, len(storage.Objects()))
+	}
 
-	require.Equal(t, 200, rec.Code)
-	require.Equal(t, 0, len(storage.Objects()))
+	// With user in the context.
+	ctx := user.InjectOrgID(context.Background(), "test_user")
+	req = req.WithContext(ctx)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
+	}
+
+	// Repeating the request still reports 200
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
+	}
 }

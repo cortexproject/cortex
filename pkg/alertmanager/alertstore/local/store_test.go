@@ -41,7 +41,7 @@ func TestStore_ListAllUsers(t *testing.T) {
 	}
 }
 
-func TestAlertStore_GetAlertConfig(t *testing.T) {
+func TestStore_GetAlertConfig(t *testing.T) {
 	ctx := context.Background()
 	store, storeDir := prepareLocalStore(t)
 
@@ -61,6 +61,41 @@ func TestAlertStore_GetAlertConfig(t *testing.T) {
 		config, err := store.GetAlertConfig(ctx, "user-1")
 		require.NoError(t, err)
 		assert.Equal(t, user1Cfg, config.RawConfig)
+	}
+}
+
+func TestStore_GetAlertConfigs(t *testing.T) {
+	ctx := context.Background()
+	store, storeDir := prepareLocalStore(t)
+
+	// The storage is empty.
+	{
+		configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+		require.NoError(t, err)
+		assert.Empty(t, configs)
+	}
+
+	// The storage contains some configs.
+	{
+		user1Cfg := prepareAlertmanagerConfig("user-1")
+		require.NoError(t, ioutil.WriteFile(filepath.Join(storeDir, "user-1.yaml"), []byte(user1Cfg), os.ModePerm))
+
+		configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+		require.NoError(t, err)
+		assert.Contains(t, configs, "user-1")
+		assert.NotContains(t, configs, "user-2")
+		assert.Equal(t, user1Cfg, configs["user-1"].RawConfig)
+
+		// Add another user config.
+		user2Cfg := prepareAlertmanagerConfig("user-2")
+		require.NoError(t, ioutil.WriteFile(filepath.Join(storeDir, "user-2.yaml"), []byte(user2Cfg), os.ModePerm))
+
+		configs, err = store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+		require.NoError(t, err)
+		assert.Contains(t, configs, "user-1")
+		assert.Contains(t, configs, "user-2")
+		assert.Equal(t, user1Cfg, configs["user-1"].RawConfig)
+		assert.Equal(t, user2Cfg, configs["user-2"].RawConfig)
 	}
 }
 

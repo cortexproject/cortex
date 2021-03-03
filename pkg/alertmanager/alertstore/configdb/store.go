@@ -48,6 +48,24 @@ func (c *Store) ListAllUsers(ctx context.Context) ([]string, error) {
 	return userIDs, nil
 }
 
+// GetAlertConfigs implements alertstore.AlertStore.
+func (c *Store) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	// Refresh the local state.
+	configs, err := c.reloadConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	for _, userID := range userIDs {
+		if cfg, ok := configs[userID]; ok {
+			filtered[userID] = cfg
+		}
+	}
+
+	return filtered, nil
+}
+
 // ListAlertConfigs implements alertstore.AlertStore.
 func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	return c.reloadConfigs(ctx)
@@ -55,7 +73,7 @@ func (c *Store) ListAlertConfigs(ctx context.Context) (map[string]alertspb.Alert
 
 // GetAlertConfig implements alertstore.AlertStore.
 func (c *Store) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
-	// Refresh the local state before fetching a specific one.
+	// Refresh the local state.
 	configs, err := c.reloadConfigs(ctx)
 	if err != nil {
 		return alertspb.AlertConfigDesc{}, err

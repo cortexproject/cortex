@@ -92,6 +92,42 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 	})
 }
 
+func TestStore_GetAlertConfigs(t *testing.T) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+		ctx := context.Background()
+		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
+		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
+
+		// The storage is empty.
+		{
+			configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+			require.NoError(t, err)
+			assert.Empty(t, configs)
+		}
+
+		// The storage contains some configs.
+		{
+			require.NoError(t, store.SetAlertConfig(ctx, user1Cfg))
+
+			configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+			require.NoError(t, err)
+			assert.Contains(t, configs, "user-1")
+			assert.NotContains(t, configs, "user-2")
+			assert.Equal(t, user1Cfg, configs["user-1"])
+
+			// Add another user config.
+			require.NoError(t, store.SetAlertConfig(ctx, user2Cfg))
+
+			configs, err = store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+			require.NoError(t, err)
+			assert.Contains(t, configs, "user-1")
+			assert.Contains(t, configs, "user-2")
+			assert.Equal(t, user1Cfg, configs["user-1"])
+			assert.Equal(t, user2Cfg, configs["user-2"])
+		}
+	})
+}
+
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
 		ctx := context.Background()

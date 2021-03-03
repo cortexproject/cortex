@@ -62,6 +62,23 @@ func (f *Store) ListAlertConfigs(_ context.Context) (map[string]alertspb.AlertCo
 	return f.reloadConfigs()
 }
 
+// GetAlertConfigs implements alertstore.AlertStore.
+func (c *Store) GetAlertConfigs(_ context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	configs, err := c.reloadConfigs()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	for _, userID := range userIDs {
+		if cfg, ok := configs[userID]; ok {
+			filtered[userID] = cfg
+		}
+	}
+
+	return filtered, nil
+}
+
 // GetAlertConfig implements alertstore.AlertStore.
 func (f *Store) GetAlertConfig(_ context.Context, user string) (alertspb.AlertConfigDesc, error) {
 	cfgs, err := f.reloadConfigs()

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -51,6 +52,24 @@ func (a *AlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	}
 
 	return userIDs, nil
+}
+
+// GetAlertConfigs implements alertstore.AlertStore.
+func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	cfgs := make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+
+	for _, userID := range userIDs {
+		cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, userID))
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			continue
+		} else if err != nil {
+			return nil, errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
+		}
+
+		cfgs[userID] = cfg
+	}
+
+	return cfgs, nil
 }
 
 // ListAlertConfigs implements alertstore.AlertStore.

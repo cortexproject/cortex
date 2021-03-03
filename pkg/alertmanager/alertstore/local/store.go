@@ -104,13 +104,13 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		// Ensure the file is a valid Alertmanager Config.
 		_, err = config.LoadFile(path)
 		if err != nil {
-			return errors.Wrap(err, "unable to load file "+path)
+			return errors.Wrapf(err, "unable to load file %s", path)
 		}
 
 		// Load the file to be returned by the store.
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
-			return errors.Wrap(err, "unable to read file "+path)
+			return errors.Wrapf(err, "unable to read file %s", path)
 		}
 
 		// The file name must correspond to the user tenant ID

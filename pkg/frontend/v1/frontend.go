@@ -259,6 +259,7 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 }
 
 func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {
+	level.Info(f.log).Log("msg", "received shutdown notification from querier", "querier", req.GetClientID())
 	f.requestQueue.NotifyQuerierShutdown(req.GetClientID())
 
 	return &frontendv1pb.NotifyClientShutdownResponse{}, nil

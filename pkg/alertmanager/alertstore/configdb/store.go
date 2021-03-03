@@ -94,7 +94,6 @@ func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
 
 func (c *Store) reloadConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
 	configs, err := c.configClient.GetAlerts(ctx, c.since)
-
 	if err != nil {
 		return nil, err
 	}

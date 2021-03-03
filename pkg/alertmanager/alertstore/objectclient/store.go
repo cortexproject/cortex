@@ -82,11 +82,7 @@ func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return cfgs, nil
+	return cfgs, err
 }
 
 func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.AlertConfigDesc, error) {

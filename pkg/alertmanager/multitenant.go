@@ -608,7 +608,7 @@ func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
 	alertmanagers, err := am.ring.Get(shardByUser(userID), RingOp, nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
-		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration for user", "user", userID, "err", err)
+		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
 		return false
 	}
 

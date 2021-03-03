@@ -28,7 +28,7 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 			assert.Empty(t, users)
 		}
 
-		// The storage contains some users.
+		// The storage contains users.
 		{
 			require.NoError(t, store.SetAlertConfig(ctx, user1Cfg))
 			require.NoError(t, store.SetAlertConfig(ctx, user2Cfg))

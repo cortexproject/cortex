@@ -49,11 +49,7 @@ func (s *BucketAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return userIDs, nil
+	return userIDs, err
 }
 
 // GetAlertConfigs implements alertstore.AlertStore.
@@ -78,11 +74,7 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return cfgs, nil
+	return cfgs, err
 }
 
 // GetAlertConfig implements alertstore.AlertStore.

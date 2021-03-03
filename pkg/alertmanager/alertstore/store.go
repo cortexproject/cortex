@@ -25,7 +25,7 @@ type AlertStore interface {
 	// ListAllUsers returns all users with alertmanager configuration.
 	ListAllUsers(ctx context.Context) ([]string, error)
 
-	// GetAlertConfigs loads and returns the alertmanager configuration for all the given users.
+	// GetAlertConfigs loads and returns the alertmanager configuration for given users.
 	// If any of the provided users has no configuration, then this function does not return an
 	// error but the returned configs will not include the missing users.
 	GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error)

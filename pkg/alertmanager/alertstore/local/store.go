@@ -135,9 +135,5 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return configs, nil
+	return configs, err
 }

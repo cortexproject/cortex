@@ -71,7 +71,7 @@
   * `cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total`
   * `cortex_ha_tracker_replicas_cleanup_deleted_total`
   * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
-* [ENHANCEMENT] Ruler now has new API endpoint `/ruler/delete_tenant_config` that can be used to delete all ruler groups for tenant. It is intended to be used by administrators who wish to clean up state after removed user. #3750 #3899
+* [ENHANCEMENT] Ruler now has new API endpoint `/ruler/delete_tenant_config` that can be used to delete all ruler groups for tenant. It is intended to be used by administrators who wish to clean up state after removed user. Note that this endpoint is enabled regardless of `-experimental.ruler.enable-api`. #3750 #3899
 * [ENHANCEMENT] Query-frontend, query-scheduler: cleanup metrics for inactive tenants. #3826
 * [ENHANCEMENT] Distributor: Prevent failed ingestion from affecting rate limiting. #3825
 * [ENHANCEMENT] Blocks storage: added `-blocks-storage.s3.region` support to S3 client configuration. #3811

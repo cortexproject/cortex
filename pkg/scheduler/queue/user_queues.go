@@ -38,7 +38,7 @@ type queues struct {
 	maxUserQueueSize int
 
 	// How long to wait before removing a querier which has got disconnected
-	// but hasn't notified a graceful shutdown.
+	// but hasn't notified about a graceful shutdown.
 	forgetTimeout time.Duration
 
 	// Tracks queriers registered to the queue.

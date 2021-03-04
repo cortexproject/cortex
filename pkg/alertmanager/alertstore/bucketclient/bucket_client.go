@@ -96,20 +96,22 @@ func (s *BucketAlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.Aler
 		return err
 	}
 
-	return s.bucket.Upload(ctx, cfg.User, bytes.NewBuffer(cfgBytes))
+	return s.getUserBucket(cfg.User).Upload(ctx, cfg.User, bytes.NewBuffer(cfgBytes))
 }
 
 // DeleteAlertConfig implements alertstore.AlertStore.
 func (s *BucketAlertStore) DeleteAlertConfig(ctx context.Context, userID string) error {
-	err := s.bucket.Delete(ctx, userID)
-	if s.bucket.IsObjNotFoundErr(err) {
+	userBkt := s.getUserBucket(userID)
+
+	err := userBkt.Delete(ctx, userID)
+	if userBkt.IsObjNotFoundErr(err) {
 		return nil
 	}
 	return err
 }
 
-func (s *BucketAlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.AlertConfigDesc, error) {
-	readCloser, err := s.bucket.Get(ctx, key)
+func (s *BucketAlertStore) getAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
+	readCloser, err := s.getUserBucket(userID).Get(ctx, userID)
 	if err != nil {
 		return alertspb.AlertConfigDesc{}, err
 	}
@@ -128,4 +130,9 @@ func (s *BucketAlertStore) getAlertConfig(ctx context.Context, key string) (aler
 	}
 
 	return config, nil
+}
+
+func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
+	// Inject server-side encryption based on the tenant config.
+	return bucket.NewSSEBucketClient(userID, s.bucket, s.cfgProvider)
 }

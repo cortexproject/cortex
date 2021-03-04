@@ -12,7 +12,7 @@
 * [CHANGE] Alertmanager: the `DELETE /api/v1/alerts` is now idempotent. No error is returned if the alertmanager config doesn't exist. #3888
 * [FEATURE] Experimental Ruler Storage: Add a separate set of configuration options to configure the ruler storage backend under the `-ruler-storage.` flag prefix. All blocks storage bucket clients and the config service are currently supported. Clients using this implementation will only be enabled if the existing `-ruler.storage` flags are left unset. #3805 #3864
 * [FEATURE] Experimental Alertmanager Storage: Add a separate set of configuration options to configure the alertmanager storage backend under the `-alertmanager-storage.` flag prefix. All blocks storage bucket clients and the config service are currently supported. Clients using this implementation will only be enabled if the existing `-alertmanager.storage` flags are left unset. #3888
-* [FEATURE] Adds support to S3 server-side encryption using KMS. The S3 server-side encryption config can be overridden on a per-tenant basis for the blocks storage and ruler. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810 #3811 #3870 #3886
+* [FEATURE] Adds support to S3 server-side encryption using KMS. The S3 server-side encryption config can be overridden on a per-tenant basis for the blocks storage, ruler and alertmanager. Deprecated `-<prefix>.s3.sse-encryption`, you should use the following CLI flags that have been added. #3651 #3810 #3811 #3870 #3886 #3906
   - `-<prefix>.s3.sse.type`
   - `-<prefix>.s3.sse.kms-key-id`
   - `-<prefix>.s3.sse.kms-encryption-context`

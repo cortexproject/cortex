@@ -46,7 +46,7 @@ import (
 const (
 	notificationLogMaintenancePeriod = 15 * time.Minute
 
-	// Per-tenant files have these prefixes.
+	// Per-tenant local files have these prefixes.
 	nflogPrefix    = "nflog:"
 	silencesPrefix = "silences:"
 )
@@ -167,9 +167,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.marker = types.NewMarker(am.registry)
 
-	silencesID := silencesPrefix + cfg.UserID
+	silencesFile := filepath.Join(cfg.DataDir, silencesPrefix+cfg.UserID)
 	am.silences, err = silence.New(silence.Options{
-		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
+		SnapshotFile: silencesFile,
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
 		Metrics:      am.registry,
@@ -185,7 +185,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.wg.Add(1)
 	go func() {
-		am.silences.Maintenance(15*time.Minute, filepath.Join(cfg.DataDir, silencesID), am.stop)
+		am.silences.Maintenance(notificationLogMaintenancePeriod, silencesFile, am.stop)
 		am.wg.Done()
 	}()
 

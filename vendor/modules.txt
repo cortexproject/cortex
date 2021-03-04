@@ -400,7 +400,7 @@ github.com/opentracing/opentracing-go/log
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054
+# github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927
 ## explicit
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/api/metrics
@@ -438,6 +438,7 @@ github.com/prometheus/alertmanager/silence
 github.com/prometheus/alertmanager/silence/silencepb
 github.com/prometheus/alertmanager/store
 github.com/prometheus/alertmanager/template
+github.com/prometheus/alertmanager/timeinterval
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
 # github.com/prometheus/client_golang v1.9.0
@@ -454,7 +455,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.15.0
+# github.com/prometheus/common v0.18.0
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt

@@ -43,10 +43,10 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054
+	github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.15.0
+	github.com/prometheus/common v0.18.0
 	github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1

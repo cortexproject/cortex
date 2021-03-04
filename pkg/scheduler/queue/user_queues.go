@@ -209,7 +209,7 @@ func (q *queues) removeQuerierConnection(querierID string) {
 	}
 
 	// There no more active connections. If the forget timeout is configured then
-	// we can remove it only if a graceful shutdown has been notified.
+	// we can remove it only if querier has announced a graceful shutdown.
 	if info.shuttingDown || q.forgetTimeout == 0 {
 		q.removeQuerier(querierID)
 		return

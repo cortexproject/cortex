@@ -9,7 +9,7 @@ By default, ingesters running with the chunks storage, store all their data in m
 
 To use WAL, there are some changes that needs to be made in the deployment.
 
-_This documentation refers to Cortex chunks storage engine. The Cortex blocks storage has WAL always enabled._
+_This documentation refers to Cortex chunks storage engine. To understand Blocks storage please go [here](../blocks-storage/_index.md)._
 
 ## Changes to deployment
 

@@ -7,6 +7,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -24,6 +25,8 @@ type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
 
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
+
+	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
 }
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager
@@ -98,6 +101,29 @@ func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-ch
 		return outCh
 	}
 }
+
+func ingesterChunkStreaming(manager *runtimeconfig.Manager) func() ingester.QueryStreamType {
+	if manager == nil {
+		return nil
+	}
+
+	return func() ingester.QueryStreamType {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			if cfg.IngesterChunkStreaming == nil {
+				return ingester.QueryStreamDefault
+			}
+
+			if *cfg.IngesterChunkStreaming {
+				return ingester.QueryStreamChunks
+			}
+			return ingester.QueryStreamSamples
+		}
+
+		return ingester.QueryStreamDefault
+	}
+}
+
 func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg, ok := runtimeCfgManager.GetConfig().(*runtimeConfigValues)

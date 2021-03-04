@@ -79,8 +79,11 @@ type Config struct {
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
 	// Use blocks storage.
-	BlocksStorageEnabled bool                     `yaml:"-"`
-	BlocksStorageConfig  tsdb.BlocksStorageConfig `yaml:"-"`
+	BlocksStorageEnabled        bool                     `yaml:"-"`
+	BlocksStorageConfig         tsdb.BlocksStorageConfig `yaml:"-"`
+	StreamChunksWhenUsingBlocks bool                     `yaml:"-"`
+	// Runtime-override for type of streaming query to use (chunks or samples).
+	StreamTypeFn func() QueryStreamType `yaml:"-"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -114,6 +117,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", false, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
+	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

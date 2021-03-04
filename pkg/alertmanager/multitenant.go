@@ -986,10 +986,6 @@ func (am *MultitenantAlertmanager) getSnapshotFilesPerUser() map[string][]string
 	result := map[string][]string{}
 
 	for _, f := range files {
-		if f.IsDir() {
-			continue
-		}
-
 		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
 
 		switch {

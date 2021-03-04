@@ -43,7 +43,13 @@ import (
 	"github.com/prometheus/common/route"
 )
 
-const notificationLogMaintenancePeriod = 15 * time.Minute
+const (
+	notificationLogMaintenancePeriod = 15 * time.Minute
+
+	// Per-tenant files have these prefixes.
+	nflogPrefix    = "nflog:"
+	silencesPrefix = "silences:"
+)
 
 // Config configures an Alertmanager.
 type Config struct {
@@ -144,11 +150,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 
 	am.wg.Add(1)
-	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
 	am.nflog, err = nflog.New(
 		nflog.WithRetention(cfg.Retention),
-		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
+		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogPrefix+cfg.UserID)),
 		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
 		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
@@ -162,7 +167,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.marker = types.NewMarker(am.registry)
 
-	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
+	silencesID := silencesPrefix + cfg.UserID
 	am.silences, err = silence.New(silence.Options{
 		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
 		Retention:    cfg.Retention,

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -551,6 +552,8 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 	}
 
 	am.syncConfigs(cfgs)
+	am.deleteObsoleteLocalFiles()
+
 	return nil
 }
 
@@ -636,19 +639,26 @@ func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alertspb.AlertCon
 		am.multitenantMetrics.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
 
+	userAlertmanagersToStop := map[string]*Alertmanager{}
+
 	am.alertmanagersMtx.Lock()
-	defer am.alertmanagersMtx.Unlock()
 	for userID, userAM := range am.alertmanagers {
 		if _, exists := cfgs[userID]; !exists {
-			level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", userID)
-			userAM.Stop()
+			userAlertmanagersToStop[userID] = userAM
 			delete(am.alertmanagers, userID)
 			delete(am.cfgs, userID)
 			am.multitenantMetrics.lastReloadSuccessful.DeleteLabelValues(userID)
 			am.multitenantMetrics.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			am.alertmanagerMetrics.removeUserRegistry(userID)
-			level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", userID)
 		}
+	}
+	am.alertmanagersMtx.Unlock()
+
+	// Now stop alertmanagers and wait until they are really stopped, without holding lock.
+	for userID, userAM := range userAlertmanagersToStop {
+		level.Info(am.logger).Log("msg", "deactivating per-tenant alertmanager", "user", userID)
+		userAM.StopAndWait()
+		level.Info(am.logger).Log("msg", "deactivated per-tenant alertmanager", "user", userID)
 	}
 }
 
@@ -942,6 +952,61 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	}
 
 	return &alertmanagerpb.UpdateStateResponse{Status: alertmanagerpb.OK}, nil
+}
+
+// deleteObsoleteLocalFiles finds local files that we no longer need, and deletes them.
+func (am *MultitenantAlertmanager) deleteObsoleteLocalFiles() {
+	userFilesToDelete := am.getSnapshotFilesPerUser()
+
+	am.alertmanagersMtx.Lock()
+	for userID := range am.alertmanagers {
+		delete(userFilesToDelete, userID) // Don't delete files for users we're managing.
+	}
+	am.alertmanagersMtx.Unlock()
+
+	// And delete remaining files.
+	for userID, files := range userFilesToDelete {
+		for _, fn := range files {
+			if err := os.Remove(fn); err != nil {
+				level.Warn(am.logger).Log("msg", "failed to delete local state file for user", "file", fn, "user", userID, "err", err)
+			} else {
+				level.Info(am.logger).Log("msg", "deleted local state file for user", "file", fn, "user", userID)
+			}
+		}
+	}
+}
+
+func (am *MultitenantAlertmanager) getSnapshotFilesPerUser() map[string][]string {
+	files, err := ioutil.ReadDir(am.cfg.DataDir)
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "failed to list file in data dir", "dir", am.cfg.DataDir, "err", err)
+		return nil
+	}
+
+	result := map[string][]string{}
+
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
+		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
+
+		switch {
+		case strings.HasPrefix(f.Name(), nflogPrefix):
+			userID := strings.TrimPrefix(f.Name(), nflogPrefix)
+			result[userID] = append(result[userID], fullPath)
+
+		case strings.HasPrefix(f.Name(), silencesPrefix):
+			userID := strings.TrimPrefix(f.Name(), silencesPrefix)
+			result[userID] = append(result[userID], fullPath)
+
+		default:
+			level.Warn(am.logger).Log("msg", "ignoring unknown local data file", "file", fullPath)
+		}
+	}
+
+	return result
 }
 
 // StatusHandler shows the status of the alertmanager.

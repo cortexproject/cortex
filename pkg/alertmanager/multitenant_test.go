@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/http/pprof"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -192,6 +193,54 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+}
+
+func TestMultitenantAlertmanager_deleteObsoleteLocalFiles(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      user2,
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	testUser1File1 := createFile(t, cfg.DataDir, silencesPrefix+user1)
+	testUser1File2 := createFile(t, cfg.DataDir, nflogPrefix+user1)
+	testUser2File := createFile(t, cfg.DataDir, nflogPrefix+user2)
+
+	files := am.getSnapshotFilesPerUser()
+	require.Equal(t, 2, len(files))
+	require.ElementsMatch(t, []string{testUser1File1, testUser1File2}, files[user1])
+	require.ElementsMatch(t, []string{testUser2File}, files[user2])
+
+	// Ensure the configs are synced correctly
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+
+	// loadAndSyncConfigs also cleans up obsolete files. Let's verify that.
+	files = am.getSnapshotFilesPerUser()
+
+	require.Nil(t, files[user1])    // has no configuration, files were deleted
+	require.NotNil(t, files[user2]) // has config, files survived
+}
+
+func createFile(t *testing.T, dir string, name string) string {
+	path := filepath.Join(dir, name)
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return path
 }
 
 func TestMultitenantAlertmanager_NoExternalURL(t *testing.T) {

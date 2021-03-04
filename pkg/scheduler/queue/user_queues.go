@@ -234,7 +234,7 @@ func (q *queues) removeQuerier(querierID string) {
 	q.recomputeUserQueriers()
 }
 
-// notifyQuerierShutdown records a querier has notified a graceful shutdown.
+// notifyQuerierShutdown records that a querier has sent notification about a graceful shutdown.
 func (q *queues) notifyQuerierShutdown(querierID string) {
 	info := q.queriers[querierID]
 	if info == nil {

@@ -65,7 +65,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetTimeout time.Duration, q
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
-	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping)
+	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping).WithName("request queue")
 
 	return q
 }

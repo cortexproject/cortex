@@ -8,11 +8,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-const (
-	// How frequently to check for disconnected queriers that should be forgotten.
-	forgetCheckPeriod = 5 * time.Second
-)
-
 // querier holds information about a querier registered in the queue.
 type querier struct {
 	// Number of active connections.

@@ -12,6 +12,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+const (
+	// How frequently to check for disconnected queriers that should be forgotten.
+	forgetCheckPeriod = 5 * time.Second
+)
+
 var (
 	ErrTooManyRequests = errors.New("too many outstanding requests")
 	ErrStopped         = errors.New("queue is stopped")

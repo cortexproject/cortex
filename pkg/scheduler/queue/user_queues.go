@@ -191,7 +191,7 @@ func (q *queues) addQuerierConnection(querierID string) {
 	q.recomputeUserQueriers()
 }
 
-func (q *queues) removeQuerierConnection(querierID string) {
+func (q *queues) removeQuerierConnection(querierID string, now time.Time) {
 	info := q.queriers[querierID]
 	if info == nil || info.connections <= 0 {
 		panic("unexpected number of connections for querier")
@@ -213,7 +213,7 @@ func (q *queues) removeQuerierConnection(querierID string) {
 	// No graceful shutdown has been notified yet, so we should track the current time
 	// so that we'll remove the querier as soon as we receive the graceful shutdown
 	// notification (if any) or once the threshold expires.
-	info.disconnectedAt = time.Now()
+	info.disconnectedAt = now
 }
 
 func (q *queues) removeQuerier(querierID string) {
@@ -250,14 +250,14 @@ func (q *queues) notifyQuerierShutdown(querierID string) {
 
 // forgetDisconnectedQueriers removes all disconnected queriers that have gone since at least
 // the forget timeout. Returns the number of forgotten queriers.
-func (q *queues) forgetDisconnectedQueriers() int {
+func (q *queues) forgetDisconnectedQueriers(now time.Time) int {
 	// Nothing to do if the forget timeout is disabled.
 	if q.forgetTimeout == 0 {
 		return 0
 	}
 
 	// Remove all queriers with no connections that have gone since at least the forget timeout.
-	threshold := time.Now().Add(-q.forgetTimeout)
+	threshold := now.Add(-q.forgetTimeout)
 	forgotten := 0
 
 	for querierID := range q.queriers {

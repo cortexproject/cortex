@@ -79,7 +79,7 @@ func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.Cli
 
 	req := &schedulerpb.NotifyQuerierShutdownRequest{QuerierID: sp.querierID}
 	if _, err := client.NotifyQuerierShutdown(ctx, req); err != nil {
-		// Since we're shutting down there's nothing we can do unless logging it.
+		// Since we're shutting down there's nothing we can do except logging it.
 		level.Warn(sp.log).Log("msg", "failed to notify querier shutdown to query-scheduler", "address", address, "err", err)
 	}
 }

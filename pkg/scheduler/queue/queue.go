@@ -166,7 +166,7 @@ func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	if q.queues.forgetDisconnectedQueriers() > 0 {
+	if q.queues.forgetDisconnectedQueriers(time.Now()) > 0 {
 		// We need to notify goroutines cause having removed some queriers
 		// may have caused a resharding.
 		q.cond.Broadcast()
@@ -205,7 +205,7 @@ func (q *RequestQueue) UnregisterQuerierConnection(querier string) {
 
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
-	q.queues.removeQuerierConnection(querier)
+	q.queues.removeQuerierConnection(querier, time.Now())
 }
 
 func (q *RequestQueue) NotifyQuerierShutdown(querierID string) {

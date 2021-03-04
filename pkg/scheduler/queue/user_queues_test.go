@@ -278,6 +278,79 @@ func TestQueues_ForgetTimeout(t *testing.T) {
 	}
 }
 
+func TestQueues_ForgetTimeout_ShouldCorrectlyHandleQuerierReconnectingBeforeForgetTimeoutExpires(t *testing.T) {
+	const (
+		forgetTimeout      = time.Minute
+		maxQueriersPerUser = 1
+		numUsers           = 100
+	)
+
+	now := time.Now()
+	uq := newUserQueues(0, forgetTimeout)
+	assert.NotNil(t, uq)
+	assert.NoError(t, isConsistent(uq))
+
+	// 3 queriers open 2 connections each.
+	for i := 1; i <= 3; i++ {
+		uq.addQuerierConnection(fmt.Sprintf("querier-%d", i))
+		uq.addQuerierConnection(fmt.Sprintf("querier-%d", i))
+	}
+
+	// Add user queues.
+	for i := 0; i < numUsers; i++ {
+		userID := fmt.Sprintf("user-%d", i)
+		getOrAdd(t, uq, userID, maxQueriersPerUser)
+	}
+
+	// We expect querier-1 to have some users.
+	querier1Users := getUsersByQuerier(uq, "querier-1")
+	require.NotEmpty(t, querier1Users)
+
+	// Querier-1 abruptly terminates (no shutdown notification received).
+	uq.removeQuerierConnection("querier-1", now.Add(40*time.Second))
+	uq.removeQuerierConnection("querier-1", now.Add(41*time.Second))
+
+	// We expect querier-1 has NOT been removed.
+	assert.Contains(t, uq.queriers, "querier-1")
+	assert.NoError(t, isConsistent(uq))
+
+	// We expect the querier-1 users have not been shuffled to other queriers.
+	for _, userID := range querier1Users {
+		assert.Contains(t, getUsersByQuerier(uq, "querier-1"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-2"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
+	}
+
+	// Try to forget disconnected queriers, but querier-1 forget timeout hasn't expired yet.
+	uq.forgetDisconnectedQueriers(now.Add(90 * time.Second))
+
+	// Querier-1 reconnects.
+	uq.addQuerierConnection("querier-1")
+	uq.addQuerierConnection("querier-1")
+
+	assert.Contains(t, uq.queriers, "querier-1")
+	assert.NoError(t, isConsistent(uq))
+
+	// We expect the querier-1 users have not been shuffled to other queriers.
+	for _, userID := range querier1Users {
+		assert.Contains(t, getUsersByQuerier(uq, "querier-1"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-2"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
+	}
+
+	// Try to forget disconnected queriers far in the future, but there's no disconnected querier.
+	uq.forgetDisconnectedQueriers(now.Add(200 * time.Second))
+
+	assert.Contains(t, uq.queriers, "querier-1")
+	assert.NoError(t, isConsistent(uq))
+
+	for _, userID := range querier1Users {
+		assert.Contains(t, getUsersByQuerier(uq, "querier-1"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-2"), userID)
+		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
+	}
+}
+
 func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }

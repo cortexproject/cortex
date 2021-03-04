@@ -88,9 +88,11 @@ func TestChunk(t *testing.T) {
 				testChunkBatch(t, tc.encoding, samples)
 			})
 
-			t.Run(fmt.Sprintf("testChunkRebound/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
-				testChunkRebound(t, tc.encoding, samples)
-			})
+			if tc.encoding != PrometheusXorChunk {
+				t.Run(fmt.Sprintf("testChunkRebound/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
+					testChunkRebound(t, tc.encoding, samples)
+				})
+			}
 		}
 	}
 }

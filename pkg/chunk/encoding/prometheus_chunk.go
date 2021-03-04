@@ -8,8 +8,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
-// Wrapper around Prometheus chunk. While it supports adding more samples, that is only implemented
-// to make tests work, and should not be used in production.
+// Wrapper around Prometheus chunk.
 type prometheusXorChunk struct {
 	chunk chunkenc.Chunk
 }
@@ -18,6 +17,9 @@ func newPrometheusXorChunk() *prometheusXorChunk {
 	return &prometheusXorChunk{}
 }
 
+// Add adds another sample to the chunk. While Add works, it is only implemented
+// to make tests work, and should not be used in production. In particular, it appends
+// all samples to single chunk, and uses new Appender for each Add.
 func (p *prometheusXorChunk) Add(m model.SamplePair) (Chunk, error) {
 	if p.chunk == nil {
 		p.chunk = chunkenc.NewXORChunk()
@@ -78,32 +80,7 @@ func (p *prometheusXorChunk) Slice(_, _ model.Time) Chunk {
 }
 
 func (p *prometheusXorChunk) Rebound(from, to model.Time) (Chunk, error) {
-	if p.chunk == nil {
-		return p, nil
-	}
-
-	nc := chunkenc.NewXORChunk()
-	app, err := nc.Appender()
-	if err != nil {
-		return nil, err
-	}
-
-	it := p.chunk.Iterator(nil)
-	for ok := it.Seek(int64(from)); ok; ok = it.Next() {
-		t, v := it.At()
-		if t <= int64(to) {
-			app.Append(t, v)
-		} else {
-			break
-		}
-	}
-
-	nc.Compact()
-	if nc.NumSamples() == 0 {
-		return nil, ErrSliceNoDataInRange
-	}
-
-	return &prometheusXorChunk{chunk: nc}, nil
+	return nil, errors.New("Rebound not supported by PrometheusXorChunk")
 }
 
 func (p *prometheusXorChunk) Len() int {

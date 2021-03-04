@@ -48,7 +48,7 @@ func (fp *frontendProcessor) notifyShutdown(ctx context.Context, conn *grpc.Clie
 
 	req := &frontendv1pb.NotifyClientShutdownRequest{ClientID: fp.querierID}
 	if _, err := client.NotifyClientShutdown(ctx, req); err != nil {
-		// Since we're shutting down there's nothing we can do unless logging it.
+		// Since we're shutting down there's nothing we can do except logging it.
 		level.Warn(fp.log).Log("msg", "failed to notify querier shutdown to query-frontend", "address", address, "err", err)
 	}
 }

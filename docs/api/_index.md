@@ -676,9 +676,9 @@ _Requires [authentication](#authentication)._
 POST /multitenant_alertmanager/delete_tenant_config
 ```
 
-This endpoint deletes configuration for tenant identified by `X-Scope-OrgID` header.
-This is internal endpoint, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`.
-Endpoint returns 200 if user's configuration has been deleted, or it didn't exist in the first place.
+This endpoint deletes configuration for a tenant identified by `X-Scope-OrgID` header.
+It is internal, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`.
+The endpoint returns a status code of `200` if the user's configuration has been deleted, or it didn't exist in the first place.
 
 _Requires [authentication](#authentication)._
 

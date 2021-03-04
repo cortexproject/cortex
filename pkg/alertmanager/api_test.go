@@ -2,14 +2,12 @@ package alertmanager
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/require"
@@ -125,7 +123,7 @@ template_files:
 	}
 
 	am := &MultitenantAlertmanager{
-		store:  noopAlertStore{},
+		store:  prepareInMemoryAlertStore(),
 		logger: util_log.Logger,
 	}
 	for _, tc := range testCases {
@@ -149,19 +147,4 @@ template_files:
 
 		})
 	}
-}
-
-type noopAlertStore struct{}
-
-func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	return nil, nil
-}
-func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alertspb.AlertConfigDesc, error) {
-	return alertspb.AlertConfigDesc{}, nil
-}
-func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error {
-	return nil
-}
-func (noopAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
-	return nil
 }

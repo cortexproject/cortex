@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -78,7 +79,7 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	ctx := context.Background()
 
 	// Run this test using a real storage client.
-	store := prepareFilesystemAlertStore(t)
+	store := prepareInMemoryAlertStore()
 	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user1",
 		RawConfig: simpleConfigOne,
@@ -201,7 +202,7 @@ func TestMultitenantAlertmanager_NoExternalURL(t *testing.T) {
 
 func TestMultitenantAlertmanager_ServeHTTP(t *testing.T) {
 	// Run this test using a real storage client.
-	store := prepareFilesystemAlertStore(t)
+	store := prepareInMemoryAlertStore()
 
 	amConfig := mockAlertmanagerConfig(t)
 
@@ -306,7 +307,7 @@ func TestMultitenantAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
 	amConfig := mockAlertmanagerConfig(t)
 
 	// Run this test using a real storage client.
-	store := prepareFilesystemAlertStore(t)
+	store := prepareInMemoryAlertStore()
 
 	externalURL := flagext.URLValue{}
 	err := externalURL.Set("http://localhost:8080/alertmanager")
@@ -515,7 +516,7 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			alertStore := prepareFilesystemAlertStore(t)
+			alertStore := prepareInMemoryAlertStore()
 
 			var instances []*MultitenantAlertmanager
 			var instanceIDs []string
@@ -702,7 +703,7 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			amConfig.PollInterval = time.Hour // Don't trigger the periodic check.
 
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			alertStore := prepareFilesystemAlertStore(t)
+			alertStore := prepareInMemoryAlertStore()
 
 			reg := prometheus.NewPedanticRegistry()
 			am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), reg)
@@ -756,7 +757,7 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 	amConfig.ShardingRing.HeartbeatTimeout = heartbeatTimeout
 
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	alertStore := prepareFilesystemAlertStore(t)
+	alertStore := prepareInMemoryAlertStore()
 
 	am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), nil)
 	require.NoError(t, err)
@@ -806,23 +807,7 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	require.NotNil(t, am.ring)
 }
 
-// prepareFilesystemAlertStore builds and returns a filesystem-based alert store.
-func prepareFilesystemAlertStore(t *testing.T) alertstore.AlertStore {
-	// Create a temporarily directory for the storage.
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tmpDir)
-	})
-
-	// Configure the filesystem-based storage.
-	cfg := alertstore.Config{}
-	flagext.DefaultValues(&cfg)
-	cfg.Backend = "filesystem"
-	cfg.Filesystem.Directory = tmpDir
-
-	store, err := alertstore.NewAlertStore(context.Background(), cfg, nil, log.NewNopLogger(), nil)
-	require.NoError(t, err)
-
-	return store
+// prepareInMemoryAlertStore builds and returns an in-memory alert store.
+func prepareInMemoryAlertStore() alertstore.AlertStore {
+	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
 }

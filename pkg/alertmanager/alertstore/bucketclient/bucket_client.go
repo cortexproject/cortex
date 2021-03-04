@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
@@ -12,11 +13,15 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 const (
 	// The bucket prefix under which all tenants alertmanager configs are stored.
 	alertsPrefix = "alerts"
+
+	// How many users to load concurrently.
+	fetchConcurrency = 16
 )
 
 // BucketAlertStore is used to support the AlertStore interface against an object storage backend. It is implemented
@@ -35,27 +40,43 @@ func NewBucketAlertStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigPro
 	}
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (s *BucketAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	cfgs := map[string]alertspb.AlertConfigDesc{}
+// ListAllUsers implements alertstore.AlertStore.
+func (s *BucketAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
+	var userIDs []string
 
 	err := s.bucket.Iter(ctx, "", func(key string) error {
-		userID := key
-
-		cfg, err := s.getAlertConfig(ctx, userID)
-		if err != nil {
-			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
-		}
-
-		cfgs[cfg.User] = cfg
+		userIDs = append(userIDs, key)
 		return nil
 	})
 
-	if err != nil {
-		return nil, err
-	}
+	return userIDs, err
+}
 
-	return cfgs, nil
+// GetAlertConfigs implements alertstore.AlertStore.
+func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	var (
+		cfgsMx = sync.Mutex{}
+		cfgs   = make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	)
+
+	err := concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), fetchConcurrency, func(ctx context.Context, job interface{}) error {
+		userID := job.(string)
+
+		cfg, err := s.getAlertConfig(ctx, userID)
+		if s.bucket.IsObjNotFoundErr(err) {
+			return nil
+		} else if err != nil {
+			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
+		}
+
+		cfgsMx.Lock()
+		cfgs[userID] = cfg
+		cfgsMx.Unlock()
+
+		return nil
+	})
+
+	return cfgs, err
 }
 
 // GetAlertConfig implements alertstore.AlertStore.

@@ -38,7 +38,7 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
-	f.DurationVar(&cfg.QuerierForgetTimeout, "query-frontend.querier-forget-timeout", 0, "When configured, if a querier disconnects without notifying a graceful shutdown, the query-frontend keeps the querier in the tenant's shard until the forget timeout expires. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
+	f.DurationVar(&cfg.QuerierForgetTimeout, "query-frontend.querier-forget-timeout", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-frontend will keep the querier in the tenant's shard until the forget timeout expires. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 }
 
 type Limits interface {

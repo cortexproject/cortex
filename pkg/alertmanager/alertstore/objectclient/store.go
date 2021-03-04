@@ -5,12 +5,16 @@ import (
 	"context"
 	"io/ioutil"
 	"path"
+	"strings"
+	"sync"
 
 	"github.com/go-kit/kit/log"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 // Object Alert Storage Schema
@@ -19,7 +23,11 @@ import (
 // Storage Format: Encoded AlertConfigDesc
 
 const (
+	// The bucket prefix under which all tenants alertmanager configs are stored.
 	alertPrefix = "alerts/"
+
+	// How many users to load concurrently.
+	fetchConcurrency = 16
 )
 
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.
@@ -36,24 +44,47 @@ func NewAlertStore(client chunk.ObjectClient, logger log.Logger) *AlertStore {
 	}
 }
 
-// ListAlertConfigs implements alertstore.AlertStore.
-func (a *AlertStore) ListAlertConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+// ListAllUsers implements alertstore.AlertStore.
+func (a *AlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	objs, _, err := a.client.List(ctx, alertPrefix, "")
 	if err != nil {
 		return nil, err
 	}
 
-	cfgs := map[string]alertspb.AlertConfigDesc{}
-
+	userIDs := make([]string, 0, len(objs))
 	for _, obj := range objs {
-		cfg, err := a.getAlertConfig(ctx, obj.Key)
-		if err != nil {
-			return nil, err
-		}
-		cfgs[cfg.User] = cfg
+		userID := strings.TrimPrefix(obj.Key, alertPrefix)
+		userIDs = append(userIDs, userID)
 	}
 
-	return cfgs, nil
+	return userIDs, nil
+}
+
+// GetAlertConfigs implements alertstore.AlertStore.
+func (a *AlertStore) GetAlertConfigs(ctx context.Context, userIDs []string) (map[string]alertspb.AlertConfigDesc, error) {
+	var (
+		cfgsMx = sync.Mutex{}
+		cfgs   = make(map[string]alertspb.AlertConfigDesc, len(userIDs))
+	)
+
+	err := concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), fetchConcurrency, func(ctx context.Context, job interface{}) error {
+		userID := job.(string)
+
+		cfg, err := a.getAlertConfig(ctx, path.Join(alertPrefix, userID))
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			return nil
+		} else if err != nil {
+			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
+		}
+
+		cfgsMx.Lock()
+		cfgs[userID] = cfg
+		cfgsMx.Unlock()
+
+		return nil
+	})
+
+	return cfgs, err
 }
 
 func (a *AlertStore) getAlertConfig(ctx context.Context, key string) (alertspb.AlertConfigDesc, error) {

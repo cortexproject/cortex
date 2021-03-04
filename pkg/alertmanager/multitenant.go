@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"hash/fnv"
 	"html/template"
 	"io/ioutil"
 	"net/http"
@@ -571,51 +570,49 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 
 // loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
 func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
-	configs, err := am.store.ListAlertConfigs(ctx)
+	// Find all users with an alertmanager config.
+	userIDs, err := am.store.ListAllUsers(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
 	}
+	numUsersDiscovered := len(userIDs)
 
-	// Without any sharding, we return _all_ the configs and there's nothing else for us to do.
-	if !am.cfg.ShardingEnabled {
-		am.tenantsDiscovered.Set(float64(len(configs)))
-		am.tenantsOwned.Set(float64(len(configs)))
-		return configs, nil
-	}
-
-	ownedConfigs := map[string]alertspb.AlertConfigDesc{}
-	for userID, cfg := range configs {
-		owned, err := am.isConfigOwned(userID)
-		if err != nil {
-			am.ringCheckErrors.Inc()
-			level.Error(am.logger).Log("msg", "failed to load alertmanager configuration for user", "user", userID, "err", err)
+	// Filter out users not owned by this shard.
+	for i := 0; i < len(userIDs); {
+		if !am.isUserOwned(userIDs[i]) {
+			userIDs = append(userIDs[:i], userIDs[i+1:]...)
 			continue
 		}
 
-		if owned {
-			level.Debug(am.logger).Log("msg", "alertmanager configuration owned", "user", userID)
-			ownedConfigs[userID] = cfg
-		} else {
-			level.Debug(am.logger).Log("msg", "alertmanager configuration not owned, ignoring", "user", userID)
-		}
+		i++
+	}
+	numUsersOwned := len(userIDs)
+
+	// Load the configs for the owned users.
+	configs, err := am.store.GetAlertConfigs(ctx, userIDs)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
 	}
 
-	am.tenantsDiscovered.Set(float64(len(configs)))
-	am.tenantsOwned.Set(float64(len(ownedConfigs)))
-	return ownedConfigs, nil
+	am.tenantsDiscovered.Set(float64(numUsersDiscovered))
+	am.tenantsOwned.Set(float64(numUsersOwned))
+	return configs, nil
 }
 
-func (am *MultitenantAlertmanager) isConfigOwned(userID string) (bool, error) {
-	ringHasher := fnv.New32a()
-	// Hasher never returns err.
-	_, _ = ringHasher.Write([]byte(userID))
-
-	alertmanagers, err := am.ring.Get(ringHasher.Sum32(), RingOp, nil, nil, nil)
-	if err != nil {
-		return false, errors.Wrap(err, "error reading ring to verify config ownership")
+func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
+	// If sharding is disabled, any alertmanager instance owns all users.
+	if !am.cfg.ShardingEnabled {
+		return true
 	}
 
-	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr()), nil
+	alertmanagers, err := am.ring.Get(shardByUser(userID), RingOp, nil, nil, nil)
+	if err != nil {
+		am.ringCheckErrors.Inc()
+		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
+		return false
+	}
+
+	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr())
 }
 
 func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alertspb.AlertConfigDesc) {

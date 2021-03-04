@@ -88,6 +88,7 @@
 * [ENHANCEMENT] Store-gateway: added metrics to chunk buffer pool behaviour. #3880
   * `cortex_bucket_store_chunk_pool_requested_bytes_total`
   * `cortex_bucket_store_chunk_pool_returned_bytes_total`
+* [ENHANCEMENT] Alertmanager: load alertmanager configurations from object storage concurrently, and only load necessary configurations, speeding configuration synchronization process and executing fewer "GET object" operations to the storage when sharding is enabled. #3898
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

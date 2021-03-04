@@ -6,6 +6,7 @@
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
   * `cortex_ruler_clients`
   * `cortex_ruler_client_request_duration_seconds`
+* [ENHANCEMENT] Alertmanager: cleanup obsolete local files after Alertmanager is no longer running for removed or resharded user. #3910
 
 ## 1.8.0 in progress
 

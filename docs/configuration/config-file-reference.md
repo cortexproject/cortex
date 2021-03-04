@@ -589,9 +589,9 @@ query_scheduler:
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
   [max_outstanding_requests_per_tenant: <int> | default = 100]
 
-  # When configured, if a querier disconnects without notifying a graceful
-  # shutdown, the query-scheduler keeps the querier in the tenant's shard until
-  # the forget timeout expires. This feature is useful to reduce the blast
+  # If a querier disconnects without sending notification about graceful
+  # shutdown, the query-scheduler will keep the querier in the tenant's shard
+  # until the forget timeout expires. This feature is useful to reduce the blast
   # radius when shuffle-sharding is enabled.
   # CLI flag: -query-scheduler.querier-forget-timeout
   [querier_forget_timeout: <duration> | default = 0s]
@@ -1329,8 +1329,8 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 100]
 
-# When configured, if a querier disconnects without notifying a graceful
-# shutdown, the query-frontend keeps the querier in the tenant's shard until the
+# If a querier disconnects without sending notification about graceful shutdown,
+# the query-frontend will keep the querier in the tenant's shard until the
 # forget timeout expires. This feature is useful to reduce the blast radius when
 # shuffle-sharding is enabled.
 # CLI flag: -query-frontend.querier-forget-timeout

@@ -137,15 +137,15 @@ func TestQueuesWithQueriers(t *testing.T) {
 
 func TestQueuesConsistency(t *testing.T) {
 	tests := map[string]struct {
-		forgetTimeout time.Duration
+		forgetDelay time.Duration
 	}{
-		"without forget timeout": {},
-		"with forget timeout":    {forgetTimeout: time.Minute},
+		"without forget delay": {},
+		"with forget delay":    {forgetDelay: time.Minute},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			uq := newUserQueues(0, testData.forgetTimeout)
+			uq := newUserQueues(0, testData.forgetDelay)
 			assert.NotNil(t, uq)
 			assert.NoError(t, isConsistent(uq))
 
@@ -186,15 +186,15 @@ func TestQueuesConsistency(t *testing.T) {
 	}
 }
 
-func TestQueues_ForgetTimeout(t *testing.T) {
+func TestQueues_ForgetDelay(t *testing.T) {
 	const (
-		forgetTimeout      = time.Minute
+		forgetDelay        = time.Minute
 		maxQueriersPerUser = 1
 		numUsers           = 100
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetTimeout)
+	uq := newUserQueues(0, forgetDelay)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -254,7 +254,7 @@ func TestQueues_ForgetTimeout(t *testing.T) {
 		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
 	}
 
-	// Try to forget disconnected queriers, but querier-1 forget timeout hasn't expired yet.
+	// Try to forget disconnected queriers, but querier-1 forget delay hasn't passed yet.
 	uq.forgetDisconnectedQueriers(now.Add(90 * time.Second))
 
 	assert.Contains(t, uq.queriers, "querier-1")
@@ -266,7 +266,7 @@ func TestQueues_ForgetTimeout(t *testing.T) {
 		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
 	}
 
-	// Try to forget disconnected queriers. This time querier-1 forget timeout has expired.
+	// Try to forget disconnected queriers. This time querier-1 forget delay has passed.
 	uq.forgetDisconnectedQueriers(now.Add(105 * time.Second))
 
 	assert.NotContains(t, uq.queriers, "querier-1")
@@ -278,15 +278,15 @@ func TestQueues_ForgetTimeout(t *testing.T) {
 	}
 }
 
-func TestQueues_ForgetTimeout_ShouldCorrectlyHandleQuerierReconnectingBeforeForgetTimeoutExpires(t *testing.T) {
+func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForgetDelayIsPassed(t *testing.T) {
 	const (
-		forgetTimeout      = time.Minute
+		forgetDelay        = time.Minute
 		maxQueriersPerUser = 1
 		numUsers           = 100
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetTimeout)
+	uq := newUserQueues(0, forgetDelay)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -321,7 +321,7 @@ func TestQueues_ForgetTimeout_ShouldCorrectlyHandleQuerierReconnectingBeforeForg
 		assert.NotContains(t, getUsersByQuerier(uq, "querier-3"), userID)
 	}
 
-	// Try to forget disconnected queriers, but querier-1 forget timeout hasn't expired yet.
+	// Try to forget disconnected queriers, but querier-1 forget delay hasn't passed yet.
 	uq.forgetDisconnectedQueriers(now.Add(90 * time.Second))
 
 	// Querier-1 reconnects.

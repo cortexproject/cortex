@@ -61,9 +61,9 @@ type RequestQueue struct {
 	discardedRequests *prometheus.CounterVec // Per user.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetTimeout time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newUserQueues(maxOutstandingPerTenant, forgetTimeout),
+		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
 		discardedRequests:       discardedRequests,

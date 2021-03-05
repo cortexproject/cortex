@@ -111,9 +111,9 @@ func BenchmarkQueueRequest(b *testing.B) {
 }
 
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
-	const forgetTimeout = 3 * time.Second
+	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetTimeout,
+	queue := NewRequestQueue(1, forgetDelay,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}))
 
@@ -148,6 +148,6 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	querier2wg.Wait()
 	waitTime := time.Since(startTime)
 
-	// We expect that querier-2 got the request only after querier-1 forget timeout expired.
-	assert.GreaterOrEqual(t, waitTime.Milliseconds(), forgetTimeout.Milliseconds())
+	// We expect that querier-2 got the request only after querier-1 forget delay is passed.
+	assert.GreaterOrEqual(t, waitTime.Milliseconds(), forgetDelay.Milliseconds())
 }

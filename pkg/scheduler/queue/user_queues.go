@@ -34,7 +34,7 @@ type queues struct {
 
 	// How long to wait before removing a querier which has got disconnected
 	// but hasn't notified about a graceful shutdown.
-	forgetTimeout time.Duration
+	forgetDelay time.Duration
 
 	// Tracks queriers registered to the queue.
 	queriers map[string]*querier
@@ -59,12 +59,12 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetTimeout time.Duration) *queues {
+func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
 	return &queues{
 		userQueues:       map[string]*userQueue{},
 		users:            nil,
 		maxUserQueueSize: maxUserQueueSize,
-		forgetTimeout:    forgetTimeout,
+		forgetDelay:      forgetDelay,
 		queriers:         map[string]*querier{},
 		sortedQueriers:   nil,
 	}
@@ -203,9 +203,9 @@ func (q *queues) removeQuerierConnection(querierID string, now time.Time) {
 		return
 	}
 
-	// There no more active connections. If the forget timeout is configured then
+	// There no more active connections. If the forget delay is configured then
 	// we can remove it only if querier has announced a graceful shutdown.
-	if info.shuttingDown || q.forgetTimeout == 0 {
+	if info.shuttingDown || q.forgetDelay == 0 {
 		q.removeQuerier(querierID)
 		return
 	}
@@ -249,15 +249,15 @@ func (q *queues) notifyQuerierShutdown(querierID string) {
 }
 
 // forgetDisconnectedQueriers removes all disconnected queriers that have gone since at least
-// the forget timeout. Returns the number of forgotten queriers.
+// the forget delay. Returns the number of forgotten queriers.
 func (q *queues) forgetDisconnectedQueriers(now time.Time) int {
-	// Nothing to do if the forget timeout is disabled.
-	if q.forgetTimeout == 0 {
+	// Nothing to do if the forget delay is disabled.
+	if q.forgetDelay == 0 {
 		return 0
 	}
 
-	// Remove all queriers with no connections that have gone since at least the forget timeout.
-	threshold := now.Add(-q.forgetTimeout)
+	// Remove all queriers with no connections that have gone since at least the forget delay.
+	threshold := now.Add(-q.forgetDelay)
 	forgotten := 0
 
 	for querierID := range q.queriers {

@@ -591,10 +591,10 @@ query_scheduler:
 
   # If a querier disconnects without sending notification about graceful
   # shutdown, the query-scheduler will keep the querier in the tenant's shard
-  # until the forget timeout expires. This feature is useful to reduce the blast
+  # until the forget delay is passed. This feature is useful to reduce the blast
   # radius when shuffle-sharding is enabled.
-  # CLI flag: -query-scheduler.querier-forget-timeout
-  [querier_forget_timeout: <duration> | default = 0s]
+  # CLI flag: -query-scheduler.querier-forget-delay
+  [querier_forget_delay: <duration> | default = 0s]
 
   # This configures the gRPC client used to report errors back to the
   # query-frontend.
@@ -1331,10 +1331,10 @@ The `query_frontend_config` configures the Cortex query-frontend.
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the
-# forget timeout expires. This feature is useful to reduce the blast radius when
+# forget delay is passes. This feature is useful to reduce the blast radius when
 # shuffle-sharding is enabled.
-# CLI flag: -query-frontend.querier-forget-timeout
-[querier_forget_timeout: <duration> | default = 0s]
+# CLI flag: -query-frontend.querier-forget-delay
+[querier_forget_delay: <duration> | default = 0s]
 
 # DNS hostname used for finding query-schedulers.
 # CLI flag: -frontend.scheduler-address

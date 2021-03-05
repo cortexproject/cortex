@@ -711,7 +711,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 			return nil, err
 		}
 		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, nil)
+		newGrps, err := cc.Rules(ctx, &RulesRequest{})
 
 		// Close the gRPC connection regardless the RPC was successful or not.
 		if closeErr := conn.Close(); closeErr != nil {

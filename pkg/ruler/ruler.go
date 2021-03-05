@@ -208,13 +208,15 @@ type MultiTenantManager interface {
 type Ruler struct {
 	services.Service
 
-	cfg         Config
-	lifecycler  *ring.BasicLifecycler
-	ring        *ring.Ring
-	subservices *services.Manager
-	store       rulestore.RuleStore
-	manager     MultiTenantManager
-	limits      RulesLimits
+	cfg        Config
+	lifecycler *ring.BasicLifecycler
+	ring       *ring.Ring
+	store      rulestore.RuleStore
+	manager    MultiTenantManager
+	limits     RulesLimits
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	// Pool of clients used to connect to other ruler replicas.
 	clientsPool *ring_client.Pool
@@ -301,11 +303,17 @@ func (r *Ruler) starting(ctx context.Context) error {
 	// If sharding is enabled, start the used subservices.
 	if r.cfg.EnableSharding {
 		var err error
-		r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool)
-		if err == nil {
-			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
+
+		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool); err != nil {
+			return errors.Wrap(err, "unable to start ruler subservices")
 		}
-		return errors.Wrap(err, "failed to start ruler's subservices")
+
+		r.subservicesWatcher = services.NewFailureWatcher()
+		r.subservicesWatcher.WatchManager(r.subservices)
+
+		if err = services.StartManagerAndAwaitHealthy(ctx, r.subservices); err != nil {
+			return errors.Wrap(err, "unable to start ruler subservices")
+		}
 	}
 
 	// TODO: ideally, ruler would wait until its queryable is finished starting.
@@ -436,6 +444,8 @@ func (r *Ruler) run(ctx context.Context) error {
 				ringLastState = currRingState
 				r.syncRules(ctx, rulerSyncReasonRingChange)
 			}
+		case err := <-r.subservicesWatcher.Chan():
+			return errors.Wrap(err, "ruler subservice failed")
 		}
 	}
 }

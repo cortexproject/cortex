@@ -37,6 +37,7 @@ type AlertStore interface {
 	SetAlertConfig(ctx context.Context, cfg alertspb.AlertConfigDesc) error
 
 	// DeleteAlertConfig deletes the alertmanager configuration for an user.
+	// If configuration for the user doesn't exist, no error is reported.
 	DeleteAlertConfig(ctx context.Context, user string) error
 }
 

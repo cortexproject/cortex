@@ -2,12 +2,18 @@ package alertmanager
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/kit/log"
+	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/stretchr/testify/require"
@@ -146,5 +152,50 @@ template_files:
 			}
 
 		})
+	}
+}
+
+func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
+	storage := objstore.NewInMemBucket()
+	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
+
+	am := &MultitenantAlertmanager{
+		store:  alertStore,
+		logger: util_log.Logger,
+	}
+
+	require.NoError(t, alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
+		User:      "test_user",
+		RawConfig: "config",
+	}))
+
+	require.Equal(t, 1, len(storage.Objects()))
+
+	req := httptest.NewRequest("POST", "/multitenant_alertmanager/delete_tenant_config", nil)
+	// Missing user returns error 401. (DeleteUserConfig does this, but in practice, authentication middleware will do it first)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
+		require.Equal(t, 1, len(storage.Objects()))
+	}
+
+	// With user in the context.
+	ctx := user.InjectOrgID(context.Background(), "test_user")
+	req = req.WithContext(ctx)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
+	}
+
+	// Repeating the request still reports 200
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
 	}
 }

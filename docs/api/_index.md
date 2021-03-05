@@ -52,6 +52,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
 | [Alertmanager ring status](#alertmanager-ring-status) | Alertmanager | `GET /multitenant_alertmanager/ring` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
+| [Alertmanager Delete Tenant Configuration](#alertmanager-delete-tenant-configuration) | Alertmanager | `POST /multitenant_alertmanager/delete_tenant_config` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager | `DELETE /api/v1/alerts` |

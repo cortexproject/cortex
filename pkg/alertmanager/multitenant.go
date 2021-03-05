@@ -989,8 +989,8 @@ func (am *MultitenantAlertmanager) getSnapshotFilesPerUser() map[string][]string
 		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
 
 		switch {
-		case strings.HasPrefix(f.Name(), nflogPrefix):
-			userID := strings.TrimPrefix(f.Name(), nflogPrefix)
+		case strings.HasPrefix(f.Name(), notificationLogPrefix):
+			userID := strings.TrimPrefix(f.Name(), notificationLogPrefix)
 			result[userID] = append(result[userID], fullPath)
 
 		case strings.HasPrefix(f.Name(), silencesPrefix):

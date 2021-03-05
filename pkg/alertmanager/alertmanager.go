@@ -44,11 +44,12 @@ import (
 )
 
 const (
-	notificationLogMaintenancePeriod = 15 * time.Minute
+	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
+	maintenancePeriod = 15 * time.Minute
 
 	// Per-tenant local files have these prefixes.
-	nflogPrefix    = "nflog:"
-	silencesPrefix = "silences:"
+	notificationLogPrefix = "nflog:"
+	silencesPrefix        = "silences:"
 )
 
 // Config configures an Alertmanager.
@@ -153,8 +154,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	var err error
 	am.nflog, err = nflog.New(
 		nflog.WithRetention(cfg.Retention),
-		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogPrefix+cfg.UserID)),
-		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
+		nflog.WithSnapshot(filepath.Join(cfg.DataDir, notificationLogPrefix+cfg.UserID)),
+		nflog.WithMaintenance(maintenancePeriod, am.stop, am.wg.Done),
 		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
@@ -185,7 +186,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.wg.Add(1)
 	go func() {
-		am.silences.Maintenance(notificationLogMaintenancePeriod, silencesFile, am.stop)
+		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop)
 		am.wg.Done()
 	}()
 

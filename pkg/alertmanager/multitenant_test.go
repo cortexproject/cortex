@@ -216,8 +216,8 @@ func TestMultitenantAlertmanager_deleteObsoleteLocalFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	testUser1File1 := createFile(t, cfg.DataDir, silencesPrefix+user1)
-	testUser1File2 := createFile(t, cfg.DataDir, nflogPrefix+user1)
-	testUser2File := createFile(t, cfg.DataDir, nflogPrefix+user2)
+	testUser1File2 := createFile(t, cfg.DataDir, notificationLogPrefix+user1)
+	testUser2File := createFile(t, cfg.DataDir, notificationLogPrefix+user2)
 
 	files := am.getSnapshotFilesPerUser()
 	require.Equal(t, 2, len(files))

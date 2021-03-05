@@ -334,7 +334,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(float64(2)), "cortex_alertmanager_silences"))
+			assert.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_alertmanager_silences"}), e2e.WaitMissingMetrics)
 		})
 	}
 }

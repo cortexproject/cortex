@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -702,23 +703,35 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	var rgs []*GroupStateDesc
+	var (
+		mergedMx sync.Mutex
+		merged   []*GroupStateDesc
+	)
 
-	for _, rlr := range rulers.Ingesters {
-		grpcClient, err := r.clientsPool.GetClientFor(rlr.Addr)
+	// Concurrently fetch rules from all rulers. Since rules are not replicated,
+	// we need all requests to succeed.
+	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+		addr := job.(string)
+
+		grpcClient, err := r.clientsPool.GetClientFor(addr)
 		if err != nil {
-			return nil, errors.Wrapf(err, "unable to get client for ruler %s", rlr.Addr)
+			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		rulerClient := grpcClient.(*rulerExtendedClient)
-		newGrps, err := rulerClient.Rules(ctx, nil)
+		newGrps, err := grpcClient.(RulerClient).Rules(ctx, nil)
 		if err != nil {
-			return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", rulerClient.RemoteAddress())
+			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}
-		rgs = append(rgs, newGrps.Groups...)
-	}
 
-	return rgs, nil
+		mergedMx.Lock()
+		merged = append(merged, newGrps.Groups...)
+		mergedMx.Unlock()
+
+		return nil
+	})
+
+	return merged, err
 }
 
 // Rules implements the rules service

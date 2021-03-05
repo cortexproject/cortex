@@ -128,7 +128,7 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 	return results, nil
 }
 
-func (c *ThanosBlockConverter) uploadNewMeta(ctx context.Context, userBucketClient *bucket.UserBucketClient, blockID string, meta metadata.Meta) error {
+func (c *ThanosBlockConverter) uploadNewMeta(ctx context.Context, userBucketClient objstore.Bucket, blockID string, meta metadata.Meta) error {
 	var body bytes.Buffer
 	if err := meta.Write(&body); err != nil {
 		return errors.Wrap(err, "encode json")

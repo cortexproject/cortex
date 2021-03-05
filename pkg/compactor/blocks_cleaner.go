@@ -376,7 +376,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 // cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map
 // is updated accordingly.
-func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
+func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket objstore.InstrumentedBucket, userLogger log.Logger) {
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
 		if !errors.Is(blockErr, bucketindex.ErrBlockMetaNotFound) {
@@ -411,7 +411,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 }
 
 // applyUserRetentionPeriod marks blocks for deletion which have aged past the retention period.
-func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket *bucket.UserBucketClient, userLogger log.Logger) {
+func (c *BlocksCleaner) applyUserRetentionPeriod(ctx context.Context, idx *bucketindex.Index, retention time.Duration, userBucket objstore.Bucket, userLogger log.Logger) {
 	// The retention period of zero is a special value indicating to never delete.
 	if retention <= 0 {
 		return

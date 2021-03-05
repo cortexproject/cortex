@@ -16,7 +16,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
-func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
+func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	const (
 		kmsKeyID             = "ABC"
 		kmsEncryptionContext = "{\"department\":\"10103.0\"}"
@@ -47,7 +47,7 @@ func TestUserBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 
 	// Configure the config provider with NO KMS key ID.
 	cfgProvider := &mockTenantConfigProvider{}
-	userBkt := NewUserBucketClient("user-1", s3Client, cfgProvider)
+	userBkt := NewSSEBucketClient("user-1", s3Client, cfgProvider)
 
 	err = userBkt.Upload(context.Background(), "test", strings.NewReader("test"))
 	require.NoError(t, err)

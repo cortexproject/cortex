@@ -172,18 +172,20 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
 	level.Debug(a.logger).Log("msg", "api: registering alertmanager", "path_prefix", a.cfg.AlertmanagerHTTPPrefix)
 
-	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
-	// the component routed API.
-	if target {
-		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
-		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
-	}
-
 	// MultiTenant Alertmanager Experimental API routes
 	if apiEnabled {
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+	}
+
+	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
+	// the component routed API.
+	if target {
+		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
+		// WARNING: If LegacyHTTPPrefix is an empty string, any other paths added after this point will be
+		// silently ignored by the HTTP service. Therefore, this must be the last route to be configured.
+		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
 	}
 }
 

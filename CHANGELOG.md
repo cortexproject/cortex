@@ -99,6 +99,7 @@
 * [BUGFIX] Prevent panic at start if the http_prefix setting doesn't have a valid value. #3796
 * [BUGFIX] Memberlist: fixed panic caused by race condition in `armon/go-metrics` used by memberlist client. #3724
 * [BUGFIX] Querier: returning 422 (instead of 500) when query hits `max_chunks_per_query` limit with block storage. #3895
+* [BUGFIX] Alertmanager: Ensure that experimental `/api/v1/alerts` endpoints work when `-http.prefix` is empty. #3905
 
 ## 1.7.0
 

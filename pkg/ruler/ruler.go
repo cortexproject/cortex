@@ -23,10 +23,10 @@ import (
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
+	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
@@ -215,6 +215,9 @@ type Ruler struct {
 	manager     MultiTenantManager
 	limits      RulesLimits
 
+	// Pool of clients used to connect to other ruler replicas.
+	clientsPool *ring_client.Pool
+
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
 
@@ -225,12 +228,13 @@ type Ruler struct {
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:      cfg,
-		store:    ruleStore,
-		manager:  manager,
-		registry: reg,
-		logger:   logger,
-		limits:   limits,
+		cfg:         cfg,
+		store:       ruleStore,
+		manager:     manager,
+		registry:    reg,
+		logger:      logger,
+		limits:      limits,
+		clientsPool: newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -293,14 +297,14 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 }
 
 func (r *Ruler) starting(ctx context.Context) error {
-	// If sharding is enabled, start the ruler ring subservices
+	// If sharding is enabled, start the used subservices.
 	if r.cfg.EnableSharding {
 		var err error
-		r.subservices, err = services.NewManager(r.lifecycler, r.ring)
+		r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool)
 		if err == nil {
 			err = services.StartManagerAndAwaitHealthy(ctx, r.subservices)
 		}
-		return errors.Wrap(err, "failed to start ruler's services")
+		return errors.Wrap(err, "failed to start ruler's subservices")
 	}
 
 	// TODO: ideally, ruler would wait until its queryable is finished starting.
@@ -313,7 +317,6 @@ func (r *Ruler) stopping(_ error) error {
 	r.manager.Stop()
 
 	if r.subservices != nil {
-		// subservices manages ring and lifecycler, if sharding was enabled.
 		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
 	return nil
@@ -702,24 +705,15 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 	var rgs []*GroupStateDesc
 
 	for _, rlr := range rulers.Ingesters {
-		dialOpts, err := r.cfg.ClientTLSConfig.DialOption(nil, nil)
+		grpcClient, err := r.clientsPool.GetClientFor(rlr.Addr)
 		if err != nil {
-			return nil, err
-		}
-		conn, err := grpc.DialContext(ctx, rlr.Addr, dialOpts...)
-		if err != nil {
-			return nil, err
-		}
-		cc := NewRulerClient(conn)
-		newGrps, err := cc.Rules(ctx, &RulesRequest{})
-
-		// Close the gRPC connection regardless the RPC was successful or not.
-		if closeErr := conn.Close(); closeErr != nil {
-			level.Warn(r.logger).Log("msg", "failed to close gRPC connection to ruler", "remote", rlr.Addr, "err", closeErr)
+			return nil, errors.Wrapf(err, "unable to get client for ruler %s", rlr.Addr)
 		}
 
+		rulerClient := grpcClient.(*rulerExtendedClient)
+		newGrps, err := rulerClient.Rules(ctx, nil)
 		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve rules from other rulers, %v", err)
+			return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", rulerClient.RemoteAddress())
 		}
 		rgs = append(rgs, newGrps.Groups...)
 	}

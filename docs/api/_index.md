@@ -49,6 +49,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Set rule group](#set-rule-group) | Ruler | `POST /api/v1/rules/{namespace}` |
 | [Delete rule group](#delete-rule-group) | Ruler | `DELETE /api/v1/rules/{namespace}/{groupName}` |
 | [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
+| [Delete tenant configuration](#delete-tenant-configuration) | Ruler | `POST /ruler/delete_tenant_config` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
 | [Alertmanager ring status](#alertmanager-ring-status) | Alertmanager | `GET /multitenant_alertmanager/ring` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
@@ -633,6 +634,18 @@ DELETE <legacy-http-prefix>/rules/{namespace}
 Deletes all the rule groups in a namespace (including the namespace itself). This endpoint returns `202` on success.
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
+
+_Requires [authentication](#authentication)._
+
+### Delete tenant configuration
+
+```
+POST /ruler/delete_tenant_config
+```
+
+This deletes all rule groups for tenant, and returns `200` on success. Calling endpoint when no rule groups exist for user returns `200`. Authentication is only to identify the tenant.
+
+This is intended as internal API, and not to be exposed to users. This endpoint is enabled regardless of whether `-experimental.ruler.enable-api` is enabled or not.
 
 _Requires [authentication](#authentication)._
 

@@ -264,10 +264,6 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 	return nil
 }
 
-func (b *BucketRuleStore) SupportsModifications() bool {
-	return true
-}
-
 func getNamespacePrefix(namespace string) string {
 	return base64.URLEncoding.EncodeToString([]byte(namespace)) + objstore.DirDelim
 }

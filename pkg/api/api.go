@@ -276,6 +276,9 @@ func (a *API) RegisterRuler(r *ruler.Ruler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/ruler/ring", "Ruler Ring Status")
 	a.RegisterRoute("/ruler/ring", r, false, "GET", "POST")
 
+	// Administrative API, uses authentication to inform which user's configuration to delete.
+	a.RegisterRoute("/ruler/delete_tenant_config", http.HandlerFunc(r.DeleteTenantConfiguration), true, "POST")
+
 	// Legacy Ring Route
 	a.RegisterRoute("/ruler_ring", r, false, "GET", "POST")
 

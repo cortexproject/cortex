@@ -30,10 +30,6 @@ type Client struct {
 	loader promRules.GroupLoader
 }
 
-func (l *Client) SupportsModifications() bool {
-	return false
-}
-
 func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")

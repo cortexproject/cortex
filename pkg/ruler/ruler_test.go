@@ -20,6 +20,7 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
@@ -27,12 +28,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -609,4 +612,101 @@ func sortTokens(tokens []uint32) []uint32 {
 		return tokens[i] < tokens[j]
 	})
 	return tokens
+}
+
+func TestDeleteTenantRuleGroups(t *testing.T) {
+	ruleGroups := []ruleGroupKey{
+		{user: "userA", namespace: "namespace", group: "group"},
+		{user: "userB", namespace: "namespace1", group: "group"},
+		{user: "userB", namespace: "namespace2", group: "group"},
+	}
+
+	obj, rs := setupRuleGroupsStore(t, ruleGroups)
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil)
+	require.NoError(t, err)
+
+	{
+		req := &http.Request{}
+		resp := httptest.NewRecorder()
+		api.DeleteTenantConfiguration(resp, req)
+
+		require.Equal(t, http.StatusUnauthorized, resp.Code)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
+		require.Equal(t, 3, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false)
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Just deleted.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	// Deleting same user again works fine and reports no problems.
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Already deleted before.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userB")
+		require.Equal(t, 0, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Deleted previously
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", true)                    // Just deleted
+	}
+}
+
+func callDeleteTenantAPI(t *testing.T, api *Ruler, userID string) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	req := &http.Request{}
+	resp := httptest.NewRecorder()
+	api.DeleteTenantConfiguration(resp, req.WithContext(ctx))
+
+	require.Equal(t, http.StatusOK, resp.Code)
+}
+
+func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, r *Ruler, userID string, expectedDeleted bool) {
+	list, err := r.store.ListRuleGroupsForUserAndNamespace(context.Background(), userID, "")
+	require.NoError(t, err)
+
+	if expectedDeleted {
+		require.Equal(t, 0, len(list))
+	} else {
+		require.NotEqual(t, 0, len(list))
+	}
+}
+
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rulestore.RuleStore) {
+	obj := chunk.NewMockStorage()
+	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
+
+	// "upload" rule groups
+	for _, key := range ruleGroups {
+		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
+	}
+
+	return obj, rs
+}
+
+type ruleGroupKey struct {
+	user, namespace, group string
 }

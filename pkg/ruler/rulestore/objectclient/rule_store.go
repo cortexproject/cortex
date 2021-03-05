@@ -41,10 +41,6 @@ type RuleStore struct {
 	logger log.Logger
 }
 
-func (o *RuleStore) SupportsModifications() bool {
-	return true
-}
-
 // NewRuleStore returns a new RuleStore
 func NewRuleStore(client chunk.ObjectClient, loadConcurrency int, logger log.Logger) *RuleStore {
 	return &RuleStore{

@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -770,4 +771,25 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 		return nil
 	}
 	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)
+}
+
+func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), r.logger)
+
+	userID, err := tenant.TenantID(req.Context())
+	if err != nil {
+		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
+		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
+		respondError(logger, w, err.Error())
+		return
+	}
+
+	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
+	w.WriteHeader(http.StatusOK)
 }

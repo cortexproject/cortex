@@ -639,13 +639,6 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
-	// Purger didn't use ruler storage before, but now it does. However empty configuration just causes error,
-	// so to preserve previous purger behaviour, we simply disable it.
-	if t.Cfg.isModuleEnabled(Purger) && t.Cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured. If you want to use tenant deletion API and delete rule groups, please configure ruler storage.")
-		return
-	}
-
 	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		t.RulerStorage, err = ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, rules.FileLoader{}, util_log.Logger)
 	} else {
@@ -810,7 +803,7 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 	}
 
 	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
-	tenantDeletionAPI, err := purger.NewTenantDeletionAPI(t.Cfg.BlocksStorage, t.Overrides, t.RulerStorage, util_log.Logger, prometheus.DefaultRegisterer)
+	tenantDeletionAPI, err := purger.NewTenantDeletionAPI(t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -895,7 +888,7 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
-		TenantDeletion:           {Store, API, Overrides, RulerStorage},
+		TenantDeletion:           {Store, API, Overrides},
 		Purger:                   {ChunksPurger, TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},

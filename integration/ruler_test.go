@@ -375,7 +375,7 @@ func TestRulerSharding(t *testing.T) {
 	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 
-	// Fetch the rulers and ensure they match the configured ones.
+	// Fetch the rules and ensure they match the configured ones.
 	actualGroups, err := c.GetPrometheusRules()
 	require.NoError(t, err)
 

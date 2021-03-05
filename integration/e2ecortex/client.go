@@ -215,7 +215,7 @@ type ServerStatus struct {
 	} `json:"data"`
 }
 
-// GetRuleGroups fetches the rulers from the Prometheus endpoint /api/v1/rules.
+// GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
 func (c *Client) GetPrometheusRules() ([]*ruler.RuleGroup, error) {
 	// Create HTTP request
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)

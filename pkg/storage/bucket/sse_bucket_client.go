@@ -24,17 +24,10 @@ type TenantConfigProvider interface {
 	S3SSEKMSEncryptionContext(userID string) string
 }
 
-// SSEBucketReaderClient is a wrapper around a objstore.BucketReader that configures the object
-// storage server-side encryption (SSE) for a given user.
-type SSEBucketReaderClient struct {
-	userID string
-	bucket objstore.BucketReader
-}
-
 // SSEBucketClient is a wrapper around a objstore.BucketReader that configures the object
 // storage server-side encryption (SSE) for a given user.
 type SSEBucketClient struct {
-	SSEBucketReaderClient
+	userID      string
 	bucket      objstore.Bucket
 	cfgProvider TenantConfigProvider
 }
@@ -42,10 +35,7 @@ type SSEBucketClient struct {
 // NewSSEBucketClient makes a new SSEBucketClient. The cfgProvider can be nil.
 func NewSSEBucketClient(userID string, bucket objstore.Bucket, cfgProvider TenantConfigProvider) *SSEBucketClient {
 	return &SSEBucketClient{
-		SSEBucketReaderClient: SSEBucketReaderClient{
-			userID: userID,
-			bucket: bucket,
-		},
+		userID:      userID,
 		bucket:      bucket,
 		cfgProvider: cfgProvider,
 	}
@@ -105,58 +95,47 @@ func (b *SSEBucketClient) getCustomS3SSEConfig() (encrypt.ServerSide, error) {
 }
 
 // Iter implements objstore.Bucket.
-func (b *SSEBucketReaderClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *SSEBucketClient) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	return b.bucket.Iter(ctx, dir, f, options...)
 }
 
 // Get implements objstore.Bucket.
-func (b *SSEBucketReaderClient) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+func (b *SSEBucketClient) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	return b.bucket.Get(ctx, name)
 }
 
 // GetRange implements objstore.Bucket.
-func (b *SSEBucketReaderClient) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+func (b *SSEBucketClient) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	return b.bucket.GetRange(ctx, name, off, length)
 }
 
 // Exists implements objstore.Bucket.
-func (b *SSEBucketReaderClient) Exists(ctx context.Context, name string) (bool, error) {
+func (b *SSEBucketClient) Exists(ctx context.Context, name string) (bool, error) {
 	return b.bucket.Exists(ctx, name)
 }
 
 // IsObjNotFoundErr implements objstore.Bucket.
-func (b *SSEBucketReaderClient) IsObjNotFoundErr(err error) bool {
+func (b *SSEBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
 
 // Attributes implements objstore.Bucket.
-func (b *SSEBucketReaderClient) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+func (b *SSEBucketClient) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
 	return b.bucket.Attributes(ctx, name)
 }
 
 // ReaderWithExpectedErrs implements objstore.Bucket.
-func (b *SSEBucketReaderClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
-	if ib, ok := b.bucket.(objstore.InstrumentedBucketReader); ok {
-		return &SSEBucketReaderClient{
-			userID: b.userID,
-			bucket: ib.ReaderWithExpectedErrs(fn),
-		}
-	}
-
-	return b
+func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return b.WithExpectedErrs(fn)
 }
 
 // WithExpectedErrs implements objstore.Bucket.
 func (b *SSEBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
 	if ib, ok := b.bucket.(objstore.InstrumentedBucket); ok {
-		nb := ib.WithExpectedErrs(fn)
-
 		return &SSEBucketClient{
-			SSEBucketReaderClient: SSEBucketReaderClient{
-				userID: b.userID,
-				bucket: nb,
-			},
-			bucket: nb,
+			userID:      b.userID,
+			bucket:      ib.WithExpectedErrs(fn),
+			cfgProvider: b.cfgProvider,
 		}
 	}
 

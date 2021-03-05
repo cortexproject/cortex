@@ -729,7 +729,7 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := grpcClient.(RulerClient).Rules(ctx, nil)
+		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
 		if err != nil {
 			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}

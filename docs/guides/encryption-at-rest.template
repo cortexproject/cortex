@@ -28,9 +28,13 @@ The [chunks storage](../chunks-storage/_index.md) S3 server-side encryption can 
 
 The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-ruler-storage.` flag prefix (or their respective YAML config options).
 
+### Alertmanager
+
+The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-alertmanager-storage.` flag prefix (or their respective YAML config options).
+
 ### Per-tenant config overrides
 
-The S3 client used by the blocks storage and ruler supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
+The S3 client used by the blocks storage, ruler and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the [runtime configuration file](../configuration/arguments.md#runtime-configuration-file).
 The following settings can ben overridden for each tenant:
 
 - **`s3_sse_type`**<br />

@@ -2,6 +2,7 @@ package alertstore
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestAlertStore_ListAllUsers(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -41,7 +42,7 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 }
 
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -64,12 +65,22 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 			config, err = store.GetAlertConfig(ctx, "user-2")
 			require.NoError(t, err)
 			assert.Equal(t, user2Cfg, config)
+
+			// Ensure the config is stored at the expected location. Without this check
+			// we have no guarantee that the objects are stored at the expected location.
+			exists, err := objectExists(client, "alerts/user-1")
+			require.NoError(t, err)
+			assert.True(t, exists)
+
+			exists, err = objectExists(client, "alerts/user-2")
+			require.NoError(t, err)
+			assert.True(t, exists)
 		}
 	})
 }
 
 func TestStore_GetAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -105,7 +116,7 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 }
 
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -139,21 +150,43 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	})
 }
 
-func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore)) {
+func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, client interface{})) {
 	legacyClient := chunk.NewMockStorage()
 	legacyStore := objectclient.NewAlertStore(legacyClient, log.NewNopLogger())
 
 	bucketClient := objstore.NewInMemBucket()
 	bucketStore := bucketclient.NewBucketAlertStore(bucketClient, nil, log.NewNopLogger())
 
-	stores := map[string]AlertStore{
-		"legacy": legacyStore,
-		"bucket": bucketStore,
+	stores := map[string]struct {
+		store  AlertStore
+		client interface{}
+	}{
+		"legacy": {store: legacyStore, client: legacyClient},
+		"bucket": {store: bucketStore, client: bucketClient},
 	}
 
-	for name, store := range stores {
+	for name, data := range stores {
 		t.Run(name, func(t *testing.T) {
-			testFn(t, store)
+			testFn(t, data.store, data.client)
 		})
 	}
+}
+
+func objectExists(bucketClient interface{}, key string) (bool, error) {
+	if typed, ok := bucketClient.(*chunk.MockStorage); ok {
+		_, err := typed.GetObject(context.Background(), key)
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			return false, nil
+		}
+		if err == nil {
+			return true, nil
+		}
+		return false, err
+	}
+
+	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
+		return typed.Exists(context.Background(), key)
+	}
+
+	panic("unexpected bucket client")
 }

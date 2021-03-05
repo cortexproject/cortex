@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -86,15 +86,15 @@ func TestWriteTextResponse(t *testing.T) {
 
 func TestParseProtoReader(t *testing.T) {
 	// 47 bytes compressed and 53 uncompressed
-	req := &client.PreallocWriteRequest{
-		WriteRequest: client.WriteRequest{
-			Timeseries: []client.PreallocTimeseries{
+	req := &cortexpb.PreallocWriteRequest{
+		WriteRequest: cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
 				{
-					TimeSeries: &client.TimeSeries{
-						Labels: []client.LabelAdapter{
+					TimeSeries: &cortexpb.TimeSeries{
+						Labels: []cortexpb.LabelAdapter{
 							{Name: "foo", Value: "bar"},
 						},
-						Samples: []client.Sample{
+						Samples: []cortexpb.Sample{
 							{Value: 10, TimestampMs: 1},
 							{Value: 20, TimestampMs: 2},
 							{Value: 30, TimestampMs: 3},
@@ -127,7 +127,7 @@ func TestParseProtoReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			assert.Nil(t, util.SerializeProtoResponse(w, req, tt.compression))
-			var fromWire client.PreallocWriteRequest
+			var fromWire cortexpb.PreallocWriteRequest
 
 			reader := w.Result().Body
 			if tt.useBytesBuffer {

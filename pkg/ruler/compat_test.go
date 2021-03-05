@@ -9,15 +9,15 @@ import (
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 type fakePusher struct {
-	request  *client.WriteRequest
-	response *client.WriteResponse
+	request  *cortexpb.WriteRequest
+	response *cortexpb.WriteResponse
 }
 
-func (p *fakePusher) Push(ctx context.Context, r *client.WriteRequest) (*client.WriteResponse, error) {
+func (p *fakePusher) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	p.request = r
 	return p.response, nil
 }
@@ -64,7 +64,7 @@ func TestPusherAppendable(t *testing.T) {
 				evalDelay: tc.evalDelay,
 			}
 
-			pusher.response = &client.WriteResponse{}
+			pusher.response = &cortexpb.WriteResponse{}
 			a := pa.Appender(ctx)
 			_, err := a.Add(nil, 120_000, tc.value)
 			require.NoError(t, err)

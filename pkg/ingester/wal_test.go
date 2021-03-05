@@ -17,7 +17,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -84,14 +84,14 @@ func TestWAL(t *testing.T) {
 	lastSample := sampleStream.Values[len(sampleStream.Values)-1]
 
 	// In-order and out of order sample in the same request.
-	metric := client.FromLabelAdaptersToLabels(client.FromMetricsToLabelAdapters(sampleStream.Metric))
-	outOfOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
-	inOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
+	metric := cortexpb.FromLabelAdaptersToLabels(cortexpb.FromMetricsToLabelAdapters(sampleStream.Metric))
+	outOfOrderSample := cortexpb.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
+	inOrderSample := cortexpb.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest(
+	_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 		[]labels.Labels{metric, metric},
-		[]client.Sample{outOfOrderSample, inOrderSample}, nil, client.API))
+		[]cortexpb.Sample{outOfOrderSample, inOrderSample}, nil, cortexpb.API))
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(makeMetricValidationError(sampleOutOfOrder, metric,
 		fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", lastSample.Timestamp, model.Time(outOfOrderSample.TimestampMs))), userID).Error()), err)
 

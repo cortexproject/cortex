@@ -422,8 +422,10 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> S3 server-side encryption can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p>
 &lt;h3 id="ruler">Ruler&lt;/h3>
 &lt;p>The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-ruler-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
+&lt;h3 id="alertmanager">Alertmanager&lt;/h3>
+&lt;p>The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-alertmanager-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
 &lt;h3 id="per-tenant-config-overrides">Per-tenant config overrides&lt;/h3>
-&lt;p>The S3 client used by the blocks storage and ruler supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
+&lt;p>The S3 client used by the blocks storage, ruler and alertmanager supports S3 SSE config overrides on a per-tenant basis, using the &lt;a href="/docs/configuration/arguments/#runtime-configuration-file">runtime configuration file&lt;/a>.
 The following settings can ben overridden for each tenant:&lt;/p>
 &lt;ul>
 &lt;li>&lt;strong>&lt;code>s3_sse_type&lt;/code>&lt;/strong>&lt;br />

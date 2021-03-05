@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// state represents the Alertmanager silences and notification log internal state
+// state represents the Alertmanager silences and notification log internal state.
 type state struct {
 	userID string
 	logger log.Logger
@@ -88,7 +88,7 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 	return &stateChannel{
 		msgc: s.msgc,
-		key: key,
+		key:  key,
 	}
 }
 
@@ -112,8 +112,7 @@ func (s *state) MergePartialState(p *clusterpb.Part) error {
 	return nil
 }
 
-// The clusterWait function uses the position to determine how long should it wait before sending a notification.
-// In the Cortex case, we copy the function directly and let the state tell us which position we hold.
+// Position helps in determining how long should we wait before sending a notification based on the number of replicas.
 func (s *state) Position() int { return s.positionFunc(s.userID) }
 
 // Settle waits until the alertmanagers are ready (and sets the appropriate internal state when it is).

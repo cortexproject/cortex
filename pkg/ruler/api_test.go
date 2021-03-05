@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	io "io"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"

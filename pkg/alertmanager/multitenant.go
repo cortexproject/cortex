@@ -507,7 +507,8 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	return nil
 }
 
-// migrateStateFilesToPerTenantDirectories migrate any existing configuration from old place to new hierarchy.
+// migrateStateFilesToPerTenantDirectories migrates any existing configuration from old place to new hierarchy.
+// TODO: Remove in Cortex 1.10.
 func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
 	migrate := func(from, to string) error {
 		level.Info(am.logger).Log("msg", "migrating AM state", "from", from, "to", to)
@@ -1106,6 +1107,8 @@ func (am *MultitenantAlertmanager) deleteUnusedLocalUserState() {
 	}
 }
 
+// getPerUserDirectories returns map of users to their directories (full path). Only users with local
+// directory are returned.
 func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 	files, err := ioutil.ReadDir(am.cfg.DataDir)
 	if err != nil {

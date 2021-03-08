@@ -6,6 +6,7 @@
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
   * `cortex_ruler_clients`
   * `cortex_ruler_client_request_duration_seconds`
+* [BUGFIX] Querier: streamline tracing spans #3924
 
 ## 1.8.0 in progress
 

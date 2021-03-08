@@ -1144,17 +1144,21 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func storeTemplateFile(tenantTemplateDir, templateFileName, content string) (changed bool, _ error) {
+// storeTemplateFile stores template file with given content into specific directory.
+// Since templateFileName is provided by end-user, it is verified that it doesn't do any path-traversal.
+// Returns true, if file content has changed (new or updated file), false if file with the same name
+// and content was already stored locally.
+func storeTemplateFile(dir, templateFileName, content string) (bool, error) {
 	if templateFileName != filepath.Base(templateFileName) {
 		return false, fmt.Errorf("template file name '%s' is not not valid", templateFileName)
 	}
 
-	err := os.MkdirAll(tenantTemplateDir, 0755)
+	err := os.MkdirAll(dir, 0755)
 	if err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", tenantTemplateDir, err)
+		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
 	}
 
-	file := filepath.Join(tenantTemplateDir, templateFileName)
+	file := filepath.Join(dir, templateFileName)
 	// Check if the template file already exists and if it has changed
 	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
 		return false, nil

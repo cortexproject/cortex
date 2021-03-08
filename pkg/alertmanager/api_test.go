@@ -15,8 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"

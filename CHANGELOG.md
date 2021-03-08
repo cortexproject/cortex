@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Add api to list all tenant alertmanager configs and ruler rules. #3259
+   - `GET /multitenant_alertmanager/configs`
+   - `GET /ruler/rules`
+
 ## 1.8.0 in progress
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled.
@@ -103,9 +107,6 @@
 * [BUGFIX] Memberlist: fixed panic caused by race condition in `armon/go-metrics` used by memberlist client. #3724
 * [BUGFIX] Querier: returning 422 (instead of 500) when query hits `max_chunks_per_query` limit with block storage. #3895
 * [BUGFIX] Alertmanager: Ensure that experimental `/api/v1/alerts` endpoints work when `-http.prefix` is empty. #3905* 
-* [ENHANCEMENT] Add api to list all tenant alertmanager configs and ruler rules. #3259
-   - `GET /multitenant_alertmanager/configs`
-   - `GET /ruler/rules`
 
 ## 1.7.0
 

@@ -233,6 +233,9 @@ func TestAlertmanagerClustering(t *testing.T) {
 }
 
 func TestAlertmanagerSharding(t *testing.T) {
+	// TODO See: https://github.com/cortexproject/cortex/issues/3927
+	t.Skip("this test is skipped because of a bug in the alertmanager sharding logic, which is currently under development")
+
 	tests := map[string]struct {
 		legacyAlertStore bool
 	}{

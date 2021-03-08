@@ -23,6 +23,8 @@ import (
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/prompb"
 	yaml "gopkg.in/yaml.v3"
+
+	"github.com/cortexproject/cortex/pkg/ruler"
 )
 
 var (
@@ -213,7 +215,49 @@ type ServerStatus struct {
 	} `json:"data"`
 }
 
-// GetRuleGroups gets the status of an alertmanager instance
+// GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
+func (c *Client) GetPrometheusRules() ([]*ruler.RuleGroup, error) {
+	// Create HTTP request
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode the response.
+	type response struct {
+		Status string              `json:"status"`
+		Data   ruler.RuleDiscovery `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return nil, err
+	}
+
+	if decoded.Status != "success" {
+		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data.RuleGroups, nil
+}
+
+// GetRuleGroups gets the configured rule groups from the ruler.
 func (c *Client) GetRuleGroups() (map[string][]rulefmt.RuleGroup, error) {
 	// Create HTTP request
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/rules", c.rulerAddress), nil)
@@ -247,7 +291,7 @@ func (c *Client) GetRuleGroups() (map[string][]rulefmt.RuleGroup, error) {
 	return rgs, nil
 }
 
-// SetRuleGroup gets the status of an alertmanager instance
+// SetRuleGroup configures the provided rulegroup to the ruler.
 func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) error {
 	// Create write request
 	data, err := yaml.Marshal(rulegroup)
@@ -277,7 +321,7 @@ func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) err
 	return nil
 }
 
-// DeleteRuleGroup gets the status of an alertmanager instance
+// DeleteRuleGroup deletes a rule group.
 func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	// Create HTTP request
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s/api/prom/rules/%s/%s", c.rulerAddress, url.PathEscape(namespace), url.PathEscape(groupName)), nil)
@@ -442,6 +486,31 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("sending alert failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) error {
+	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
+
+	data, err := json.Marshal(silence)
+	if err != nil {
+		return fmt.Errorf("error marshaling the silence: %s", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("creating the silence failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	return nil

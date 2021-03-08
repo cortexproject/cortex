@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
+* [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
+  * `cortex_ruler_clients`
+  * `cortex_ruler_client_request_duration_seconds`
 * [ENHANCEMENT] Add api to list all tenant alertmanager configs and ruler rules. #3259
    - `GET /multitenant_alertmanager/configs`
    - `GET /ruler/rules`

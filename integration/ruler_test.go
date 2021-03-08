@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/pkg/value"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -301,7 +303,87 @@ func TestRulerEvaluationDelay(t *testing.T) {
 		}
 	}
 	require.Equal(t, len(series.Samples), inputPos, "expect to have returned all evaluations")
+}
 
+func TestRulerSharding(t *testing.T) {
+	const numRulesGroups = 100
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Generate multiple rule groups, with 1 rule each.
+	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
+	expectedNames := make([]string, numRulesGroups)
+	for i := 0; i < numRulesGroups; i++ {
+		var recordNode yaml.Node
+		var exprNode yaml.Node
+
+		recordNode.SetString(fmt.Sprintf("rule_%d", i))
+		exprNode.SetString(strconv.Itoa(i))
+		ruleName := fmt.Sprintf("test_%d", i)
+
+		expectedNames[i] = ruleName
+		ruleGroups[i] = rulefmt.RuleGroup{
+			Name:     ruleName,
+			Interval: 60,
+			Rules: []rulefmt.RuleNode{{
+				Record: recordNode,
+				Expr:   exprNode,
+			}},
+		}
+	}
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(false),
+		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
+		map[string]string{
+			// Since we're not going to run any rule, we don't need the
+			// store-gateway to be configured to a valid address.
+			"-querier.store-gateway-addresses": "localhost:12345",
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+		},
+	)
+
+	// Start rulers.
+	ruler1 := e2ecortex.NewRuler("ruler-1", rulerFlags, "")
+	ruler2 := e2ecortex.NewRuler("ruler-2", rulerFlags, "")
+	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2)
+	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2))
+
+	// Upload rule groups to one of the rulers.
+	c, err := e2ecortex.NewClient("", "", "", ruler1.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	for _, ruleGroup := range ruleGroups {
+		require.NoError(t, c.SetRuleGroup(ruleGroup, "test"))
+	}
+
+	// Wait until rulers have loaded all rules.
+	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	// Since rulers have loaded all rules, we expect that rules have been sharded
+	// between the two rulers.
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+
+	// Fetch the rules and ensure they match the configured ones.
+	actualGroups, err := c.GetPrometheusRules()
+	require.NoError(t, err)
+
+	var actualNames []string
+	for _, group := range actualGroups {
+		actualNames = append(actualNames, group.Name)
+	}
+	assert.ElementsMatch(t, expectedNames, actualNames)
 }
 
 func TestRulerAlertmanager(t *testing.T) {

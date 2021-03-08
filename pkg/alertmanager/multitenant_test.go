@@ -107,8 +107,8 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, am.alertmanagers, 2)
 
-	currentConfig, exists := am.cfgs["user1"]
-	require.True(t, exists)
+	currentConfig, cfgExists := am.cfgs["user1"]
+	require.True(t, cfgExists)
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -119,15 +119,37 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      "user3",
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
+	user3Cfg := alertspb.AlertConfigDesc{
+		User: "user3",
+		RawConfig: simpleConfigOne + `
+templates:
+- 'first.tpl'
+- 'second.tpl'
+`,
+		Templates: []*alertspb.TemplateDesc{
+			{
+				Filename: "first.tpl",
+				Body:     `{{ define "t1" }}Template 1 ... {{end}}`,
+			},
+			{
+				Filename: "second.tpl",
+				Body:     `{{ define "t2" }}Template 2{{ end}}`,
+			},
+		},
+	}
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 	require.Len(t, am.alertmanagers, 3)
+
+	dirs := am.getPerUserDirectories()
+	user3Dir := dirs["user3"]
+	require.NotZero(t, user3Dir)
+	require.True(t, exists(t, user3Dir, true))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir), true))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "first.tpl"), false))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "second.tpl"), false))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -147,24 +169,25 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
-	currentConfig, exists = am.cfgs["user1"]
-	require.True(t, exists)
+	currentConfig, cfgExists = am.cfgs["user1"]
+	require.True(t, cfgExists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
 	// Test Delete User, ensure config is removed and the resources are freed.
 	require.NoError(t, store.DeleteAlertConfig(ctx, "user3"))
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
-	currentConfig, exists = am.cfgs["user3"]
-	require.False(t, exists)
+	currentConfig, cfgExists = am.cfgs["user3"]
+	require.False(t, cfgExists)
 	require.Equal(t, "", currentConfig.RawConfig)
 
-	_, exists = am.alertmanagers["user3"]
-	require.False(t, exists)
-	dirs := am.getPerUserDirectories()
+	_, cfgExists = am.alertmanagers["user3"]
+	require.False(t, cfgExists)
+	dirs = am.getPerUserDirectories()
 	require.NotZero(t, dirs["user1"])
 	require.NotZero(t, dirs["user2"])
 	require.Zero(t, dirs["user3"]) // User3 is deleted, so we should have no more files for it.
+	require.False(t, exists(t, user3Dir, false))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -174,25 +197,27 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      "user3",
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
-	currentConfig, exists = am.cfgs["user3"]
-	require.True(t, exists)
-	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
+	currentConfig, cfgExists = am.cfgs["user3"]
+	require.True(t, cfgExists)
+	require.Equal(t, user3Cfg.RawConfig, currentConfig.RawConfig)
 
-	_, exists = am.alertmanagers["user3"]
-	require.True(t, exists)
+	_, cfgExists = am.alertmanagers["user3"]
+	require.True(t, cfgExists)
 	dirs = am.getPerUserDirectories()
 	require.NotZero(t, dirs["user1"])
 	require.NotZero(t, dirs["user2"])
-	require.NotZero(t, dirs["user3"]) // Dir should exist, even though state files are not generated yet.
+	require.Equal(t, user3Dir, dirs["user3"]) // Dir should exist, even though state files are not generated yet.
+
+	// Hierarchy that existed before should exist again.
+	require.True(t, exists(t, user3Dir, true))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir), true))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "first.tpl"), false))
+	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "second.tpl"), false))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.

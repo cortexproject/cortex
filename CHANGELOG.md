@@ -2,7 +2,8 @@
 
 ## master / unreleased
 
-* [CHANGE] Alertmanager: clean obsolete local files after Alertmanager is no longer running for removed or resharded user. #3910
+* [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
+* [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. #3910
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
   * `cortex_ruler_clients`

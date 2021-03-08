@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
+	"github.com/thanos-io/thanos/pkg/model"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -52,6 +53,8 @@ type memcachedClient struct {
 	cbTimeout  time.Duration
 	cbInterval time.Duration
 
+	maxItemSize model.Bytes
+
 	quit chan struct{}
 	wait sync.WaitGroup
 
@@ -67,6 +70,7 @@ type MemcachedClientConfig struct {
 	Addresses      string        `yaml:"addresses"` // EXPERIMENTAL.
 	Timeout        time.Duration `yaml:"timeout"`
 	MaxIdleConns   int           `yaml:"max_idle_conns"`
+	MaxItemSize    int           `yaml:"max_item_size"`
 	UpdateInterval time.Duration `yaml:"update_interval"`
 	ConsistentHash bool          `yaml:"consistent_hash"`
 	CBFailures     uint          `yaml:"circuit_breaker_consecutive_failures"`
@@ -86,6 +90,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.UintVar(&cfg.CBFailures, prefix+"memcached.circuit-breaker-consecutive-failures", 10, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
 	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.circuit-breaker-timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
 	f.DurationVar(&cfg.CBInterval, prefix+"memcached.circuit-breaker-interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
+	f.IntVar(&cfg.MaxItemSize, prefix+"memcached.max-item-size", 1024*1024, description+"The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.")
 }
 
 // NewMemcachedClient creates a new MemcacheClient that gets its server list
@@ -107,18 +112,19 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}, r))
 
 	newClient := &memcachedClient{
-		name:       name,
-		Client:     client,
-		serverList: selector,
-		hostname:   cfg.Host,
-		service:    cfg.Service,
-		logger:     logger,
-		provider:   dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
-		cbs:        make(map[string]*gobreaker.CircuitBreaker),
-		cbFailures: cfg.CBFailures,
-		cbInterval: cfg.CBInterval,
-		cbTimeout:  cfg.CBTimeout,
-		quit:       make(chan struct{}),
+		name:        name,
+		Client:      client,
+		serverList:  selector,
+		hostname:    cfg.Host,
+		service:     cfg.Service,
+		logger:      logger,
+		provider:    dns.NewProvider(logger, dnsProviderRegisterer, dns.GolangResolverType),
+		cbs:         make(map[string]*gobreaker.CircuitBreaker),
+		cbFailures:  cfg.CBFailures,
+		cbInterval:  cfg.CBInterval,
+		cbTimeout:   cfg.CBTimeout,
+		maxItemSize: model.Bytes(cfg.MaxItemSize),
+		quit:        make(chan struct{}),
 
 		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace:   "cortex",
@@ -183,6 +189,11 @@ func (c *memcachedClient) Stop() {
 }
 
 func (c *memcachedClient) Set(item *memcache.Item) error {
+	// Skip hitting memcached at all if the item is bigger than the max allowed size.
+	if c.maxItemSize > 0 && uint64(len(item.Value)) > uint64(c.maxItemSize) {
+		return nil
+	}
+
 	err := c.Client.Set(item)
 	if err == nil {
 		return nil

@@ -1011,6 +1011,10 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 	return err
 }
 
+func (am *MultitenantAlertmanager) ReadFullStateForUser(context.Context, string) ([]*clusterpb.FullState, error) {
+	return nil, nil
+}
+
 // UpdateState implements the Alertmanager service.
 func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *clusterpb.Part) (*alertmanagerpb.UpdateStateResponse, error) {
 	userID, err := tenant.TenantID(ctx)

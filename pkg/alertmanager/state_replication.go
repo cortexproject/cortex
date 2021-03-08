@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -13,7 +14,15 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+const (
+	defaultSettleMinBackoff  = 1 * time.Second
+	defaultSettleMaxBackoff  = 10 * time.Second
+	defaultSettleMaxRetries  = 5
+	defaultSettleReadTimeout = 15 * time.Second
 )
 
 // state represents the Alertmanager silences and notification log internal state.
@@ -23,6 +32,9 @@ type state struct {
 	userID string
 	logger log.Logger
 	reg    prometheus.Registerer
+
+	settleBackoff     util.BackoffConfig
+	settleReadTimeout time.Duration
 
 	mtx    sync.Mutex
 	states map[string]cluster.State
@@ -41,6 +53,12 @@ type state struct {
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
 func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
 
+	defaultSettleBackoff := util.BackoffConfig{
+		MinBackoff: defaultSettleMinBackoff,
+		MaxBackoff: defaultSettleMaxBackoff,
+		MaxRetries: defaultSettleMaxRetries,
+	}
+
 	s := &state{
 		logger:            l,
 		userID:            userID,
@@ -49,6 +67,8 @@ func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r p
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
 		reg:               r,
+		settleBackoff:     defaultSettleBackoff,
+		settleReadTimeout: defaultSettleReadTimeout,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -120,8 +140,31 @@ func (s *state) Position() int {
 func (s *state) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "Waiting for notification and silences to settle...")
 
-	// TODO: Make sure that the state is fully synchronised at this point.
+	// If the replication factor is <= 1, there is nowhere to obtain the state from.
+	if s.replicationFactor <= 1 {
+		level.Info(s.logger).Log("msg", "skipping settling (no replicas)")
+		return nil
+	}
+
 	// We can check other alertmanager(s) and explicitly ask them to propagate their state to us if available.
+	backoff := util.NewBackoff(ctx, s.settleBackoff)
+	for backoff.Ongoing() {
+		readCtx, cancel := context.WithTimeout(ctx, s.settleReadTimeout)
+		defer cancel()
+
+		fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
+		if err == nil {
+			if err = s.mergeFullStates(fullStates); err == nil {
+				level.Info(s.logger).Log("msg", "state settled; proceeding", "attempt", backoff.NumRetries()+1)
+				return nil
+			}
+		}
+
+		level.Info(s.logger).Log("msg", "failed to settle state", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", s.settleBackoff.MaxRetries)
+		backoff.Wait()
+	}
+
+	level.Info(s.logger).Log("msg", "state not settled but continuing anyway", "attempts", backoff.NumRetries())
 	return nil
 }
 
@@ -132,6 +175,30 @@ func (s *state) WaitReady(ctx context.Context) error {
 
 func (s *state) Ready() bool {
 	return s.Service.State() == services.Running
+}
+
+// mergeFullStates attempts to merge all full states received from peers during settling.
+func (s *state) mergeFullStates(fs []*clusterpb.FullState) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for _, f := range fs {
+		for _, p := range f.Parts {
+			level.Debug(s.logger).Log("msg", "merging full state", "user", s.userID, "key", p.Key, "bytes", len(p.Data))
+
+			st, ok := s.states[p.Key]
+			if !ok {
+				level.Error(s.logger).Log("msg", "key not found while merging full state", "user", s.userID, "key", p.Key)
+				continue
+			}
+
+			if err := st.Merge(p.Data); err != nil {
+				return errors.Wrapf(err, "failed to merge part of full state for key: %v", p.Key)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *state) running(ctx context.Context) error {

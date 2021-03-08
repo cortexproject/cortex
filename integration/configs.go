@@ -168,6 +168,14 @@ var (
 		}
 	}
 
+	RulerShardingFlags = func(consulAddress string) map[string]string {
+		return map[string]string{
+			"-ruler.enable-sharding":      "true",
+			"-ruler.ring.store":           "consul",
+			"-ruler.ring.consul.hostname": consulAddress,
+		}
+	}
+
 	BlocksStorageFlags = func() map[string]string {
 		return map[string]string{
 			"-store.engine":                                 blocksStorageEngine,

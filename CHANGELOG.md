@@ -2,6 +2,11 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
+* [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
+  * `cortex_ruler_clients`
+  * `cortex_ruler_client_request_duration_seconds`
+
 ## 1.8.0 in progress
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled.

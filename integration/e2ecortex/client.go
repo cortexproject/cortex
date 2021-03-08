@@ -447,6 +447,31 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	return nil
 }
 
+func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) error {
+	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
+
+	data, err := json.Marshal(silence)
+	if err != nil {
+		return fmt.Errorf("error marshaling the silence: %s", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("creating the silence failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {

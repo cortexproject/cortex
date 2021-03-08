@@ -3,18 +3,23 @@ package alertmanager
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/http/pprof"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/alertmanager/pkg/labels"
+	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -805,6 +810,245 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	require.Equal(t, services.Failed, am.State())
 	require.False(t, am.ringLifecycler.IsRegistered())
 	require.NotNil(t, am.ring)
+}
+
+func TestAlertmanager_ReplicasPosition(t *testing.T) {
+	ctx := context.Background()
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	mockStore := prepareInMemoryAlertStore()
+	require.NoError(t, mockStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      "user-1",
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	var instances []*MultitenantAlertmanager
+	var instanceIDs []string
+	registries := util.NewUserRegistries()
+
+	// First, create the alertmanager instances, we'll use a replication factor of 3 and create 3 instances so that we can get the tenant on each replica.
+	for i := 1; i <= 3; i++ {
+		//instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
+		instanceID := fmt.Sprintf("alertmanager-%d", i)
+
+		amConfig := mockAlertmanagerConfig(t)
+		amConfig.ShardingRing.ReplicationFactor = 3
+		amConfig.ShardingRing.InstanceID = instanceID
+		amConfig.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+
+		// Do not check the ring topology changes or poll in an interval in this test (we explicitly sync alertmanagers).
+		amConfig.PollInterval = time.Hour
+		amConfig.ShardingRing.RingCheckPeriod = time.Hour
+		amConfig.ShardingEnabled = true
+
+		reg := prometheus.NewPedanticRegistry()
+		am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+		require.NoError(t, err)
+		defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
+
+		require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+		instances = append(instances, am)
+		instanceIDs = append(instanceIDs, instanceID)
+		registries.AddUserRegistry(instanceID, reg)
+	}
+
+	// We need make sure the ring is settled. The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	for _, am := range instances {
+		for _, id := range instanceIDs {
+			require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
+		}
+	}
+
+	// Now that the ring has settled, sync configs with the instances.
+	for _, am := range instances {
+		err := am.loadAndSyncConfigs(ctx, reasonRingChange)
+		require.NoError(t, err)
+	}
+
+	// Now that the ring has settled, we expect each AM instance to have a different position.
+	// Let's walk through them and collect the positions.
+	var positions []int
+	for _, instance := range instances {
+		instance.alertmanagersMtx.Lock()
+		am, ok := instance.alertmanagers["user-1"]
+		require.True(t, ok)
+		positions = append(positions, am.state.Position())
+		instance.alertmanagersMtx.Unlock()
+	}
+
+	require.ElementsMatch(t, []int{0, 1, 2}, positions)
+}
+
+func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
+	tc := []struct {
+		name              string
+		replicationFactor int
+		instances         int
+		withSharding      bool
+	}{
+		{
+			name:              "sharding disabled (hence no replication factor),  1 instance",
+			withSharding:      false,
+			instances:         1,
+			replicationFactor: 0,
+		},
+		{
+			name:              "sharding enabled, RF = 2, 2 instances",
+			withSharding:      true,
+			instances:         2,
+			replicationFactor: 2,
+		},
+		{
+			name:              "sharding enabled, RF = 3, 10 instance",
+			withSharding:      true,
+			instances:         10,
+			replicationFactor: 3,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			mockStore := prepareInMemoryAlertStore()
+			externalURL := flagext.URLValue{}
+			err := externalURL.Set("http://localhost:8080/alertmanager")
+			require.NoError(t, err)
+
+			var instances []*MultitenantAlertmanager
+			var instanceIDs []string
+			registries := util.NewUserRegistries()
+
+			// First, add the number of configs to the store.
+			for i := 1; i <= 12; i++ {
+				u := fmt.Sprintf("u-%d", i)
+				require.NoError(t, mockStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+					User:      u,
+					RawConfig: simpleConfigOne,
+					Templates: []*alertspb.TemplateDesc{},
+				}))
+			}
+
+			// Then, create the alertmanager instances, start them and add their registries to the slice.
+			for i := 1; i <= tt.instances; i++ {
+				instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
+				instanceID := fmt.Sprintf("alertmanager-%d", i)
+
+				amConfig := mockAlertmanagerConfig(t)
+				amConfig.ExternalURL = externalURL
+				amConfig.ShardingRing.ReplicationFactor = tt.replicationFactor
+				amConfig.ShardingRing.InstanceID = instanceID
+				amConfig.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+
+				// Do not check the ring topology changes or poll in an interval in this test (we explicitly sync alertmanagers).
+				amConfig.PollInterval = time.Hour
+				amConfig.ShardingRing.RingCheckPeriod = time.Hour
+
+				if tt.withSharding {
+					amConfig.ShardingEnabled = true
+				}
+
+				reg := prometheus.NewPedanticRegistry()
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+				require.NoError(t, err)
+				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
+
+				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+				instances = append(instances, am)
+				instanceIDs = append(instanceIDs, instanceID)
+				registries.AddUserRegistry(instanceID, reg)
+			}
+
+			// If we're testing with sharding, we need make sure the ring is settled.
+			if tt.withSharding {
+				ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+
+				// The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
+				for _, am := range instances {
+					for _, id := range instanceIDs {
+						require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
+					}
+				}
+			}
+
+			// Now that the ring has settled, sync configs with the instances.
+			var numConfigs, numInstances int
+			for _, am := range instances {
+				err := am.loadAndSyncConfigs(ctx, reasonRingChange)
+				require.NoError(t, err)
+				numConfigs += len(am.cfgs)
+				numInstances += len(am.alertmanagers)
+			}
+
+			// With sharding enabled, we propagate messages over gRPC instead of using a gossip over TCP.
+			// 1. First, get a random multitenant instance
+			multitenantAM := instances[rand.Intn(len(instances))]
+
+			// 2. Then, get a random user that exists in that particular alertmanager instance.
+			multitenantAM.alertmanagersMtx.Lock()
+			k := rand.Intn(len(multitenantAM.alertmanagers))
+			var userID string
+			for u := range multitenantAM.alertmanagers {
+				if k == 0 {
+					userID = u
+					break
+				}
+				k--
+			}
+			multitenantAM.alertmanagersMtx.Unlock()
+
+			// 3. Now that we have our alertmanager user, let's create a silence and make sure it is replicated.
+			silence := types.Silence{
+				Matchers: labels.Matchers{
+					{Name: "instance", Value: "prometheus-one"},
+				},
+				Comment:  "Created for a test case.",
+				StartsAt: time.Now(),
+				EndsAt:   time.Now().Add(time.Hour),
+			}
+			data, err := json.Marshal(silence)
+			require.NoError(t, err)
+
+			// 4. Create the silence in one of the alertmanagers
+			req := httptest.NewRequest(http.MethodPost, externalURL.String()+"/api/v2/silences", bytes.NewReader(data))
+			req.Header.Set("content-type", "application/json")
+			reqCtx := user.InjectOrgID(req.Context(), userID)
+			{
+				w := httptest.NewRecorder()
+				multitenantAM.ServeHTTP(w, req.WithContext(reqCtx))
+
+				resp := w.Result()
+				body, _ := ioutil.ReadAll(resp.Body)
+				assert.Equal(t, http.StatusOK, w.Code)
+				require.Regexp(t, regexp.MustCompile(`{"silenceID":".+"}`), string(body))
+			}
+
+			metrics := registries.BuildMetricFamiliesPerUser()
+
+			// If sharding is not enabled, we never propagate any messages amongst replicas in this way, and we can stop here.
+			if !tt.withSharding {
+				assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
+				return
+			}
+
+			// 5. Then, make sure it is propagated successfully.
+			assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+			assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
+
+			// 5b. We'll never receive the message as GRPC communication over unit tests is not possible.
+			assert.Equal(t, float64(0), metrics.GetSumOfCounters("alertmanager_partial_state_merges_total"))
+			assert.Equal(t, float64(0), metrics.GetSumOfCounters("alertmanager_partial_state_merges_failed_total"))
+		})
+	}
 }
 
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.

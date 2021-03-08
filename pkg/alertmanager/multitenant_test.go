@@ -161,6 +161,10 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 
 	_, exists = am.alertmanagers["user3"]
 	require.False(t, exists)
+	dirs := am.getPerUserDirectories()
+	require.NotZero(t, dirs["user1"])
+	require.NotZero(t, dirs["user2"])
+	require.Zero(t, dirs["user3"]) // User3 is deleted, so we should have no more files for it.
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -185,6 +189,10 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 
 	_, exists = am.alertmanagers["user3"]
 	require.True(t, exists)
+	dirs = am.getPerUserDirectories()
+	require.NotZero(t, dirs["user1"])
+	require.NotZero(t, dirs["user2"])
+	require.NotZero(t, dirs["user3"]) // Dir should exist, even though state files are not generated yet.
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -195,7 +203,7 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 }
 
-func TestMultitenantAlertmanager_deleteObsoleteLocalFiles(t *testing.T) {
+func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {
 	ctx := context.Background()
 
 	const (
@@ -215,28 +223,76 @@ func TestMultitenantAlertmanager_deleteObsoleteLocalFiles(t *testing.T) {
 	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
-	testUser1File1 := createFile(t, cfg.DataDir, silencesPrefix+user1)
-	testUser1File2 := createFile(t, cfg.DataDir, notificationLogPrefix+user1)
-	testUser2File := createFile(t, cfg.DataDir, notificationLogPrefix+user2)
+	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user1))
+	createFile(t, filepath.Join(cfg.DataDir, "silences:"+user1))
+	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user2))
+	createFile(t, filepath.Join(cfg.DataDir, "templates", user2, "template.tpl"))
 
-	files := am.getSnapshotFilesPerUser()
-	require.Equal(t, 2, len(files))
-	require.ElementsMatch(t, []string{testUser1File1, testUser1File2}, files[user1])
-	require.ElementsMatch(t, []string{testUser2File}, files[user2])
+	require.NoError(t, am.migrateStateFilesToPerTenantDirectories())
+	require.True(t, exists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot), false))
+	require.True(t, exists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot), false))
+	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot), false))
+	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, templatesDir), true))
+	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl"), false))
+}
+
+func exists(t *testing.T, path string, dir bool) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, dir, fi.IsDir())
+	return true
+}
+
+func TestMultitenantAlertmanager_deleteUnusedLocalUserState(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      user2,
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	createFile(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl"))
+
+	dirs := am.getPerUserDirectories()
+	require.Equal(t, 2, len(dirs))
+	require.NotZero(t, dirs[user1])
+	require.NotZero(t, dirs[user2])
 
 	// Ensure the configs are synced correctly
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
 	// loadAndSyncConfigs also cleans up obsolete files. Let's verify that.
-	files = am.getSnapshotFilesPerUser()
+	dirs = am.getPerUserDirectories()
 
-	require.Nil(t, files[user1])    // has no configuration, files were deleted
-	require.NotNil(t, files[user2]) // has config, files survived
+	require.Zero(t, dirs[user1])    // has no configuration, files were deleted
+	require.NotZero(t, dirs[user2]) // has config, files survived
 }
 
-func createFile(t *testing.T, dir string, name string) string {
-	path := filepath.Join(dir, name)
+func createFile(t *testing.T, path string) string {
+	dir := filepath.Dir(path)
+	require.NoError(t, os.MkdirAll(dir, 0777))
 	f, err := os.Create(path)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())

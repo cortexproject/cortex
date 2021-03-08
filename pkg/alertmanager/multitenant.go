@@ -22,6 +22,7 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -448,44 +449,9 @@ func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
-	// Migrate any existing configuration from old format to new one.
-	{
-		st, err := am.getObsoleteFilesPerUser()
-		if err != nil {
-			return errors.Wrap(err, "failed to migrate existing files")
-		}
-
-		for userID, files := range st {
-			tenantDir := filepath.Join(am.cfg.DataDir, userID)
-			err := os.MkdirAll(tenantDir, 0777)
-			if err != nil {
-				return errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
-			}
-
-			if files.notificationLogSnapshot != "" {
-				target := filepath.Join(tenantDir, notificationLogSnapshot)
-				err := os.Rename(files.notificationLogSnapshot, target)
-				if err != nil {
-					return errors.Wrapf(err, "failed to move notification snapshot from %v to %v", files.notificationLogSnapshot, target)
-				}
-			}
-
-			if files.silencesSnapshot != "" {
-				target := filepath.Join(tenantDir, silencesSnapshot)
-				err := os.Rename(files.silencesSnapshot, target)
-				if err != nil {
-					return errors.Wrapf(err, "failed to move silences snapshot from %v to %v", files.silencesSnapshot, target)
-				}
-			}
-
-			if files.templatesDir != "" {
-				target := filepath.Join(tenantDir, templatesDir)
-				err := os.Rename(files.templatesDir, target)
-				if err != nil {
-					return errors.Wrapf(err, "failed to move templates directory from %v to %v", files.templatesDir, target)
-				}
-			}
-		}
+	err = am.migrateStateFilesToPerTenantDirectories()
+	if err != nil {
+		return err
 	}
 
 	defer func() {
@@ -539,6 +505,118 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}
 
 	return nil
+}
+
+// migrateStateFilesToPerTenantDirectories migrate any existing configuration from old place to new hierarchy.
+func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
+	migrate := func(from, to string) error {
+		level.Info(am.logger).Log("msg", "migrating AM state", "from", from, "to", to)
+		err := os.Rename(from, to)
+		return errors.Wrapf(err, "failed to migrate from %v to %v", from, to)
+	}
+
+	st, err := am.getObsoleteFilesPerUser()
+	if err != nil {
+		return errors.Wrap(err, "failed to migrate existing files")
+	}
+
+	for userID, files := range st {
+		tenantDir := filepath.Join(am.cfg.DataDir, userID)
+		err := os.MkdirAll(tenantDir, 0777)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
+		}
+
+		errs := tsdb_errors.NewMulti()
+
+		if files.notificationLogSnapshot != "" {
+			errs.Add(migrate(files.notificationLogSnapshot, filepath.Join(tenantDir, notificationLogSnapshot)))
+		}
+
+		if files.silencesSnapshot != "" {
+			errs.Add(migrate(files.silencesSnapshot, filepath.Join(tenantDir, silencesSnapshot)))
+		}
+
+		if files.templatesDir != "" {
+			errs.Add(migrate(files.templatesDir, filepath.Join(tenantDir, templatesDir)))
+		}
+
+		if err := errs.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type obsoleteStateFiles struct {
+	notificationLogSnapshot string
+	silencesSnapshot        string
+	templatesDir            string
+}
+
+// getObsoleteFilesPerUser returns per-user set of files that should be migrated from old structure to new structure.
+func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsoleteStateFiles, error) {
+	files, err := ioutil.ReadDir(am.cfg.DataDir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list dir %v", am.cfg.DataDir)
+	}
+
+	// old names
+	const (
+		notificationLogPrefix = "nflog:"
+		silencesPrefix        = "silences:"
+		templates             = "templates"
+	)
+
+	result := map[string]obsoleteStateFiles{}
+
+	for _, f := range files {
+		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
+
+		if f.IsDir() {
+			// Process templates dir.
+			if f.Name() != templates {
+				// Ignore other files -- those are likely per tenant directories.
+				continue
+			}
+
+			templateDirs, err := ioutil.ReadDir(fullPath)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to list dir %v", fullPath)
+			}
+
+			// Previously templates directory contained per-tenant subdirectory.
+			for _, d := range templateDirs {
+				if d.IsDir() {
+					v := result[d.Name()]
+					v.templatesDir = filepath.Join(fullPath, d.Name())
+					result[d.Name()] = v
+				} else {
+					level.Warn(am.logger).Log("msg", "ignoring unknown local file", "file", filepath.Join(fullPath, d.Name()))
+				}
+			}
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(f.Name(), notificationLogPrefix):
+			userID := strings.TrimPrefix(f.Name(), notificationLogPrefix)
+			v := result[userID]
+			v.notificationLogSnapshot = fullPath
+			result[userID] = v
+
+		case strings.HasPrefix(f.Name(), silencesPrefix):
+			userID := strings.TrimPrefix(f.Name(), silencesPrefix)
+			v := result[userID]
+			v.silencesSnapshot = fullPath
+			result[userID] = v
+
+		default:
+			level.Warn(am.logger).Log("msg", "ignoring unknown local data file", "file", fullPath)
+		}
+	}
+
+	return result, nil
 }
 
 func (am *MultitenantAlertmanager) run(ctx context.Context) error {
@@ -1000,18 +1078,18 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	return &alertmanagerpb.UpdateStateResponse{Status: alertmanagerpb.OK}, nil
 }
 
-// deleteUnusedLocalUserState finds local files that we no longer need, and deletes them.
+// deleteUnusedLocalUserState deletes local files for users that we no longer need.
 func (am *MultitenantAlertmanager) deleteUnusedLocalUserState() {
 	userDirs := am.getPerUserDirectories()
 
 	// And delete remaining files.
 	for userID, dir := range userDirs {
 		am.alertmanagersMtx.Lock()
-		_, exists := am.alertmanagers[userID]
+		userAM := am.alertmanagers[userID]
 		am.alertmanagersMtx.Unlock()
 
 		// Don't delete directory if AM for user still exists.
-		if exists {
+		if userAM != nil {
 			continue
 		}
 
@@ -1044,76 +1122,6 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 		result[f.Name()] = fullPath
 	}
 	return result
-}
-
-type obsoleteStateFiles struct {
-	notificationLogSnapshot string
-	silencesSnapshot        string
-	templatesDir            string
-}
-
-// getObsoleteFilesPerUser returns per-user set of files that should be migrated from old structure to new structure.
-func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsoleteStateFiles, error) {
-	files, err := ioutil.ReadDir(am.cfg.DataDir)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list dir %v", am.cfg.DataDir)
-	}
-
-	const (
-		notificationLogPrefix = "nflog:"
-		silencesPrefix        = "silences:"
-		templates             = "templates"
-	)
-
-	result := map[string]obsoleteStateFiles{}
-
-	for _, f := range files {
-		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
-
-		if f.IsDir() {
-			// Process templates dir.
-			if f.Name() != templates {
-				// Ignore other files -- those are likely per tenant directories.
-				continue
-			}
-
-			templateDirs, err := ioutil.ReadDir(fullPath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to list dir %v", fullPath)
-			}
-
-			// Previously templates directory contained per-tenant subdirectory.
-			for _, d := range templateDirs {
-				if d.IsDir() {
-					v := result[d.Name()]
-					v.templatesDir = filepath.Join(fullPath, d.Name())
-					result[d.Name()] = v
-				} else {
-					level.Warn(am.logger).Log("msg", "ignoring unknown local file", "file", filepath.Join(fullPath, d.Name()))
-				}
-			}
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(f.Name(), notificationLogPrefix):
-			userID := strings.TrimPrefix(f.Name(), notificationLogPrefix)
-			v := result[userID]
-			v.notificationLogSnapshot = fullPath
-			result[userID] = v
-
-		case strings.HasPrefix(f.Name(), silencesPrefix):
-			userID := strings.TrimPrefix(f.Name(), silencesPrefix)
-			v := result[userID]
-			v.silencesSnapshot = fullPath
-			result[userID] = v
-
-		default:
-			level.Warn(am.logger).Log("msg", "ignoring unknown local data file", "file", fullPath)
-		}
-	}
-
-	return result, nil
 }
 
 // StatusHandler shows the status of the alertmanager.

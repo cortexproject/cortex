@@ -47,6 +47,7 @@ const (
 	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
 	maintenancePeriod = 15 * time.Minute
 
+	// Filenames used within tenant-directory
 	notificationLogSnapshot = "notifications"
 	silencesSnapshot        = "silences"
 	templatesDir            = "templates"

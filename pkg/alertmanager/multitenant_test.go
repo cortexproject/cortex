@@ -1160,3 +1160,36 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
 }
+
+func TestStoreTemplateFile(t *testing.T) {
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	})
+
+	changed, err := storeTemplateFile(templatesDir, "some-template", "content")
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = storeTemplateFile(templatesDir, "some-template", "new content")
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = storeTemplateFile(templatesDir, "some-template", "new content") // reusing previous content
+	require.NoError(t, err)
+	require.False(t, changed)
+
+	_, err = storeTemplateFile(templatesDir, ".", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "..", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "./test", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "../test", "content")
+	require.Error(t, err)
+}

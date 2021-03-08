@@ -521,7 +521,7 @@ func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() err
 	}
 
 	for userID, files := range st {
-		tenantDir := filepath.Join(am.cfg.DataDir, userID)
+		tenantDir := am.getTenantDirectory(userID)
 		err := os.MkdirAll(tenantDir, 0777)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
@@ -788,7 +788,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := createTemplateFile(am.cfg.DataDir, cfg.User, tmpl.Filename, tmpl.Body)
+		hasChanged, err := storeTemplateFile(filepath.Join(am.getTenantDirectory(cfg.User), templatesDir), tmpl.Filename, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -870,10 +870,14 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	return nil
 }
 
+func (am *MultitenantAlertmanager) getTenantDirectory(userID string) string {
+	return filepath.Join(am.cfg.DataDir, userID)
+}
+
 func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amconfig.Config, rawCfg string) (*Alertmanager, error) {
 	reg := prometheus.NewRegistry()
 
-	tenantDir := filepath.Join(am.cfg.DataDir, userID)
+	tenantDir := am.getTenantDirectory(userID)
 	err := os.MkdirAll(tenantDir, 0777)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
@@ -1137,21 +1141,22 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
-	if fn != filepath.Base(fn) {
-		return false, fmt.Errorf("template file name '%s' is not not valid", fn)
+func storeTemplateFile(tenantTemplateDir, templateFileName, content string) (changed bool, _ error) {
+	if templateFileName != filepath.Base(templateFileName) {
+		return false, fmt.Errorf("template file name '%s' is not not valid", templateFileName)
 	}
 
-	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(tenantTemplateDir, 0755)
 	if err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
+		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", tenantTemplateDir, err)
 	}
 
-	file := filepath.Join(dir, fn)
+	file := filepath.Join(tenantTemplateDir, templateFileName)
 	// Check if the template file already exists and if it has changed
 	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
 		return false, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return false, err
 	}
 
 	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {

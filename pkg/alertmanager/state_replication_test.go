@@ -64,7 +64,8 @@ func TestStateReplication(t *testing.T) {
 				return 0
 			}
 
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicationFunc, positionFunc, make(chan struct{}), log.NewNopLogger(), reg)
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicationFunc, positionFunc, log.NewNopLogger(), reg)
+			require.NoError(t, s.Service.StartAsync(context.Background()))
 
 			ch := s.AddState("nflog", &fakeState{}, reg)
 

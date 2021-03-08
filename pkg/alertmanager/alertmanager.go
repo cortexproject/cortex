@@ -137,7 +137,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.stop, am.logger, am.registry)
+		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.logger, am.registry)
+
+		if err := state.Service.StartAsync(context.Background()); err != nil {
+			return nil, fmt.Errorf("failed to start state replication service: %v", err)
+		}
+
+		am.state = state
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -319,12 +325,21 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
+	if service, ok := am.state.(*state); ok {
+		service.StopAsync()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 }
 
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
+
+	if service, ok := am.state.(*state); ok {
+		_ = service.AwaitTerminated(context.Background())
+	}
+
 	am.wg.Wait()
 }
 

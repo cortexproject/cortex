@@ -115,8 +115,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -248,8 +249,9 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -307,8 +309,9 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 
 	logger := log.NewNopLogger()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, nil)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
@@ -357,8 +360,9 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
 	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
 
-	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, nil, logger, reg)
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
 	require.NoError(t, cleaner.cleanUsers(ctx, true))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -406,6 +410,236 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	))
 }
 
+func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	id1 := createTSDBBlock(t, bucketClient, "user-1", 5000, 6000, nil)
+	id2 := createTSDBBlock(t, bucketClient, "user-1", 6000, 7000, nil)
+	id3 := createTSDBBlock(t, bucketClient, "user-1", 7000, 8000, nil)
+
+	w := bucketindex.NewUpdater(bucketClient, "user-1", nil, logger)
+	idx, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, idx.Blocks.GetULIDs())
+
+	// Excessive retention period (wrapping epoch)
+	result := listBlocksOutsideRetentionPeriod(idx, time.Unix(10, 0).Add(-time.Hour))
+	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
+
+	// Normal operation - varying retention period.
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(6, 0))
+	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
+	assert.ElementsMatch(t, []ulid.ULID{id1}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
+	assert.ElementsMatch(t, []ulid.ULID{id1, id2}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(9, 0))
+	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, result.GetULIDs())
+
+	// Avoiding redundant marking - blocks already marked for deletion.
+
+	mark1 := &bucketindex.BlockDeletionMark{ID: id1}
+	mark2 := &bucketindex.BlockDeletionMark{ID: id2}
+
+	idx.BlockDeletionMarks = bucketindex.BlockDeletionMarks{mark1}
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
+	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
+	assert.ElementsMatch(t, []ulid.ULID{id2}, result.GetULIDs())
+
+	idx.BlockDeletionMarks = bucketindex.BlockDeletionMarks{mark1, mark2}
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(7, 0))
+	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(8, 0))
+	assert.ElementsMatch(t, []ulid.ULID{}, result.GetULIDs())
+
+	result = listBlocksOutsideRetentionPeriod(idx, time.Unix(9, 0))
+	assert.ElementsMatch(t, []ulid.ULID{id3}, result.GetULIDs())
+}
+
+func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	ts := func(hours int) int64 {
+		return time.Now().Add(time.Duration(hours)*time.Hour).Unix() * 1000
+	}
+
+	block1 := createTSDBBlock(t, bucketClient, "user-1", ts(-10), ts(-8), nil)
+	block2 := createTSDBBlock(t, bucketClient, "user-1", ts(-8), ts(-6), nil)
+	block3 := createTSDBBlock(t, bucketClient, "user-2", ts(-10), ts(-8), nil)
+	block4 := createTSDBBlock(t, bucketClient, "user-2", ts(-8), ts(-6), nil)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, reg)
+
+	assertBlockExists := func(user string, block ulid.ULID, expectExists bool) {
+		exists, err := bucketClient.Exists(ctx, path.Join(user, block.String(), metadata.MetaFilename))
+		require.NoError(t, err)
+		assert.Equal(t, expectExists, exists)
+	}
+
+	// Existing behaviour - retention period disabled.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 0
+		cfgProvider.userRetentionPeriods["user-2"] = 0
+
+		require.NoError(t, cleaner.cleanUsers(ctx, true))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 2
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
+
+	// Retention enabled only for a single user, but does nothing.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 9 * time.Hour
+
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+	}
+
+	// Retention enabled only for a single user, marking a single block.
+	// Note the block won't be deleted yet due to deletion delay.
+	{
+		cfgProvider.userRetentionPeriods["user-1"] = 7 * time.Hour
+
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 2
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
+
+	// Marking the block again, before the deletion occurs, should not cause an error.
+	{
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, true)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+	}
+
+	// Reduce the deletion delay. Now the block will be deleted.
+	{
+		cleaner.cfg.DeletionDelay = 0
+
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, false)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, true)
+		assertBlockExists("user-2", block4, true)
+
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 1
+			cortex_bucket_blocks_count{user="user-2"} 2
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 1
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
+
+	// Retention enabled for other user; test deleting multiple blocks.
+	{
+		cfgProvider.userRetentionPeriods["user-2"] = 5 * time.Hour
+
+		require.NoError(t, cleaner.cleanUsers(ctx, false))
+		assertBlockExists("user-1", block1, false)
+		assertBlockExists("user-1", block2, true)
+		assertBlockExists("user-2", block3, false)
+		assertBlockExists("user-2", block4, false)
+
+		assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_bucket_blocks_count Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.
+			# TYPE cortex_bucket_blocks_count gauge
+			cortex_bucket_blocks_count{user="user-1"} 1
+			cortex_bucket_blocks_count{user="user-2"} 0
+			# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
+			# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 0
+			cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+			# HELP cortex_compactor_blocks_marked_for_deletion_total Total number of blocks marked for deletion in compactor.
+			# TYPE cortex_compactor_blocks_marked_for_deletion_total counter
+			cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 3
+			`),
+			"cortex_bucket_blocks_count",
+			"cortex_bucket_blocks_marked_for_deletion_count",
+			"cortex_compactor_blocks_marked_for_deletion_total",
+		))
+	}
+}
+
 type mockBucketFailure struct {
 	objstore.Bucket
 
@@ -417,4 +651,33 @@ func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
 		return errors.New("mocked delete failure")
 	}
 	return m.Bucket.Delete(ctx, name)
+}
+
+type mockConfigProvider struct {
+	userRetentionPeriods map[string]time.Duration
+}
+
+func newMockConfigProvider() *mockConfigProvider {
+	return &mockConfigProvider{
+		userRetentionPeriods: make(map[string]time.Duration),
+	}
+}
+
+func (m *mockConfigProvider) CompactorBlocksRetentionPeriod(user string) time.Duration {
+	if result, ok := m.userRetentionPeriods[user]; ok {
+		return result
+	}
+	return 0
+}
+
+func (m *mockConfigProvider) S3SSEType(user string) string {
+	return ""
+}
+
+func (m *mockConfigProvider) S3SSEKMSKeyID(userID string) string {
+	return ""
+}
+
+func (m *mockConfigProvider) S3SSEKMSEncryptionContext(userID string) string {
+	return ""
 }

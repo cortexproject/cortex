@@ -212,8 +212,9 @@ querier:
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since
   # 'now - lookback period'. The lookback period should be greater or equal than
-  # the configured 'query store after'. If this setting is 0, queriers always
-  # query all ingesters (ingesters shuffle sharding on read path is disabled).
+  # the configured 'query store after' and 'query ingesters within'. If this
+  # setting is 0, queriers always query all ingesters (ingesters shuffle
+  # sharding on read path is disabled).
   # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
   [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 ```
@@ -435,7 +436,7 @@ blocks_storage:
     [sync_interval: <duration> | default = 15m]
 
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-    # The pool is shared across all tenants.
+    # The pool is shared across all tenants. 0 to disable the limit.
     # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
 

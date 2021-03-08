@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
@@ -152,7 +153,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int
 			continue
 		}
 
-		ls := client.FromLabelAdaptersToLabels(result.Labels)
+		ls := cortexpb.FromLabelAdaptersToLabels(result.Labels)
 		sort.Sort(ls)
 
 		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)

@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -46,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -115,13 +115,14 @@ type Config struct {
 	PurgerConfig     purger.Config                   `yaml:"purger"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
-	Ruler          ruler.Config                               `yaml:"ruler"`
-	RulerStorage   rulestore.Config                           `yaml:"ruler_storage"`
-	Configs        configs.Config                             `yaml:"configs"`
-	Alertmanager   alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
-	RuntimeConfig  runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
-	MemberlistKV   memberlist.KVConfig                        `yaml:"memberlist"`
-	QueryScheduler scheduler.Config                           `yaml:"query_scheduler"`
+	Ruler               ruler.Config                               `yaml:"ruler"`
+	RulerStorage        rulestore.Config                           `yaml:"ruler_storage"`
+	Configs             configs.Config                             `yaml:"configs"`
+	Alertmanager        alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
+	AlertmanagerStorage alertstore.Config                          `yaml:"alertmanager_storage"`
+	RuntimeConfig       runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
+	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 }
 
 // RegisterFlags registers flag.
@@ -167,6 +168,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RulerStorage.RegisterFlags(f)
 	c.Configs.RegisterFlags(f)
 	c.Alertmanager.RegisterFlags(f)
+	c.AlertmanagerStorage.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f, "")
 	c.QueryScheduler.RegisterFlags(f)
@@ -237,6 +239,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Alertmanager.Validate(); err != nil {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
+	if err := c.AlertmanagerStorage.Validate(); err != nil {
+		return errors.Wrap(err, "invalid alertmanager storage config")
+	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
 		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
@@ -304,7 +309,7 @@ type Cortex struct {
 	QueryFrontendTripperware queryrange.Tripperware
 
 	Ruler        *ruler.Ruler
-	RulerStorage rules.RuleStore
+	RulerStorage rulestore.RuleStore
 	ConfigAPI    *configAPI.API
 	ConfigDB     db.DB
 	Alertmanager *alertmanager.MultitenantAlertmanager

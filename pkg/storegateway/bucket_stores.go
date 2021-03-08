@@ -52,7 +52,10 @@ type BucketStores struct {
 	indexCache storecache.IndexCache
 
 	// Chunks bytes pool shared across all tenants.
-	chunksPool pool.BytesPool
+	chunksPool pool.Bytes
+
+	// Partitioner shared across all tenants.
+	partitioner store.Partitioner
 
 	// Gate used to limit query concurrency across all tenants.
 	queryGate gate.Gate
@@ -94,6 +97,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
 		queryGate:          queryGate,
+		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -119,7 +123,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	}
 
 	// Init the chunks bytes pool.
-	if u.chunksPool, err = store.NewDefaultChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes); err != nil {
+	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 
@@ -456,7 +460,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
-		store.NewGapBasedPartitioner(u.cfg.BucketStore.PartitionerMaxGapBytes),
+		u.partitioner,
 		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		nil,   // Do not limit timerange.

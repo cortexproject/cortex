@@ -32,6 +32,7 @@ import (
 	"github.com/prometheus/alertmanager/provider/mem"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/alertmanager/timeinterval"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
@@ -161,7 +162,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Alerts:     am.alerts,
 		Silences:   am.silences,
 		StatusFunc: am.marker.Status,
-		Peer:       cfg.Peer,
+		Peer:       &NilPeer{},
 		Registry:   am.registry,
 		Logger:     log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
@@ -242,11 +243,17 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return nil
 	}
 
+	muteTimes := make(map[string][]timeinterval.TimeInterval, len(conf.MuteTimeIntervals))
+	for _, ti := range conf.MuteTimeIntervals {
+		muteTimes[ti.Name] = ti.TimeIntervals
+	}
+
 	pipeline := am.pipelineBuilder.New(
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
+		muteTimes,
 		am.nflog,
 		am.cfg.Peer,
 	)
@@ -355,3 +362,20 @@ func md5HashAsMetricValue(data []byte) float64 {
 	copy(bytes, smallSum)
 	return float64(binary.LittleEndian.Uint64(bytes))
 }
+
+// NilPeer and NilChannel implements the Alertmanager clustering interface used by the API to expose cluster information.
+// In a multi-tenant environment, we choose not to expose these to tenants and thus are not implemented.
+type NilPeer struct{}
+
+func (p *NilPeer) Name() string                   { return "" }
+func (p *NilPeer) Status() string                 { return "ready" }
+func (p *NilPeer) Peers() []cluster.ClusterMember { return nil }
+func (p *NilPeer) Position() int                  { return 0 }
+func (p *NilPeer) WaitReady()                     {}
+func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel {
+	return &NilChannel{}
+}
+
+type NilChannel struct{}
+
+func (c *NilChannel) Broadcast([]byte) {}

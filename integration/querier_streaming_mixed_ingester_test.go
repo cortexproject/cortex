@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"flag"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,14 @@ import (
 )
 
 func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
+	for _, streamChunks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%v", streamChunks), func(t *testing.T) {
+			testQuerierWithStreamingBlocksAndChunksIngesters(t, streamChunks)
+		})
+	}
+}
+
+func testQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T, streamChunks bool) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -33,6 +42,7 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 		"-store-gateway.sharding-enabled":               "false",
 		"-querier.ingester-streaming":                   "true",
 	})
+	blockFlags["-ingester.stream-chunks-when-using-blocks"] = fmt.Sprintf("%v", streamChunks)
 
 	// Start dependencies.
 	consul := e2edb.NewConsul()

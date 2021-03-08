@@ -15,8 +15,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 
@@ -133,7 +136,7 @@ template_files:
 	}
 
 	am := &MultitenantAlertmanager{
-		store:  noopAlertStore{},
+		store:  prepareInMemoryAlertStore(),
 		logger: util_log.Logger,
 	}
 	for _, tc := range testCases {
@@ -159,19 +162,49 @@ template_files:
 	}
 }
 
-type noopAlertStore struct{}
+func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
+	storage := objstore.NewInMemBucket()
+	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
 
-func (noopAlertStore) ListAlertConfigs(ctx context.Context) (map[string]alerts.AlertConfigDesc, error) {
-	return nil, nil
-}
-func (noopAlertStore) GetAlertConfig(ctx context.Context, user string) (alerts.AlertConfigDesc, error) {
-	return alerts.AlertConfigDesc{}, nil
-}
-func (noopAlertStore) SetAlertConfig(ctx context.Context, cfg alerts.AlertConfigDesc) error {
-	return nil
-}
-func (noopAlertStore) DeleteAlertConfig(ctx context.Context, user string) error {
-	return nil
+	am := &MultitenantAlertmanager{
+		store:  alertStore,
+		logger: util_log.Logger,
+	}
+
+	require.NoError(t, alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
+		User:      "test_user",
+		RawConfig: "config",
+	}))
+
+	require.Equal(t, 1, len(storage.Objects()))
+
+	req := httptest.NewRequest("POST", "/multitenant_alertmanager/delete_tenant_config", nil)
+	// Missing user returns error 401. (DeleteUserConfig does this, but in practice, authentication middleware will do it first)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
+		require.Equal(t, 1, len(storage.Objects()))
+	}
+
+	// With user in the context.
+	ctx := user.InjectOrgID(context.Background(), "test_user")
+	req = req.WithContext(ctx)
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
+	}
+
+	// Repeating the request still reports 200
+	{
+		rec := httptest.NewRecorder()
+		am.DeleteUserConfig(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, 0, len(storage.Objects()))
+	}
 }
 
 func TestAMConfigListUserConfig(t *testing.T) {
@@ -214,12 +247,11 @@ receivers:
 		},
 	}
 
-	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
-	}
+	storage := objstore.NewInMemBucket()
+	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
 
 	for u, cfg := range testCases {
-		err := mockStore.SetAlertConfig(context.Background(), alerts.AlertConfigDesc{
+		err := alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
 			User:      u,
 			RawConfig: cfg.AlertmanagerConfig,
 		})
@@ -237,7 +269,7 @@ receivers:
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
 	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck

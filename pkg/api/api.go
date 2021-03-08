@@ -159,7 +159,7 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 // RegisterAlertmanager registers endpoints associated with the alertmanager. It will only
 // serve endpoints using the legacy http-prefix if it is not run as a single binary.
-func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, amCfg alertmanager.MultitenantAlertmanagerConfig, target, apiEnabled bool) {
+func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, target, apiEnabled bool) {
 	alertmanagerpb.RegisterAlertmanagerServer(a.server.GRPC, am)
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/status", "Alertmanager Status")
@@ -168,23 +168,26 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, amC
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false, "GET")
 	a.RegisterRoute("/multitenant_alertmanager/configs", http.HandlerFunc(am.ListUserConfig), false, "GET")
 	a.RegisterRoute("/multitenant_alertmanager/ring", http.HandlerFunc(am.RingHandler), false, "GET", "POST")
+	a.RegisterRoute("/multitenant_alertmanager/delete_tenant_config", http.HandlerFunc(am.DeleteUserConfig), true, "POST")
 
 	// UI components lead to a large number of routes to support, utilize a path prefix instead
 	a.RegisterRoutesWithPrefix(a.cfg.AlertmanagerHTTPPrefix, am, true)
 	level.Debug(a.logger).Log("msg", "api: registering alertmanager", "path_prefix", a.cfg.AlertmanagerHTTPPrefix)
-
-	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
-	// the component routed API.
-	if target {
-		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
-		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
-	}
 
 	// MultiTenant Alertmanager Experimental API routes
 	if apiEnabled {
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.GetUserConfig), true, "GET")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.SetUserConfig), true, "POST")
 		a.RegisterRoute("/api/v1/alerts", http.HandlerFunc(am.DeleteUserConfig), true, "DELETE")
+	}
+
+	// If the target is Alertmanager, enable the legacy behaviour. Otherwise only enable
+	// the component routed API.
+	if target {
+		a.RegisterRoute("/status", am.GetStatusHandler(), false, "GET")
+		// WARNING: If LegacyHTTPPrefix is an empty string, any other paths added after this point will be
+		// silently ignored by the HTTP service. Therefore, this must be the last route to be configured.
+		a.RegisterRoutesWithPrefix(a.cfg.LegacyHTTPPrefix, am, true)
 	}
 }
 
@@ -274,6 +277,9 @@ func (a *API) RegisterTenantDeletion(api *purger.TenantDeletionAPI) {
 func (a *API) RegisterRuler(r *ruler.Ruler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/ruler/ring", "Ruler Ring Status")
 	a.RegisterRoute("/ruler/ring", r, false, "GET", "POST")
+
+	// Administrative API, uses authentication to inform which user's configuration to delete.
+	a.RegisterRoute("/ruler/delete_tenant_config", http.HandlerFunc(r.DeleteTenantConfiguration), true, "POST")
 
 	// Legacy Ring Route
 	a.RegisterRoute("/ruler_ring", r, false, "GET", "POST")

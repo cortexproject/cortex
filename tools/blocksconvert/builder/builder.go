@@ -251,7 +251,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	return ulid.String(), nil
 }
 
-func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *bucket.UserBucketClient, blockDir string) error {
+func uploadBlock(ctx context.Context, planLog log.Logger, userBucket objstore.Bucket, blockDir string) error {
 	boff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,

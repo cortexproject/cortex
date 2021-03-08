@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestBlocksStoreQuerier_Select(t *testing.T) {
@@ -67,18 +68,18 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		storeSetResponses []interface{}
 		limits            BlocksStoreLimits
 		expectedSeries    []seriesResult
-		expectedErr       string
+		expectedErr       error
 		expectedMetrics   string
 	}{
 		"no block in the storage matching the query time range": {
 			finderResult: nil,
 			limits:       &blocksStoreLimitsMock{},
-			expectedErr:  "",
+			expectedErr:  nil,
 		},
 		"error while finding blocks matching the query time range": {
 			finderErr:   errors.New("unable to find blocks"),
 			limits:      &blocksStoreLimitsMock{},
-			expectedErr: "unable to find blocks",
+			expectedErr: errors.New("unable to find blocks"),
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
@@ -89,7 +90,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				errors.New("no client found"),
 			},
 			limits:      &blocksStoreLimitsMock{},
-			expectedErr: "no client found",
+			expectedErr: errors.New("no client found"),
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
 			finderResult: bucketindex.Blocks{
@@ -290,7 +291,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				errors.New("no store-gateway remaining after exclude"),
 			},
 			limits:      &blocksStoreLimitsMock{},
-			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s", block2.String()),
+			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
@@ -315,7 +316,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				errors.New("no store-gateway remaining after exclude"),
 			},
 			limits:      &blocksStoreLimitsMock{},
-			expectedErr: fmt.Sprintf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
+			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
 		},
 		"multiple store-gateway instances have some missing blocks but queried from a replica during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
@@ -435,7 +436,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:      &blocksStoreLimitsMock{maxChunksPerQuery: 1},
-			expectedErr: fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1),
+			expectedErr: validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1)),
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
@@ -472,7 +473,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:      &blocksStoreLimitsMock{maxChunksPerQuery: 3},
-			expectedErr: fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 3),
+			expectedErr: validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 3)),
 		},
 	}
 
@@ -502,8 +503,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			}
 
 			set := q.Select(true, nil, matchers...)
-			if testData.expectedErr != "" {
-				assert.EqualError(t, set.Err(), testData.expectedErr)
+			if testData.expectedErr != nil {
+				assert.EqualError(t, set.Err(), testData.expectedErr.Error())
+				assert.IsType(t, set.Err(), testData.expectedErr)
 				assert.False(t, set.Next())
 				assert.Nil(t, set.Warnings())
 				return

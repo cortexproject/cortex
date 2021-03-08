@@ -22,13 +22,13 @@ import (
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
 func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
-		Timeseries: slicePool.Get().([]PreallocTimeseries),
+		Timeseries: PreallocTimeseriesSliceFromPool(),
 		Metadata:   metadata,
 		Source:     source,
 	}
 
 	for i, s := range samples {
-		ts := timeSeriesPool.Get().(*TimeSeries)
+		ts := TimeseriesFromPool()
 		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
 		ts.Samples = append(ts.Samples, s)
 		req.Timeseries = append(req.Timeseries, PreallocTimeseries{TimeSeries: ts})

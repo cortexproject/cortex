@@ -18,7 +18,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -173,7 +173,7 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rules.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulestore.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -303,7 +303,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_Limits(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rules.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulestore.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)

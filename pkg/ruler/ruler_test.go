@@ -20,6 +20,7 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
@@ -27,18 +28,21 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func defaultRulerConfig(store rules.RuleStore) (Config, func()) {
+func defaultRulerConfig(store rulestore.RuleStore) (Config, func()) {
 	// Create a new temporary directory for the rules, so that
 	// each test will run in isolation.
 	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
@@ -124,7 +128,7 @@ func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
 
 func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	storage, err := NewRuleStorage(cfg.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(cfg.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()
@@ -229,7 +233,7 @@ func TestRuler_Rules(t *testing.T) {
 	compareRuleGroupDescToStateDesc(t, expectedRg, rg)
 }
 
-func compareRuleGroupDescToStateDesc(t *testing.T, expected *rules.RuleGroupDesc, got *GroupStateDesc) {
+func compareRuleGroupDescToStateDesc(t *testing.T, expected *rulespb.RuleGroupDesc, got *GroupStateDesc) {
 	require.Equal(t, got.Group.Name, expected.Name)
 	require.Equal(t, got.Group.Namespace, expected.Namespace)
 	require.Len(t, expected.Rules, len(got.ActiveRules))
@@ -246,10 +250,10 @@ func TestSharding(t *testing.T) {
 		user3 = "user3"
 	)
 
-	user1Group1 := &rules.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
-	user1Group2 := &rules.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second"}
-	user2Group1 := &rules.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first"}
-	user3Group1 := &rules.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first"}
+	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
+	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second"}
+	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first"}
+	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first"}
 
 	// Must be distinct for test to work.
 	user1Group1Token := tokenForGroup(user1Group1)
@@ -257,15 +261,15 @@ func TestSharding(t *testing.T) {
 	user2Group1Token := tokenForGroup(user2Group1)
 	user3Group1Token := tokenForGroup(user3Group1)
 
-	noRules := map[string]rules.RuleGroupList{}
-	allRules := map[string]rules.RuleGroupList{
+	noRules := map[string]rulestore.RuleGroupList{}
+	allRules := map[string]rulestore.RuleGroupList{
 		user1: {user1Group1, user1Group2},
 		user2: {user2Group1},
 		user3: {user3Group1},
 	}
 
 	// ruler ID -> (user ID -> list of groups).
-	type expectedRulesMap map[string]map[string]rules.RuleGroupList
+	type expectedRulesMap map[string]map[string]rulestore.RuleGroupList
 
 	type testCase struct {
 		sharding         bool
@@ -317,12 +321,12 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
 
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user1: {user1Group2},
 					user3: {user3Group1},
 				},
@@ -345,7 +349,7 @@ func TestSharding(t *testing.T) {
 
 			expectedRules: expectedRulesMap{
 				// This ruler doesn't get rules from unhealthy ruler (RF=1).
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
@@ -443,10 +447,10 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -464,13 +468,13 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1},
 				},
-				ruler2: map[string]rules.RuleGroupList{
+				ruler2: map[string]rulestore.RuleGroupList{
 					user1: {user1Group2},
 				},
-				ruler3: map[string]rules.RuleGroupList{
+				ruler3: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -488,11 +492,11 @@ func TestSharding(t *testing.T) {
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rules.RuleGroupList{
+				ruler1: map[string]rulestore.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
 				ruler2: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
-				ruler3: map[string]rules.RuleGroupList{
+				ruler3: map[string]rulestore.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
@@ -579,7 +583,7 @@ func TestSharding(t *testing.T) {
 					require.NoError(t, err)
 					// Normalize nil map to empty one.
 					if loaded == nil {
-						loaded = map[string]rules.RuleGroupList{}
+						loaded = map[string]rulestore.RuleGroupList{}
 					}
 					expected[id] = loaded
 				}
@@ -608,4 +612,101 @@ func sortTokens(tokens []uint32) []uint32 {
 		return tokens[i] < tokens[j]
 	})
 	return tokens
+}
+
+func TestDeleteTenantRuleGroups(t *testing.T) {
+	ruleGroups := []ruleGroupKey{
+		{user: "userA", namespace: "namespace", group: "group"},
+		{user: "userB", namespace: "namespace1", group: "group"},
+		{user: "userB", namespace: "namespace2", group: "group"},
+	}
+
+	obj, rs := setupRuleGroupsStore(t, ruleGroups)
+	require.Equal(t, 3, obj.GetObjectCount())
+
+	api, err := NewRuler(Config{}, nil, nil, log.NewNopLogger(), rs, nil)
+	require.NoError(t, err)
+
+	{
+		req := &http.Request{}
+		resp := httptest.NewRecorder()
+		api.DeleteTenantConfiguration(resp, req)
+
+		require.Equal(t, http.StatusUnauthorized, resp.Code)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "user-with-no-rule-groups")
+		require.Equal(t, 3, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", false)
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Just deleted.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	// Deleting same user again works fine and reports no problems.
+	{
+		callDeleteTenantAPI(t, api, "userA")
+		require.Equal(t, 2, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Already deleted before.
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", false)
+	}
+
+	{
+		callDeleteTenantAPI(t, api, "userB")
+		require.Equal(t, 0, obj.GetObjectCount())
+
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "user-with-no-rule-groups", true) // Has no rule groups
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Deleted previously
+		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", true)                    // Just deleted
+	}
+}
+
+func callDeleteTenantAPI(t *testing.T, api *Ruler, userID string) {
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	req := &http.Request{}
+	resp := httptest.NewRecorder()
+	api.DeleteTenantConfiguration(resp, req.WithContext(ctx))
+
+	require.Equal(t, http.StatusOK, resp.Code)
+}
+
+func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, r *Ruler, userID string, expectedDeleted bool) {
+	list, err := r.store.ListRuleGroupsForUserAndNamespace(context.Background(), userID, "")
+	require.NoError(t, err)
+
+	if expectedDeleted {
+		require.Equal(t, 0, len(list))
+	} else {
+		require.NotEqual(t, 0, len(list))
+	}
+}
+
+func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockStorage, rulestore.RuleStore) {
+	obj := chunk.NewMockStorage()
+	rs := objectclient.NewRuleStore(obj, 5, log.NewNopLogger())
+
+	// "upload" rule groups
+	for _, key := range ruleGroups {
+		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
+	}
+
+	return obj, rs
+}
+
+type ruleGroupKey struct {
+	user, namespace, group string
 }

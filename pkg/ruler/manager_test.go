@@ -15,7 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -31,9 +32,9 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	const user = "testUser"
 
-	userRules := map[string]rules.RuleGroupList{
+	userRules := map[string]rulestore.RuleGroupList{
 		user: {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "ns",
 				Interval:  1 * time.Minute,

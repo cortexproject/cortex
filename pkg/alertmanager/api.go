@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
@@ -25,6 +25,7 @@ const (
 	errStoringConfiguration  = "unable to store the Alertmanager config"
 	errDeletingConfiguration = "unable to delete the Alertmanager config"
 	errNoOrgID               = "unable to determine the OrgID"
+	errListAllUser           = "unable to list the Alertmanager users"
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -45,7 +46,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		if err == alerts.ErrNotFound {
+		if err == alertspb.ErrNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -54,7 +55,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 	}
 
 	d, err := yaml.Marshal(&UserConfig{
-		TemplateFiles:      alerts.ParseTemplates(cfg),
+		TemplateFiles:      alertspb.ParseTemplates(cfg),
 		AlertmanagerConfig: cfg.RawConfig,
 	})
 
@@ -95,7 +96,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 		return
 	}
 
-	cfgDesc := alerts.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
+	cfgDesc := alertspb.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
 	if err := validateUserConfig(logger, cfgDesc); err != nil {
 		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
@@ -112,6 +113,8 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusCreated)
 }
 
+// DeleteUserConfig is exposed via user-visible API (if enabled, uses DELETE method), but also as an internal endpoint using POST method.
+// Note that if no config exists for a user, StatusOK is returned.
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
 	userID, err := tenant.TenantID(r.Context())
@@ -132,7 +135,7 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 }
 
 // Partially copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
-func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
+func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	// We don't have a valid use case for empty configurations. If a tenant does not have a
 	// configuration set and issue a request to the Alertmanager, we'll a) upload an empty
 	// config and b) immediately start an Alertmanager instance for them if a fallback
@@ -185,25 +188,30 @@ func validateUserConfig(logger log.Logger, cfg alerts.AlertConfigDesc) error {
 
 func (am *MultitenantAlertmanager) ListUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
-	cfgMap, err := am.store.ListAlertConfigs(r.Context())
+	userIDs, err := am.store.ListAllUsers(r.Context())
 	if err != nil {
-		if err == alerts.ErrNotFound {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		level.Error(logger).Log("msg", "failed to list users of alertmanager")
+		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	userConfigMap := make(map[string]*UserConfig, len(cfgMap))
-	for userID, cfg := range cfgMap {
+	userConfigMap := make(map[string]*UserConfig, len(userIDs))
+	for _, userID := range userIDs {
+		cfg, err := am.store.GetAlertConfig(r.Context(), userID)
+		if err != nil {
+			if err == alertspb.ErrNotFound {
+				http.Error(w, err.Error(), http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
 		userConfigMap[userID] = &UserConfig{
-			TemplateFiles:      alerts.ParseTemplates(cfg),
+			TemplateFiles:      alertspb.ParseTemplates(cfg),
 			AlertmanagerConfig: cfg.RawConfig,
 		}
 	}
 
 	d, err := yaml.Marshal(userConfigMap)
-
 	if err != nil {
 		level.Error(logger).Log("msg", errMarshallingYAML, "err", err)
 		http.Error(w, fmt.Sprintf("%s: %s", errMarshallingYAML, err.Error()), http.StatusInternalServerError)

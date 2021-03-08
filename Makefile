@@ -82,8 +82,8 @@ pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/querier/stats/stats.pb.go: pkg/querier/stats/stats.proto
 pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
-pkg/ruler/rules/rules.pb.go: pkg/ruler/rules/rules.proto
-pkg/ruler/ruler.pb.go: pkg/ruler/rules/rules.proto
+pkg/ruler/rulespb/rules.pb.go: pkg/ruler/rulespb/rules.proto
+pkg/ruler/ruler.pb.go: pkg/ruler/ruler.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
 pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.proto
 pkg/storegateway/storegatewaypb/gateway.pb.go: pkg/storegateway/storegatewaypb/gateway.proto
@@ -175,6 +175,8 @@ lint:
 		./pkg/querier/...
 	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
 	faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
+	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/alertmanager/alertspb/...
+	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/ruler/rulespb/...
 
 	# Ensure the query path is supporting multiple tenants
 	faillint -paths "\
@@ -183,8 +185,10 @@ lint:
 		./pkg/frontend/... \
 		./pkg/querier/tenantfederation/... \
 		./pkg/querier/queryrange/...
+
 	# Ensure packages that no longer use a global logger don't reintroduce it
 	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
+		./pkg/alertmanager/alertstore/... \
 		./pkg/ingester/... \
 		./pkg/flusher/... \
 		./pkg/querier/... \

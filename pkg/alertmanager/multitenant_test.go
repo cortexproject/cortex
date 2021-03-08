@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -18,11 +19,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alerts"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -42,38 +47,6 @@ receivers:
 receivers:
   - name: dummy`
 )
-
-// basic easily configurable mock
-type mockAlertStore struct {
-	configs     map[string]alerts.AlertConfigDesc
-	OnList      func()
-	WithListErr error
-}
-
-func (m *mockAlertStore) ListAlertConfigs(_ context.Context) (map[string]alerts.AlertConfigDesc, error) {
-	if m.OnList != nil {
-		m.OnList()
-	}
-
-	if m.WithListErr != nil {
-		return nil, m.WithListErr
-	}
-
-	return m.configs, nil
-}
-
-func (m *mockAlertStore) GetAlertConfig(_ context.Context, _ string) (alerts.AlertConfigDesc, error) {
-	return alerts.AlertConfigDesc{}, fmt.Errorf("not implemented")
-}
-
-func (m *mockAlertStore) SetAlertConfig(_ context.Context, cfg alerts.AlertConfigDesc) error {
-	m.configs[cfg.User] = cfg
-	return nil
-}
-
-func (m *mockAlertStore) DeleteAlertConfig(_ context.Context, _ string) error {
-	return fmt.Errorf("not implemented")
-}
 
 func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	t.Helper()
@@ -102,25 +75,25 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	return cfg
 }
 
-func TestLoadAllConfigs(t *testing.T) {
-	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{
-			"user1": {
-				User:      "user1",
-				RawConfig: simpleConfigOne,
-				Templates: []*alerts.TemplateDesc{},
-			},
-			"user2": {
-				User:      "user2",
-				RawConfig: simpleConfigOne,
-				Templates: []*alerts.TemplateDesc{},
-			},
-		},
-	}
+func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
+	ctx := context.Background()
+
+	// Run this test using a real storage client.
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      "user1",
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      "user2",
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Ensure the configs are synced correctly
@@ -140,11 +113,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
-	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user3",
 		RawConfig: simpleConfigOne,
-		Templates: []*alerts.TemplateDesc{},
-	}
+		Templates: []*alertspb.TemplateDesc{},
+	}))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
@@ -159,11 +132,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure the config is updated
-	mockStore.configs["user1"] = alerts.AlertConfigDesc{
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user1",
 		RawConfig: simpleConfigTwo,
-		Templates: []*alerts.TemplateDesc{},
-	}
+		Templates: []*alertspb.TemplateDesc{},
+	}))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
@@ -173,7 +146,7 @@ func TestLoadAllConfigs(t *testing.T) {
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
 	// Test Delete User, ensure config is removed and the resources are freed.
-	delete(mockStore.configs, "user3")
+	require.NoError(t, store.DeleteAlertConfig(ctx, "user3"))
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 	currentConfig, exists = am.cfgs["user3"]
@@ -191,11 +164,11 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
-	mockStore.configs["user3"] = alerts.AlertConfigDesc{
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user3",
 		RawConfig: simpleConfigOne,
-		Templates: []*alerts.TemplateDesc{},
-	}
+		Templates: []*alertspb.TemplateDesc{},
+	}))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
@@ -216,22 +189,22 @@ func TestLoadAllConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 }
 
-func TestAlertmanager_NoExternalURL(t *testing.T) {
+func TestMultitenantAlertmanager_NoExternalURL(t *testing.T) {
 	amConfig := mockAlertmanagerConfig(t)
 	amConfig.ExternalURL = flagext.URLValue{} // no external URL
 
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
-	_, err := NewMultitenantAlertmanager(amConfig, log.NewNopLogger(), reg)
+	_, err := NewMultitenantAlertmanager(amConfig, nil, log.NewNopLogger(), reg)
 
 	require.EqualError(t, err, "unable to create Alertmanager because the external URL has not been configured")
 }
 
-func TestAlertmanager_ServeHTTP(t *testing.T) {
+func TestMultitenantAlertmanager_ServeHTTP(t *testing.T) {
+	// Run this test using a real storage client.
+	store := prepareInMemoryAlertStore()
+
 	amConfig := mockAlertmanagerConfig(t)
-	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
-	}
 
 	externalURL := flagext.URLValue{}
 	err := externalURL.Set("http://localhost:8080/alertmanager")
@@ -241,7 +214,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, nil, log.NewNopLogger(), reg)
+	am, err := createMultitenantAlertmanager(amConfig, nil, nil, store, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
@@ -262,11 +235,11 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	}
 
 	// Create a configuration for the user in storage.
-	mockStore.configs["user1"] = alerts.AlertConfigDesc{
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user1",
 		RawConfig: simpleConfigTwo,
-		Templates: []*alerts.TemplateDesc{},
-	}
+		Templates: []*alertspb.TemplateDesc{},
+	}))
 
 	// Make the alertmanager pick it up.
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
@@ -305,7 +278,7 @@ func TestAlertmanager_ServeHTTP(t *testing.T) {
 	}
 
 	// Remove the tenant's Alertmanager
-	delete(mockStore.configs, "user1")
+	require.NoError(t, store.DeleteAlertConfig(ctx, "user1"))
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
@@ -329,11 +302,12 @@ func verify404(ctx context.Context, t *testing.T, am *MultitenantAlertmanager, m
 	require.Equal(t, 404, w.Code)
 }
 
-func TestAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
+func TestMultitenantAlertmanager_ServeHTTPWithFallbackConfig(t *testing.T) {
+	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)
-	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
-	}
+
+	// Run this test using a real storage client.
+	store := prepareInMemoryAlertStore()
 
 	externalURL := flagext.URLValue{}
 	err := externalURL.Set("http://localhost:8080/alertmanager")
@@ -353,19 +327,18 @@ receivers:
 	amConfig.ExternalURL = externalURL
 
 	// Create the Multitenant Alertmanager.
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, nil, log.NewNopLogger(), nil)
+	am, err := createMultitenantAlertmanager(amConfig, nil, nil, store, nil, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	am.fallbackConfig = fallbackCfg
 
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
-	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
+	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)
-	ctx := user.InjectOrgID(req.Context(), "user1")
 	w := httptest.NewRecorder()
 
-	am.ServeHTTP(w, req.WithContext(ctx))
+	am.ServeHTTP(w, req.WithContext(user.InjectOrgID(req.Context(), "user1")))
 
 	resp := w.Result()
 
@@ -376,7 +349,7 @@ receivers:
 	require.True(t, exists)
 
 	// Even after a poll...
-	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
 	require.NoError(t, err)
 
 	//  It does not remove the Alertmanager.
@@ -385,19 +358,19 @@ receivers:
 	require.True(t, exists)
 
 	// Remove the Alertmanager configuration.
-	delete(mockStore.configs, "user1")
-	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, store.DeleteAlertConfig(ctx, "user1"))
+	err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
 	require.NoError(t, err)
 
 	// Even after removing it.. We start it again with the fallback configuration.
 	w = httptest.NewRecorder()
-	am.ServeHTTP(w, req.WithContext(ctx))
+	am.ServeHTTP(w, req.WithContext(user.InjectOrgID(req.Context(), "user1")))
 
 	resp = w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
-func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
+func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	tc := []struct {
 		name          string
 		existing      bool
@@ -440,9 +413,10 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 			amConfig := mockAlertmanagerConfig(t)
 			amConfig.ShardingEnabled = true
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
-			}
+
+			// Use an alert store with a mocked backend.
+			bkt := &bucket.ClientMock{}
+			alertStore := bucketclient.NewBucketAlertStore(bkt, nil, log.NewNopLogger())
 
 			// Setup the initial instance state in the ring.
 			if tt.existing {
@@ -453,7 +427,7 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 				}))
 			}
 
-			am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+			am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -465,10 +439,10 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 
 			// During the initial sync, we expect two things. That the instance is already
 			// registered with the ring (meaning we have tokens) and that its state is JOINING.
-			mockStore.OnList = func() {
+			bkt.MockIterWithCallback("alerts/", nil, nil, func() {
 				require.True(t, am.ringLifecycler.IsRegistered())
 				require.Equal(t, ring.JOINING.String(), am.ringLifecycler.GetState().String())
-			}
+			})
 
 			// Once successfully started, the instance should be ACTIVE in the ring.
 			require.NoError(t, services.StartAndAwaitRunning(ctx, am))
@@ -482,7 +456,7 @@ func TestAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	}
 }
 
-func TestAlertmanager_PerTenantSharding(t *testing.T) {
+func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 	tc := []struct {
 		name              string
 		tenantShardSize   int
@@ -542,9 +516,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
-			}
+			alertStore := prepareInMemoryAlertStore()
 
 			var instances []*MultitenantAlertmanager
 			var instanceIDs []string
@@ -553,11 +525,11 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 			// First, add the number of configs to the store.
 			for i := 1; i <= tt.configs; i++ {
 				u := fmt.Sprintf("u-%d", i)
-				mockStore.configs[u] = alerts.AlertConfigDesc{
+				require.NoError(t, alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
 					User:      u,
 					RawConfig: simpleConfigOne,
-					Templates: []*alerts.TemplateDesc{},
-				}
+					Templates: []*alertspb.TemplateDesc{},
+				}))
 			}
 
 			// Then, create the alertmanager instances, start them and add their registries to the slice.
@@ -578,7 +550,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 				}
 
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -620,7 +592,7 @@ func TestAlertmanager_PerTenantSharding(t *testing.T) {
 	}
 }
 
-func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
+func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 	registeredAt := time.Now()
 
 	tc := []struct {
@@ -731,12 +703,10 @@ func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			amConfig.PollInterval = time.Hour // Don't trigger the periodic check.
 
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
-			mockStore := &mockAlertStore{
-				configs: map[string]alerts.AlertConfigDesc{},
-			}
+			alertStore := prepareInMemoryAlertStore()
 
 			reg := prometheus.NewPedanticRegistry()
-			am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+			am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), reg)
 			require.NoError(t, err)
 
 			require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
@@ -777,7 +747,7 @@ func TestAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 	}
 }
 
-func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	const unhealthyInstanceID = "alertmanager-bad-1"
 	const heartbeatTimeout = time.Minute
 	ctx := context.Background()
@@ -787,11 +757,9 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	amConfig.ShardingRing.HeartbeatTimeout = heartbeatTimeout
 
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	mockStore := &mockAlertStore{
-		configs: map[string]alerts.AlertConfigDesc{},
-	}
+	alertStore := prepareInMemoryAlertStore()
 
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+	am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
@@ -816,17 +784,18 @@ func TestAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	})
 }
 
-func TestAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
+func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	mockStore := &mockAlertStore{
-		configs:     map[string]alerts.AlertConfigDesc{},
-		WithListErr: fmt.Errorf("a fetch list failure"),
-	}
 
-	am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), nil)
+	// Mock the store to fail listing configs.
+	bkt := &bucket.ClientMock{}
+	bkt.MockIter("alerts/", nil, errors.New("failed to list alerts"))
+	store := bucketclient.NewBucketAlertStore(bkt, nil, log.NewNopLogger())
+
+	am, err := createMultitenantAlertmanager(amConfig, nil, nil, store, ringStore, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
@@ -836,4 +805,9 @@ func TestAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	require.Equal(t, services.Failed, am.State())
 	require.False(t, am.ringLifecycler.IsRegistered())
 	require.NotNil(t, am.ring)
+}
+
+// prepareInMemoryAlertStore builds and returns an in-memory alert store.
+func prepareInMemoryAlertStore() alertstore.AlertStore {
+	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
 }

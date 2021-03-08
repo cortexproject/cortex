@@ -96,7 +96,7 @@ func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 
 			assert.Equal(t, testData.expectedType, headers.Get("x-amz-server-side-encryption"))
 			assert.Equal(t, testData.expectedKeyID, headers.Get("x-amz-server-side-encryption-aws-kms-key-id"))
-			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(testData.expectedContext)), headers.Get("x-amz-server-side-encryption-encryption-context"))
+			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(testData.expectedContext)), headers.Get("x-amz-server-side-encryption-context"))
 		})
 	}
 }

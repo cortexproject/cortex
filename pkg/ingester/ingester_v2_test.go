@@ -971,7 +971,7 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 
 func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNotActive(t *testing.T) {
 	tests := map[string]struct {
-		state       ring.IngesterState
+		state       ring.InstanceState
 		expectedErr error
 	}{
 		"not allow to create TSDB if in PENDING state": {
@@ -1004,12 +1004,12 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 
 			// Switch ingester state to the expected one in the test
 			if i.lifecycler.GetState() != testData.state {
-				var stateChain []ring.IngesterState
+				var stateChain []ring.InstanceState
 
 				if testData.state == ring.LEAVING {
-					stateChain = []ring.IngesterState{ring.ACTIVE, ring.LEAVING}
+					stateChain = []ring.InstanceState{ring.ACTIVE, ring.LEAVING}
 				} else {
-					stateChain = []ring.IngesterState{testData.state}
+					stateChain = []ring.InstanceState{testData.state}
 				}
 
 				for _, s := range stateChain {

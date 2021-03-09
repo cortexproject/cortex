@@ -113,7 +113,7 @@ func init() {
 type State interface {
 	AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel
 	Position() int
-	WaitReady()
+	WaitReady(context.Context) error
 }
 
 // New creates a new Alertmanager.
@@ -426,11 +426,11 @@ func md5HashAsMetricValue(data []byte) float64 {
 // In a multi-tenant environment, we choose not to expose these to tenants and thus are not implemented.
 type NilPeer struct{}
 
-func (p *NilPeer) Name() string                   { return "" }
-func (p *NilPeer) Status() string                 { return "ready" }
-func (p *NilPeer) Peers() []cluster.ClusterMember { return nil }
-func (p *NilPeer) Position() int                  { return 0 }
-func (p *NilPeer) WaitReady()                     {}
+func (p *NilPeer) Name() string                    { return "" }
+func (p *NilPeer) Status() string                  { return "ready" }
+func (p *NilPeer) Peers() []cluster.ClusterMember  { return nil }
+func (p *NilPeer) Position() int                   { return 0 }
+func (p *NilPeer) WaitReady(context.Context) error { return nil }
 func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel {
 	return &NilChannel{}
 }

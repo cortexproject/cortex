@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
@@ -41,6 +42,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const notificationLogMaintenancePeriod = 15 * time.Minute
@@ -140,7 +143,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.logger, am.registry)
 
 		if err := state.Service.StartAsync(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to start state replication service: %v", err)
+			return nil, errors.Wrap(err, "failed to start state replication service")
 		}
 
 		am.state = state
@@ -325,7 +328,7 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
-	if service, ok := am.state.(*state); ok {
+	if service, ok := am.state.(services.Service); ok {
 		service.StopAsync()
 	}
 
@@ -336,8 +339,9 @@ func (am *Alertmanager) Stop() {
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
 
-	if service, ok := am.state.(*state); ok {
-		_ = service.AwaitTerminated(context.Background())
+	if service, ok := am.state.(services.Service); ok {
+		err := service.AwaitTerminated(context.Background())
+		level.Warn(am.logger).Log("msg", "error whilst stopping ring-based replication", "err", err)
 	}
 
 	am.wg.Wait()

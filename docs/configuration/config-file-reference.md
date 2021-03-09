@@ -4112,7 +4112,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # The maximum size of an item stored in memcached. Bigger items are not stored.
 # If set to 0, no maximum size is enforced.
 # CLI flag: -<prefix>.memcached.max-item-size
-[max_item_size: <int> | default = 1048576]
+[max_item_size: <int> | default = 0]
 
 # Period with which to poll DNS for memcache servers.
 # CLI flag: -<prefix>.memcached.update-interval

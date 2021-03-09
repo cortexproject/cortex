@@ -340,8 +340,9 @@ func (am *Alertmanager) StopAndWait() {
 	am.Stop()
 
 	if service, ok := am.state.(services.Service); ok {
-		err := service.AwaitTerminated(context.Background())
-		level.Warn(am.logger).Log("msg", "error whilst stopping ring-based replication", "err", err)
+		if err := service.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(am.logger).Log("msg", "error whilst stopping ring-based replication", "err", err)
+		}
 	}
 
 	am.wg.Wait()

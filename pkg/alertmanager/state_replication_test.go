@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-kit/kit/log"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type fakeState struct{}
@@ -65,7 +67,11 @@ func TestStateReplication(t *testing.T) {
 			}
 
 			s := newReplicatedStates("user-1", tt.replicationFactor, replicationFunc, positionFunc, log.NewNopLogger(), reg)
-			require.NoError(t, s.Service.StartAsync(context.Background()))
+
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
+			t.Cleanup(func() {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+			})
 
 			ch := s.AddState("nflog", &fakeState{}, reg)
 

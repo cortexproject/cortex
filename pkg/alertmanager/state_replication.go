@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
@@ -133,6 +134,26 @@ func (s *state) MergePartialState(p *clusterpb.Part) error {
 // Position helps in determining how long should we wait before sending a notification based on the number of replicas.
 func (s *state) Position() int {
 	return s.replicator.GetPositionForUser(s.userID)
+}
+
+// GetFullState returns the full internal state.
+func (s *state) GetFullState() (*clusterpb.FullState, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	all := &clusterpb.FullState{
+		Parts: make([]clusterpb.Part, 0, len(s.states)),
+	}
+
+	for key, s := range s.states {
+		b, err := s.MarshalBinary()
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to encode state for key: %v", key)
+		}
+		all.Parts = append(all.Parts, clusterpb.Part{Key: key, Data: b})
+	}
+
+	return all, nil
 }
 
 // starting waits until the alertmanagers are ready (and sets the appropriate internal state when it is).

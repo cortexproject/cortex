@@ -375,6 +375,13 @@ func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
 	return errors.New("ring-based sharding not enabled")
 }
 
+func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
+	if state, ok := am.state.(*state); ok {
+		return state.GetFullState()
+	}
+	return nil, errors.New("ring-based sharding not enabled")
+}
+
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
 func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {

@@ -1093,6 +1093,39 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 	return result
 }
 
+// UpdateState implements the Alertmanager service.
+func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmanagerpb.ReadStateRequest) (*alertmanagerpb.ReadStateResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	am.alertmanagersMtx.Lock()
+	defer am.alertmanagersMtx.Unlock()
+	userAM, ok := am.alertmanagers[userID]
+	if !ok {
+		level.Debug(am.logger).Log("msg", "user does not have an alertmanager in this instance", "user", userID)
+		return &alertmanagerpb.ReadStateResponse{
+			Status: alertmanagerpb.READ_USER_NOT_FOUND,
+			Error:  "alertmanager for this user does not exists",
+		}, nil
+	}
+
+	state, err := userAM.getFullState()
+	if err != nil {
+		level.Error(am.logger).Log("msg", "failed to get full state", "user", userID, "err", err)
+		return &alertmanagerpb.ReadStateResponse{
+			Status: alertmanagerpb.READ_ERROR,
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &alertmanagerpb.ReadStateResponse{
+		Status: alertmanagerpb.READ_OK,
+		State:  state,
+	}, nil
+}
+
 // StatusHandler shows the status of the alertmanager.
 type StatusHandler struct {
 	am *MultitenantAlertmanager

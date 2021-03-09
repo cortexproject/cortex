@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -21,11 +22,12 @@ import (
 )
 
 type fakeState struct {
+	binary []byte
 	merges [][]byte
 }
 
 func (s *fakeState) MarshalBinary() ([]byte, error) {
-	return []byte{}, nil
+	return s.binary, nil
 }
 
 func (s *fakeState) Merge(data []byte) error {
@@ -307,6 +309,67 @@ func TestStateReplication_Settle(t *testing.T) {
 			// Note: We don't actually test beyond Merge() here, just that all data is forwarded.
 			assert.Equal(t, tt.results["key1"], key1State.merges)
 			assert.Equal(t, tt.results["key2"], key2State.merges)
+		})
+	}
+}
+
+func TestStateReplication_GetFullState(t *testing.T) {
+
+	tc := []struct {
+		name   string
+		data   map[string][]byte
+		result *clusterpb.FullState
+	}{
+		{
+			name: "no keys",
+			data: map[string][]byte{},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{},
+			},
+		},
+		{
+			name: "zero length data",
+			data: map[string][]byte{
+				"key1": {},
+			},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{
+					{Key: "key1", Data: []byte{}},
+				},
+			},
+		},
+		{
+			name: "keys with data",
+			data: map[string][]byte{
+				"key1": []byte("Datum1"),
+				"key2": []byte("Datum2"),
+			},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{
+					{Key: "key1", Data: []byte("Datum1")},
+					{Key: "key2", Data: []byte("Datum2")},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+			s := newReplicatedStates("user-1", 1, nil, log.NewNopLogger(), reg)
+
+			for key, datum := range tt.data {
+				state := &fakeState{binary: datum}
+				s.AddState(key, state, reg)
+			}
+
+			result, err := s.GetFullState()
+			require.NoError(t, err)
+
+			// Key ordering is undefined for the code under test.
+			sort.Slice(result.Parts, func(i, j int) bool { return result.Parts[i].Key < result.Parts[j].Key })
+
+			assert.Equal(t, tt.result, result)
 		})
 	}
 }

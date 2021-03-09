@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 
 	"github.com/go-kit/kit/log"
@@ -186,41 +187,30 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	return nil
 }
 
-func (am *MultitenantAlertmanager) ListUserConfig(w http.ResponseWriter, r *http.Request) {
+func (am *MultitenantAlertmanager) ListUserConfigs(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
 	userIDs, err := am.store.ListAllUsers(r.Context())
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to list users of alertmanager")
+		level.Error(logger).Log("msg", "failed to list users of alertmanager", "err", err)
 		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	userConfigMap := make(map[string]*UserConfig, len(userIDs))
-	for _, userID := range userIDs {
-		cfg, err := am.store.GetAlertConfig(r.Context(), userID)
-		if err != nil {
-			if err == alertspb.ErrNotFound {
-				http.Error(w, err.Error(), http.StatusNotFound)
-			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			return
+	cfgMap, err := am.store.GetAlertConfigs(r.Context(), userIDs)
+	if err != nil {
+		if err == alertspb.ErrNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+		return
+	}
+	userConfigMap := make(map[string]*UserConfig, len(userIDs))
+	for userID, cfg := range cfgMap {
 		userConfigMap[userID] = &UserConfig{
 			TemplateFiles:      alertspb.ParseTemplates(cfg),
 			AlertmanagerConfig: cfg.RawConfig,
 		}
 	}
 
-	d, err := yaml.Marshal(userConfigMap)
-	if err != nil {
-		level.Error(logger).Log("msg", errMarshallingYAML, "err", err)
-		http.Error(w, fmt.Sprintf("%s: %s", errMarshallingYAML, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/yaml")
-	if _, err := w.Write(d); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	util.WriteYAMLResponse(w, userConfigMap)
 }

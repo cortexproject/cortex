@@ -279,7 +279,7 @@ receivers:
 	require.NoError(t, err)
 
 	router := mux.NewRouter()
-	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListUserConfig)
+	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListUserConfigs)
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", "https://localhost:8080/multitenant_alertmanager/configs", nil)
 	w := httptest.NewRecorder()

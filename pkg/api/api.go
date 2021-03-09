@@ -166,7 +166,7 @@ func (a *API) RegisterAlertmanager(am *alertmanager.MultitenantAlertmanager, tar
 	a.indexPage.AddLink(SectionAdminEndpoints, "/multitenant_alertmanager/ring", "Alertmanager Ring Status")
 	// Ensure this route is registered before the prefixed AM route
 	a.RegisterRoute("/multitenant_alertmanager/status", am.GetStatusHandler(), false, "GET")
-	a.RegisterRoute("/multitenant_alertmanager/configs", http.HandlerFunc(am.ListUserConfig), false, "GET")
+	a.RegisterRoute("/multitenant_alertmanager/configs", http.HandlerFunc(am.ListUserConfigs), false, "GET")
 	a.RegisterRoute("/multitenant_alertmanager/ring", http.HandlerFunc(am.RingHandler), false, "GET", "POST")
 	a.RegisterRoute("/multitenant_alertmanager/delete_tenant_config", http.HandlerFunc(am.DeleteUserConfig), true, "POST")
 
@@ -284,6 +284,9 @@ func (a *API) RegisterRuler(r *ruler.Ruler) {
 	// Legacy Ring Route
 	a.RegisterRoute("/ruler_ring", r, false, "GET", "POST")
 
+	// List all user rule groups
+	a.RegisterRoute("/ruler/rule_groups", http.HandlerFunc(r.ListAllUserRules), false, "GET")
+
 	ruler.RegisterRulerServer(a.server.GRPC, r)
 }
 
@@ -294,7 +297,6 @@ func (a *API) RegisterRulerAPI(r *ruler.API) {
 	a.RegisterRoute(a.cfg.PrometheusHTTPPrefix+"/api/v1/alerts", http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Ruler API Routes
-	a.RegisterRoute("/ruler/rules", http.HandlerFunc(r.ListAllRules), false, "GET")
 	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
 	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
 	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")

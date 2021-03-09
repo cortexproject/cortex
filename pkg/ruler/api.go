@@ -551,28 +551,3 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	respondAccepted(w, logger)
 }
-
-func (a *API) ListAllRules(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-
-	level.Debug(logger).Log("msg", "retrieving all rule groups")
-	rgs, err := a.store.ListAllRuleGroups(req.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	level.Debug(logger).Log("msg", "retrieved all rule groups from rule store", len(rgs))
-
-	if len(rgs) == 0 {
-		level.Info(logger).Log("msg", "no rule groups found")
-		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
-		return
-	}
-
-	gs := make(map[string]map[string][]rulefmt.RuleGroup, len(rgs)) // user:namespace:[]rulefmt.RuleGroup
-	for userID := range rgs {
-		gs[userID] = rgs[userID].Formatted()
-	}
-	marshalAndSend(gs, w, logger)
-}

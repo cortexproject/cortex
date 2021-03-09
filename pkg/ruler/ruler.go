@@ -810,3 +810,28 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 	level.Info(logger).Log("msg", "deleted all tenant rule groups", "user", userID)
 	w.WriteHeader(http.StatusOK)
 }
+
+func (r *Ruler) ListAllUserRules(w http.ResponseWriter, req *http.Request) {
+	logger := util_log.WithContext(req.Context(), r.logger)
+
+	level.Debug(logger).Log("msg", "retrieving all rule groups")
+	rgs, err := r.store.ListAllRuleGroups(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	level.Debug(logger).Log("msg", "retrieved all rule groups from rule store", len(rgs))
+
+	if len(rgs) == 0 {
+		level.Info(logger).Log("msg", "no rule groups found")
+		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
+		return
+	}
+
+	gs := make(map[string]map[string][]rulefmt.RuleGroup, len(rgs)) // user:namespace:[]rulefmt.RuleGroup
+	for userID := range rgs {
+		gs[userID] = rgs[userID].Formatted()
+	}
+	marshalAndSend(gs, w, logger)
+}

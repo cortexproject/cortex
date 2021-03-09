@@ -379,7 +379,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	tc := []struct {
 		name          string
 		existing      bool
-		initialState  ring.IngesterState
+		initialState  ring.InstanceState
 		initialTokens ring.Tokens
 	}{
 		{

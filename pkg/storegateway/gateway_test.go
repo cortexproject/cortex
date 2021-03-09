@@ -92,7 +92,7 @@ func TestConfig_Validate(t *testing.T) {
 func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	tests := map[string]struct {
 		initialExists bool
-		initialState  ring.IngesterState
+		initialState  ring.InstanceState
 		initialTokens ring.Tokens
 	}{
 		"instance not in the ring": {

@@ -23,7 +23,8 @@ import (
 func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	frontend := New(config, limits{queriers: 3}, logger, nil)
+	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), frontend))

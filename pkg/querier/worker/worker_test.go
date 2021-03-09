@@ -105,3 +105,5 @@ type mockProcessor struct{}
 func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _ string) {
 	<-ctx.Done()
 }
+
+func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}

@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -98,8 +99,8 @@ func TestFlushPanicIssue2743(t *testing.T) {
 	time.Sleep(2 * time.Second)
 }
 
-func pushSample(t *testing.T, ing *Ingester, sample client.Sample) {
-	_, err := ing.Push(user.InjectOrgID(context.Background(), userID), client.ToWriteRequest(singleTestLabel, []client.Sample{sample}, nil, client.API))
+func pushSample(t *testing.T, ing *Ingester, sample cortexpb.Sample) {
+	_, err := ing.Push(user.InjectOrgID(context.Background(), userID), cortexpb.ToWriteRequest(singleTestLabel, []cortexpb.Sample{sample}, nil, cortexpb.API))
 	require.NoError(t, err)
 }
 
@@ -155,8 +156,8 @@ func emptyIngesterConfig() Config {
 	}
 }
 
-func newSampleGenerator(t *testing.T, initTime time.Time, step time.Duration) <-chan client.Sample {
-	ts := make(chan client.Sample)
+func newSampleGenerator(t *testing.T, initTime time.Time, step time.Duration) <-chan cortexpb.Sample {
+	ts := make(chan cortexpb.Sample)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -165,7 +166,7 @@ func newSampleGenerator(t *testing.T, initTime time.Time, step time.Duration) <-
 		c := initTime
 		for {
 			select {
-			case ts <- client.Sample{Value: 0, TimestampMs: util.TimeToMillis(c)}:
+			case ts <- cortexpb.Sample{Value: 0, TimestampMs: util.TimeToMillis(c)}:
 			case <-ctx.Done():
 				return
 			}
@@ -212,7 +213,7 @@ func TestIssue3139(t *testing.T) {
 
 	// Generates a sample. While it is flushed for the first time (which returns error), it will be put on the queue
 	// again.
-	pushSample(t, ing, client.Sample{Value: 100, TimestampMs: int64(model.Now())})
+	pushSample(t, ing, cortexpb.Sample{Value: 100, TimestampMs: int64(model.Now())})
 
 	// stop ingester -- no flushing should happen yet
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))

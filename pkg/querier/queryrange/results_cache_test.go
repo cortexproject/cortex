@@ -15,7 +15,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -52,10 +52,10 @@ var (
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{Value: 137, TimestampMs: 1536673680000},
 						{Value: 137, TimestampMs: 1536673780000},
 					},
@@ -66,9 +66,9 @@ var (
 )
 
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	var samples []client.Sample
+	var samples []cortexpb.Sample
 	for i := start; i <= end; i += step {
-		samples = append(samples, client.Sample{
+		samples = append(samples, cortexpb.Sample{
 			TimestampMs: int64(i),
 			Value:       float64(i),
 		})
@@ -80,7 +80,7 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 			ResultType: matrix,
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: samples,

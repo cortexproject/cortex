@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -16,14 +17,14 @@ func TestMarshall(t *testing.T) {
 	const numSeries = 10
 	recorder := httptest.NewRecorder()
 	{
-		req := WriteRequest{}
+		req := cortexpb.WriteRequest{}
 		for i := 0; i < numSeries; i++ {
-			req.Timeseries = append(req.Timeseries, PreallocTimeseries{
-				TimeSeries: &TimeSeries{
-					Labels: []LabelAdapter{
+			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: strconv.Itoa(i)},
 					},
-					Samples: []Sample{
+					Samples: []cortexpb.Sample{
 						{TimestampMs: int64(i), Value: float64(i)},
 					},
 				},
@@ -38,7 +39,7 @@ func TestMarshall(t *testing.T) {
 			tooSmallSize = 1
 			plentySize   = 1024 * 1024
 		)
-		req := WriteRequest{}
+		req := cortexpb.WriteRequest{}
 		err := util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), tooSmallSize, &req, util.RawSnappy)
 		require.Error(t, err)
 		err = util.ParseProtoReader(context.Background(), recorder.Body, recorder.Body.Len(), plentySize, &req, util.RawSnappy)

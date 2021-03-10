@@ -197,7 +197,7 @@ func (c *memcachedClient) Stop() {
 
 func (c *memcachedClient) Set(item *memcache.Item) error {
 	// Skip hitting memcached at all if the item is bigger than the max allowed size.
-	if c.maxItemSize > 0 && uint64(len(item.Value)) > uint64(c.maxItemSize) {
+	if c.maxItemSize > 0 && len(item.Value) > c.maxItemSize {
 		c.skipped.Inc()
 		return nil
 	}

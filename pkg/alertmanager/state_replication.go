@@ -28,9 +28,8 @@ type state struct {
 	mtx    sync.Mutex
 	states map[string]cluster.State
 
-	replicationFactor  int
-	replicateStateFunc func(context.Context, string, *clusterpb.Part) error
-	positionFunc       func(string) int
+	replicationFactor int
+	replicator        Replicator
 
 	partialStateMergesTotal  *prometheus.CounterVec
 	partialStateMergesFailed *prometheus.CounterVec
@@ -42,18 +41,17 @@ type state struct {
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, f func(context.Context, string, *clusterpb.Part) error, pf func(string) int, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
-		logger:             l,
-		userID:             userID,
-		replicateStateFunc: f,
-		replicationFactor:  rf,
-		positionFunc:       pf,
-		states:             make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
-		msgc:               make(chan *clusterpb.Part),
-		readyc:             make(chan struct{}),
-		reg:                r,
+		logger:            l,
+		userID:            userID,
+		replicationFactor: rf,
+		replicator:        re,
+		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
+		msgc:              make(chan *clusterpb.Part),
+		readyc:            make(chan struct{}),
+		reg:               r,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -116,7 +114,9 @@ func (s *state) MergePartialState(p *clusterpb.Part) error {
 }
 
 // Position helps in determining how long should we wait before sending a notification based on the number of replicas.
-func (s *state) Position() int { return s.positionFunc(s.userID) }
+func (s *state) Position() int {
+	return s.replicator.GetPositionForUser(s.userID)
+}
 
 // Settle waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
 // The idea is that we don't want to start working" before we get a chance to know most of the notifications and/or silences.
@@ -161,7 +161,7 @@ func (s *state) running(ctx context.Context) error {
 			}
 
 			s.stateReplicationTotal.WithLabelValues(p.Key).Inc()
-			if err := s.replicateStateFunc(ctx, s.userID, p); err != nil {
+			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
 				s.stateReplicationFailed.WithLabelValues(p.Key).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}

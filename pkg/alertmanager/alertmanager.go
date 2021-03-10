@@ -68,12 +68,9 @@ type Config struct {
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
 
-	ShardingEnabled    bool
-	ReplicationFactor  int
-	ReplicateStateFunc func(context.Context, string, *clusterpb.Part) error
-	// The alertmanager replication protocol relies on a position related to other replicas.
-	// This position is then used to identify who should notify about the alert first.
-	GetPositionFunc func(userID string) int
+	ShardingEnabled   bool
+	ReplicationFactor int
+	Replicator        Replicator
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -125,6 +122,15 @@ type State interface {
 	WaitReady(context.Context) error
 }
 
+// Replicator is used to exchange state with peers via the ring when sharding is enabled.
+type Replicator interface {
+	// ReplicateStateForUser writes the given partial state to the necessary replicas.
+	ReplicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error
+	// The alertmanager replication protocol relies on a position related to other replicas.
+	// This position is then used to identify who should notify about the alert first.
+	GetPositionForUser(userID string) int
+}
+
 // New creates a new Alertmanager.
 func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if cfg.TenantDataDir == "" {
@@ -153,7 +159,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.logger, am.registry)
+		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
 
 		if err := state.Service.StartAsync(context.Background()); err != nil {
 			return nil, errors.Wrap(err, "failed to start ring-based replication service")

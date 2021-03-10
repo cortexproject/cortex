@@ -511,14 +511,14 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 // TODO: Remove in Cortex 1.10.
 func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
 	migrate := func(from, to string) error {
-		level.Info(am.logger).Log("msg", "migrating AM state", "from", from, "to", to)
+		level.Info(am.logger).Log("msg", "migrating alertmanager state", "from", from, "to", to)
 		err := os.Rename(from, to)
-		return errors.Wrapf(err, "failed to migrate from %v to %v", from, to)
+		return errors.Wrapf(err, "failed to migrate alertmanager state from %v to %v", from, to)
 	}
 
 	st, err := am.getObsoleteFilesPerUser()
 	if err != nil {
-		return errors.Wrap(err, "failed to migrate existing files")
+		return errors.Wrap(err, "failed to migrate alertmanager state files")
 	}
 
 	for userID, files := range st {
@@ -593,7 +593,7 @@ func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsolet
 					v.templatesDir = filepath.Join(fullPath, d.Name())
 					result[d.Name()] = v
 				} else {
-					level.Warn(am.logger).Log("msg", "ignoring unknown local file", "file", filepath.Join(fullPath, d.Name()))
+					level.Warn(am.logger).Log("msg", "ignoring unknown local file while migrating local alertmanager state files", "file", filepath.Join(fullPath, d.Name()))
 				}
 			}
 			continue
@@ -613,7 +613,7 @@ func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsolet
 			result[userID] = v
 
 		default:
-			level.Warn(am.logger).Log("msg", "ignoring unknown local data file", "file", fullPath)
+			level.Warn(am.logger).Log("msg", "ignoring unknown local data file while migrating local alertmanager state files", "file", fullPath)
 		}
 	}
 
@@ -1122,7 +1122,7 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
 
 		if !f.IsDir() {
-			level.Warn(am.logger).Log("msg", "ignoring local file", "file", fullPath)
+			level.Warn(am.logger).Log("msg", "ignoring unexpected file while scanning local alertmanager configs", "file", fullPath)
 			continue
 		}
 

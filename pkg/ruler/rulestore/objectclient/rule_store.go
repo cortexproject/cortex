@@ -16,7 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
 )
 
 // Object Rule Storage Schema
@@ -55,7 +55,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
 		level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
-		return nil, errors.Wrapf(rulestore.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
+		return nil, errors.Wrapf(rulestore_errors.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
 	}
 
 	if err != nil {
@@ -104,7 +104,7 @@ func (o *RuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 }
 
 // ListAllRuleGroups implements rules.RuleStore.
-func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore.RuleGroupList, error) {
+func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
 	// No delimiter to get *all* rule groups for all users and namespaces.
 	ruleGroupObjects, _, err := o.client.List(ctx, rulePrefix, "")
 	if err != nil {
@@ -114,7 +114,7 @@ func (o *RuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rulestore
 	return convertRuleGroupObjectsToMap(ruleGroupObjects), nil
 }
 
-func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rulestore.RuleGroupList, error) {
+func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID, namespace string) (rulespb.RuleGroupList, error) {
 	ruleGroupObjects, _, err := o.client.List(ctx, generateRuleObjectKey(userID, namespace, ""), "")
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (o *RuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context, userI
 	return convertRuleGroupObjectsToMap(ruleGroupObjects)[userID], nil
 }
 
-func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulestore.RuleGroupList) error {
+func (o *RuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	ch := make(chan *rulespb.RuleGroupDesc)
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
@@ -176,8 +176,8 @@ outer:
 	return g.Wait()
 }
 
-func convertRuleGroupObjectsToMap(ruleGroupObjects []chunk.StorageObject) map[string]rulestore.RuleGroupList {
-	result := map[string]rulestore.RuleGroupList{}
+func convertRuleGroupObjectsToMap(ruleGroupObjects []chunk.StorageObject) map[string]rulespb.RuleGroupList {
+	result := map[string]rulespb.RuleGroupList{}
 	for _, rg := range ruleGroupObjects {
 		user, namespace, group := decomposeRuleObjectKey(rg.Key)
 		if user == "" || namespace == "" || group == "" {
@@ -215,7 +215,7 @@ func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespac
 	objectKey := generateRuleObjectKey(userID, namespace, groupName)
 	err := o.client.DeleteObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
-		return rulestore.ErrGroupNotFound
+		return rulestore_errors.ErrGroupNotFound
 	}
 	return err
 }
@@ -228,7 +228,7 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	}
 
 	if len(ruleGroupObjects) == 0 {
-		return rulestore.ErrGroupNamespaceNotFound
+		return rulestore_errors.ErrGroupNamespaceNotFound
 	}
 
 	for _, obj := range ruleGroupObjects {

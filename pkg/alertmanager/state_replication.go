@@ -129,11 +129,17 @@ func (s *state) Settle(ctx context.Context, _ time.Duration) {
 }
 
 // WaitReady is needed for the pipeline builder to know whenever we've settled and the state is up to date.
-func (s *state) WaitReady() {
+func (s *state) WaitReady(ctx context.Context) error {
 	//TODO: At the moment, we settle in a separate go-routine (see multitenant.go as we create the Peer) we should
 	// mimic that behaviour here once we have full state replication.
-	s.Settle(context.Background(), time.Second)
-	<-s.readyc
+	s.Settle(ctx, time.Second)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.readyc:
+		return nil
+	}
 }
 
 func (s *state) Ready() bool {

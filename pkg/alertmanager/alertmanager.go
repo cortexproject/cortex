@@ -143,7 +143,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.ReplicateStateFunc, cfg.GetPositionFunc, am.logger, am.registry)
 
 		if err := state.Service.StartAsync(context.Background()); err != nil {
-			return nil, errors.Wrap(err, "failed to start state replication service")
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
 		}
 
 		am.state = state
@@ -341,7 +341,7 @@ func (am *Alertmanager) StopAndWait() {
 
 	if service, ok := am.state.(services.Service); ok {
 		if err := service.AwaitTerminated(context.Background()); err != nil {
-			level.Warn(am.logger).Log("msg", "error whilst stopping ring-based replication", "err", err)
+			level.Warn(am.logger).Log("msg", "error while stopping ring-based replication service", "err", err)
 		}
 	}
 

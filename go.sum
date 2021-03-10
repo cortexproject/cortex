@@ -1037,8 +1037,8 @@ github.com/prometheus/alertmanager v0.21.0/go.mod h1:h7tJ81NA0VLWvWEayi1QltevFkL
 github.com/prometheus/alertmanager v0.21.1-0.20200911160112-1fdff6b3f939/go.mod h1:imXRHOP6QTsE0fFsIsAV/cXimS32m7gVZOiUj11m6Ig=
 github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054 h1:NgCRBfzDpyIhX6Pjh7XSWPHUC8T5dA1yVuK/gwXM7Jw=
 github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054/go.mod h1:imXRHOP6QTsE0fFsIsAV/cXimS32m7gVZOiUj11m6Ig=
-github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927 h1:BLdqq8kRvpCWghcXjU32mi4pzJlyo8InM5hfmIqFyoc=
-github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927/go.mod h1:MTqVn+vIupE0dzdgo+sMcNCp37SCAi8vPrvKTTnTz9g=
+github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6 h1:WeazuhFA+g8Xce5wgqskDP+b48oQKk7smH72dxO2beA=
+github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6/go.mod h1:MTqVn+vIupE0dzdgo+sMcNCp37SCAi8vPrvKTTnTz9g=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.2/go.mod h1:OsXs2jCmiKlQ1lTBmv21f2mNfw4xf/QclQDMrYNZzcM=

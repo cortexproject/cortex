@@ -146,10 +146,10 @@ templates:
 	dirs := am.getPerUserDirectories()
 	user3Dir := dirs["user3"]
 	require.NotZero(t, user3Dir)
-	require.True(t, exists(t, user3Dir, true))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir), true))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "first.tpl"), false))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "second.tpl"), false))
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, dirExists(t, filepath.Join(user3Dir, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -187,7 +187,7 @@ templates:
 	require.NotZero(t, dirs["user1"])
 	require.NotZero(t, dirs["user2"])
 	require.Zero(t, dirs["user3"]) // User3 is deleted, so we should have no more files for it.
-	require.False(t, exists(t, user3Dir, false))
+	require.False(t, fileExists(t, user3Dir))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -214,10 +214,10 @@ templates:
 	require.Equal(t, user3Dir, dirs["user3"]) // Dir should exist, even though state files are not generated yet.
 
 	// Hierarchy that existed before should exist again.
-	require.True(t, exists(t, user3Dir, true))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir), true))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "first.tpl"), false))
-	require.True(t, exists(t, filepath.Join(user3Dir, templatesDir, "second.tpl"), false))
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, dirExists(t, filepath.Join(user3Dir, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -254,14 +254,22 @@ func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *test
 	createFile(t, filepath.Join(cfg.DataDir, "templates", user2, "template.tpl"))
 
 	require.NoError(t, am.migrateStateFilesToPerTenantDirectories())
-	require.True(t, exists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot), false))
-	require.True(t, exists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot), false))
-	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot), false))
-	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, templatesDir), true))
-	require.True(t, exists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl"), false))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot)))
+	require.True(t, dirExists(t, filepath.Join(cfg.DataDir, user2, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl")))
 }
 
-func exists(t *testing.T, path string, dir bool) bool {
+func fileExists(t *testing.T, path string) bool {
+	return checkExists(t, path, false)
+}
+
+func dirExists(t *testing.T, path string) bool {
+	return checkExists(t, path, true)
+}
+
+func checkExists(t *testing.T, path string, dir bool) bool {
 	fi, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {

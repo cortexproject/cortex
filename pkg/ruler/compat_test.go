@@ -66,7 +66,7 @@ func TestPusherAppendable(t *testing.T) {
 
 			pusher.response = &cortexpb.WriteResponse{}
 			a := pa.Appender(ctx)
-			_, err := a.Add(nil, 120_000, tc.value)
+			_, err := a.Append(0, nil, 120_000, tc.value)
 			require.NoError(t, err)
 
 			require.NoError(t, a.Commit())

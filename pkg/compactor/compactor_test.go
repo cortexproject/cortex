@@ -922,7 +922,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
 		app := db.Appender(context.Background())
-		_, err := app.Add(lbls, ts, float64(i))
+		_, err := app.Append(0, lbls, ts, float64(i))
 		require.NoError(t, err)
 
 		err = app.Commit()

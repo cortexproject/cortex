@@ -17,34 +17,37 @@ import (
 
 func TestRefCache_GetAndSetReferences(t *testing.T) {
 	now := time.Now()
-	ls1 := []labels.Label{{Name: "a", Value: "1"}}
-	ls2 := []labels.Label{{Name: "a", Value: "2"}}
+	ls1 := labels.Labels{{Name: "a", Value: "1"}}
+	ls2 := labels.Labels{{Name: "a", Value: "2"}}
 
 	c := NewRefCache()
-	_, ok := c.Ref(now, ls1)
+	_, _, ok := c.Ref(now, ls1)
 	assert.Equal(t, false, ok)
 
-	_, ok = c.Ref(now, ls2)
+	_, _, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls1, 1)
-	ref, ok := c.Ref(now, ls1)
+	ref, lbls, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
+	assert.Equal(t, ls1, lbls)
 
-	_, ok = c.Ref(now, ls2)
+	_, _, ok = c.Ref(now, ls2)
 	assert.Equal(t, false, ok)
 
 	c.SetRef(now, ls2, 2)
-	ref, ok = c.Ref(now, ls2)
+	ref, lbls, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
+	assert.Equal(t, ls2, lbls)
 
 	// Overwrite a value with a new one
 	c.SetRef(now, ls2, 3)
-	ref, ok = c.Ref(now, ls2)
+	ref, lbls, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(3), ref)
+	assert.Equal(t, ls2, lbls)
 }
 
 func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
@@ -60,17 +63,19 @@ func TestRefCache_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
 	c.SetRef(now, ls1, 1)
 	c.SetRef(now, ls2, 2)
 
-	ref, ok := c.Ref(now, ls1)
+	ref, lbls, ok := c.Ref(now, ls1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), ref)
+	assert.Equal(t, ls1, lbls)
 
-	ref, ok = c.Ref(now, ls2)
+	ref, lbls, ok = c.Ref(now, ls2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), ref)
+	assert.Equal(t, ls2, lbls)
 }
 
 func TestRefCache_Purge(t *testing.T) {
-	series := [][]labels.Label{
+	series := []labels.Labels{
 		{{Name: "a", Value: "1"}},
 		{{Name: "a", Value: "2"}},
 		// The two following series have the same FastFingerprint=e002a3a451262627
@@ -92,13 +97,14 @@ func TestRefCache_Purge(t *testing.T) {
 
 		// Check retained and purged entries
 		for i := 0; i <= ttl && i < len(series); i++ {
-			ref, ok := c.Ref(now, series[i])
+			ref, lbls, ok := c.Ref(now, series[i])
 			assert.Equal(t, true, ok)
 			assert.Equal(t, uint64(i), ref)
+			assert.Equal(t, series[i], lbls)
 		}
 
 		for i := ttl + 1; i < len(series); i++ {
-			_, ok := c.Ref(now, series[i])
+			_, _, ok := c.Ref(now, series[i])
 			assert.Equal(t, false, ok)
 		}
 	}
@@ -174,7 +180,7 @@ func benchmarkRefCacheConcurrency(b *testing.B, series []labels.Labels, goroutin
 			now := time.Now()
 
 			for s := 0; s < len(series); s += step {
-				_, ok := c.Ref(now, series[s])
+				_, _, ok := c.Ref(now, series[s])
 				if !ok {
 					c.SetRef(now, series[s], uint64(s))
 				}

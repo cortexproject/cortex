@@ -4,3 +4,13 @@ groups:
     rules:
       - record: up:count
         expr: count(up)
+
+  - name: example2
+    rules:
+      - alert: TooManyServices
+        expr: count(up) > 1
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: Too many services

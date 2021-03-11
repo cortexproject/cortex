@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/http/pprof"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -106,8 +107,8 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, am.alertmanagers, 2)
 
-	currentConfig, exists := am.cfgs["user1"]
-	require.True(t, exists)
+	currentConfig, cfgExists := am.cfgs["user1"]
+	require.True(t, cfgExists)
 	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -118,15 +119,37 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is added, it is synced correctly
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      "user3",
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
+	user3Cfg := alertspb.AlertConfigDesc{
+		User: "user3",
+		RawConfig: simpleConfigOne + `
+templates:
+- 'first.tpl'
+- 'second.tpl'
+`,
+		Templates: []*alertspb.TemplateDesc{
+			{
+				Filename: "first.tpl",
+				Body:     `{{ define "t1" }}Template 1 ... {{end}}`,
+			},
+			{
+				Filename: "second.tpl",
+				Body:     `{{ define "t2" }}Template 2{{ end}}`,
+			},
+		},
+	}
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 	require.Len(t, am.alertmanagers, 3)
+
+	dirs := am.getPerUserDirectories()
+	user3Dir := dirs["user3"]
+	require.NotZero(t, user3Dir)
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, dirExists(t, filepath.Join(user3Dir, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -146,20 +169,25 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
-	currentConfig, exists = am.cfgs["user1"]
-	require.True(t, exists)
+	currentConfig, cfgExists = am.cfgs["user1"]
+	require.True(t, cfgExists)
 	require.Equal(t, simpleConfigTwo, currentConfig.RawConfig)
 
 	// Test Delete User, ensure config is removed and the resources are freed.
 	require.NoError(t, store.DeleteAlertConfig(ctx, "user3"))
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
-	currentConfig, exists = am.cfgs["user3"]
-	require.False(t, exists)
+	currentConfig, cfgExists = am.cfgs["user3"]
+	require.False(t, cfgExists)
 	require.Equal(t, "", currentConfig.RawConfig)
 
-	_, exists = am.alertmanagers["user3"]
-	require.False(t, exists)
+	_, cfgExists = am.alertmanagers["user3"]
+	require.False(t, cfgExists)
+	dirs = am.getPerUserDirectories()
+	require.NotZero(t, dirs["user1"])
+	require.NotZero(t, dirs["user2"])
+	require.Zero(t, dirs["user3"]) // User3 is deleted, so we should have no more files for it.
+	require.False(t, fileExists(t, user3Dir))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -169,21 +197,27 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 	// Ensure when a 3rd config is re-added, it is synced correctly
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      "user3",
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
 
-	currentConfig, exists = am.cfgs["user3"]
-	require.True(t, exists)
-	require.Equal(t, simpleConfigOne, currentConfig.RawConfig)
+	currentConfig, cfgExists = am.cfgs["user3"]
+	require.True(t, cfgExists)
+	require.Equal(t, user3Cfg.RawConfig, currentConfig.RawConfig)
 
-	_, exists = am.alertmanagers["user3"]
-	require.True(t, exists)
+	_, cfgExists = am.alertmanagers["user3"]
+	require.True(t, cfgExists)
+	dirs = am.getPerUserDirectories()
+	require.NotZero(t, dirs["user1"])
+	require.NotZero(t, dirs["user2"])
+	require.Equal(t, user3Dir, dirs["user3"]) // Dir should exist, even though state files are not generated yet.
+
+	// Hierarchy that existed before should exist again.
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, dirExists(t, filepath.Join(user3Dir, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
@@ -192,6 +226,110 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+}
+
+func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      user2,
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user1))
+	createFile(t, filepath.Join(cfg.DataDir, "silences:"+user1))
+	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user2))
+	createFile(t, filepath.Join(cfg.DataDir, "templates", user2, "template.tpl"))
+
+	require.NoError(t, am.migrateStateFilesToPerTenantDirectories())
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot)))
+	require.True(t, dirExists(t, filepath.Join(cfg.DataDir, user2, templatesDir)))
+	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl")))
+}
+
+func fileExists(t *testing.T, path string) bool {
+	return checkExists(t, path, false)
+}
+
+func dirExists(t *testing.T, path string) bool {
+	return checkExists(t, path, true)
+}
+
+func checkExists(t *testing.T, path string, dir bool) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, dir, fi.IsDir())
+	return true
+}
+
+func TestMultitenantAlertmanager_deleteUnusedLocalUserState(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      user2,
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	createFile(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot))
+	createFile(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl"))
+
+	dirs := am.getPerUserDirectories()
+	require.Equal(t, 2, len(dirs))
+	require.NotZero(t, dirs[user1])
+	require.NotZero(t, dirs[user2])
+
+	// Ensure the configs are synced correctly
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+
+	// loadAndSyncConfigs also cleans up obsolete files. Let's verify that.
+	dirs = am.getPerUserDirectories()
+
+	require.Zero(t, dirs[user1])    // has no configuration, files were deleted
+	require.NotZero(t, dirs[user2]) // has config, files survived
+}
+
+func createFile(t *testing.T, path string) string {
+	dir := filepath.Dir(path)
+	require.NoError(t, os.MkdirAll(dir, 0777))
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	return path
 }
 
 func TestMultitenantAlertmanager_NoExternalURL(t *testing.T) {
@@ -1054,4 +1192,37 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.
 func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
+}
+
+func TestStoreTemplateFile(t *testing.T) {
+	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(tempDir))
+	})
+
+	changed, err := storeTemplateFile(templatesDir, "some-template", "content")
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = storeTemplateFile(templatesDir, "some-template", "new content")
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = storeTemplateFile(templatesDir, "some-template", "new content") // reusing previous content
+	require.NoError(t, err)
+	require.False(t, changed)
+
+	_, err = storeTemplateFile(templatesDir, ".", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "..", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "./test", "content")
+	require.Error(t, err)
+
+	_, err = storeTemplateFile(templatesDir, "../test", "content")
+	require.Error(t, err)
 }

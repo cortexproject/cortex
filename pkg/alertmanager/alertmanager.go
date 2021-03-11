@@ -46,18 +46,27 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-const notificationLogMaintenancePeriod = 15 * time.Minute
+const (
+	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
+	maintenancePeriod = 15 * time.Minute
+
+	// Filenames used within tenant-directory
+	notificationLogSnapshot = "notifications"
+	silencesSnapshot        = "silences"
+	templatesDir            = "templates"
+)
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID string
-	// Used to persist notification logs and silences on disk.
-	DataDir     string
+	UserID      string
 	Logger      log.Logger
 	Peer        *cluster.Peer
 	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
+
+	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
+	TenantDataDir string
 
 	ShardingEnabled    bool
 	ReplicationFactor  int
@@ -118,6 +127,10 @@ type State interface {
 
 // New creates a new Alertmanager.
 func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
+	if cfg.TenantDataDir == "" {
+		return nil, fmt.Errorf("directory for tenant-specific AlertManager is not configured")
+	}
+
 	am := &Alertmanager{
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
@@ -153,12 +166,11 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 
 	am.wg.Add(1)
-	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
 	am.nflog, err = nflog.New(
 		nflog.WithRetention(cfg.Retention),
-		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
-		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
+		nflog.WithSnapshot(filepath.Join(cfg.TenantDataDir, notificationLogSnapshot)),
+		nflog.WithMaintenance(maintenancePeriod, am.stop, am.wg.Done),
 		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
@@ -171,9 +183,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.marker = types.NewMarker(am.registry)
 
-	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
+	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 	am.silences, err = silence.New(silence.Options{
-		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
+		SnapshotFile: silencesFile,
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
 		Metrics:      am.registry,
@@ -189,7 +201,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.wg.Add(1)
 	go func() {
-		am.silences.Maintenance(15*time.Minute, filepath.Join(cfg.DataDir, silencesID), am.stop)
+		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop)
 		am.wg.Done()
 	}()
 
@@ -249,7 +261,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
-			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)
+			templateFiles[i] = filepath.Join(am.cfg.TenantDataDir, templatesDir, t)
 		}
 	}
 

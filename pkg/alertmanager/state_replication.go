@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -36,8 +35,7 @@ type state struct {
 	stateReplicationTotal    *prometheus.CounterVec
 	stateReplicationFailed   *prometheus.CounterVec
 
-	msgc   chan *clusterpb.Part
-	readyc chan struct{}
+	msgc chan *clusterpb.Part
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
@@ -50,7 +48,6 @@ func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r p
 		replicator:        re,
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
-		readyc:            make(chan struct{}),
 		reg:               r,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
@@ -70,7 +67,7 @@ func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r p
 		}, []string{"key"}),
 	}
 
-	s.Service = services.NewBasicService(nil, s.running, nil)
+	s.Service = services.NewBasicService(s.starting, s.running, nil)
 
 	return s
 }
@@ -118,37 +115,23 @@ func (s *state) Position() int {
 	return s.replicator.GetPositionForUser(s.userID)
 }
 
-// Settle waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
+// starting waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
 // The idea is that we don't want to start working" before we get a chance to know most of the notifications and/or silences.
-func (s *state) Settle(ctx context.Context, _ time.Duration) {
+func (s *state) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "Waiting for notification and silences to settle...")
 
 	// TODO: Make sure that the state is fully synchronised at this point.
 	// We can check other alertmanager(s) and explicitly ask them to propagate their state to us if available.
-	close(s.readyc)
+	return nil
 }
 
 // WaitReady is needed for the pipeline builder to know whenever we've settled and the state is up to date.
 func (s *state) WaitReady(ctx context.Context) error {
-	//TODO: At the moment, we settle in a separate go-routine (see multitenant.go as we create the Peer) we should
-	// mimic that behaviour here once we have full state replication.
-	s.Settle(ctx, time.Second)
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-s.readyc:
-		return nil
-	}
+	return s.Service.AwaitRunning(ctx)
 }
 
 func (s *state) Ready() bool {
-	select {
-	case <-s.readyc:
-		return true
-	default:
-	}
-	return false
+	return s.Service.State() == services.Running
 }
 
 func (s *state) running(ctx context.Context) error {

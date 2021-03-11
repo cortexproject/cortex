@@ -77,10 +77,24 @@ func TestStateReplication(t *testing.T) {
 			replicator := newFakeReplicator()
 			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
 
+			require.False(t, s.Ready())
+			{
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				defer cancel()
+				require.Equal(t, context.DeadlineExceeded, s.WaitReady(ctx))
+			}
+
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 			t.Cleanup(func() {
 				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
 			})
+
+			require.True(t, s.Ready())
+			{
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				defer cancel()
+				require.NoError(t, s.WaitReady(ctx))
+			}
 
 			ch := s.AddState("nflog", &fakeState{}, reg)
 

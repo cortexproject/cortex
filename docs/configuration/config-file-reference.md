@@ -4123,6 +4123,11 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -<prefix>.memcached.max-idle-conns
 [max_idle_conns: <int> | default = 16]
 
+# The maximum size of an item stored in memcached. Bigger items are not stored.
+# If set to 0, no maximum size is enforced.
+# CLI flag: -<prefix>.memcached.max-item-size
+[max_item_size: <int> | default = 0]
+
 # Period with which to poll DNS for memcache servers.
 # CLI flag: -<prefix>.memcached.update-interval
 [update_interval: <duration> | default = 1m]

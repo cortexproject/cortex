@@ -20,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 )
 
@@ -227,7 +226,7 @@ func TestDelete(t *testing.T) {
 
 		{
 			// Trying to delete empty namespace again will result in error.
-			require.Equal(t, rulestore_errors.ErrGroupNamespaceNotFound, rs.DeleteNamespace(context.Background(), "user1", ""))
+			require.Equal(t, rulestore.ErrGroupNamespaceNotFound, rs.DeleteNamespace(context.Background(), "user1", ""))
 		}
 	})
 }

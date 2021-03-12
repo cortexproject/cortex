@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
@@ -55,7 +55,7 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
 		level.Debug(b.logger).Log("msg", "rule group does not exist", "user", userID, "key", objectKey)
-		return nil, rulestore_errors.ErrGroupNotFound
+		return nil, rulestore.ErrGroupNotFound
 	}
 
 	if err != nil {
@@ -231,7 +231,7 @@ func (b *BucketRuleStore) DeleteRuleGroup(ctx context.Context, userID string, na
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	err := userBucket.Delete(ctx, getRuleGroupObjectKey(namespace, group))
 	if b.bucket.IsObjNotFoundErr(err) {
-		return rulestore_errors.ErrGroupNotFound
+		return rulestore.ErrGroupNotFound
 	}
 	return err
 }
@@ -244,7 +244,7 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 	}
 
 	if len(ruleGroupList) == 0 {
-		return rulestore_errors.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)

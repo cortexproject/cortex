@@ -30,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -803,7 +802,7 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 	}
 
 	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
-	if err != nil && !errors.Is(err, rulestore_errors.ErrGroupNamespaceNotFound) {
+	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
 		respondError(logger, w, err.Error())
 		return
 	}

@@ -23,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -428,7 +427,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
-		if err == rulestore_errors.ErrGroupNotFound {
+		if err == rulestore.ErrGroupNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -520,7 +519,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 
 	err = a.store.DeleteNamespace(req.Context(), userID, namespace)
 	if err != nil {
-		if err == rulestore_errors.ErrGroupNamespaceNotFound {
+		if err == rulestore.ErrGroupNamespaceNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -542,7 +541,7 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	err = a.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
-		if err == rulestore_errors.ErrGroupNotFound {
+		if err == rulestore.ErrGroupNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

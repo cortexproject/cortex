@@ -16,7 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	rulestore_errors "github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
 // Object Rule Storage Schema
@@ -55,7 +55,7 @@ func (o *RuleStore) getRuleGroup(ctx context.Context, objectKey string, rg *rule
 	reader, err := o.client.GetObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
 		level.Debug(o.logger).Log("msg", "rule group does not exist", "name", objectKey)
-		return nil, errors.Wrapf(rulestore_errors.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
+		return nil, errors.Wrapf(rulestore.ErrGroupNotFound, "get rule group user=%q, namespace=%q, name=%q", rg.GetUser(), rg.GetNamespace(), rg.GetName())
 	}
 
 	if err != nil {
@@ -215,7 +215,7 @@ func (o *RuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespac
 	objectKey := generateRuleObjectKey(userID, namespace, groupName)
 	err := o.client.DeleteObject(ctx, objectKey)
 	if err == chunk.ErrStorageObjectNotFound {
-		return rulestore_errors.ErrGroupNotFound
+		return rulestore.ErrGroupNotFound
 	}
 	return err
 }
@@ -228,7 +228,7 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	}
 
 	if len(ruleGroupObjects) == 0 {
-		return rulestore_errors.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	for _, obj := range ruleGroupObjects {

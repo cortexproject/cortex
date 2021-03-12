@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/errors"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 )
 
 type mockRuleStore struct {
@@ -178,11 +178,11 @@ func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace
 
 	userRules, exists := m.rules[userID]
 	if !exists {
-		return nil, errors.ErrUserNotFound
+		return nil, rulestore.ErrUserNotFound
 	}
 
 	if namespace == "" {
-		return nil, errors.ErrGroupNamespaceNotFound
+		return nil, rulestore.ErrGroupNamespaceNotFound
 	}
 
 	for _, rg := range userRules {
@@ -191,7 +191,7 @@ func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace
 		}
 	}
 
-	return nil, errors.ErrGroupNotFound
+	return nil, rulestore.ErrGroupNotFound
 }
 
 func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rulespb.RuleGroupDesc) error {
@@ -205,7 +205,7 @@ func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespa
 	}
 
 	if namespace == "" {
-		return errors.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	for i, rg := range userRules {
@@ -230,7 +230,7 @@ func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, name
 	}
 
 	if namespace == "" {
-		return errors.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	for i, rg := range userRules {
@@ -254,7 +254,7 @@ func (m *mockRuleStore) DeleteNamespace(ctx context.Context, userID, namespace s
 	}
 
 	if namespace == "" {
-		return errors.ErrGroupNamespaceNotFound
+		return rulestore.ErrGroupNamespaceNotFound
 	}
 
 	for i, rg := range userRules {

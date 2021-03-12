@@ -924,7 +924,7 @@ func (am *MultitenantAlertmanager) GetPositionForUser(userID string) int {
 	}
 
 	var position int
-	for i, instance := range set.Ingesters {
+	for i, instance := range set.Instances {
 		if instance.Addr == am.ringLifecycler.GetInstanceAddr() {
 			position = i
 			break

@@ -72,7 +72,7 @@ type Config struct {
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
 	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"storage"`
+	StoreConfig RuleStoreConfig `yaml:"storage" doc:"description=Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 

@@ -1596,6 +1596,8 @@ ruler_client:
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m]
 
+# Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config
+# options instead.
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
   # local)

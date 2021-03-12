@@ -155,7 +155,7 @@ tenant_federation:
 
 ruler_storage:
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
-  # filesystem, configdb.
+  # filesystem, configdb, local.
   # CLI flag: -ruler-storage.backend
   [backend: <string> | default = "s3"]
 
@@ -355,6 +355,11 @@ ruler_storage:
   # alerts, and is used by the Cortex alertmanager.
   # The CLI flags prefix for this block config is: ruler-storage
   [configdb: <configstore_config>]
+
+  local:
+    # Directory to scan for rules
+    # CLI flag: -ruler-storage.local.directory
+    [directory: <string> | default = ""]
 
 # The configs_config configures the Cortex Configs DB and API.
 [configs: <configs_config>]

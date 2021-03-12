@@ -42,6 +42,9 @@ The ingesters scale down is deemed an infrequent operation and no automation is 
   - `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl=1m`
   - `-blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl=1m`
   - `-blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl=1m`
+- Allow ingester to leave the ring after shutdown
+  - `ingester.unregister-on-shutdown=true`
+  - `distributor.extend-writes=true`
 - Ingesters should be scaled down one by one:
   1. Call `/shutdown` endpoint on the ingester to shutdown
   2. Wait until the HTTP call returns successfully or "finished flushing and shipping TSDB blocks" is logged

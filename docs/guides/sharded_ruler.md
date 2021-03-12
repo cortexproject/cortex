@@ -35,8 +35,8 @@ The local implementation reads [Prometheus recording rules](https://prometheus.i
 
 A typical local config may look something like:
 ```
-  -ruler.storage.type=local
-  -ruler.storage.local.directory=/tmp/cortex/rules
+  -ruler-storage.backend=local
+  -ruler-storage.local.directory=/tmp/cortex/rules
 ```
 
 With the above configuration the ruler would expect the following layout:

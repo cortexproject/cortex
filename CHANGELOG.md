@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.0-rc.1 / 2021-03-15
+
+* [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
+
 ## 1.8.0-rc.0 / 2021-03-08
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled. #3903

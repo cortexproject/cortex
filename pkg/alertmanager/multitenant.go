@@ -885,17 +885,16 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	}
 
 	newAM, err := New(&Config{
-		UserID:             userID,
-		TenantDataDir:      tenantDir,
-		Logger:             util_log.Logger,
-		Peer:               am.peer,
-		PeerTimeout:        am.cfg.Cluster.PeerTimeout,
-		Retention:          am.cfg.Retention,
-		ExternalURL:        am.cfg.ExternalURL.URL,
-		ShardingEnabled:    am.cfg.ShardingEnabled,
-		ReplicateStateFunc: am.replicateStateForUser,
-		GetPositionFunc:    am.getPositionFor,
-		ReplicationFactor:  am.cfg.ShardingRing.ReplicationFactor,
+		UserID:            userID,
+		TenantDataDir:     tenantDir,
+		Logger:            util_log.Logger,
+		Peer:              am.peer,
+		PeerTimeout:       am.cfg.Cluster.PeerTimeout,
+		Retention:         am.cfg.Retention,
+		ExternalURL:       am.cfg.ExternalURL.URL,
+		ShardingEnabled:   am.cfg.ShardingEnabled,
+		Replicator:        am,
+		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
@@ -909,8 +908,8 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	return newAM, nil
 }
 
-// getPositionFor returns the position this Alertmanager instance holds in the ring related to its other replicas for an specific user.
-func (am *MultitenantAlertmanager) getPositionFor(userID string) int {
+// GetPositionForUser returns the position this Alertmanager instance holds in the ring related to its other replicas for an specific user.
+func (am *MultitenantAlertmanager) GetPositionForUser(userID string) int {
 	// If we have a replication factor of 1 or less we don't need to do any work and can immediately return.
 	if am.ring == nil || am.ring.ReplicationFactor() <= 1 {
 		return 0
@@ -1016,8 +1015,8 @@ func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
 	}
 }
 
-// replicateStateForUser attempts to replicate a partial state sent by an alertmanager to its other replicas through the ring.
-func (am *MultitenantAlertmanager) replicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error {
+// ReplicateStateForUser attempts to replicate a partial state sent by an alertmanager to its other replicas through the ring.
+func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error {
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
 
 	selfAddress := am.ringLifecycler.GetInstanceAddr()

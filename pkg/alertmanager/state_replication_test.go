@@ -28,6 +28,28 @@ func (s fakeState) Merge(_ []byte) error {
 	return nil
 }
 
+type fakeReplicator struct {
+	mtx     sync.Mutex
+	results map[string]*clusterpb.Part
+}
+
+func newFakeReplicator() *fakeReplicator {
+	return &fakeReplicator{
+		results: make(map[string]*clusterpb.Part),
+	}
+}
+
+func (f *fakeReplicator) ReplicateStateForUser(ctx context.Context, userID string, p *clusterpb.Part) error {
+	f.mtx.Lock()
+	f.results[userID] = p
+	f.mtx.Unlock()
+	return nil
+}
+
+func (f *fakeReplicator) GetPositionForUser(_ string) int {
+	return 0
+}
+
 func TestStateReplication(t *testing.T) {
 	tc := []struct {
 		name              string
@@ -52,21 +74,8 @@ func TestStateReplication(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			mtx := sync.Mutex{}
-			results := map[string]*clusterpb.Part{}
-
-			replicationFunc := func(ctx context.Context, userID string, p *clusterpb.Part) error {
-				mtx.Lock()
-				results[userID] = p
-				mtx.Unlock()
-				return nil
-			}
-
-			positionFunc := func(_ string) int {
-				return 0
-			}
-
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicationFunc, positionFunc, log.NewNopLogger(), reg)
+			replicator := newFakeReplicator()
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
 
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
 			t.Cleanup(func() {
@@ -81,9 +90,9 @@ func TestStateReplication(t *testing.T) {
 			ch.Broadcast(d)
 
 			require.Eventually(t, func() bool {
-				mtx.Lock()
-				defer mtx.Unlock()
-				return len(results) == len(tt.results)
+				replicator.mtx.Lock()
+				defer replicator.mtx.Unlock()
+				return len(replicator.results) == len(tt.results)
 			}, time.Second, time.Millisecond)
 
 			if tt.replicationFactor > 1 {

@@ -92,7 +92,7 @@
 * [ENHANCEMENT] Store-gateway: Reduced memory used to fetch chunks at query time. #3855
 * [ENHANCEMENT] Ingester: attempt to prevent idle compaction from happening in concurrent ingesters by introducing a 25% jitter to the configured idle timeout (`-blocks-storage.tsdb.head-compaction-idle-timeout`). #3850
 * [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
-* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenats that no longer belong to store-gateway. #3853
+* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenants that no longer belong to store-gateway. #3853
 * [ENHANCEMENT] Store-gateway: added metrics to track partitioner behaviour. #3877
   * `cortex_bucket_store_partitioner_requested_bytes_total`
   * `cortex_bucket_store_partitioner_requested_ranges_total`

@@ -387,67 +387,6 @@ func TestIngester_v2Push(t *testing.T) {
 	}
 }
 
-func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
-
-	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
-	cfg.LifecyclerConfig.JoinAfter = 0
-
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Set a wrong cached reference for the series we're going to push.
-	db, err := i.getOrCreateTSDB(userID, false)
-	require.NoError(t, err)
-	require.NotNil(t, db)
-	db.refCache.SetRef(time.Now(), metricLabels, 12345)
-
-	// Push the same series multiple times, each time with an increasing timestamp
-	for j := 1; j <= 3; j++ {
-		req := cortexpb.ToWriteRequest(
-			[]labels.Labels{metricLabels},
-			[]cortexpb.Sample{{Value: float64(j), TimestampMs: int64(j)}},
-			nil,
-			cortexpb.API)
-
-		_, err := i.v2Push(ctx, req)
-		require.NoError(t, err)
-
-		// Invalidate reference between pushes. It triggers different AddFast path.
-		// On first push, "initAppender" is used, on next pushes, "headAppender" is used.
-		// Unfortunately they return ErrNotFound differently.
-		db.refCache.SetRef(time.Now(), metricLabels, 12345)
-	}
-
-	// Read back samples to see what has been really ingested
-	res, err := i.v2Query(ctx, &client.QueryRequest{
-		StartTimestampMs: math.MinInt64,
-		EndTimestampMs:   math.MaxInt64,
-		Matchers:         []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	assert.Equal(t, []cortexpb.TimeSeries{
-		{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{
-			{Value: 1, TimestampMs: 1},
-			{Value: 2, TimestampMs: 2},
-			{Value: 3, TimestampMs: 3},
-		}},
-	}, res.Timeseries)
-}
-
 func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
 	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
@@ -604,6 +543,65 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	`
 
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
+}
+
+func BenchmarkIngesterV2Push(b *testing.B) {
+	limits := defaultLimitsTestConfig()
+	benchmarkIngesterV2Push(b, limits, false)
+}
+
+func benchmarkIngesterV2Push(b *testing.B, limits validation.Limits, errorsExpected bool) {
+	registry := prometheus.NewRegistry()
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	ingester, err := prepareIngesterWithBlocksStorage(b, cfg, registry)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
+	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return ingester.lifecycler.GetState()
+	})
+
+	// Push a single time series to set the TSDB min time.
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+	startTime := util.TimeToMillis(time.Now())
+
+	currTimeReq := cortexpb.ToWriteRequest(
+		[]labels.Labels{metricLabels},
+		[]cortexpb.Sample{{Value: 1, TimestampMs: startTime}},
+		nil,
+		cortexpb.API)
+	_, err = ingester.v2Push(ctx, currTimeReq)
+	require.NoError(b, err)
+
+	const (
+		series  = 10000
+		samples = 10
+	)
+
+	allLabels, allSamples := benchmarkData(series)
+
+	b.ResetTimer()
+	for iter := 0; iter < b.N; iter++ {
+		// Bump the timestamp on each of our test samples each time round the loop
+		for j := 0; j < samples; j++ {
+			for i := range allSamples {
+				allSamples[i].TimestampMs = startTime + int64(iter*samples+j+1)
+			}
+			_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(allLabels, allSamples, nil, cortexpb.API))
+			if !errorsExpected {
+				require.NoError(b, err)
+			}
+		}
+	}
+
 }
 
 func Benchmark_Ingester_v2PushOnError(b *testing.B) {

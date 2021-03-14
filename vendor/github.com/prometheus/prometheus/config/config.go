@@ -117,7 +117,7 @@ var (
 	DefaultAlertmanagerConfig = AlertmanagerConfig{
 		Scheme:           "http",
 		Timeout:          model.Duration(10 * time.Second),
-		APIVersion:       AlertmanagerAPIVersionV2,
+		APIVersion:       AlertmanagerAPIVersionV1,
 		HTTPClientConfig: config.DefaultHTTPClientConfig,
 	}
 

@@ -2997,52 +2997,6 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	require.Equal(t, 11, len(db.Blocks()))
 }
 
-func TestIngesterCacheUpdatesOnRefChange(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
-	cfg.LifecyclerConfig.JoinAfter = 0
-
-	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
-	require.NoError(t, err)
-
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	t.Cleanup(func() {
-		_ = services.StopAndAwaitTerminated(context.Background(), i)
-	})
-
-	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Push a sample, verify that the labels are in ref-cache.
-	// Compact the head to remove the labels from HEAD but they will still exist in ref-cache.
-	// Push again to make the ref change and verify the refCache is updated in this case.
-
-	pushSingleSampleAtTime(t, i, 10)
-
-	db := i.getTSDB(userID)
-	require.NotNil(t, db)
-
-	startAppend := time.Now()
-	l := labels.Labels{{Name: labels.MetricName, Value: "test"}}
-	cachedRef, _, cachedRefExists := db.refCache.Ref(startAppend, l)
-	require.True(t, cachedRefExists)
-	require.Equal(t, uint64(1), cachedRef)
-
-	// Compact to remove the series from HEAD.
-	i.compactBlocks(context.Background(), true)
-	cachedRef, _, cachedRefExists = db.refCache.Ref(startAppend, l)
-	require.True(t, cachedRefExists)
-	require.Equal(t, uint64(1), cachedRef)
-
-	// New sample to create a new ref.
-	pushSingleSampleAtTime(t, i, 11)
-	cachedRef, _, cachedRefExists = db.refCache.Ref(startAppend, l)
-	require.True(t, cachedRefExists)
-	require.Equal(t, uint64(2), cachedRef)
-}
-
 func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	cfg := defaultIngesterTestConfig()
 	cfg.LifecyclerConfig.JoinAfter = 0

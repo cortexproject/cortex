@@ -5,12 +5,18 @@
 * [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
 * [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. Support for this migration will be removed in Cortex 1.11. #3910
 * [CHANGE] Ruler: deprecated `-ruler.storage.*` CLI flags (and their respective YAML config options) in favour of `-ruler-storage.*`. The deprecated config will be removed in Cortex 1.11. #3944
+* [CHANGE] Alertmanager: removed `-cluster.` CLI flags deprecated in Cortex 1.7. The new config options to use are: #3946
+  * `-alertmanager.cluster.listen-address` instead of `-cluster.listen-address`
+  * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
+  * `-alertmanager.cluster.peers` instead of `-cluster.peer`
+  * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
   * `cortex_ruler_clients`
   * `cortex_ruler_client_request_duration_seconds`
 * [ENHANCEMENT] Query-frontend/scheduler: added querier forget delay (`-query-frontend.querier-forget-delay` and `-query-scheduler.querier-forget-delay`) to mitigate the blast radius in the event queriers crash because of a repeatedly sent "query of death" when shuffle-sharding is enabled. #3901
+* [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 
 ## 1.8.0 in progress
 
@@ -92,7 +98,7 @@
 * [ENHANCEMENT] Store-gateway: Reduced memory used to fetch chunks at query time. #3855
 * [ENHANCEMENT] Ingester: attempt to prevent idle compaction from happening in concurrent ingesters by introducing a 25% jitter to the configured idle timeout (`-blocks-storage.tsdb.head-compaction-idle-timeout`). #3850
 * [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
-* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenats that no longer belong to store-gateway. #3853
+* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenants that no longer belong to store-gateway. #3853
 * [ENHANCEMENT] Store-gateway: added metrics to track partitioner behaviour. #3877
   * `cortex_bucket_store_partitioner_requested_bytes_total`
   * `cortex_bucket_store_partitioner_requested_ranges_total`

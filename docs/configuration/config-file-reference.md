@@ -1997,22 +1997,6 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
-# Deprecated. Use -alertmanager.cluster.listen-address instead.
-# CLI flag: -cluster.listen-address
-[cluster_bind_address: <string> | default = "0.0.0.0:9094"]
-
-# Deprecated. Use -alertmanager.cluster.advertise-address instead.
-# CLI flag: -cluster.advertise-address
-[cluster_advertise_address: <string> | default = ""]
-
-# Deprecated. Use -alertmanager.cluster.peers instead.
-# CLI flag: -cluster.peer
-[peers: <list of string> | default = []]
-
-# Deprecated. Use -alertmanager.cluster.peer-timeout instead.
-# CLI flag: -cluster.peer-timeout
-[peer_timeout: <duration> | default = 15s]
-
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
 [sharding_enabled: <boolean> | default = false]

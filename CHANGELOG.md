@@ -4,6 +4,11 @@
 
 * [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
 * [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. Support for this migration will be removed in Cortex 1.10. #3910
+* [CHANGE] Alertmanager: removed `-cluster.` CLI flags deprecated in Cortex 1.7. The new config options to use are: #3946
+  * `-alertmanager.cluster.listen-address` instead of `-cluster.listen-address`
+  * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
+  * `-alertmanager.cluster.peers` instead of `-cluster.peer`
+  * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
 * [FEATURE] Ruler Storage: Added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916

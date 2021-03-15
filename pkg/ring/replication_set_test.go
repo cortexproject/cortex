@@ -22,7 +22,7 @@ func TestReplicationSet_GetAddresses(t *testing.T) {
 		},
 		"should return instances addresses (no order guaranteed)": {
 			rs: ReplicationSet{
-				Ingesters: []InstanceDesc{
+				Instances: []InstanceDesc{
 					{Addr: "127.0.0.1"},
 					{Addr: "127.0.0.2"},
 					{Addr: "127.0.0.3"},
@@ -177,7 +177,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			require.False(t, tt.maxErrors > 0 && tt.maxUnavailableZones > 0)
 
 			r := ReplicationSet{
-				Ingesters:           tt.instances,
+				Instances:           tt.instances,
 				MaxErrors:           tt.maxErrors,
 				MaxUnavailableZones: tt.maxUnavailableZones,
 			}

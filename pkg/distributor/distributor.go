@@ -587,8 +587,7 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 	}
 
 	totalN := validatedSamples + len(validatedMetadata)
-	rateOK, rateReservation := d.ingestionRateLimiter.AllowN(now, userID, totalN)
-	if !rateOK {
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		ingester_client.ReuseSlice(req.Timeseries)
 
@@ -640,8 +639,6 @@ func (d *Distributor) Push(ctx context.Context, req *ingester_client.WriteReques
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
 	}, func() { ingester_client.ReuseSlice(req.Timeseries) })
 	if err != nil {
-		// Ingestion failed, so roll-back the reservation from the rate limiter.
-		rateReservation.CancelAt(now)
 		return nil, err
 	}
 	return &ingester_client.WriteResponse{}, firstPartialErr

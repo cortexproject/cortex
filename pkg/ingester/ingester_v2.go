@@ -741,10 +741,16 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 			// If the cached reference exists, we try to use it.
 			if cachedRefExists {
-				if _, err = app.Append(cachedRef, copiedLabels, s.TimestampMs, s.Value); err == nil {
+				var ref uint64
+				if ref, err = app.Append(cachedRef, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
+					// This means the reference changes which means we need to update our cache.
+					if ref != cachedRef {
+						db.refCache.SetRef(startAppend, copiedLabels, ref)
+					}
 					continue
 				}
+
 			} else {
 				var ref uint64
 
@@ -753,8 +759,6 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					db.refCache.SetRef(startAppend, copiedLabels, ref)
-					cachedRef = ref
-					cachedRefExists = true
 
 					succeededSamplesCount++
 					continue

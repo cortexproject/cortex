@@ -467,7 +467,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 }
 
 // migrateStateFilesToPerTenantDirectories migrates any existing configuration from old place to new hierarchy.
-// TODO: Remove in Cortex 1.10.
+// TODO: Remove in Cortex 1.11.
 func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
 	migrate := func(from, to string) error {
 		level.Info(am.logger).Log("msg", "migrating alertmanager state", "from", from, "to", to)

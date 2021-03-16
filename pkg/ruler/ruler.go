@@ -811,7 +811,7 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 	w.WriteHeader(http.StatusOK)
 }
 
-func (r *Ruler) ListAllUserRules(w http.ResponseWriter, req *http.Request) {
+func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
 	level.Debug(logger).Log("msg", "retrieving all rule groups")

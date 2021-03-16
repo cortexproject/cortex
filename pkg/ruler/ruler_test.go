@@ -722,10 +722,10 @@ func TestRuler_ListAllRules(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	router := mux.NewRouter()
-	router.Path("/ruler/rule_groups").Methods(http.MethodGet).HandlerFunc(r.ListAllUserRules)
+	router.Path("/ruler/rule_groups").Methods(http.MethodGet).HandlerFunc(r.ListAllRules)
 
 	// Verify namespace1 rules are there.
-	req := requestFor(t, http.MethodGet, "https://localhost:8080/ruler/rules", nil, "")
+	req := requestFor(t, http.MethodGet, "https://localhost:8080/ruler/rule_groups", nil, "")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

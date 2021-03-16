@@ -279,7 +279,7 @@ receivers:
 	require.NoError(t, err)
 
 	router := mux.NewRouter()
-	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListUserConfigs)
+	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListAllConfigs)
 	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", "https://localhost:8080/multitenant_alertmanager/configs", nil)
 	w := httptest.NewRecorder()
@@ -287,7 +287,6 @@ receivers:
 
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
 	body, _ := ioutil.ReadAll(resp.Body)
 	old, _ := yaml.Marshal(testCases)
 	require.Equal(t, string(old), string(body))

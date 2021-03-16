@@ -98,6 +98,28 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
+// StreamWriteYAMLResponse stream writes data as http response
+func StreamWriteYAMLResponse(w http.ResponseWriter, ch <-chan interface{}) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "expected http.ResponseWriter to be an http.Flusher", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the initial headers saying we're gonna stream the response.
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Content-Type", "text/yaml")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	enc := yaml.NewEncoder(w)
+
+	for m := range ch {
+		_ = enc.Encode(m)
+		flusher.Flush()
+	}
+}
+
 // CompressionType for encoding and decoding requests and responses.
 type CompressionType int
 

@@ -187,7 +187,7 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	return nil
 }
 
-func (am *MultitenantAlertmanager) ListUserConfigs(w http.ResponseWriter, r *http.Request) {
+func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
 	userIDs, err := am.store.ListAllUsers(r.Context())
 	if err != nil {

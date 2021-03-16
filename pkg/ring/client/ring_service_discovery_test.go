@@ -26,13 +26,13 @@ func TestNewRingServiceDiscovery(t *testing.T) {
 		},
 		"empty replication set": {
 			ringReplicationSet: ring.ReplicationSet{
-				Ingesters: []ring.InstanceDesc{},
+				Instances: []ring.InstanceDesc{},
 			},
 			expectedAddrs: nil,
 		},
 		"replication containing some endpoints": {
 			ringReplicationSet: ring.ReplicationSet{
-				Ingesters: []ring.InstanceDesc{
+				Instances: []ring.InstanceDesc{
 					{Addr: "1.1.1.1"},
 					{Addr: "2.2.2.2"},
 				},

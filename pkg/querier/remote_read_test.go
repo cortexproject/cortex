@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 )
@@ -66,12 +67,12 @@ func TestRemoteReadHandler(t *testing.T) {
 	expected := client.ReadResponse{
 		Results: []*client.QueryResponse{
 			{
-				Timeseries: []client.TimeSeries{
+				Timeseries: []cortexpb.TimeSeries{
 					{
-						Labels: []client.LabelAdapter{
+						Labels: []cortexpb.LabelAdapter{
 							{Name: "foo", Value: "bar"},
 						},
-						Samples: []client.Sample{
+						Samples: []cortexpb.Sample{
 							{Value: 0, TimestampMs: 0},
 							{Value: 1, TimestampMs: 1},
 							{Value: 2, TimestampMs: 2},

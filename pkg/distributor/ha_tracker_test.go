@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -467,11 +467,11 @@ func TestFindHALabels(t *testing.T) {
 		replica string
 	}
 	cases := []struct {
-		labelsIn []client.LabelAdapter
+		labelsIn []cortexpb.LabelAdapter
 		expected expectedOutput
 	}{
 		{
-			[]client.LabelAdapter{
+			[]cortexpb.LabelAdapter{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -480,7 +480,7 @@ func TestFindHALabels(t *testing.T) {
 			expectedOutput{cluster: "", replica: "1"},
 		},
 		{
-			[]client.LabelAdapter{
+			[]cortexpb.LabelAdapter{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},
@@ -489,7 +489,7 @@ func TestFindHALabels(t *testing.T) {
 			expectedOutput{cluster: "cluster-2", replica: ""},
 		},
 		{
-			[]client.LabelAdapter{
+			[]cortexpb.LabelAdapter{
 				{Name: "__name__", Value: "foo"},
 				{Name: "bar", Value: "baz"},
 				{Name: "sample", Value: "1"},

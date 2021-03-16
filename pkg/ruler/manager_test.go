@@ -16,7 +16,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -32,7 +31,7 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	const user = "testUser"
 
-	userRules := map[string]rulestore.RuleGroupList{
+	userRules := map[string]rulespb.RuleGroupList{
 		user: {
 			&rulespb.RuleGroupDesc{
 				Name:      "group1",

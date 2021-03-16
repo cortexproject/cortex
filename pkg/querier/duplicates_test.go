@@ -13,18 +13,18 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestDuplicatesSamples(t *testing.T) {
-	ts := client.TimeSeries{
-		Labels: []client.LabelAdapter{
+	ts := cortexpb.TimeSeries{
+		Labels: []cortexpb.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
 			},
 		},
-		Samples: []client.Sample{
+		Samples: []cortexpb.Sample{
 			{Value: 0.948569891, TimestampMs: 1583946731937},
 			{Value: 0.948569891, TimestampMs: 1583946731937},
 			{Value: 0.949927461, TimestampMs: 1583946751878},
@@ -54,8 +54,8 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 
 	// run same query, but with deduplicated samples
-	deduped := client.TimeSeries{
-		Labels: []client.LabelAdapter{
+	deduped := cortexpb.TimeSeries{
+		Labels: []cortexpb.LabelAdapter{
 			{
 				Name:  "lbl",
 				Value: "val",
@@ -70,8 +70,8 @@ func TestDuplicatesSamples(t *testing.T) {
 	}
 }
 
-func dedupeSorted(samples []client.Sample) []client.Sample {
-	out := []client.Sample(nil)
+func dedupeSorted(samples []cortexpb.Sample) []cortexpb.Sample {
+	out := []cortexpb.Sample(nil)
 	lastTs := int64(0)
 	for _, s := range samples {
 		if s.TimestampMs == lastTs {
@@ -84,8 +84,8 @@ func dedupeSorted(samples []client.Sample) []client.Sample {
 	return out
 }
 
-func runPromQLAndGetJSONResult(t *testing.T, query string, ts client.TimeSeries, step time.Duration) string {
-	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]client.TimeSeries{ts})}
+func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSeries, step time.Duration) string {
+	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]cortexpb.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:     log.NewNopLogger(),

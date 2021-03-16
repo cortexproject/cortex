@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -81,6 +82,11 @@ var (
 			name:       "ruler_config",
 			structType: reflect.TypeOf(ruler.Config{}),
 			desc:       "The ruler_config configures the Cortex ruler.",
+		},
+		{
+			name:       "ruler_storage_config",
+			structType: reflect.TypeOf(rulestore.Config{}),
+			desc:       "The ruler_storage_config configures the Cortex ruler storage backend.",
 		},
 		{
 			name:       "alertmanager_config",

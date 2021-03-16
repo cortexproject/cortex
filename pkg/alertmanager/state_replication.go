@@ -106,8 +106,8 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 	s.stateReplicationFailed.WithLabelValues(key)
 
 	return &stateChannel{
-		msgc: s.msgc,
-		key:  key,
+		s:   s,
+		key: key,
 	}
 }
 
@@ -242,14 +242,21 @@ func (s *state) running(ctx context.Context) error {
 	}
 }
 
+func (s *state) broadcast(key string, b []byte) {
+	// We should ignore the Merges into the initial state during settling.
+	if s.Ready() {
+		s.msgc <- &clusterpb.Part{Key: key, Data: b}
+	}
+}
+
 // stateChannel allows a state publisher to send messages that will be broadcasted to all other alertmanagers that a tenant
 // belongs to.
 type stateChannel struct {
-	msgc chan *clusterpb.Part
-	key  string
+	s   *state
+	key string
 }
 
 // Broadcast receives a message to be replicated by the state.
 func (c *stateChannel) Broadcast(b []byte) {
-	c.msgc <- &clusterpb.Part{Key: c.key, Data: b}
+	c.s.broadcast(c.key, b)
 }

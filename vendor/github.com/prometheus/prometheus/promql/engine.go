@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -1125,6 +1126,10 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 	}
 	numSteps := int((ev.endTimestamp-ev.startTimestamp)/ev.interval) + 1
 
+	// Create a new span to help investigate inner evaluation performances.
+	span, _ := opentracing.StartSpanFromContext(ev.ctx, stats.InnerEvalTime.SpanOperation()+" eval "+reflect.TypeOf(expr).String())
+	defer span.Finish()
+
 	switch e := expr.(type) {
 	case *parser.AggregateExpr:
 		unwrapParenExpr(&e.Param)
@@ -1411,7 +1416,7 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, storage.Warnings) {
 			ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 		}
 		mat := make(Matrix, 0, len(e.Series))
-		it := storage.NewBuffer(durationMilliseconds(ev.lookbackDelta))
+		it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
 		for i, s := range e.Series {
 			it.Reset(s.Iterator())
 			ss := Series{
@@ -1542,7 +1547,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 		ev.error(errWithWarnings{errors.Wrap(err, "expanding series"), ws})
 	}
 	vec := make(Vector, 0, len(node.Series))
-	it := storage.NewBuffer(durationMilliseconds(ev.lookbackDelta))
+	it := storage.NewMemoizedEmptyIterator(durationMilliseconds(ev.lookbackDelta))
 	for i, s := range node.Series {
 		it.Reset(s.Iterator())
 
@@ -1564,7 +1569,7 @@ func (ev *evaluator) vectorSelector(node *parser.VectorSelector, ts int64) (Vect
 }
 
 // vectorSelectorSingle evaluates a instant vector for the iterator of one time series.
-func (ev *evaluator) vectorSelectorSingle(it *storage.BufferedSeriesIterator, node *parser.VectorSelector, ts int64) (int64, float64, bool) {
+func (ev *evaluator) vectorSelectorSingle(it *storage.MemoizedSeriesIterator, node *parser.VectorSelector, ts int64) (int64, float64, bool) {
 	refTime := ts - durationMilliseconds(node.Offset)
 	var t int64
 	var v float64
@@ -1581,7 +1586,7 @@ func (ev *evaluator) vectorSelectorSingle(it *storage.BufferedSeriesIterator, no
 	}
 
 	if !ok || t > refTime {
-		t, v, ok = it.PeekBack(1)
+		t, v, ok = it.PeekPrev()
 		if !ok || t < refTime-durationMilliseconds(ev.lookbackDelta) {
 			return 0, 0, false
 		}

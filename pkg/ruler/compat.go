@@ -31,7 +31,7 @@ type pusherAppender struct {
 	evaluationDelay time.Duration
 }
 
-func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error) {
+func (a *pusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (uint64, error) {
 	a.labels = append(a.labels, l)
 
 	// Adapt staleness markers for ruler evaluation delay. As the upstream code
@@ -48,10 +48,6 @@ func (a *pusherAppender) Add(l labels.Labels, t int64, v float64) (uint64, error
 		Value:       v,
 	})
 	return 0, nil
-}
-
-func (a *pusherAppender) AddFast(_ uint64, _ int64, _ float64) error {
-	return storage.ErrNotFound
 }
 
 func (a *pusherAppender) Commit() error {

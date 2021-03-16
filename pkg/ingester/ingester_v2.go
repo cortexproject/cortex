@@ -727,15 +727,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx)
 	for _, ts := range req.Timeseries {
-		// Keeps a reference to labels copy, if it was needed. This is to avoid making a copy twice,
-		// once for TSDB/refcache, and second time for activeSeries map.
-		var copiedLabels []labels.Label
-
 		// Check if we already have a cached reference for this series. Be aware
 		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
-		cachedRef, cachedRefExists := db.refCache.Ref(startAppend, cortexpb.FromLabelAdaptersToLabels(ts.Labels))
+		cachedRef, copiedLabels, cachedRefExists := db.refCache.Ref(startAppend, cortexpb.FromLabelAdaptersToLabels(ts.Labels))
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -745,26 +741,26 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 			// If the cached reference exists, we try to use it.
 			if cachedRefExists {
-				if err = app.AddFast(cachedRef, s.TimestampMs, s.Value); err == nil {
+				var ref uint64
+				if ref, err = app.Append(cachedRef, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
+					// This means the reference changes which means we need to update our cache.
+					if ref != cachedRef {
+						db.refCache.SetRef(startAppend, copiedLabels, ref)
+					}
 					continue
 				}
 
-				if errors.Cause(err) == storage.ErrNotFound {
-					cachedRefExists = false
-					err = nil
-				}
-			}
-
-			// If the cached reference doesn't exist, we (re)try without using the reference.
-			if !cachedRefExists {
+			} else {
 				var ref uint64
 
 				// Copy the label set because both TSDB and the cache may retain it.
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
-				if ref, err = app.Add(copiedLabels, s.TimestampMs, s.Value); err == nil {
+				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					db.refCache.SetRef(startAppend, copiedLabels, ref)
+
+					// Set these in case there are multiple samples for the series.
 					cachedRef = ref
 					cachedRefExists = true
 

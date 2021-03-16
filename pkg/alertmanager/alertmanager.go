@@ -161,13 +161,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
-
-		if err := state.Service.StartAsync(context.Background()); err != nil {
-			return nil, errors.Wrap(err, "failed to start ring-based replication service")
-		}
-
-		am.state = state
+		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -204,6 +198,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 	am.silences.SetBroadcast(c.Broadcast)
+
+	// State replication needs to be started after the state keys are defined.
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
+	}
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 

@@ -760,6 +760,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					db.refCache.SetRef(startAppend, copiedLabels, ref)
 
+					// Set these in case there are multiple samples for the series.
+					cachedRef = ref
+					cachedRefExists = true
+
 					succeededSamplesCount++
 					continue
 				}

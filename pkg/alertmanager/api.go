@@ -8,13 +8,14 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -31,6 +32,8 @@ const (
 	errDeletingConfiguration = "unable to delete the Alertmanager config"
 	errNoOrgID               = "unable to determine the OrgID"
 	errListAllUser           = "unable to list the Alertmanager users"
+
+	fetchConcurrency = 16
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -200,32 +203,39 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 		return
 	}
 
-	ch := make(chan interface{})
-	iter := util.NewRespIter(ch)
-	defer iter.Close()
+	done := make(chan struct{})
+	iter := util.NewRespIter(make(chan []byte))
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter)
+		util.StreamWriteResponse(w, iter, "text/yaml")
+		done <- struct{}{}
 	}()
 
-	err = concurrency.ForEachUser(r.Context(), userIDs, 16, func(ctx context.Context, userID string) error {
+	err = concurrency.ForEachUser(r.Context(), userIDs, fetchConcurrency, func(ctx context.Context, userID string) error {
 		cfg, err := am.store.GetAlertConfig(ctx, userID)
 		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
 			return nil
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
 		}
-
-		ch <- map[string]*UserConfig{
+		cfgMap := map[string]*UserConfig{
 			userID: {
 				TemplateFiles:      alertspb.ParseTemplates(cfg),
 				AlertmanagerConfig: cfg.RawConfig,
 			},
 		}
+		data, err := yaml.Marshal(cfgMap)
+		if err != nil {
+			return err
+		}
+
+		iter.Put(data)
 
 		return nil
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
 	}
+	iter.Close()
+	<-done
 }

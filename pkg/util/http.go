@@ -105,24 +105,29 @@ type RespIterator interface {
 	Close()
 	// Next returns a channel that will be closed once the iterator is
 	// exhausted.
-	Next() <-chan interface{}
+	Next() <-chan []byte
+	// Put input a new item to iterator
+	Put(v []byte)
 }
 
 type respIter struct {
-	ch chan interface{}
+	ch chan []byte
 }
 
 // NewRespIter returns a new streamResp
-func NewRespIter(ch chan interface{}) RespIterator {
+func NewRespIter(ch chan []byte) RespIterator {
 	return &respIter{ch: ch}
 }
-func (it respIter) Next() <-chan interface{} {
+func (it respIter) Next() <-chan []byte {
 	return it.ch
 }
 func (it respIter) Close() { close(it.ch) }
+func (it respIter) Put(v []byte) {
+	it.ch <- v
+}
 
-// StreamWriteYAMLResponse stream writes data as http response
-func StreamWriteYAMLResponse(w http.ResponseWriter, iter RespIterator) {
+// StreamWriteResponse stream writes data as http response
+func StreamWriteResponse(w http.ResponseWriter, iter RespIterator, contentType string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "expected http.ResponseWriter to be an http.Flusher", http.StatusInternalServerError)
@@ -131,14 +136,12 @@ func StreamWriteYAMLResponse(w http.ResponseWriter, iter RespIterator) {
 
 	// Send the initial headers saying we're gonna stream the response.
 	w.Header().Set("Transfer-Encoding", "chunked")
-	w.Header().Set("Content-Type", "text/yaml")
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	enc := yaml.NewEncoder(w)
-
 	for m := range iter.Next() {
-		_ = enc.Encode(m)
+		_, _ = w.Write(m)
 		flusher.Flush()
 	}
 }

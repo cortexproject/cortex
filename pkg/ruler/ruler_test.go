@@ -742,6 +742,5 @@ func TestRuler_ListAllRules(t *testing.T) {
 		gs[userID] = mockRules[userID].Formatted()
 	}
 	expectedResponse, _ := yaml.Marshal(gs)
-	bodyStr := strings.ReplaceAll(string(body), "---\n", "") // delete ---\n
-	require.Equal(t, string(expectedResponse), bodyStr)
+	require.YAMLEq(t, string(expectedResponse), string(body))
 }

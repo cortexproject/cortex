@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -825,12 +826,13 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	ch := make(chan interface{})
-	iter := util.NewRespIter(ch)
-	defer iter.Close()
+
+	done := make(chan struct{})
+	iter := util.NewRespIter(make(chan []byte))
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter)
+		util.StreamWriteResponse(w, iter, "text/yaml")
+		done <- struct{}{}
 	}()
 
 	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
@@ -840,14 +842,19 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
-		rgMap := make(map[string]map[string][]rulefmt.RuleGroup, 1)
-		rgMap[userID] = rg.Formatted()
+		rgMap := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}
+		data, err := yaml.Marshal(rgMap)
+		if err != nil {
+			return err
+		}
 
-		ch <- rgMap
+		iter.Put(data)
 
 		return nil
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
 	}
+	iter.Close()
+	<-done
 }

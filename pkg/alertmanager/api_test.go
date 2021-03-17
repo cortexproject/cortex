@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -291,7 +290,7 @@ receivers:
 	require.Equal(t, "text/yaml", resp.Header.Get("Content-Type"))
 	body, _ := ioutil.ReadAll(resp.Body)
 	old, _ := yaml.Marshal(testCases)
-	require.Equal(t, string(old), strings.ReplaceAll(string(body), "---\n", ""))
+	require.YAMLEq(t, string(old), string(body))
 
 	// It succeeds and the Alertmanager is started
 	require.Len(t, am.alertmanagers, 2)

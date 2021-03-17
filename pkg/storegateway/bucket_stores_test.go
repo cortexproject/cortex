@@ -353,7 +353,7 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 
 	app := db.Appender(context.Background())
 	for ts := minT; ts < maxT; ts += int64(step) {
-		_, err = app.Add(series, ts, 1)
+		_, err = app.Append(0, series, ts, 1)
 		require.NoError(t, err)
 	}
 	require.NoError(t, app.Commit())

@@ -196,7 +196,7 @@ func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time
 	chunkStartTs := mint
 	ts := chunkStartTs
 	for i := 0; i < samples; i++ {
-		_, err := app.Add(l, int64(ts), float64(ts))
+		_, err := app.Append(0, l, int64(ts), float64(ts))
 		require.NoError(t, err)
 		cnt++
 

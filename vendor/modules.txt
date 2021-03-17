@@ -237,7 +237,7 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/empty
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
-# github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
+# github.com/golang/snappy v0.0.3
 ## explicit
 github.com/golang/snappy
 # github.com/gomodule/redigo v2.0.0+incompatible
@@ -469,7 +469,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4
+# github.com/prometheus/prometheus v1.8.2-0.20210315220929-1cba1741828b
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

@@ -5,6 +5,7 @@ import (
 	"context"
 	"html/template"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,6 +83,64 @@ func TestWriteTextResponse(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 	assert.Equal(t, "hello world", w.Body.String())
 	assert.Equal(t, "text/plain", w.Header().Get("Content-Type"))
+}
+
+type iter struct {
+	ch chan interface{}
+}
+
+func (it iter) Next() <-chan interface{} {
+	return it.ch
+}
+func (it iter) Close() { close(it.ch) }
+
+func TestStreamWriteYAMLResponse(t *testing.T) {
+	type testStruct struct {
+		Name  string `yaml:"name"`
+		Value int    `yaml:"value"`
+	}
+	expected := `---
+xxx:
+  name: testName
+  value: 42
+`
+	tt := struct {
+		name                string
+		headers             map[string]string
+		expectedOutput      string
+		expectedContentType string
+		value               []testStruct
+	}{
+		name: "Test Stream Render YAML",
+		headers: map[string]string{
+			"Content-Type": "text/yaml",
+		},
+		expectedContentType: "text/yaml",
+	}
+	for i := 0; i < rand.Intn(100); i++ {
+		tt.value = append(tt.value, testStruct{
+			Name:  "testName",
+			Value: 42,
+		})
+		tt.expectedOutput += expected
+	}
+	tt.expectedOutput = tt.expectedOutput[4:] // delete first ---\n
+
+	testIter := iter{ch: make(chan interface{})}
+	t.Run(tt.name, func(t *testing.T) {
+		writer := httptest.NewRecorder()
+		go func() {
+			for _, val := range tt.value {
+				testIter.ch <- map[string]*testStruct{"xxx": &val}
+			}
+			testIter.Close()
+		}()
+		util.StreamWriteYAMLResponse(writer, testIter)
+
+		assert.Equal(t, tt.expectedContentType, writer.Header().Get("Content-Type"))
+		assert.Equal(t, 200, writer.Code)
+		assert.Equal(t, tt.expectedOutput, writer.Body.String())
+	})
 }
 
 func TestParseProtoReader(t *testing.T) {

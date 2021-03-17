@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -734,7 +734,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 
 	// Check status code and header
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
+	require.Equal(t, "text/yaml", resp.Header.Get("Content-Type"))
 
 	// Testing the running rules for user1 in the mock store
 	gs := make(map[string]map[string][]rulefmt.RuleGroup) // user:namespace:[]rulefmt.RuleGroup
@@ -742,5 +742,6 @@ func TestRuler_ListAllRules(t *testing.T) {
 		gs[userID] = mockRules[userID].Formatted()
 	}
 	expectedResponse, _ := yaml.Marshal(gs)
-	require.Equal(t, string(expectedResponse), string(body))
+	bodyStr := strings.ReplaceAll(string(body), "---\n", "") // delete ---\n
+	require.Equal(t, string(expectedResponse), bodyStr)
 }

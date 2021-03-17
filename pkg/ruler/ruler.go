@@ -24,6 +24,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
@@ -50,7 +51,8 @@ var (
 
 const (
 	// Number of concurrent group list and group loads operations.
-	loadRulesConcurrency = 10
+	loadRulesConcurrency  = 10
+	fetchRulesConcurrency = 16
 
 	rulerSyncReasonInitial    = "initial"
 	rulerSyncReasonPeriodic   = "periodic"
@@ -59,6 +61,9 @@ const (
 	// Limit errors
 	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit: %d actual: %d) exceeded"
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
+
+	// errors
+	errListAllUser = "unable to list the ruler users"
 )
 
 // Config is the configuration for the recording rules server.
@@ -814,24 +819,35 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	level.Debug(logger).Log("msg", "retrieving all rule groups")
-	rgs, err := r.store.ListAllRuleGroups(req.Context())
+	userIDs, err := r.store.ListAllUsers(req.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		level.Error(logger).Log("msg", errListAllUser, "err", err)
+		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
 		return
 	}
+	ch := make(chan interface{})
+	iter := util.NewRespIter(ch)
+	defer iter.Close()
 
-	level.Debug(logger).Log("msg", "retrieved all rule groups from rule store", len(rgs))
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter)
+	}()
 
-	if len(rgs) == 0 {
-		level.Info(logger).Log("msg", "no rule groups found")
-		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
-		return
+	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
+		rg, err := r.store.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			return nil
+		} else if err != nil {
+			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
+		}
+		rgMap := make(map[string]map[string][]rulefmt.RuleGroup, 1)
+		rgMap[userID] = rg.Formatted()
+
+		ch <- rgMap
+
+		return nil
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
 	}
-
-	gs := make(map[string]map[string][]rulefmt.RuleGroup, len(rgs)) // user:namespace:[]rulefmt.RuleGroup
-	for userID := range rgs {
-		gs[userID] = rgs[userID].Formatted()
-	}
-	marshalAndSend(gs, w, logger)
 }

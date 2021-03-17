@@ -98,8 +98,31 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
+// RespIterator is a iterator for stream http response
+type RespIterator interface {
+	// Close must be called to release resources once the iterator is not
+	// used anymore.
+	Close()
+	// Next returns a channel that will be closed once the iterator is
+	// exhausted.
+	Next() <-chan interface{}
+}
+
+type respIter struct {
+	ch chan interface{}
+}
+
+// NewRespIter returns a new streamResp
+func NewRespIter(ch chan interface{}) RespIterator {
+	return &respIter{ch: ch}
+}
+func (it respIter) Next() <-chan interface{} {
+	return it.ch
+}
+func (it respIter) Close() { close(it.ch) }
+
 // StreamWriteYAMLResponse stream writes data as http response
-func StreamWriteYAMLResponse(w http.ResponseWriter, ch <-chan interface{}) {
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter RespIterator) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "expected http.ResponseWriter to be an http.Flusher", http.StatusInternalServerError)
@@ -114,7 +137,7 @@ func StreamWriteYAMLResponse(w http.ResponseWriter, ch <-chan interface{}) {
 
 	enc := yaml.NewEncoder(w)
 
-	for m := range ch {
+	for m := range iter.Next() {
 		_ = enc.Encode(m)
 		flusher.Flush()
 	}

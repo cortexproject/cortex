@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -8,9 +9,12 @@ import (
 	"path/filepath"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/pkg/errors"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -195,22 +199,33 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 		http.Error(w, fmt.Sprintf("%s: %s", errListAllUser, err.Error()), http.StatusInternalServerError)
 		return
 	}
-	cfgMap, err := am.store.GetAlertConfigs(r.Context(), userIDs)
-	if err != nil {
-		if err == alertspb.ErrNotFound {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-	userConfigMap := make(map[string]*UserConfig, len(userIDs))
-	for userID, cfg := range cfgMap {
-		userConfigMap[userID] = &UserConfig{
-			TemplateFiles:      alertspb.ParseTemplates(cfg),
-			AlertmanagerConfig: cfg.RawConfig,
-		}
-	}
 
-	util.WriteYAMLResponse(w, userConfigMap)
+	ch := make(chan interface{})
+	iter := util.NewRespIter(ch)
+	defer iter.Close()
+
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter)
+	}()
+
+	err = concurrency.ForEachUser(r.Context(), userIDs, 16, func(ctx context.Context, userID string) error {
+		cfg, err := am.store.GetAlertConfig(ctx, userID)
+		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+			return nil
+		} else if err != nil {
+			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
+		}
+
+		ch <- map[string]*UserConfig{
+			userID: {
+				TemplateFiles:      alertspb.ParseTemplates(cfg),
+				AlertmanagerConfig: cfg.RawConfig,
+			},
+		}
+
+		return nil
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
+	}
 }

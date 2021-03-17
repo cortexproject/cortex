@@ -23,6 +23,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	namespace1 := "ns"
 	namespace2 := "z-another" // This test relies on the fact that ioutil.ReadDir() returns files sorted by name.
+	namespace3 := "third-ns"
 
 	dir, err := ioutil.TempDir("", "")
 	require.NoError(t, err)
@@ -84,5 +85,69 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 		// We rely on the fact that files are parsed in alphabetical order, and our namespace1 < namespace2.
 		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
 		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
+
+		group, err := client.GetRuleGroup(ctx, u, namespace1, ruleGroups.Groups[0].Name)
+		require.NoError(t, err)
+		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), group)
+
+		group, err = client.GetRuleGroup(ctx, u, namespace2, ruleGroups.Groups[0].Name)
+		require.NoError(t, err)
+		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), group)
 	}
+
+	ruleGroups.Groups = append(ruleGroups.Groups, rulefmt.RuleGroup{
+		Name:     "rule2",
+		Interval: model.Duration(100 * time.Second),
+		Rules: []rulefmt.RuleNode{
+			{
+				Record: yaml.Node{Kind: yaml.ScalarNode, Value: "test_rule"},
+				Expr:   yaml.Node{Kind: yaml.ScalarNode, Value: "up"},
+			},
+		},
+	},
+	)
+
+	err = client.SetRuleGroup(ctx, user1, namespace3, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[0]))
+	require.NoError(t, err)
+
+	err = client.SetRuleGroup(ctx, user1, namespace3, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[1]))
+	require.NoError(t, err)
+
+	group, err := client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
+	require.NoError(t, err)
+	require.Equal(t, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[0]), group)
+
+	group, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[1].Name)
+	require.NoError(t, err)
+	require.Equal(t, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[1]), group)
+
+	ruleGroups.Groups[1] = rulefmt.RuleGroup{
+		Name:     "rule2",
+		Interval: model.Duration(99 * time.Second),
+		Rules: []rulefmt.RuleNode{
+			{
+				Record: yaml.Node{Kind: yaml.ScalarNode, Value: "real_rule"},
+				Expr:   yaml.Node{Kind: yaml.ScalarNode, Value: "down"},
+			},
+		},
+	}
+
+	err = client.SetRuleGroup(ctx, user1, namespace3, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[1]))
+
+	group, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[1].Name)
+	require.NoError(t, err)
+	require.Equal(t, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[1]), group)
+
+	err = client.DeleteRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
+	require.NoError(t, err)
+
+	group, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
+	require.Error(t, err)
+
+	err = client.DeleteNamespace(ctx, user1, namespace3)
+	require.NoError(t, err)
+
+	groups, err := client.ListRuleGroupsForUserAndNamespace(ctx, user1, namespace3)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(groups))
 }

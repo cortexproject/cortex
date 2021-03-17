@@ -133,6 +133,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 	}
 
 	err = client.SetRuleGroup(ctx, user1, namespace3, rulespb.ToProto(user1, namespace3, ruleGroups.Groups[1]))
+	require.NoError(t, err)
 
 	group, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[1].Name)
 	require.NoError(t, err)
@@ -141,7 +142,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 	err = client.DeleteRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
 	require.NoError(t, err)
 
-	group, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
+	_, err = client.GetRuleGroup(ctx, user1, namespace3, ruleGroups.Groups[0].Name)
 	require.Error(t, err)
 
 	err = client.DeleteNamespace(ctx, user1, namespace3)

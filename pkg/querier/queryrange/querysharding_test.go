@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -122,11 +122,11 @@ func sampleMatrixResponse() *PrometheusResponse {
 			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							TimestampMs: 5,
 							Value:       1,
@@ -138,11 +138,11 @@ func sampleMatrixResponse() *PrometheusResponse {
 					},
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							TimestampMs: 5,
 							Value:       8,

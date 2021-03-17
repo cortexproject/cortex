@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-kit/kit/log"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type fakeState struct{}
@@ -24,6 +26,28 @@ func (s fakeState) MarshalBinary() ([]byte, error) {
 }
 func (s fakeState) Merge(_ []byte) error {
 	return nil
+}
+
+type fakeReplicator struct {
+	mtx     sync.Mutex
+	results map[string]*clusterpb.Part
+}
+
+func newFakeReplicator() *fakeReplicator {
+	return &fakeReplicator{
+		results: make(map[string]*clusterpb.Part),
+	}
+}
+
+func (f *fakeReplicator) ReplicateStateForUser(ctx context.Context, userID string, p *clusterpb.Part) error {
+	f.mtx.Lock()
+	f.results[userID] = p
+	f.mtx.Unlock()
+	return nil
+}
+
+func (f *fakeReplicator) GetPositionForUser(_ string) int {
+	return 0
 }
 
 func TestStateReplication(t *testing.T) {
@@ -50,21 +74,27 @@ func TestStateReplication(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			mtx := sync.Mutex{}
-			results := map[string]*clusterpb.Part{}
+			replicator := newFakeReplicator()
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
 
-			replicationFunc := func(ctx context.Context, userID string, p *clusterpb.Part) error {
-				mtx.Lock()
-				results[userID] = p
-				mtx.Unlock()
-				return nil
+			require.False(t, s.Ready())
+			{
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				defer cancel()
+				require.Equal(t, context.DeadlineExceeded, s.WaitReady(ctx))
 			}
 
-			positionFunc := func(_ string) int {
-				return 0
-			}
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
+			t.Cleanup(func() {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+			})
 
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicationFunc, positionFunc, make(chan struct{}), log.NewNopLogger(), reg)
+			require.True(t, s.Ready())
+			{
+				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				defer cancel()
+				require.NoError(t, s.WaitReady(ctx))
+			}
 
 			ch := s.AddState("nflog", &fakeState{}, reg)
 
@@ -74,9 +104,9 @@ func TestStateReplication(t *testing.T) {
 			ch.Broadcast(d)
 
 			require.Eventually(t, func() bool {
-				mtx.Lock()
-				defer mtx.Unlock()
-				return len(results) == len(tt.results)
+				replicator.mtx.Lock()
+				defer replicator.mtx.Unlock()
+				return len(replicator.results) == len(tt.results)
 			}, time.Second, time.Millisecond)
 
 			if tt.replicationFactor > 1 {

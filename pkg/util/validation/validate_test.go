@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -108,7 +108,7 @@ func TestValidateLabels(t *testing.T) {
 		},
 	} {
 
-		err := ValidateLabels(cfg, userID, client.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
+		err := ValidateLabels(cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
@@ -144,32 +144,32 @@ func TestValidateMetadata(t *testing.T) {
 
 	for _, c := range []struct {
 		desc     string
-		metadata *client.MetricMetadata
+		metadata *cortexpb.MetricMetadata
 		err      error
 	}{
 		{
 			"with a valid config",
-			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&cortexpb.MetricMetadata{MetricFamilyName: "go_goroutines", Type: cortexpb.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			nil,
 		},
 		{
 			"with no metric name",
-			&client.MetricMetadata{MetricFamilyName: "", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&cortexpb.MetricMetadata{MetricFamilyName: "", Type: cortexpb.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata missing metric name"),
 		},
 		{
 			"with a long metric name",
-			&client.MetricMetadata{MetricFamilyName: "go_goroutines_and_routines_and_routines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: ""},
+			&cortexpb.MetricMetadata{MetricFamilyName: "go_goroutines_and_routines_and_routines", Type: cortexpb.COUNTER, Help: "Number of goroutines.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'METRIC_NAME' value too long: \"go_goroutines_and_routines_and_routines\" metric \"go_goroutines_and_routines_and_routines\""),
 		},
 		{
 			"with a long help",
-			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines that currently exist.", Unit: ""},
+			&cortexpb.MetricMetadata{MetricFamilyName: "go_goroutines", Type: cortexpb.COUNTER, Help: "Number of goroutines that currently exist.", Unit: ""},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'HELP' value too long: \"Number of goroutines that currently exist.\" metric \"go_goroutines\""),
 		},
 		{
 			"with a long unit",
-			&client.MetricMetadata{MetricFamilyName: "go_goroutines", Type: client.COUNTER, Help: "Number of goroutines.", Unit: "a_made_up_unit_that_is_really_long"},
+			&cortexpb.MetricMetadata{MetricFamilyName: "go_goroutines", Type: cortexpb.COUNTER, Help: "Number of goroutines.", Unit: "a_made_up_unit_that_is_really_long"},
 			httpgrpc.Errorf(http.StatusBadRequest, "metadata 'UNIT' value too long: \"a_made_up_unit_that_is_really_long\" metric \"go_goroutines\""),
 		},
 	} {
@@ -209,7 +209,7 @@ func TestValidateLabelOrder(t *testing.T) {
 
 	userID := "testUser"
 
-	err := ValidateLabels(cfg, userID, []client.LabelAdapter{
+	err := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
@@ -225,13 +225,13 @@ func TestValidateLabelDuplication(t *testing.T) {
 
 	userID := "testUser"
 
-	err := ValidateLabels(cfg, userID, []client.LabelAdapter{
+	err := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
 	}, false)
 	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "__name__", `a{__name__="b"}`), err)
 
-	err = ValidateLabels(cfg, userID, []client.LabelAdapter{
+	err = ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},

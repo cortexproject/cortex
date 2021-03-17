@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -119,11 +120,11 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 	return m
 }
 
-func matrixToSamples(m model.Matrix) []client.Sample {
-	var samples []client.Sample
+func matrixToSamples(m model.Matrix) []cortexpb.Sample {
+	var samples []cortexpb.Sample
 	for _, ss := range m {
 		for _, sp := range ss.Values {
-			samples = append(samples, client.Sample{
+			samples = append(samples, cortexpb.Sample{
 				TimestampMs: int64(sp.Timestamp),
 				Value:       float64(sp.Value),
 			})
@@ -137,7 +138,7 @@ func matrixToLables(m model.Matrix) []labels.Labels {
 	var labels []labels.Labels
 	for _, ss := range m {
 		for range ss.Values {
-			labels = append(labels, client.FromLabelAdaptersToLabels(client.FromMetricsToLabelAdapters(ss.Metric)))
+			labels = append(labels, cortexpb.FromLabelAdaptersToLabels(cortexpb.FromMetricsToLabelAdapters(ss.Metric)))
 		}
 	}
 	return labels
@@ -165,18 +166,18 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	return res, req, nil
 }
 
-func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetric int) ([]string, map[string][]*client.MetricMetadata) {
+func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetric int) ([]string, map[string][]*cortexpb.MetricMetadata) {
 	userIDs := []string{"1", "2", "3"}
 
 	// Create test metadata.
 	// Map of userIDs, to map of metric => metadataSet
-	testData := map[string][]*client.MetricMetadata{}
+	testData := map[string][]*cortexpb.MetricMetadata{}
 	for _, userID := range userIDs {
-		metadata := make([]*client.MetricMetadata, 0, metadataPerMetric)
+		metadata := make([]*cortexpb.MetricMetadata, 0, metadataPerMetric)
 		for i := 0; i < numMetadata; i++ {
 			metricName := fmt.Sprintf("testmetric_%d", i)
 			for j := 0; j < metadataPerMetric; j++ {
-				m := &client.MetricMetadata{MetricFamilyName: metricName, Help: fmt.Sprintf("a help for %d", j), Unit: "", Type: client.COUNTER}
+				m := &cortexpb.MetricMetadata{MetricFamilyName: metricName, Help: fmt.Sprintf("a help for %d", j), Unit: "", Type: cortexpb.COUNTER}
 				metadata = append(metadata, m)
 			}
 		}
@@ -186,7 +187,7 @@ func pushTestMetadata(t *testing.T, ing *Ingester, numMetadata, metadataPerMetri
 	// Append metadata.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(nil, nil, testData[userID], client.API))
+		_, err := ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, testData[userID], cortexpb.API))
 		require.NoError(t, err)
 	}
 
@@ -205,7 +206,7 @@ func pushTestSamples(t testing.TB, ing *Ingester, numSeries, samplesPerSeries, o
 	// Append samples.
 	for _, userID := range userIDs {
 		ctx := user.InjectOrgID(context.Background(), userID)
-		_, err := ing.Push(ctx, client.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), nil, client.API))
+		_, err := ing.Push(ctx, cortexpb.ToWriteRequest(matrixToLables(testData[userID]), matrixToSamples(testData[userID]), nil, cortexpb.API))
 		require.NoError(t, err)
 	}
 
@@ -454,22 +455,22 @@ func TestIngesterAppendOutOfOrderAndDuplicate(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "testmetric"},
 	}
 	ctx := context.Background()
-	err := ing.append(ctx, userID, m, 1, 0, client.API, nil)
+	err := ing.append(ctx, userID, m, 1, 0, cortexpb.API, nil)
 	require.NoError(t, err)
 
 	// Two times exactly the same sample (noop).
-	err = ing.append(ctx, userID, m, 1, 0, client.API, nil)
+	err = ing.append(ctx, userID, m, 1, 0, cortexpb.API, nil)
 	require.NoError(t, err)
 
 	// Earlier sample than previous one.
-	err = ing.append(ctx, userID, m, 0, 0, client.API, nil)
+	err = ing.append(ctx, userID, m, 0, 0, cortexpb.API, nil)
 	require.Contains(t, err.Error(), "sample timestamp out of order")
 	errResp, ok := err.(*validationError)
 	require.True(t, ok)
 	require.Equal(t, errResp.code, 400)
 
 	// Same timestamp as previous sample, but different value.
-	err = ing.append(ctx, userID, m, 1, 1, client.API, nil)
+	err = ing.append(ctx, userID, m, 1, 1, cortexpb.API, nil)
 	require.Contains(t, err.Error(), "sample with repeated timestamp but different value")
 	errResp, ok = err.(*validationError)
 	require.True(t, ok)
@@ -487,7 +488,7 @@ func TestIngesterAppendBlankLabel(t *testing.T) {
 		{Name: "bar", Value: ""},
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	err := ing.append(ctx, userID, lp, 1, 0, client.API, nil)
+	err := ing.append(ctx, userID, lp, 1, 0, cortexpb.API, nil)
 	require.NoError(t, err)
 
 	res, _, err := runTestQuery(ctx, t, ing, labels.MatchEqual, labels.MetricName, "testmetric")
@@ -552,36 +553,36 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 			userID := "1"
 			// Series
 			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := client.Sample{
+			sample1 := cortexpb.Sample{
 				TimestampMs: 0,
 				Value:       1,
 			}
-			sample2 := client.Sample{
+			sample2 := cortexpb.Sample{
 				TimestampMs: 1,
 				Value:       2,
 			}
 			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
-			sample3 := client.Sample{
+			sample3 := cortexpb.Sample{
 				TimestampMs: 1,
 				Value:       3,
 			}
 			// Metadata
-			metadata1 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
-			metadata2 := &client.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: client.COUNTER}
+			metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
+			metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric2", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
+			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
 				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding metrics per user, got %v", err)
 				}
 				// Append two metadata, expect no error since metadata is a best effort approach.
-				_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -590,7 +591,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 				expected := model.Matrix{
 					{
-						Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
+						Metric: cortexpb.FromLabelAdaptersToMetric(cortexpb.FromLabelsToLabelAdapters(labels1)),
 						Values: []model.SamplePair{
 							{
 								Timestamp: model.Time(sample1.TimestampMs),
@@ -610,7 +611,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				// Verify metadata
 				m, err := ing.MetricsMetadata(ctx, nil)
 				require.NoError(t, err)
-				assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
+				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
 			}
 
 			testLimits()
@@ -672,38 +673,38 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 
 			userID := "1"
 			labels1 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}
-			sample1 := client.Sample{
+			sample1 := cortexpb.Sample{
 				TimestampMs: 0,
 				Value:       1,
 			}
-			sample2 := client.Sample{
+			sample2 := cortexpb.Sample{
 				TimestampMs: 1,
 				Value:       2,
 			}
 			labels3 := labels.Labels{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "biz"}}
-			sample3 := client.Sample{
+			sample3 := cortexpb.Sample{
 				TimestampMs: 1,
 				Value:       3,
 			}
 
 			// Metadata
-			metadata1 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: client.COUNTER}
-			metadata2 := &client.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric2", Type: client.COUNTER}
+			metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
+			metadata2 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric2", Type: cortexpb.COUNTER}
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1}, []client.Sample{sample1}, []*client.MetricMetadata{metadata1}, client.API))
+			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, client.ToWriteRequest([]labels.Labels{labels1, labels3}, []client.Sample{sample2, sample3}, nil, client.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
 				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
 					t.Fatalf("expected error about exceeding series per metric, got %v", err)
 				}
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
-				_, err = ing.Push(ctx, client.ToWriteRequest(nil, nil, []*client.MetricMetadata{metadata1, metadata2}, client.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -713,7 +714,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				// Verify Series
 				expected := model.Matrix{
 					{
-						Metric: client.FromLabelAdaptersToMetric(client.FromLabelsToLabelAdapters(labels1)),
+						Metric: cortexpb.FromLabelAdaptersToMetric(cortexpb.FromLabelsToLabelAdapters(labels1)),
 						Values: []model.SamplePair{
 							{
 								Timestamp: model.Time(sample1.TimestampMs),
@@ -732,7 +733,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				// Verify metadata
 				m, err := ing.MetricsMetadata(ctx, nil)
 				require.NoError(t, err)
-				assert.Equal(t, []*client.MetricMetadata{metadata1}, m.Metadata)
+				assert.Equal(t, []*cortexpb.MetricMetadata{metadata1}, m.Metadata)
 			}
 
 			testLimits()
@@ -755,13 +756,13 @@ func TestIngesterValidation(t *testing.T) {
 	m := labelPairs{{Name: labels.MetricName, Value: "testmetric"}}
 
 	// As a setup, let's append samples.
-	err := ing.append(context.Background(), userID, m, 1, 0, client.API, nil)
+	err := ing.append(context.Background(), userID, m, 1, 0, cortexpb.API, nil)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
 		desc    string
 		lbls    []labels.Labels
-		samples []client.Sample
+		samples []cortexpb.Sample
 		err     error
 	}{
 		{
@@ -770,7 +771,7 @@ func TestIngesterValidation(t *testing.T) {
 				{{Name: labels.MetricName, Value: "testmetric"}},
 				{{Name: labels.MetricName, Value: "testmetric"}},
 			},
-			samples: []client.Sample{
+			samples: []cortexpb.Sample{
 				{TimestampMs: 0, Value: 0}, // earlier timestamp, out of order.
 				{TimestampMs: 1, Value: 2}, // same timestamp different value.
 			},
@@ -778,7 +779,7 @@ func TestIngesterValidation(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			_, err := ing.Push(ctx, client.ToWriteRequest(tc.lbls, tc.samples, nil, client.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest(tc.lbls, tc.samples, nil, cortexpb.API))
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -811,14 +812,14 @@ func benchmarkIngesterSeriesCreationLocking(b *testing.B, parallelism int) {
 			defer wg.Done()
 
 			for j := from; j < through; j++ {
-				_, err := ing.Push(ctx, &client.WriteRequest{
-					Timeseries: []client.PreallocTimeseries{
+				_, err := ing.Push(ctx, &cortexpb.WriteRequest{
+					Timeseries: []cortexpb.PreallocTimeseries{
 						{
-							TimeSeries: &client.TimeSeries{
-								Labels: []client.LabelAdapter{
+							TimeSeries: &cortexpb.TimeSeries{
+								Labels: []cortexpb.LabelAdapter{
 									{Name: model.MetricNameLabel, Value: fmt.Sprintf("metric_%d", j)},
 								},
-								Samples: []client.Sample{
+								Samples: []cortexpb.Sample{
 									{TimestampMs: int64(j), Value: float64(j)},
 								},
 							},
@@ -846,7 +847,7 @@ func BenchmarkIngesterPushErrors(b *testing.B) {
 }
 
 // Construct a set of realistic-looking samples, all with slightly different label sets
-func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []client.Sample) {
+func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexpb.Sample) {
 	for j := 0; j < nSeries; j++ {
 		labels := chunk.BenchmarkLabels.Copy()
 		for i := range labels {
@@ -855,7 +856,7 @@ func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []client.
 			}
 		}
 		allLabels = append(allLabels, labels)
-		allSamples = append(allSamples, client.Sample{TimestampMs: 0, Value: float64(j)})
+		allSamples = append(allSamples, cortexpb.Sample{TimestampMs: 0, Value: float64(j)})
 	}
 	return
 }
@@ -891,7 +892,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 					for i := range allSamples {
 						allSamples[i].TimestampMs = int64(j + 1)
 					}
-					_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, nil, client.API))
+					_, err := ing.Push(ctx, cortexpb.ToWriteRequest(allLabels, allSamples, nil, cortexpb.API))
 					if !errorsExpected {
 						require.NoError(b, err)
 					}
@@ -923,7 +924,7 @@ func BenchmarkIngester_QueryStream(b *testing.B) {
 			allSamples[i].TimestampMs = int64(j + 1)
 			allSamples[i].Value = rand.Float64()
 		}
-		_, err := ing.Push(ctx, client.ToWriteRequest(allLabels, allSamples, nil, client.API))
+		_, err := ing.Push(ctx, cortexpb.ToWriteRequest(allLabels, allSamples, nil, cortexpb.API))
 		require.NoError(b, err)
 	}
 
@@ -949,30 +950,30 @@ func BenchmarkIngester_QueryStream(b *testing.B) {
 }
 
 func TestIngesterActiveSeries(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_active_series",
 	}
 	userID := "test"
 
 	tests := map[string]struct {
-		reqs                []*client.WriteRequest
+		reqs                []*cortexpb.WriteRequest
 		expectedMetrics     string
 		disableActiveSeries bool
 	}{
 		"should succeed on valid series and metadata": {
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_active_series Number of currently active series per user.
@@ -982,17 +983,17 @@ func TestIngesterActiveSeries(t *testing.T) {
 		},
 		"successful push, active series disabled": {
 			disableActiveSeries: true,
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
 			expectedMetrics: ``,
 		},

@@ -5,11 +5,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
-	a := []ingester_client.Sample{
+	a := []cortexpb.Sample{
 		{Value: 1.084537996, TimestampMs: 1583946732744},
 		{Value: 1.086111723, TimestampMs: 1583946750366},
 		{Value: 1.086111723, TimestampMs: 1583946768623},
@@ -22,7 +22,7 @@ func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
 		{Value: 1.092038719, TimestampMs: 1583946882302},
 	}
 
-	b := []ingester_client.Sample{
+	b := []cortexpb.Sample{
 		{Value: 1.084537996, TimestampMs: 1583946732744},
 		{Value: 1.086111723, TimestampMs: 1583946750366},
 		{Value: 1.086111723, TimestampMs: 1583946768623},
@@ -42,7 +42,7 @@ func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirst(t *testing.T) {
-	a := []ingester_client.Sample{
+	a := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 10},
 		{Value: 2, TimestampMs: 20},
 		{Value: 3, TimestampMs: 30},
@@ -51,7 +51,7 @@ func TestMergeSamplesIntoFirst(t *testing.T) {
 		{Value: 5, TimestampMs: 50},
 	}
 
-	b := []ingester_client.Sample{
+	b := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 5},
 		{Value: 2, TimestampMs: 15},
 		{Value: 3, TimestampMs: 25},
@@ -63,7 +63,7 @@ func TestMergeSamplesIntoFirst(t *testing.T) {
 
 	a = mergeSamples(a, b)
 
-	require.Equal(t, []ingester_client.Sample{
+	require.Equal(t, []cortexpb.Sample{
 		{Value: 1, TimestampMs: 5},
 		{Value: 1, TimestampMs: 10},
 		{Value: 2, TimestampMs: 15},
@@ -79,7 +79,7 @@ func TestMergeSamplesIntoFirst(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirstNilA(t *testing.T) {
-	b := []ingester_client.Sample{
+	b := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 5},
 		{Value: 2, TimestampMs: 15},
 		{Value: 3, TimestampMs: 25},
@@ -94,7 +94,7 @@ func TestMergeSamplesIntoFirstNilA(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirstNilB(t *testing.T) {
-	a := []ingester_client.Sample{
+	a := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 10},
 		{Value: 2, TimestampMs: 20},
 		{Value: 3, TimestampMs: 30},

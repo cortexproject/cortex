@@ -26,8 +26,8 @@ func TestStdlibJsonMarshalForSample(t *testing.T) {
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
-	IsTesting = true
-	defer func() { IsTesting = false }()
+	isTesting = true
+	defer func() { isTesting = false }()
 
 	out, err := marshalFn(Sample{Value: 12345, TimestampMs: 98765})
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error)
 	require.EqualError(t, err, expectedError)
 
 	// If not testing, we get normal output.
-	IsTesting = false
+	isTesting = false
 	out, err = marshalFn(Sample{Value: math.NaN(), TimestampMs: 0})
 	require.NoError(t, err)
 	require.Equal(t, `[0,"NaN"]`, string(out))
@@ -54,8 +54,8 @@ func TestStdlibJsonUnmarshalForSample(t *testing.T) {
 }
 
 func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}) error, expectedError string) {
-	IsTesting = true
-	defer func() { IsTesting = false }()
+	isTesting = true
+	defer func() { isTesting = false }()
 
 	sample := Sample{}
 
@@ -66,7 +66,7 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 	err = unmarshalFn([]byte(`[0.0,"NaN"]`), &sample)
 	require.EqualError(t, err, expectedError)
 
-	IsTesting = false
+	isTesting = false
 	err = unmarshalFn([]byte(`[0.0,"NaN"]`), &sample)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), sample.TimestampMs)

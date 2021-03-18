@@ -693,7 +693,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	db, err := i.getOrCreateTSDB(userID, false)
@@ -705,7 +705,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return nil, fmt.Errorf("ingester stopping")
+		return nil, errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 

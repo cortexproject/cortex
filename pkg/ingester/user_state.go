@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -181,7 +180,7 @@ func (us *userStates) teardown() {
 func (us *userStates) getViaContext(ctx context.Context) (*userState, bool, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("no user id")
+		return nil, false, err
 	}
 	state, ok := us.get(userID)
 	return state, ok, nil

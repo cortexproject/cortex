@@ -720,9 +720,15 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
-	succeededSamplesCount := 0
-	failedSamplesCount := 0
-	startAppend := time.Now()
+	var (
+		succeededSamplesCount      = 0
+		failedSamplesCount         = 0
+		startAppend                = time.Now()
+		sampleOutOfBoundsCount     = 0
+		sampleOutOfOrderCount      = 0
+		newValueForTimestampCount  = 0
+		otherDiscardedReasonsCount = map[string]int{}
+	)
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx)
@@ -783,11 +789,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 				switch cause {
 				case storage.ErrOutOfBounds:
-					validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Inc()
+					sampleOutOfBoundsCount++
 				case storage.ErrOutOfOrderSample:
-					validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Inc()
+					sampleOutOfOrderCount++
 				case storage.ErrDuplicateSampleForTimestamp:
-					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
+					newValueForTimestampCount++
 				}
 
 				continue
@@ -799,7 +805,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				if firstPartialErr == nil {
 					firstPartialErr = ve
 				}
-				validation.DiscardedSamples.WithLabelValues(ve.errorType, userID).Inc()
+				otherDiscardedReasonsCount[ve.errorType]++
 				continue
 			}
 
@@ -841,6 +847,19 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+
+	if sampleOutOfBoundsCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
+	}
+	if sampleOutOfOrderCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+	}
+	if newValueForTimestampCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
+	}
+	for reason, count := range otherDiscardedReasonsCount {
+		validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
+	}
 
 	switch req.Source {
 	case cortexpb.RULE:

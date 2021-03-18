@@ -19,6 +19,7 @@
 * [ENHANCEMENT] Ruler: Add API endpoint to list all tenant ruler rule groups: `GET /ruler/rule_groups`. #3259
 * [ENHANCEMENT] Query-frontend/scheduler: added querier forget delay (`-query-frontend.querier-forget-delay` and `-query-scheduler.querier-forget-delay`) to mitigate the blast radius in the event queriers crash because of a repeatedly sent "query of death" when shuffle-sharding is enabled. #3901
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
+* [BUGFIX] Querier: streamline tracing spans. #3924
 
 ## 1.8.0 in progress
 

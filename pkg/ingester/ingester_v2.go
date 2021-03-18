@@ -799,7 +799,9 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				}
 
 				continue
-			} else if cause == errMaxSeriesPerUserLimitExceeded || cause == errMaxSeriesPerMetricLimitExceeded {
+			}
+
+			if cause == errMaxSeriesPerUserLimitExceeded || cause == errMaxSeriesPerMetricLimitExceeded {
 				switch cause {
 				case errMaxSeriesPerUserLimitExceeded:
 					if firstPartialErr == nil {

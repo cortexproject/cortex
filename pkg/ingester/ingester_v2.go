@@ -216,7 +216,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 
 	// Total series limit.
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
-		return makeLimitError(perUserSeriesLimit, err)
+		return err
 	}
 
 	// Series per metric name limit.
@@ -225,7 +225,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return err
 	}
 	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
-		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
+		return err
 	}
 
 	return nil
@@ -721,13 +721,14 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount      = 0
-		failedSamplesCount         = 0
-		startAppend                = time.Now()
-		sampleOutOfBoundsCount     = 0
-		sampleOutOfOrderCount      = 0
-		newValueForTimestampCount  = 0
-		otherDiscardedReasonsCount = map[string]int{}
+		succeededSamplesCount     = 0
+		failedSamplesCount        = 0
+		startAppend               = time.Now()
+		sampleOutOfBoundsCount    = 0
+		sampleOutOfOrderCount     = 0
+		newValueForTimestampCount = 0
+		perUserSeriesLimitCount   = 0
+		perMetricSeriesLimitCount = 0
 	)
 
 	// Walk the samples, appending them to the users database
@@ -782,6 +783,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
 			cause := errors.Cause(err)
+
 			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
 				if firstPartialErr == nil {
 					firstPartialErr = wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels)
@@ -797,15 +799,20 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				}
 
 				continue
-			}
-
-			var ve *validationError
-			if errors.As(cause, &ve) {
-				// Caused by limits.
-				if firstPartialErr == nil {
-					firstPartialErr = ve
+			} else if cause == errMaxSeriesPerUserLimitExceeded || cause == errMaxSeriesPerMetricLimitExceeded {
+				switch cause {
+				case errMaxSeriesPerUserLimitExceeded:
+					if firstPartialErr == nil {
+						firstPartialErr = makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause))
+					}
+					perUserSeriesLimitCount++
+				case errMaxSeriesPerMetricLimitExceeded:
+					if firstPartialErr == nil {
+						firstPartialErr = makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+					}
+					perMetricSeriesLimitCount++
 				}
-				otherDiscardedReasonsCount[ve.errorType]++
+
 				continue
 			}
 
@@ -857,8 +864,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	if newValueForTimestampCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
 	}
-	for reason, count := range otherDiscardedReasonsCount {
-		validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
+	if perUserSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+	}
+	if perMetricSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 
 	switch req.Source {

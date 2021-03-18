@@ -1015,7 +1015,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *clusterpb.Part) (*alertmanagerpb.UpdateStateResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id found in context")
+		return nil, err
 	}
 
 	am.alertmanagersMtx.Lock()

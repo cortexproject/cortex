@@ -606,70 +606,206 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
-func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing.B) {
-	const (
-		numSamplesPerRequest = 1000
-		numRequestsPerClient = 10
-		numConcurrentClients = 10000
+func Benchmark_Ingester_v2PushOnError(b *testing.B) {
+	var (
+		ctx             = user.InjectOrgID(context.Background(), userID)
+		sampleTimestamp = int64(100)
+		metricName      = "test"
 	)
 
-	registry := prometheus.NewRegistry()
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
-	cfg.LifecyclerConfig.JoinAfter = 0
-
-	ingester, err := prepareIngesterWithBlocksStorage(b, cfg, registry)
-	require.NoError(b, err)
-	require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
-	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
-
-	// Wait until the ingester is ACTIVE
-	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return ingester.lifecycler.GetState()
-	})
-
-	// Push a single time series to set the TSDB min time.
-	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
-
-	currTimeReq := cortexpb.ToWriteRequest(
-		[]labels.Labels{metricLabels},
-		[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
-		nil,
-		cortexpb.API)
-	_, err = ingester.v2Push(ctx, currTimeReq)
-	require.NoError(b, err)
-
-	// Prepare a request containing out of bound samples.
-	metrics := make([]labels.Labels, 0, numSamplesPerRequest)
-	samples := make([]cortexpb.Sample, 0, numSamplesPerRequest)
-	for i := 0; i < numSamplesPerRequest; i++ {
-		metrics = append(metrics, metricLabels)
-		samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: 0})
-	}
-	outOfBoundReq := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
-
-	// Run the benchmark.
-	wg := sync.WaitGroup{}
-	wg.Add(numConcurrentClients)
-	start := make(chan struct{})
-
-	for c := 0; c < numConcurrentClients; c++ {
-		go func() {
-			defer wg.Done()
-			<-start
-
-			for n := 0; n < numRequestsPerClient; n++ {
-				ingester.v2Push(ctx, outOfBoundReq) // nolint:errcheck
-			}
-		}()
+	scenarios := map[string]struct {
+		numSeriesPerRequest  int
+		numConcurrentClients int
+	}{
+		"no concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 1,
+		},
+		"low concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 100,
+		},
+		"high concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 1000,
+		},
 	}
 
-	b.ResetTimer()
-	close(start)
-	wg.Wait()
+	tests := map[string]struct {
+		prepareConfig   func(limits *validation.Limits)
+		beforeBenchmark func(b *testing.B, ingester *Ingester, numSeriesPerRequest int)
+		runBenchmark    func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample)
+	}{
+		"out of bound samples": {
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a single time series to set the TSDB min time.
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := storage.ErrOutOfBounds.Error()
+
+				// Push out of bound samples.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"out of order samples": {
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// For each series, push a single sample with a timestamp greater than next pushes.
+				for i := 0; i < numSeriesPerRequest; i++ {
+					currTimeReq := cortexpb.ToWriteRequest(
+						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+						nil,
+						cortexpb.API)
+
+					_, err := ingester.v2Push(ctx, currTimeReq)
+					require.NoError(b, err)
+				}
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := storage.ErrOutOfOrderSample.Error()
+
+				// Push out of order samples.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"per-user series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerUser = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with a metric name different than the one used during the benchmark.
+				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "another"}}
+				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := "per-user series limit"
+
+				// Push series with a different name than the one already pushed.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"per-metric series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerMetric = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with the same metric name but different labels than the one used during the benchmark.
+				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: "another"}}
+				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := "per-metric series limit"
+
+				// Push series with different labels than the one already pushed.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		for scenarioName, scenario := range scenarios {
+			b.Run(fmt.Sprintf("failure: %s, scenario: %s", testName, scenarioName), func(b *testing.B) {
+				registry := prometheus.NewRegistry()
+
+				// Create a mocked ingester
+				cfg := defaultIngesterTestConfig()
+				cfg.LifecyclerConfig.JoinAfter = 0
+
+				limits := defaultLimitsTestConfig()
+				testData.prepareConfig(&limits)
+
+				ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, "", registry)
+				require.NoError(b, err)
+				require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
+				defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+
+				// Wait until the ingester is ACTIVE
+				test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+					return ingester.lifecycler.GetState()
+				})
+
+				testData.beforeBenchmark(b, ingester, scenario.numSeriesPerRequest)
+
+				// Prepare the request.
+				metrics := make([]labels.Labels, 0, scenario.numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, 0, scenario.numSeriesPerRequest)
+				for i := 0; i < scenario.numSeriesPerRequest; i++ {
+					metrics = append(metrics, labels.Labels{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}})
+					samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: sampleTimestamp})
+				}
+
+				// Run the benchmark.
+				wg := sync.WaitGroup{}
+				wg.Add(scenario.numConcurrentClients)
+				start := make(chan struct{})
+
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for c := 0; c < scenario.numConcurrentClients; c++ {
+					go func() {
+						defer wg.Done()
+						<-start
+
+						testData.runBenchmark(b, ingester, metrics, samples)
+					}()
+				}
+
+				b.ResetTimer()
+				close(start)
+				wg.Wait()
+			})
+		}
+	}
 }
 
 func Test_Ingester_v2LabelNames(t *testing.T) {
@@ -1729,19 +1865,22 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	dataDir, err := ioutil.TempDir("", "ingester")
-	if err != nil {
-		return nil, err
-	}
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(dataDir))
-	})
-
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), dataDir, registerer)
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), "", registerer)
 }
 
 func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
+	// Create a data dir if none has been provided.
+	if dataDir == "" {
+		var err error
+		if dataDir, err = ioutil.TempDir("", "ingester"); err != nil {
+			return nil, err
+		}
+
+		t.Cleanup(func() {
+			require.NoError(t, os.RemoveAll(dataDir))
+		})
+	}
+
 	bucketDir, err := ioutil.TempDir("", "bucket")
 	if err != nil {
 		return nil, err

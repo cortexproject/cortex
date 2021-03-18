@@ -1,7 +1,7 @@
 package ingester
 
 import (
-	"fmt"
+	"errors"
 	"math"
 	"testing"
 
@@ -270,7 +270,7 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
 			series:                   300,
-			expected:                 fmt.Errorf(errMaxSeriesPerMetricLimitExceeded, 1000, 0, 1000, 300),
+			expected:                 errMaxSeriesPerMetricLimitExceeded,
 		},
 	}
 
@@ -332,7 +332,7 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			ringIngesterCount:          10,
 			shardByAllLabels:           true,
 			metadata:                   300,
-			expected:                   fmt.Errorf(errMaxMetadataPerMetricLimitExceeded, 1000, 0, 1000, 300),
+			expected:                   errMaxMetadataPerMetricLimitExceeded,
 		},
 	}
 
@@ -395,7 +395,7 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			ringIngesterCount:      10,
 			shardByAllLabels:       true,
 			series:                 300,
-			expected:               fmt.Errorf(errMaxSeriesPerUserLimitExceeded, 1000, 0, 1000, 300),
+			expected:               errMaxSeriesPerUserLimitExceeded,
 		},
 	}
 
@@ -458,7 +458,7 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			ringIngesterCount:        10,
 			shardByAllLabels:         true,
 			metadata:                 300,
-			expected:                 fmt.Errorf(errMaxMetadataPerUserLimitExceeded, 1000, 0, 1000, 300),
+			expected:                 errMaxMetadataPerUserLimitExceeded,
 		},
 	}
 
@@ -484,6 +484,40 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			assert.Equal(t, testData.expected, actual)
 		})
 	}
+}
+
+func TestLimiter_FormatError(t *testing.T) {
+	// Mock the ring
+	ring := &ringCountMock{}
+	ring.On("HealthyInstancesCount").Return(3)
+	ring.On("ZonesCount").Return(1)
+
+	// Mock limits
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxGlobalSeriesPerUser:              100,
+		MaxGlobalSeriesPerMetric:            20,
+		MaxGlobalMetricsWithMetadataPerUser: 10,
+		MaxGlobalMetadataPerMetric:          3,
+	}, nil)
+	require.NoError(t, err)
+
+	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false)
+
+	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded)
+	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
+
+	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded)
+	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded, please contact administrator to raise it (local limit: 0 global limit: 20 actual local limit: 20)")
+
+	actual = limiter.FormatError("user-1", errMaxMetadataPerUserLimitExceeded)
+	assert.EqualError(t, actual, "per-user metric metadata limit of 10 exceeded, please contact administrator to raise it (local limit: 0 global limit: 10 actual local limit: 10)")
+
+	actual = limiter.FormatError("user-1", errMaxMetadataPerMetricLimitExceeded)
+	assert.EqualError(t, actual, "per-metric metadata limit of 3 exceeded, please contact administrator to raise it (local limit: 0 global limit: 3 actual local limit: 3)")
+
+	input := errors.New("unknown error")
+	actual = limiter.FormatError("user-1", input)
+	assert.Equal(t, input, actual)
 }
 
 func TestLimiter_minNonZero(t *testing.T) {

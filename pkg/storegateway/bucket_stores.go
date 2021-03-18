@@ -32,6 +32,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -152,8 +153,27 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
 	return u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
-		return s.SyncBlocks(ctx)
+		return u.syncUsersBlocksWithRetries(ctx, s)
 	})
+}
+
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, s *store.BucketStore) error {
+	var lastErr error
+
+	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MaxRetries: 3,
+	})
+
+	for retries.Ongoing() {
+		lastErr = s.SyncBlocks(ctx)
+		if lastErr != nil {
+			return lastErr
+		}
+
+		retries.Wait()
+	}
+
+	return nil
 }
 
 func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {

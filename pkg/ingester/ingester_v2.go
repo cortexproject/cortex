@@ -857,10 +857,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	if newValueForTimestampCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
 	}
-	if len(otherDiscardedReasonsCount) > 0 {
-		for reason, count := range otherDiscardedReasonsCount {
-			validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
-		}
+	for reason, count := range otherDiscardedReasonsCount {
+		validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
 	}
 
 	switch req.Source {

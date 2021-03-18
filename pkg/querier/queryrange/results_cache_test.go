@@ -386,14 +386,16 @@ func TestShouldCache(t *testing.T) {
 }
 
 func TestPartition(t *testing.T) {
-	for i, tc := range []struct {
-		input                  Request
-		prevCachedResponse     []Extent
-		expectedRequests       []Request
-		expectedCachedResponse []Response
+	for _, tc := range []struct {
+		name                    string
+		input                   Request
+		prevCachedResponse      []Extent
+		expectedUsedCachedEntry []Extent
+		expectedRequests        []Request
+		expectedCachedResponse  []Response
 	}{
-		// 1. Test a complete hit.
 		{
+			name: "Test a complete hit.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
@@ -401,13 +403,16 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
+			expectedUsedCachedEntry: []Extent{
+				mkExtent(0, 100),
+			},
 			expectedCachedResponse: []Response{
 				mkAPIResponse(0, 100, 10),
 			},
 		},
 
-		// Test with a complete miss.
 		{
+			name: "Test with a complete miss.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
@@ -415,6 +420,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
+			expectedUsedCachedEntry: nil,
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 0,
@@ -422,14 +428,16 @@ func TestPartition(t *testing.T) {
 				}},
 			expectedCachedResponse: nil,
 		},
-
-		// Test a partial hit.
 		{
+			name: "Test a partial hit.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
+				mkExtent(50, 100),
+			},
+			expectedUsedCachedEntry: []Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []Request{
@@ -442,14 +450,17 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(50, 100, 10),
 			},
 		},
-
-		// Test multiple partial hits.
 		{
+			name: "Test multiple partial hits.",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   200,
 			},
 			prevCachedResponse: []Extent{
+				mkExtent(50, 120),
+				mkExtent(160, 250),
+			},
+			expectedUsedCachedEntry: []Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
@@ -464,9 +475,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(160, 200, 10),
 			},
 		},
-
-		// Partial hits with tiny gap.
 		{
+			name: "Partial hits with tiny gap.",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   160,
@@ -474,6 +484,9 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 120),
 				mkExtent(122, 130),
+			},
+			expectedUsedCachedEntry: []Extent{
+				mkExtent(50, 120),
 			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
@@ -485,8 +498,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(100, 120, 10),
 			},
 		},
-		// Extent is outside the range and the request has a single step (same start and end).
 		{
+			name: "Extent is outside the range and the request has a single step (same start and end).",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   100,
@@ -494,6 +507,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 90),
 			},
+			expectedUsedCachedEntry: nil,
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 100,
@@ -501,8 +515,8 @@ func TestPartition(t *testing.T) {
 				},
 			},
 		},
-		// Test when hit has a large step and only a single sample extent.
 		{
+			name: "Test when hit has a large step and only a single sample extent.",
 			// If there is a only a single sample in the split interval, start and end will be the same.
 			input: &PrometheusRequest{
 				Start: 100,
@@ -511,22 +525,65 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(100, 100),
 			},
+			expectedUsedCachedEntry: []Extent{
+				mkExtent(100, 100),
+			},
 			expectedCachedResponse: []Response{
 				mkAPIResponse(100, 105, 10),
 			},
 		},
 	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			s := resultsCache{
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
 			}
-			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
+			reqs, resps, usedCachedEntry, err := s.partition(tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
+			require.Equal(t, tc.expectedUsedCachedEntry, usedCachedEntry)
 		})
 	}
+}
+
+func TestCacheHitShouldNotDuplicateSamplesForTinyRequest(t *testing.T) {
+	s := resultsCache{
+		extractor:      PrometheusResponseExtractor{},
+		minCacheExtent: 10,
+		limits:         mockLimits{},
+		merger:         PrometheusCodec,
+		next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			return parsedResponse, nil
+		}),
+	}
+
+	request := &PrometheusRequest{
+		Start: 0,
+		End:   5,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	parsedResponseAsAny, err := types.MarshalAny(parsedResponse)
+	require.NoError(t, err)
+
+	// current cached extents is smaller than minCacheExtent, so it should not be used and should
+	// be dropped from the cache.
+	currentlyCachedExtents := []Extent{{
+		Start:    request.Start,
+		End:      request.End + 1,
+		Response: parsedResponseAsAny,
+	}}
+	_, updatedExtents, err := s.handleHit(ctx, request, currentlyCachedExtents, 0)
+	require.NoError(t, err)
+
+	expectedExtents := []Extent{{
+		Start:    request.Start,
+		End:      request.End,
+		Response: parsedResponseAsAny,
+	}}
+	require.Equal(t, expectedExtents, updatedExtents)
 }
 
 func TestResultsCache(t *testing.T) {

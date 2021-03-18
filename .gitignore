@@ -14,6 +14,10 @@ e2e_integration_test*
 active-query-tracker
 dist/
 
+# Test generated data
+pkg/alertmanager/templates
+pkg/querier/chunks_head/
+
 # Binaries built from ./cmd
 /blocksconvert
 /cortex

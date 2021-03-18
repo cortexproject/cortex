@@ -608,40 +608,40 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 
 func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 	var (
-		ctx                 = user.InjectOrgID(context.Background(), userID)
-		metricLabelAdapters = []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-		metricLabels        = cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
-		sampleTimestamp     = int64(100)
-		perUserSeriesLimit  = 1
+		ctx             = user.InjectOrgID(context.Background(), userID)
+		sampleTimestamp = int64(100)
+		metricName      = "test"
 	)
 
 	scenarios := map[string]struct {
-		numSamplesPerRequest int
+		numSeriesPerRequest  int
 		numConcurrentClients int
 	}{
 		"no concurrency": {
-			numSamplesPerRequest: 1000,
+			numSeriesPerRequest:  1000,
 			numConcurrentClients: 1,
 		},
 		"low concurrency": {
-			numSamplesPerRequest: 1000,
+			numSeriesPerRequest:  1000,
 			numConcurrentClients: 100,
 		},
 		"high concurrency": {
-			numSamplesPerRequest: 1000,
+			numSeriesPerRequest:  1000,
 			numConcurrentClients: 1000,
 		},
 	}
 
-	failures := map[string]struct {
-		beforeBenchmark func(b *testing.B, ingester *Ingester)
+	tests := map[string]struct {
+		prepareConfig   func(limits *validation.Limits)
+		beforeBenchmark func(b *testing.B, ingester *Ingester, numSeriesPerRequest int)
 		runBenchmark    func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample)
 	}{
 		"out of bound samples": {
-			beforeBenchmark: func(b *testing.B, ingester *Ingester) {
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// Push a single time series to set the TSDB min time.
 				currTimeReq := cortexpb.ToWriteRequest(
-					[]labels.Labels{metricLabels},
+					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
 					nil,
 					cortexpb.API)
@@ -662,15 +662,19 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 			},
 		},
 		"out of order samples": {
-			beforeBenchmark: func(b *testing.B, ingester *Ingester) {
-				// Push a single sample with a timestamp greater than next pushes.
-				currTimeReq := cortexpb.ToWriteRequest(
-					[]labels.Labels{metricLabels},
-					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
-					nil,
-					cortexpb.API)
-				_, err := ingester.v2Push(ctx, currTimeReq)
-				require.NoError(b, err)
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// For each series, push a single sample with a timestamp greater than next pushes.
+				for i := 0; i < numSeriesPerRequest; i++ {
+					currTimeReq := cortexpb.ToWriteRequest(
+						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+						nil,
+						cortexpb.API)
+
+					_, err := ingester.v2Push(ctx, currTimeReq)
+					require.NoError(b, err)
+				}
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				expectedErr := storage.ErrOutOfOrderSample.Error()
@@ -686,8 +690,11 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 			},
 		},
 		"per-user series limit reached": {
-			beforeBenchmark: func(b *testing.B, ingester *Ingester) {
-				// Push a series with a metric name different than the use used during the benchmark.
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerUser = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with a metric name different than the one used during the benchmark.
 				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "another"}}
 				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 
@@ -712,11 +719,41 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 				}
 			},
 		},
+		"per-metric series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerMetric = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with the same metric name but different labels than the one used during the benchmark.
+				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: "another"}}
+				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := "per-metric series limit"
+
+				// Push series with different labels than the one already pushed.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
 	}
 
-	for failureName, failure := range failures {
+	for testName, testData := range tests {
 		for scenarioName, scenario := range scenarios {
-			b.Run(fmt.Sprintf("failure: %s, scenario: %s", failureName, scenarioName), func(b *testing.B) {
+			b.Run(fmt.Sprintf("failure: %s, scenario: %s", testName, scenarioName), func(b *testing.B) {
 				registry := prometheus.NewRegistry()
 
 				// Create a mocked ingester
@@ -724,7 +761,7 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 				cfg.LifecyclerConfig.JoinAfter = 0
 
 				limits := defaultLimitsTestConfig()
-				limits.MaxLocalSeriesPerUser = perUserSeriesLimit
+				testData.prepareConfig(&limits)
 
 				ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, "", registry)
 				require.NoError(b, err)
@@ -736,14 +773,13 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 					return ingester.lifecycler.GetState()
 				})
 
-				// Prepare benchmark.
-				failure.beforeBenchmark(b, ingester)
+				testData.beforeBenchmark(b, ingester, scenario.numSeriesPerRequest)
 
-				// Prepare a request containing out of bound samples.
-				metrics := make([]labels.Labels, 0, scenario.numSamplesPerRequest)
-				samples := make([]cortexpb.Sample, 0, scenario.numSamplesPerRequest)
-				for i := 0; i < scenario.numSamplesPerRequest; i++ {
-					metrics = append(metrics, metricLabels)
+				// Prepare the request.
+				metrics := make([]labels.Labels, 0, scenario.numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, 0, scenario.numSeriesPerRequest)
+				for i := 0; i < scenario.numSeriesPerRequest; i++ {
+					metrics = append(metrics, labels.Labels{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}})
 					samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: sampleTimestamp})
 				}
 
@@ -760,7 +796,7 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 						defer wg.Done()
 						<-start
 
-						failure.runBenchmark(b, ingester, metrics, samples)
+						testData.runBenchmark(b, ingester, metrics, samples)
 					}()
 				}
 

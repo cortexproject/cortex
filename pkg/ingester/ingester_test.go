@@ -578,9 +578,11 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
-					t.Fatalf("expected error about exceeding metrics per user, got %v", err)
-				}
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "returned error is not an httpgrpc response")
+				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
+				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded)), userID).Error(), string(httpResp.Body))
+
 				// Append two metadata, expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))
 				require.NoError(t, err)
@@ -699,9 +701,10 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
-				if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code != http.StatusBadRequest {
-					t.Fatalf("expected error about exceeding series per metric, got %v", err)
-				}
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "returned error is not an httpgrpc response")
+				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
+				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
 				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))

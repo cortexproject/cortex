@@ -189,6 +189,7 @@ func NewQuerierHandler(
 		engine,
 		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
 		nil,                                // No remote write support.
+		nil,                                // No exemplars support.
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

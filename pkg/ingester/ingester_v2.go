@@ -729,6 +729,12 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		newValueForTimestampCount = 0
 		perUserSeriesLimitCount   = 0
 		perMetricSeriesLimitCount = 0
+
+		updateFirstPartial = func(errFn func() error) {
+			if firstPartialErr == nil {
+				firstPartialErr = errFn()
+			}
+		}
 	)
 
 	// Walk the samples, appending them to the users database
@@ -782,39 +788,32 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			cause := errors.Cause(err)
-
-			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
-				if firstPartialErr == nil {
-					firstPartialErr = wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels)
-				}
-
-				switch cause {
-				case storage.ErrOutOfBounds:
-					sampleOutOfBoundsCount++
-				case storage.ErrOutOfOrderSample:
-					sampleOutOfOrderCount++
-				case storage.ErrDuplicateSampleForTimestamp:
-					newValueForTimestampCount++
-				}
-
+			switch cause := errors.Cause(err); cause {
+			case storage.ErrOutOfBounds:
+				sampleOutOfBoundsCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
 				continue
-			}
 
-			if cause == errMaxSeriesPerUserLimitExceeded || cause == errMaxSeriesPerMetricLimitExceeded {
-				switch cause {
-				case errMaxSeriesPerUserLimitExceeded:
-					if firstPartialErr == nil {
-						firstPartialErr = makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause))
-					}
-					perUserSeriesLimitCount++
-				case errMaxSeriesPerMetricLimitExceeded:
-					if firstPartialErr == nil {
-						firstPartialErr = makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
-					}
-					perMetricSeriesLimitCount++
-				}
+			case storage.ErrOutOfOrderSample:
+				sampleOutOfOrderCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
 
+			case storage.ErrDuplicateSampleForTimestamp:
+				newValueForTimestampCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
+
+			case errMaxSeriesPerUserLimitExceeded:
+				perUserSeriesLimitCount++
+				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
+				continue
+
+			case errMaxSeriesPerMetricLimitExceeded:
+				perMetricSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+				})
 				continue
 			}
 

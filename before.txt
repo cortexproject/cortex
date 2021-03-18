@@ -1,0 +1,78 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/cortexproject/cortex/pkg/ingester
+Benchmark_Ingester_v2PushOnError
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency-12         	    2767	    429211 ns/op	  131282 B/op	    3039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency-12         	    2790	    434570 ns/op	  131319 B/op	    3040 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency-12         	    2371	    437541 ns/op	  131350 B/op	    3040 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency-12         	    2767	    436005 ns/op	  131326 B/op	    3040 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_no_concurrency-12         	    2763	    435809 ns/op	  131308 B/op	    3039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency-12        	      98	  11928860 ns/op	13747080 B/op	  306066 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency-12        	      91	  12336824 ns/op	14002626 B/op	  306947 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency-12        	      94	  12607437 ns/op	13797148 B/op	  306206 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency-12        	      91	  12978589 ns/op	14011369 B/op	  306961 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_low_concurrency-12        	      86	  13004559 ns/op	13875535 B/op	  306463 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency-12       	       8	 130351838 ns/op	151060719 B/op	 3101638 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency-12       	       7	 163939642 ns/op	227875564 B/op	 3368545 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency-12       	       8	 134876707 ns/op	173972248 B/op	 3181401 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency-12       	       8	 150571220 ns/op	229750358 B/op	 3377397 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_bound_samples,_scenario:_high_concurrency-12       	       9	 141534678 ns/op	207065080 B/op	 3298332 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency-12         	    2288	    484967 ns/op	   34402 B/op	    1039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency-12         	    2209	    463915 ns/op	   34375 B/op	    1039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency-12         	    2206	    459657 ns/op	   34441 B/op	    1039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency-12         	    2210	    461980 ns/op	   34436 B/op	    1039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_no_concurrency-12         	    2613	    461105 ns/op	   34382 B/op	    1039 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency-12        	     102	  11596602 ns/op	 4074680 B/op	  105987 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency-12        	      99	  11656584 ns/op	 3897323 B/op	  105380 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency-12        	      98	  11976614 ns/op	 3784173 B/op	  104986 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency-12        	      92	  12479429 ns/op	 3905784 B/op	  105369 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_low_concurrency-12        	      96	  12467053 ns/op	 3862149 B/op	  105237 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency-12       	       8	 141466710 ns/op	141991852 B/op	 1398565 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency-12       	       9	 123499154 ns/op	86542164 B/op	 1211272 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency-12       	       9	 131631062 ns/op	96185577 B/op	 1243002 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency-12       	       9	 139493507 ns/op	88939936 B/op	 1215844 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_out_of_order_samples,_scenario:_high_concurrency-12       	       8	 135724994 ns/op	69038711 B/op	 1149689 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency-12         	      27	  39727501 ns/op	71053130 B/op	 1011410 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency-12         	      30	  38422126 ns/op	71343968 B/op	 1012454 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency-12         	      30	  38910474 ns/op	71054300 B/op	 1011367 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency-12         	      28	  39679591 ns/op	71105727 B/op	 1011485 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_low_concurrency-12         	      28	  38774051 ns/op	71075556 B/op	 1011375 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency-12        	       3	 391340894 ns/op	867425157 B/op	10630620 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency-12        	       3	 393770855 ns/op	848712546 B/op	10572696 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency-12        	       3	 409959649 ns/op	891534922 B/op	10715281 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency-12        	       3	 367594150 ns/op	699641064 B/op	10051862 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_high_concurrency-12        	       3	 403144710 ns/op	897566640 B/op	10731216 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency-12          	     734	   1531002 ns/op	  687312 B/op	   10033 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency-12          	     739	   1389422 ns/op	  686981 B/op	   10033 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency-12          	     842	   1357719 ns/op	  687784 B/op	   10033 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency-12          	     828	   1361465 ns/op	  686935 B/op	   10033 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-user_series_limit_reached,_scenario:_no_concurrency-12          	     834	   1356958 ns/op	  687350 B/op	   10033 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency-12        	     781	   1723446 ns/op	  687781 B/op	   10041 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency-12        	     793	   1566865 ns/op	  687306 B/op	   10041 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency-12        	     778	   1441790 ns/op	  687895 B/op	   10041 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency-12        	     787	   1478663 ns/op	  688644 B/op	   10042 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_no_concurrency-12        	     775	   1447847 ns/op	  688892 B/op	   10042 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency-12       	      10	 106078198 ns/op	75848562 B/op	 1028294 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency-12       	      10	 104818806 ns/op	69310297 B/op	 1005430 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency-12       	      10	 110366535 ns/op	69359276 B/op	 1005443 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency-12       	      10	 103927714 ns/op	72069786 B/op	 1015042 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_low_concurrency-12       	      10	 111274154 ns/op	69255027 B/op	 1005133 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency-12      	       1	1232151179 ns/op	1502987352 B/op	12770207 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency-12      	       1	1077920042 ns/op	729289040 B/op	10059760 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency-12      	       1	1163319521 ns/op	1269323480 B/op	11963288 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency-12      	       1	1087576126 ns/op	728658976 B/op	10065867 allocs/op
+Benchmark_Ingester_v2PushOnError/failure:_per-metric_series_limit_reached,_scenario:_high_concurrency-12      	       1	1181389896 ns/op	1220183912 B/op	11781353 allocs/op
+PASS
+ok  	github.com/cortexproject/cortex/pkg/ingester	108.440s

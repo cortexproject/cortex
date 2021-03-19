@@ -407,9 +407,6 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
-			expectedUpdateCachedEntry: []Extent{
-				mkExtent(0, 100),
-			},
 			expectedCachedResponse: []Response{
 				mkAPIResponse(0, 100, 10),
 			},
@@ -432,7 +429,6 @@ func TestPartition(t *testing.T) {
 					Start: 0,
 					End:   100,
 				}},
-			expectedCachedResponse: nil,
 		},
 		{
 			name: "Test a partial hit.",
@@ -441,9 +437,6 @@ func TestPartition(t *testing.T) {
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
-				mkExtent(50, 100),
-			},
-			expectedUpdateCachedEntry: []Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []Request{
@@ -463,10 +456,6 @@ func TestPartition(t *testing.T) {
 				End:   200,
 			},
 			prevCachedResponse: []Extent{
-				mkExtent(50, 120),
-				mkExtent(160, 250),
-			},
-			expectedUpdateCachedEntry: []Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
@@ -491,9 +480,6 @@ func TestPartition(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(122, 130),
 			},
-			expectedUpdateCachedEntry: []Extent{
-				mkExtent(50, 120),
-			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 120,
@@ -513,9 +499,6 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 90),
 			},
-			expectedUpdateCachedEntry: []Extent{
-				mkExtent(50, 90),
-			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 100,
@@ -533,9 +516,6 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(100, 100),
 			},
-			expectedUpdateCachedEntry: []Extent{
-				mkExtent(100, 100),
-			},
 			expectedCachedResponse: []Response{
 				mkAPIResponse(100, 105, 10),
 			},
@@ -546,11 +526,10 @@ func TestPartition(t *testing.T) {
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
 			}
-			reqs, resps, usedCachedEntry, err := s.partition(tc.input, tc.prevCachedResponse)
+			reqs, resps, err := s.partition(tc.input, tc.prevCachedResponse)
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
-			require.Equal(t, tc.expectedUpdateCachedEntry, usedCachedEntry)
 		})
 	}
 }

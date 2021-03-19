@@ -350,7 +350,11 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 			// The prometheus API is inclusive of start and end timestamps.
 			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
 				if existing.Samples[len(existing.Samples)-1].TimestampMs == stream.Samples[0].TimestampMs {
+					// Typically this the cases, so optimize by not doing full blown search.
 					stream.Samples = stream.Samples[1:]
+				} else {
+					existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+					stream.Samples = searchFirstBiggerTimestamp(existingEndTs, stream.Samples)
 				}
 			}
 			existing.Samples = append(existing.Samples, stream.Samples...)
@@ -370,6 +374,20 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 
 	return result
+}
+
+func searchFirstBiggerTimestamp(targetTs int64, samples []cortexpb.Sample) []cortexpb.Sample {
+
+	// assuming stream.Samples is sorted by by timestamp in ascending order.
+	searchResult := sort.Search(len(samples), func(i int) bool {
+		return samples[i].TimestampMs > targetTs
+	})
+
+	if searchResult < len(samples) {
+		return samples[searchResult:]
+	}
+
+	return nil
 }
 
 func parseDurationMs(s string) (int64, error) {

@@ -78,8 +78,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 		return nil
 	})
 	if err != nil {
-		missed = keys
-		return
+		return found, bufs, keys
 	}
 
 	for i, key := range keys {

@@ -469,7 +469,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210315220929-1cba1741828b
+# github.com/prometheus/prometheus v1.8.2-0.20210319122004-e4f076f81302
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

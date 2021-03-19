@@ -2190,6 +2190,57 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 
+func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig()
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	_, err = i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+
+	iterations := 5000
+	chanErr := make(chan error, 1)
+	quit := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-quit:
+				return
+			default:
+				_, err = i.getOrCreateTSDB(userID, false)
+				if err != nil {
+					chanErr <- err
+				}
+			}
+		}
+	}()
+
+	for k := 0; k < iterations; k++ {
+		i.closeAndDeleteUserTSDBIfIdle(userID)
+	}
+
+	select {
+	case err := <-chanErr:
+		assert.Fail(t, err.Error())
+		quit <- true
+	default:
+		quit <- true
+	}
+}
+
 func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	ctx := context.Background()
 	cfg := defaultIngesterTestConfig()

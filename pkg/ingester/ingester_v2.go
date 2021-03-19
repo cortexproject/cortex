@@ -1924,9 +1924,16 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	// This will prevent going back to "active" state in deferred statement.
 	userDB.casState(closing, closed)
 
-	i.userStatesMtx.Lock()
-	delete(i.TSDBState.dbs, userID)
-	i.userStatesMtx.Unlock()
+	// Only remove user from TSDBState when everything is cleaned up
+	// This will prevent concurrency problems when cortex are trying to open new TSDB - Ie: New request for a given tenant
+	// came in - while closing the tsdb for the same tenant.
+	// If this happens now, the request will get reject as the push will not be able to acquire the lock as the tsdb will be
+	// in closed state
+	defer func() {
+		i.userStatesMtx.Lock()
+		delete(i.TSDBState.dbs, userID)
+		i.userStatesMtx.Unlock()
+	}()
 
 	i.metrics.memUsers.Dec()
 	i.TSDBState.tsdbMetrics.removeRegistryForUser(userID)

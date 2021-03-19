@@ -358,7 +358,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, cachedExtents []
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
 
-	requests, responses, usedExtents, err := s.partition(r, cachedExtents)
+	requests, responses, updatedExtents, err := s.partition(r, cachedExtents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -382,26 +382,26 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, cachedExtents []
 		if err != nil {
 			return nil, nil, err
 		}
-		usedExtents = append(usedExtents, extent)
+		updatedExtents = append(updatedExtents, extent)
 	}
-	sort.Slice(usedExtents, func(i, j int) bool {
-		return usedExtents[i].Start < usedExtents[j].Start
+	sort.Slice(updatedExtents, func(i, j int) bool {
+		return updatedExtents[i].Start < updatedExtents[j].Start
 	})
 
 	// Merge any extents - they're guaranteed not to overlap.
-	accumulator, err := newAccumulator(usedExtents[0])
+	accumulator, err := newAccumulator(updatedExtents[0])
 	if err != nil {
 		return nil, nil, err
 	}
-	mergedExtents := make([]Extent, 0, len(usedExtents))
+	mergedExtents := make([]Extent, 0, len(updatedExtents))
 
-	for i := 1; i < len(usedExtents); i++ {
-		if accumulator.End+r.GetStep() < usedExtents[i].Start {
+	for i := 1; i < len(updatedExtents); i++ {
+		if accumulator.End+r.GetStep() < updatedExtents[i].Start {
 			mergedExtents, err = merge(mergedExtents, accumulator)
 			if err != nil {
 				return nil, nil, err
 			}
-			accumulator, err = newAccumulator(usedExtents[i])
+			accumulator, err = newAccumulator(updatedExtents[i])
 			if err != nil {
 				return nil, nil, err
 			}
@@ -409,8 +409,8 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, cachedExtents []
 		}
 
 		accumulator.TraceId = jaegerTraceID(ctx)
-		accumulator.End = usedExtents[i].End
-		currentRes, err := usedExtents[i].toResponse()
+		accumulator.End = updatedExtents[i].End
+		currentRes, err := updatedExtents[i].toResponse()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -478,11 +478,12 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
-	var usedExtent []Extent
+	var updatedExtents []Extent
 
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
 		if extent.GetEnd() < start || extent.Start > req.GetEnd() {
+			updatedExtents = append(updatedExtents, extent)
 			continue
 		}
 
@@ -492,6 +493,8 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
 		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
+			// Not appending this extent to updatedExtents because we want to drop this tiny extents from the
+			// cache, and replace it with larger extent
 			continue
 		}
 
@@ -507,10 +510,10 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		// extract the overlap from the cached extent.
 		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
-		if usedExtent == nil {
-			usedExtent = make([]Extent, 0, len(extents))
+		if updatedExtents == nil {
+			updatedExtents = make([]Extent, 0, len(extents))
 		}
-		usedExtent = append(usedExtent, extent)
+		updatedExtents = append(updatedExtents, extent)
 	}
 
 	// Lastly, make a request for any data missing at the end.
@@ -525,7 +528,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		requests = append(requests, req)
 	}
 
-	return requests, cachedResponses, usedExtent, nil
+	return requests, cachedResponses, updatedExtents, nil
 }
 
 func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {

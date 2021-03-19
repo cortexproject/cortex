@@ -91,7 +91,11 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 }
 
 func mkExtent(start, end int64) Extent {
-	res := mkAPIResponse(start, end, 10)
+	return mkExtentWithStep(start, end, 10)
+}
+
+func mkExtentWithStep(start, end, step int64) Extent {
+	res := mkAPIResponse(start, end, step)
 	any, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
@@ -387,12 +391,12 @@ func TestShouldCache(t *testing.T) {
 
 func TestPartition(t *testing.T) {
 	for _, tc := range []struct {
-		name                    string
-		input                   Request
-		prevCachedResponse      []Extent
-		expectedUsedCachedEntry []Extent
-		expectedRequests        []Request
-		expectedCachedResponse  []Response
+		name                      string
+		input                     Request
+		prevCachedResponse        []Extent
+		expectedUpdateCachedEntry []Extent
+		expectedRequests          []Request
+		expectedCachedResponse    []Response
 	}{
 		{
 			name: "Test a complete hit.",
@@ -403,7 +407,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
-			expectedUsedCachedEntry: []Extent{
+			expectedUpdateCachedEntry: []Extent{
 				mkExtent(0, 100),
 			},
 			expectedCachedResponse: []Response{
@@ -420,7 +424,9 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
-			expectedUsedCachedEntry: nil,
+			expectedUpdateCachedEntry: []Extent{
+				mkExtent(110, 210),
+			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 0,
@@ -437,7 +443,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
-			expectedUsedCachedEntry: []Extent{
+			expectedUpdateCachedEntry: []Extent{
 				mkExtent(50, 100),
 			},
 			expectedRequests: []Request{
@@ -460,7 +466,7 @@ func TestPartition(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedUsedCachedEntry: []Extent{
+			expectedUpdateCachedEntry: []Extent{
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
@@ -485,7 +491,7 @@ func TestPartition(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(122, 130),
 			},
-			expectedUsedCachedEntry: []Extent{
+			expectedUpdateCachedEntry: []Extent{
 				mkExtent(50, 120),
 			},
 			expectedRequests: []Request{
@@ -507,7 +513,9 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 90),
 			},
-			expectedUsedCachedEntry: nil,
+			expectedUpdateCachedEntry: []Extent{
+				mkExtent(50, 90),
+			},
 			expectedRequests: []Request{
 				&PrometheusRequest{
 					Start: 100,
@@ -525,7 +533,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(100, 100),
 			},
-			expectedUsedCachedEntry: []Extent{
+			expectedUpdateCachedEntry: []Extent{
 				mkExtent(100, 100),
 			},
 			expectedCachedResponse: []Response{
@@ -542,48 +550,132 @@ func TestPartition(t *testing.T) {
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
-			require.Equal(t, tc.expectedUsedCachedEntry, usedCachedEntry)
+			require.Equal(t, tc.expectedUpdateCachedEntry, usedCachedEntry)
 		})
 	}
 }
 
-func TestCacheHitShouldNotDuplicateSamplesForTinyRequest(t *testing.T) {
-	s := resultsCache{
-		extractor:      PrometheusResponseExtractor{},
-		minCacheExtent: 10,
-		limits:         mockLimits{},
-		merger:         PrometheusCodec,
-		next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
-			return parsedResponse, nil
-		}),
+func TestHandleHit(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		input                      Request
+		cachedEntry                []Extent
+		expectedUpdatedCachedEntry []Extent
+		expectedResponse           *PrometheusResponse
+	}{
+		{
+			name: "Should drop tiny extent that overlaps with tiny request only",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   105,
+				Step:  3,
+			},
+			expectedResponse: mkAPIResponse(100, 105, 3),
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 3),
+				mkExtentWithStep(60, 61, 3),
+				mkExtentWithStep(100, 106, 3),
+				mkExtentWithStep(110, 150, 3),
+				mkExtentWithStep(160, 161, 3),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 3),
+				mkExtentWithStep(60, 61, 3),
+				mkExtentWithStep(100, 105, 3), // this is replaced by the result of request
+				mkExtentWithStep(110, 150, 3),
+				mkExtentWithStep(160, 161, 3),
+			},
+		},
+		{
+			name: "Should replace tiny extents that are cover by bigger request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   200,
+				Step:  3,
+			},
+			expectedResponse: mkAPIResponse(100, 200, 3),
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 3),
+				mkExtentWithStep(60, 61, 3),
+				mkExtentWithStep(100, 104, 3),
+				mkExtentWithStep(110, 115, 3),
+				mkExtentWithStep(120, 125, 3),
+				mkExtentWithStep(220, 225, 3),
+				mkExtentWithStep(230, 250, 3),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 3),
+				mkExtentWithStep(60, 61, 3),
+				mkExtentWithStep(100, 200, 3),
+				mkExtentWithStep(220, 225, 3),
+				mkExtentWithStep(230, 250, 3),
+			},
+		},
+		{
+			name: "Should merge fragmented extents if request fills the hole",
+			input: &PrometheusRequest{
+				Start: 40,
+				End:   80,
+				Step:  20,
+			},
+			expectedResponse: mkAPIResponse(40, 80, 20),
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 20, 20),
+				mkExtentWithStep(80, 100, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 100, 20),
+			},
+		},
+		{
+			name: "Should left-extend extent if request starts earlier than extent in cache",
+			input: &PrometheusRequest{
+				Start: 40,
+				End:   80,
+				Step:  20,
+			},
+			expectedResponse: mkAPIResponse(40, 80, 20),
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(40, 160, 20),
+			},
+		},
+		{
+			name: "Should right-extend extent if request ends later than extent in cache",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   180,
+				Step:  20,
+			},
+			expectedResponse: mkAPIResponse(100, 180, 20),
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 180, 20),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sut := resultsCache{
+				extractor:      PrometheusResponseExtractor{},
+				minCacheExtent: 10,
+				limits:         mockLimits{},
+				merger:         PrometheusCodec,
+				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
+				}),
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			response, updatedExtents, err := sut.handleHit(ctx, tc.input, tc.cachedEntry, 0)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResponse, response, "response does not match the expectation")
+			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
+		})
 	}
-
-	request := &PrometheusRequest{
-		Start: 0,
-		End:   5,
-	}
-
-	ctx := user.InjectOrgID(context.Background(), "1")
-
-	parsedResponseAsAny, err := types.MarshalAny(parsedResponse)
-	require.NoError(t, err)
-
-	// current cached extents is smaller than minCacheExtent, so it should not be used and should
-	// be dropped from the cache.
-	currentlyCachedExtents := []Extent{{
-		Start:    request.Start,
-		End:      request.End + 1,
-		Response: parsedResponseAsAny,
-	}}
-	_, updatedExtents, err := s.handleHit(ctx, request, currentlyCachedExtents, 0)
-	require.NoError(t, err)
-
-	expectedExtents := []Extent{{
-		Start:    request.Start,
-		End:      request.End,
-		Response: parsedResponseAsAny,
-	}}
-	require.Equal(t, expectedExtents, updatedExtents)
 }
 
 func TestResultsCache(t *testing.T) {

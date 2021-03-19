@@ -161,6 +161,8 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, s *store.
 	var lastErr error
 
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
 		MaxRetries: 3,
 	})
 

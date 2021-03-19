@@ -342,23 +342,29 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 			continue
 		}
 
+		instance := r.ringDesc.Ingesters[info.InstanceID]
+
+		// Check whether the replica set should be extended given we're including
+		// this instance.
+		shouldExtendReplicaSet := op.ShouldExtendReplicaSetOnState(instance.State)
+		if shouldExtendReplicaSet {
+			n++
+		}
+
 		// Ignore if the instances don't have a zone set.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			if util.StringsContain(distinctZones, info.Zone) {
 				continue
 			}
-			distinctZones = append(distinctZones, info.Zone)
+
+			// We should only add instance zone if we are not going to extend,
+			// as we want to extend the instance in the same AZ.
+			if !shouldExtendReplicaSet {
+				distinctZones = append(distinctZones, info.Zone)
+			}
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
-		instance := r.ringDesc.Ingesters[info.InstanceID]
-
-		// Check whether the replica set should be extended given we're including
-		// this instance.
-		if op.ShouldExtendReplicaSetOnState(instance.State) {
-			n++
-		}
-
 		instances = append(instances, instance)
 	}
 

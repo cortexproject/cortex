@@ -132,6 +132,62 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
 
+func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
+	const testCount = 10000
+
+	r := NewDesc()
+	instances := map[string]InstanceDesc{
+		"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil), State: ACTIVE},
+		"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil), State: ACTIVE},
+		"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil), State: ACTIVE},
+		"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", Tokens: GenerateTokens(128, nil), State: ACTIVE},
+		"instance-5": {Addr: "127.0.0.5", Zone: "zone-c", Tokens: GenerateTokens(128, nil), State: LEAVING},
+		"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", Tokens: GenerateTokens(128, nil), State: ACTIVE},
+	}
+	var prevTokens []uint32
+	for id, instance := range instances {
+		ingTokens := GenerateTokens(128, prevTokens)
+		r.AddIngester(id, instance.Addr, instance.Zone, ingTokens, instance.State, time.Now())
+		prevTokens = append(prevTokens, ingTokens...)
+	}
+	instancesList := make([]InstanceDesc, 0, len(r.GetIngesters()))
+	for _, v := range r.GetIngesters() {
+		instancesList = append(instancesList, v)
+	}
+
+	ring := Ring{
+		cfg: Config{
+			HeartbeatTimeout:     time.Hour,
+			ReplicationFactor:    3,
+			ZoneAwarenessEnabled: true,
+		},
+		ringDesc:            r,
+		ringTokens:          r.GetTokens(),
+		ringTokensByZone:    r.getTokensByZone(),
+		ringInstanceByToken: r.getTokensInfo(),
+		ringZones:           getZones(r.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
+	}
+
+	_, bufHosts, bufZones := MakeBuffersForGet()
+
+	// Use the GenerateTokens to get an array of random uint32 values.
+	testValues := GenerateTokens(testCount, nil)
+
+	for i := 0; i < testCount; i++ {
+		set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
+		require.NoError(t, err)
+
+		distinctZones := map[string]int{}
+		for _, instance := range set.Instances {
+			distinctZones[instance.Zone]++
+		}
+
+		assert.Equal(t, len(set.Instances), 3)
+		assert.Equal(t, len(distinctZones), 3)
+	}
+}
+
 func TestRing_Get_ZoneAwareness(t *testing.T) {
 	// Number of tests to run.
 	const testCount = 10000

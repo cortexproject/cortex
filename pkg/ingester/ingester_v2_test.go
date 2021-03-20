@@ -60,7 +60,6 @@ func TestIngester_v2Push(t *testing.T) {
 		"cortex_ingester_memory_users",
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
-		"cortex_discarded_samples_total",
 		"cortex_ingester_active_series",
 	}
 	userID := "test"
@@ -73,6 +72,7 @@ func TestIngester_v2Push(t *testing.T) {
 		expectedMetrics          string
 		additionalMetrics        []string
 		disableActiveSeries      bool
+		discardedReason          string
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*cortexpb.WriteRequest{
@@ -198,6 +198,7 @@ func TestIngester_v2Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
 			},
+			discardedReason: sampleOutOfOrder,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -217,9 +218,6 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
-				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -242,6 +240,7 @@ func TestIngester_v2Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			discardedReason: sampleOutOfBounds,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -261,9 +260,6 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
-				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -286,6 +282,7 @@ func TestIngester_v2Push(t *testing.T) {
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
+			discardedReason: newValueForTimestamp,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -305,9 +302,6 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
 				# TYPE cortex_ingester_memory_series_removed_total counter
 				cortex_ingester_memory_series_removed_total{user="test"} 0
-				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
-				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="new-value-for-timestamp",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -341,14 +335,18 @@ func TestIngester_v2Push(t *testing.T) {
 
 			// Push timeseries
 			for idx, req := range testData.reqs {
-				_, err := i.v2Push(ctx, req)
-
+				res, err := i.v2Push(ctx, req)
 				// We expect no error on any request except the last one
 				// which may error (and in that case we assert on it)
 				if idx < len(testData.reqs)-1 {
 					assert.NoError(t, err)
 				} else {
 					assert.Equal(t, testData.expectedErr, err)
+					if testData.expectedErr != nil {
+						// If we did expect an error on the last case
+						// we also expect discarded metrics in the result
+						assert.Equal(t, &cortexpb.WriteResponse{Succeeded: 0, Discarded: []cortexpb.DiscardedMetric{{Reason: testData.discardedReason, DiscardedSamples: 1}}}, res)
+					}
 				}
 			}
 

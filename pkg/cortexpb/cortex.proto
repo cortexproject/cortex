@@ -21,7 +21,10 @@ message WriteRequest {
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }
 
-message WriteResponse {}
+message WriteResponse {
+	int64 succeeded = 1;
+	repeated DiscardedMetric discarded = 2 [(gogoproto.nullable) = false];
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
@@ -59,4 +62,9 @@ message MetricMetadata {
 
 message Metric {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];
+}
+
+message DiscardedMetric {
+	string reason = 1;
+	int64 discarded_samples = 2;
 }

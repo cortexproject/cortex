@@ -856,20 +856,24 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
 
+	var response cortexpb.WriteResponse
+
+	response.Succeeded = int64(succeededSamplesCount)
+
 	if sampleOutOfBoundsCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
+		response.Discarded = append(response.Discarded, cortexpb.DiscardedMetric{Reason: sampleOutOfBounds, DiscardedSamples: int64(sampleOutOfBoundsCount)})
 	}
 	if sampleOutOfOrderCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+		response.Discarded = append(response.Discarded, cortexpb.DiscardedMetric{Reason: sampleOutOfOrder, DiscardedSamples: int64(sampleOutOfOrderCount)})
 	}
 	if newValueForTimestampCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
+		response.Discarded = append(response.Discarded, cortexpb.DiscardedMetric{Reason: newValueForTimestamp, DiscardedSamples: int64(newValueForTimestampCount)})
 	}
 	if perUserSeriesLimitCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+		response.Discarded = append(response.Discarded, cortexpb.DiscardedMetric{Reason: perUserSeriesLimit, DiscardedSamples: int64(perUserSeriesLimitCount)})
 	}
 	if perMetricSeriesLimitCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+		response.Discarded = append(response.Discarded, cortexpb.DiscardedMetric{Reason: perMetricSeriesLimit, DiscardedSamples: int64(perMetricSeriesLimitCount)})
 	}
 
 	switch req.Source {
@@ -887,10 +891,10 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
+		return &response, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
-	return &cortexpb.WriteResponse{}, nil
+	return &response, nil
 }
 
 func (u *userTSDB) acquireAppendLock() error {
@@ -1933,8 +1937,6 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 
 	i.deleteUserMetadata(userID)
 	i.metrics.deletePerUserMetrics(userID)
-
-	validation.DeletePerUserValidationMetrics(userID, i.logger)
 
 	// And delete local data.
 	if err := os.RemoveAll(dir); err != nil {

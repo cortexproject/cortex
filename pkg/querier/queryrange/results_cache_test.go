@@ -563,7 +563,7 @@ func TestHandleHit(t *testing.T) {
 		expectedUpdatedCachedEntry []Extent
 	}{
 		{
-			name: "Should drop tiny extent that overlaps with tiny request only",
+			name: "Should drop tiny extent that overlaps with non-tiny request only",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   120,
@@ -605,6 +605,71 @@ func TestHandleHit(t *testing.T) {
 				mkExtentWithStep(100, 200, 5),
 				mkExtentWithStep(220, 225, 5),
 				mkExtentWithStep(240, 250, 5),
+			},
+		},
+		{
+			name: "Should not drop tiny extent that completely overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   105,
+				Step:  5,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(160, 165, 5),
+			},
+			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
+		},
+		{
+			name: "Should not drop tiny extent that partially center-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 106,
+				End:   108,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(104, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
+		},
+		{
+			name: "Should not drop tiny extent that partially left-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   106,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(104, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(100, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+		},
+		{
+			name: "Should not drop tiny extent that partially right-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   106,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(98, 102, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(98, 106, 2),
+				mkExtentWithStep(160, 166, 2),
 			},
 		},
 		{

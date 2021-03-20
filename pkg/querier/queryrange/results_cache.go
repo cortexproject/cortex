@@ -478,7 +478,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
-	var updatedExtents []Extent
+	updatedExtents := make([]Extent, 0, len(extents))
 
 	for _, extent := range extents {
 		// If there is no overlap, ignore this extent.
@@ -487,12 +487,12 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			continue
 		}
 
-		// If this extent is tiny, discard it: more efficient to do a few larger queries.
+		// If this extent is tiny and request is not tiny, discard it: more efficient to do a few larger queries.
 
 		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
 		// For example, if the step size is more than 12h and the interval is 24h.
 		// This means the extent's start and end time would be same, even if the timerange covers several hours.
-		if (req.GetStart() != req.GetEnd()) && (extent.End-extent.Start < s.minCacheExtent) {
+		if (req.GetStart() != req.GetEnd()) && (req.GetEnd()-req.GetStart() > s.minCacheExtent) && (extent.End-extent.Start < s.minCacheExtent) {
 			// Not appending this extent to updatedExtents because we want to drop this tiny extents from the
 			// cache, and replace it with larger extent
 			continue
@@ -510,9 +510,6 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		// extract the overlap from the cached extent.
 		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
-		if updatedExtents == nil {
-			updatedExtents = make([]Extent, 0, len(extents))
-		}
 		updatedExtents = append(updatedExtents, extent)
 	}
 

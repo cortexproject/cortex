@@ -408,7 +408,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 			continue
 		}
 
-		if accumulator.End > extents[i].End {
+		if accumulator.End >= extents[i].End {
 			continue
 		}
 

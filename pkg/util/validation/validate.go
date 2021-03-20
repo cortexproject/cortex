@@ -35,7 +35,7 @@ const (
 	errInvalidMetricName  = "sample invalid metric name: %.200q"
 	errInvalidLabel       = "sample invalid label: %.200q metric %.200q"
 	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
-	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
+	errLabelValueTooLong  = "label value too long for metric %.200q name: %.200q"
 	errTooManyLabels      = "series has too many labels (actual: %d, limit: %d) series: '%s'"
 	errTooOld             = "timestamp too old: %d metric: %.200q"
 	errTooNew             = "timestamp too new: %d metric: %.200q"
@@ -170,6 +170,9 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 		}
 		if errTemplate != "" {
 			DiscardedSamples.WithLabelValues(reason, userID).Inc()
+			if errTemplate == errLabelValueTooLong {
+				return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, formatLabelSet(ls), cause)
+			}
 			return httpgrpc.Errorf(http.StatusBadRequest, errTemplate, cause, formatLabelSet(ls))
 		}
 		lastLabelName = l.Name

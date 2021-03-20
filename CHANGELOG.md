@@ -10,6 +10,7 @@
   * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
   * `-alertmanager.cluster.peers` instead of `-cluster.peer`
   * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
+* [CHANGE] Put metric before label value in the "label value too long" error message. #3982
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916

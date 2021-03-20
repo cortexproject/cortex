@@ -349,13 +349,15 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
 			// The prometheus API is inclusive of start and end timestamps.
 			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-				if existing.Samples[len(existing.Samples)-1].TimestampMs == stream.Samples[0].TimestampMs {
-					// Typically this the cases, so optimize by not doing full blown search.
+				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+				if existingEndTs == stream.Samples[0].TimestampMs {
+					// Typically this the cases where only 1 sample point overlap,
+					// so optimize with simple code.
 					stream.Samples = stream.Samples[1:]
-				} else {
-					existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-					stream.Samples = searchFirstBiggerTimestamp(existingEndTs, stream.Samples)
-				}
+				} else if existingEndTs > stream.Samples[0].TimestampMs {
+					// Overlap might be big, use heavier algorithm to remove overlap.
+					stream.Samples = chopOffOverlapPortion(stream.Samples, existingEndTs)
+				} // else there is no overlap, yay!
 			}
 			existing.Samples = append(existing.Samples, stream.Samples...)
 			output[metric] = existing
@@ -376,11 +378,11 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	return result
 }
 
-func searchFirstBiggerTimestamp(targetTs int64, samples []cortexpb.Sample) []cortexpb.Sample {
+func chopOffOverlapPortion(samples []cortexpb.Sample, choppingPointTs int64) []cortexpb.Sample {
 
 	// assuming stream.Samples is sorted by by timestamp in ascending order.
 	searchResult := sort.Search(len(samples), func(i int) bool {
-		return samples[i].TimestampMs > targetTs
+		return samples[i].TimestampMs > choppingPointTs
 	})
 
 	if searchResult < len(samples) {

@@ -238,3 +238,69 @@ func TestValidateLabelDuplication(t *testing.T) {
 	}, false)
 	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "a", `a{a="a", a="a"}`), err)
 }
+
+func TestAddDiscarded(t *testing.T) {
+	for _, c := range []struct {
+		desc     string
+		input    []cortexpb.DiscardedMetric
+		expected string
+	}{
+		{
+			"single non repeated reason",
+			[]cortexpb.DiscardedMetric{{Reason: "test", DiscardedSamples: int64(1)}},
+			`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="test", user="user1"} 1
+			`,
+		},
+		{
+			"two non repeated reasons",
+			[]cortexpb.DiscardedMetric{
+				{Reason: "test", DiscardedSamples: int64(1)},
+				{Reason: "test2", DiscardedSamples: int64(2)},
+			},
+			`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="test", user="user1"} 1
+			cortex_discarded_samples_total{reason="test2", user="user1"} 2
+			`,
+		},
+		{
+			"two repeated reasons - same count, one non repeated",
+			[]cortexpb.DiscardedMetric{
+				{Reason: "test", DiscardedSamples: int64(1)},
+				{Reason: "test", DiscardedSamples: int64(1)},
+				{Reason: "test2", DiscardedSamples: int64(2)},
+			},
+			`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="test", user="user1"} 1
+			cortex_discarded_samples_total{reason="test2", user="user1"} 2
+			`,
+		},
+		{
+			"two repeated reasons - different count, one non repeated",
+			[]cortexpb.DiscardedMetric{
+				{Reason: "test", DiscardedSamples: int64(2)},
+				{Reason: "test", DiscardedSamples: int64(4)},
+				{Reason: "test2", DiscardedSamples: int64(2)},
+			},
+			`
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="test", user="user1"} 4
+			cortex_discarded_samples_total{reason="test2", user="user1"} 2
+			`,
+		},
+	} {
+		t.Run(c.desc, func(t *testing.T) {
+			DiscardedSamples.Reset()
+
+			AddDiscarded(c.input, "user1")
+			require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(c.expected), "cortex_discarded_samples_total"))
+		})
+	}
+}

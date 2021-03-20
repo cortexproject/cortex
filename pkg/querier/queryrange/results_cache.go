@@ -488,6 +488,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 		}
 
 		// If this extent is tiny and request is not tiny, discard it: more efficient to do a few larger queries.
+		// Hopefully tiny request can make tiny extent into not so tiny extent.
 
 		// However if the step is large enough, the split_query_by_interval middleware would generate a query with same start and end.
 		// For example, if the step size is more than 12h and the interval is 24h.

@@ -614,6 +614,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		op = ring.Write
 	}
 
+	var discarded []cortexpb.DiscardedMetric
+
 	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
 		timeseries := make([]cortexpb.PreallocTimeseries, 0, len(indexes))
 		var metadata []*cortexpb.MetricMetadata
@@ -637,8 +639,11 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		discarded, err = d.send(localCtx, ingester, timeseries, metadata, req.Source)
+
+		return err
 	}, func() { cortexpb.ReuseSlice(req.Timeseries) })
+	validation.AddDiscarded(discarded, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -667,10 +672,10 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) ([]cortexpb.DiscardedMetric, error) {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
-		return err
+		return []cortexpb.DiscardedMetric{}, err
 	}
 	c := h.(ingester_client.IngesterClient)
 
@@ -679,7 +684,10 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		Metadata:   metadata,
 		Source:     source,
 	}
-	_, err = c.Push(ctx, &req)
+
+	var res *cortexpb.WriteResponse
+	res, err = c.Push(ctx, &req)
+	discarded := res.GetDiscarded()
 
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
@@ -694,7 +702,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		}
 	}
 
-	return err
+	return discarded, err
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.

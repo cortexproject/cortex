@@ -11,18 +11,21 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Distributor forwards requests to individual alertmanagers.
@@ -111,6 +114,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 	var firstSuccessfulResponse *httpgrpc.HTTPResponse
 	var firstSuccessfulResponseMtx sync.Mutex
+	var discarded []cortexpb.DiscardedMetric
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
@@ -128,6 +132,13 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 			return err
 		}
 
+		var writeResponse cortexpb.WriteResponse
+		err = proto.Unmarshal(resp.Body, &writeResponse)
+		if err != nil {
+			return err
+		}
+		discarded = append(discarded, writeResponse.Discarded...)
+
 		if resp.Code/100 != 2 {
 			return httpgrpc.ErrorFromHTTPResponse(resp)
 		}
@@ -140,7 +151,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 		return nil
 	}, func() {})
-
+	validation.AddDiscarded(discarded, userID)
 	if err != nil {
 		respondFromError(err, w, logger)
 		return

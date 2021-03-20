@@ -252,3 +252,21 @@ func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)
 	}
 }
+
+// AddDiscarded deduplicates the number of discard samples returned by ingesters, recording the highest number per reason
+func AddDiscarded(discarded []cortexpb.DiscardedMetric, userID string) {
+	reasons := map[string]int64{}
+
+	for _, metric := range discarded {
+		count, found := reasons[metric.Reason]
+		if found && metric.DiscardedSamples <= count {
+			continue
+		}
+
+		reasons[metric.Reason] = metric.DiscardedSamples
+	}
+
+	for reason, count := range reasons {
+		DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
+	}
+}

@@ -176,8 +176,7 @@ func verifySamples(log *spanlogger.SpanLogger, tc Case, pairs []model.SamplePair
 	} else {
 		expectedNumSamples := int(duration / cfg.ScrapeInterval)
 		if math.Abs(float64(expectedNumSamples-len(pairs))) > 2 {
-			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs))
-			log.Error(fmt.Errorf("wrong number of samples"))
+			level.Error(log).Log("msg", "wrong number of samples", "expected", expectedNumSamples, "actual", len(pairs), "err", fmt.Errorf("wrong number of samples"))
 			return false
 		}
 	}

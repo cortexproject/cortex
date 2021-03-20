@@ -2,7 +2,7 @@ package spanlogger
 
 import (
 	"context"
-
+	
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -77,20 +77,35 @@ func FromContextWithFallback(ctx context.Context, fallback log.Logger) *SpanLogg
 // also puts the on the spans.
 func (s *SpanLogger) Log(kvps ...interface{}) error {
 	s.Logger.Log(kvps...)
+
+	var logAsError = false
+	errorIndex := -1
+	for i := 0; i < len(kvps) - 1; i += 2 {
+		// Find out whether to log as error
+		if kvps[i] == level.Key() {
+			logAsError = kvps[i+1] == level.ErrorValue()
+			if !logAsError {
+				break
+			}
+			ext.Error.Set(s.Span, true)
+		} else if errorIndex == -1 {
+			// Check if this is the error we want to log
+			if _, ok := kvps[i+1].(error); ok && (kvps[i] == "err" || kvps[i] == "error") {
+				errorIndex = i
+			}
+		}
+		if logAsError && errorIndex != -1 {
+			s.Span.LogFields(otlog.Error(kvps[i+1].(error)))
+			// Remove the already logged error
+			kvps = append(kvps[:i], kvps[i+2:]...)
+			break
+		}
+	}
+
 	fields, err := otlog.InterleavedKVToFields(kvps...)
 	if err != nil {
 		return err
 	}
 	s.Span.LogFields(fields...)
 	return nil
-}
-
-// Error sets error flag and logs the error on the span, if non-nil.  Returns the err passed in.
-func (s *SpanLogger) Error(err error) error {
-	if err == nil {
-		return nil
-	}
-	ext.Error.Set(s.Span, true)
-	s.Span.LogFields(otlog.Error(err))
-	return err
 }

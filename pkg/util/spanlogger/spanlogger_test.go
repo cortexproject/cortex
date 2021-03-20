@@ -14,11 +14,10 @@ func TestSpanLogger_Log(t *testing.T) {
 	_ = span.Log("foo")
 	newSpan := FromContext(ctx)
 	require.Equal(t, span.Span, newSpan.Span)
-	_ = newSpan.Log("bar")
+	require.Error(t, newSpan.Log("bar", "err", errors.New("err"), "metric2", 2))
 	noSpan := FromContext(context.Background())
 	_ = noSpan.Log("foo")
-	require.Error(t, noSpan.Error(errors.New("err")))
-	require.NoError(t, noSpan.Error(nil))
+	require.NoError(t, noSpan.Log("metric1", 1, "err", errors.New("err"), "metric2", 2))
 }
 
 func TestSpanLogger_CustomLogger(t *testing.T) {

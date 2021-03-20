@@ -561,29 +561,26 @@ func TestHandleHit(t *testing.T) {
 		input                      Request
 		cachedEntry                []Extent
 		expectedUpdatedCachedEntry []Extent
-		expectedResponse           *PrometheusResponse
 	}{
 		{
 			name: "Should drop tiny extent that overlaps with tiny request only",
 			input: &PrometheusRequest{
 				Start: 100,
-				End:   105,
-				Step:  3,
+				End:   120,
+				Step:  5,
 			},
-			expectedResponse: mkAPIResponse(100, 105, 3),
 			cachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 3),
-				mkExtentWithStep(60, 61, 3),
-				mkExtentWithStep(100, 106, 3),
-				mkExtentWithStep(110, 150, 3),
-				mkExtentWithStep(160, 161, 3),
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(110, 150, 5),
+				mkExtentWithStep(160, 165, 5),
 			},
 			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 3),
-				mkExtentWithStep(60, 61, 3),
-				mkExtentWithStep(100, 105, 3), // this is replaced by the result of request
-				mkExtentWithStep(110, 150, 3),
-				mkExtentWithStep(160, 161, 3),
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 150, 5),
+				mkExtentWithStep(160, 165, 5),
 			},
 		},
 		{
@@ -591,24 +588,23 @@ func TestHandleHit(t *testing.T) {
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   200,
-				Step:  3,
+				Step:  5,
 			},
-			expectedResponse: mkAPIResponse(100, 200, 3),
 			cachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 3),
-				mkExtentWithStep(60, 61, 3),
-				mkExtentWithStep(100, 104, 3),
-				mkExtentWithStep(110, 115, 3),
-				mkExtentWithStep(120, 125, 3),
-				mkExtentWithStep(220, 225, 3),
-				mkExtentWithStep(230, 250, 3),
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(110, 115, 5),
+				mkExtentWithStep(120, 125, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
 			},
 			expectedUpdatedCachedEntry: []Extent{
-				mkExtentWithStep(0, 50, 3),
-				mkExtentWithStep(60, 61, 3),
-				mkExtentWithStep(100, 200, 3),
-				mkExtentWithStep(220, 225, 3),
-				mkExtentWithStep(230, 250, 3),
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 200, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
 			},
 		},
 		{
@@ -618,7 +614,6 @@ func TestHandleHit(t *testing.T) {
 				End:   80,
 				Step:  20,
 			},
-			expectedResponse: mkAPIResponse(40, 80, 20),
 			cachedEntry: []Extent{
 				mkExtentWithStep(0, 20, 20),
 				mkExtentWithStep(80, 100, 20),
@@ -634,7 +629,6 @@ func TestHandleHit(t *testing.T) {
 				End:   80,
 				Step:  20,
 			},
-			expectedResponse: mkAPIResponse(40, 80, 20),
 			cachedEntry: []Extent{
 				mkExtentWithStep(60, 160, 20),
 			},
@@ -649,7 +643,6 @@ func TestHandleHit(t *testing.T) {
 				End:   180,
 				Step:  20,
 			},
-			expectedResponse: mkAPIResponse(100, 180, 20),
 			cachedEntry: []Extent{
 				mkExtentWithStep(60, 160, 20),
 			},
@@ -672,7 +665,9 @@ func TestHandleHit(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			response, updatedExtents, err := sut.handleHit(ctx, tc.input, tc.cachedEntry, 0)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedResponse, response, "response does not match the expectation")
+
+			expectedResponse := mkAPIResponse(tc.input.GetStart(), tc.input.GetEnd(), tc.input.GetStep())
+			require.Equal(t, expectedResponse, response, "response does not match the expectation")
 			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
 		})
 	}

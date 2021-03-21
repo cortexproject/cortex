@@ -1,6 +1,6 @@
 ---
-title: "Getting Started with Chunks Storage"
-linkTitle: "Chunks Storage"
+title: "Getting started with chunks storage"
+linkTitle: "Getting started with chunks storage"
 weight: 1
 slug: getting-started-chunks-storage
 ---

@@ -115,6 +115,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	var firstSuccessfulResponse *httpgrpc.HTTPResponse
 	var firstSuccessfulResponseMtx sync.Mutex
 	var discarded []cortexpb.DiscardedMetric
+	var discardedMutex sync.Mutex
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
@@ -137,7 +138,10 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 		if err != nil {
 			return err
 		}
+
+		discardedMutex.Lock()
 		discarded = append(discarded, writeResponse.Discarded...)
+		discardedMutex.Unlock()
 
 		if resp.Code/100 != 2 {
 			return httpgrpc.ErrorFromHTTPResponse(resp)
@@ -151,7 +155,11 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 
 		return nil
 	}, func() {})
+
+	discardedMutex.Lock()
 	validation.AddDiscarded(discarded, userID)
+	discardedMutex.Unlock()
+
 	if err != nil {
 		respondFromError(err, w, logger)
 		return

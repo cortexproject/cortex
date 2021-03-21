@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -615,6 +616,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	var discarded []cortexpb.DiscardedMetric
+	var discardedMutex sync.Mutex
 
 	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
 		timeseries := make([]cortexpb.PreallocTimeseries, 0, len(indexes))
@@ -639,11 +641,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 
-		discarded, err = d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		resp, sendErr := d.send(localCtx, ingester, timeseries, metadata, req.Source)
 
-		return err
+		discardedMutex.Lock()
+		discarded = append(discarded, resp.GetDiscarded()...)
+		discardedMutex.Unlock()
+
+		return sendErr
 	}, func() { cortexpb.ReuseSlice(req.Timeseries) })
+
+	discardedMutex.Lock()
 	validation.AddDiscarded(discarded, userID)
+	discardedMutex.Unlock()
+
 	if err != nil {
 		return nil, err
 	}
@@ -672,10 +682,10 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) ([]cortexpb.DiscardedMetric, error) {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) (*cortexpb.WriteResponse, error) {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
-		return []cortexpb.DiscardedMetric{}, err
+		return &cortexpb.WriteResponse{}, err
 	}
 	c := h.(ingester_client.IngesterClient)
 
@@ -685,9 +695,8 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		Source:     source,
 	}
 
-	var res *cortexpb.WriteResponse
-	res, err = c.Push(ctx, &req)
-	discarded := res.GetDiscarded()
+	var resp *cortexpb.WriteResponse
+	resp, err = c.Push(ctx, &req)
 
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
@@ -702,7 +711,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		}
 	}
 
-	return discarded, err
+	return resp, err
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.

@@ -3320,6 +3320,8 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		},
 	}
 
+	defaultGlobalLimits = nil
+
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Create a mocked ingester

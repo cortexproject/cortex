@@ -145,10 +145,10 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 			if cmp == 0 {
 				DiscardedSamples.WithLabelValues(duplicateLabelNames, userID).Inc()
 				return newDuplicatedLabelError(ls, l.Name)
-			} else {
-				DiscardedSamples.WithLabelValues(labelsNotSorted, userID).Inc()
-				return newLabelsNotSortedError(ls, l.Name)
 			}
+
+			DiscardedSamples.WithLabelValues(labelsNotSorted, userID).Inc()
+			return newLabelsNotSortedError(ls, l.Name)
 		}
 
 		lastLabelName = l.Name

@@ -37,8 +37,8 @@ const (
 	errLabelNameTooLong   = "label name too long: %.200q metric %.200q"
 	errLabelValueTooLong  = "label value too long: %.200q metric %.200q"
 	errTooManyLabels      = "series has too many labels (actual: %d, limit: %d) series: '%s'"
-	errTooOld             = "sample for '%s' has timestamp too old: %d"
-	errTooNew             = "sample for '%s' has timestamp too new: %d"
+	errTooOld             = "timestamp too old: %d metric: %.200q"
+	errTooNew             = "timestamp too new: %d metric: %.200q"
 	errDuplicateLabelName = "duplicate label name: %.200q metric %.200q"
 	errLabelsNotSorted    = "labels not sorted: %.200q metric %.200q"
 
@@ -98,12 +98,12 @@ type SampleValidationConfig interface {
 func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s cortexpb.Sample) error {
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, metricName, model.Time(s.TimestampMs))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooOld, model.Time(s.TimestampMs), metricName)
 	}
 
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, metricName, model.Time(s.TimestampMs))
+		return httpgrpc.Errorf(http.StatusBadRequest, errTooNew, model.Time(s.TimestampMs), metricName)
 	}
 
 	return nil

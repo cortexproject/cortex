@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,8 +27,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
@@ -1053,6 +1057,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			ctx := context.Background()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			mockStore := prepareInMemoryAlertStore()
+			clientPool := newPassthroughAlertmanagerClientPool()
 			externalURL := flagext.URLValue{}
 			err := externalURL.Set("http://localhost:8080/alertmanager")
 			require.NoError(t, err)
@@ -1094,6 +1099,11 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
+
+				if tt.withSharding {
+					clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+					am.alertmanagerClientsPool = clientPool
+				}
 
 				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 
@@ -1178,13 +1188,19 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			}
 
 			// 5. Then, make sure it is propagated successfully.
-			assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
-			assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
 			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 
-			// 5b. We'll never receive the message as GRPC communication over unit tests is not possible.
-			assert.Equal(t, float64(0), metrics.GetSumOfCounters("alertmanager_partial_state_merges_total"))
-			assert.Equal(t, float64(0), metrics.GetSumOfCounters("alertmanager_partial_state_merges_failed_total"))
+			// 5b. Check the number of partial states merged are as we expect.
+			// Partial states are currently replicated twice:
+			//   For RF=1 1 -> 0      = Total 0 merges
+			//   For RF=2 1 -> 1 -> 1 = Total 2 merges
+			//   For RF=3 1 -> 2 -> 4 = Total 6 merges
+			nFanOut := tt.replicationFactor - 1
+			nMerges := nFanOut + (nFanOut * nFanOut)
+			assert.Equal(t, float64(nMerges), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_total"))
+			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_failed_total"))
 		})
 	}
 }
@@ -1225,4 +1241,40 @@ func TestStoreTemplateFile(t *testing.T) {
 
 	_, err = storeTemplateFile(templatesDir, "../test", "content")
 	require.Error(t, err)
+}
+
+type passthroughAlertmanagerClient struct {
+	server alertmanagerpb.AlertmanagerServer
+}
+
+func (am *passthroughAlertmanagerClient) UpdateState(ctx context.Context, in *clusterpb.Part, opts ...grpc.CallOption) (*alertmanagerpb.UpdateStateResponse, error) {
+	return am.server.UpdateState(ctx, in)
+}
+
+func (am *passthroughAlertmanagerClient) HandleRequest(context.Context, *httpgrpc.HTTPRequest, ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+	return nil, fmt.Errorf("unexpected call to HandleRequest")
+}
+
+func (am *passthroughAlertmanagerClient) RemoteAddress() string {
+	return ""
+}
+
+// passthroughAlertmanagerClientPool allows testing the logic of gRPC calls between alertmanager instances
+// by invoking client calls directly to a peer instance in the unit test, without the server running.
+type passthroughAlertmanagerClientPool struct {
+	servers map[string]alertmanagerpb.AlertmanagerServer
+}
+
+func newPassthroughAlertmanagerClientPool() *passthroughAlertmanagerClientPool {
+	return &passthroughAlertmanagerClientPool{
+		servers: make(map[string]alertmanagerpb.AlertmanagerServer),
+	}
+}
+
+func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, error) {
+	s, ok := f.servers[addr]
+	if !ok {
+		return nil, fmt.Errorf("client not found for address: %v", addr)
+	}
+	return Client(&passthroughAlertmanagerClient{s}), nil
 }

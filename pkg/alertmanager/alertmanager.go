@@ -367,7 +367,10 @@ func (am *Alertmanager) StopAndWait() {
 }
 
 func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
-	return am.state.(*state).MergePartialState(part)
+	if state, ok := am.state.(*state); ok {
+		return state.MergePartialState(part)
+	}
+	return errors.New("ring-based sharding not enabled")
 }
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a

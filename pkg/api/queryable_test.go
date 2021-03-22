@@ -136,6 +136,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		engine,
 		q,
 		nil,
+		nil,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

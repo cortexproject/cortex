@@ -216,7 +216,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 
 	// Total series limit.
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
-		return makeLimitError(perUserSeriesLimit, err)
+		return err
 	}
 
 	// Series per metric name limit.
@@ -225,7 +225,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return err
 	}
 	if err := u.seriesInMetric.canAddSeriesFor(u.userID, metricName); err != nil {
-		return makeMetricLimitError(perMetricSeriesLimit, metric, err)
+		return err
 	}
 
 	return nil
@@ -693,7 +693,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id")
+		return nil, err
 	}
 
 	db, err := i.getOrCreateTSDB(userID, false)
@@ -705,7 +705,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	i.userStatesMtx.RLock()
 	if i.stopped {
 		i.userStatesMtx.RUnlock()
-		return nil, fmt.Errorf("ingester stopping")
+		return nil, errIngesterStopping
 	}
 	i.userStatesMtx.RUnlock()
 
@@ -720,9 +720,22 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
-	succeededSamplesCount := 0
-	failedSamplesCount := 0
-	startAppend := time.Now()
+	var (
+		succeededSamplesCount     = 0
+		failedSamplesCount        = 0
+		startAppend               = time.Now()
+		sampleOutOfBoundsCount    = 0
+		sampleOutOfOrderCount     = 0
+		newValueForTimestampCount = 0
+		perUserSeriesLimitCount   = 0
+		perMetricSeriesLimitCount = 0
+
+		updateFirstPartial = func(errFn func() error) {
+			if firstPartialErr == nil {
+				firstPartialErr = errFn()
+			}
+		}
+	)
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx)
@@ -775,31 +788,32 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
-			cause := errors.Cause(err)
-			if cause == storage.ErrOutOfBounds || cause == storage.ErrOutOfOrderSample || cause == storage.ErrDuplicateSampleForTimestamp {
-				if firstPartialErr == nil {
-					firstPartialErr = wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels)
-				}
-
-				switch cause {
-				case storage.ErrOutOfBounds:
-					validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Inc()
-				case storage.ErrOutOfOrderSample:
-					validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Inc()
-				case storage.ErrDuplicateSampleForTimestamp:
-					validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Inc()
-				}
-
+			switch cause := errors.Cause(err); cause {
+			case storage.ErrOutOfBounds:
+				sampleOutOfBoundsCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
 				continue
-			}
 
-			var ve *validationError
-			if errors.As(cause, &ve) {
-				// Caused by limits.
-				if firstPartialErr == nil {
-					firstPartialErr = ve
-				}
-				validation.DiscardedSamples.WithLabelValues(ve.errorType, userID).Inc()
+			case storage.ErrOutOfOrderSample:
+				sampleOutOfOrderCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
+
+			case storage.ErrDuplicateSampleForTimestamp:
+				newValueForTimestampCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
+
+			case errMaxSeriesPerUserLimitExceeded:
+				perUserSeriesLimitCount++
+				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
+				continue
+
+			case errMaxSeriesPerMetricLimitExceeded:
+				perMetricSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+				})
 				continue
 			}
 
@@ -841,6 +855,22 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+
+	if sampleOutOfBoundsCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
+	}
+	if sampleOutOfOrderCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+	}
+	if newValueForTimestampCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
+	}
+	if perUserSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+	}
+	if perMetricSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+	}
 
 	switch req.Source {
 	case cortexpb.RULE:
@@ -1894,9 +1924,16 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	// This will prevent going back to "active" state in deferred statement.
 	userDB.casState(closing, closed)
 
-	i.userStatesMtx.Lock()
-	delete(i.TSDBState.dbs, userID)
-	i.userStatesMtx.Unlock()
+	// Only remove user from TSDBState when everything is cleaned up
+	// This will prevent concurrency problems when cortex are trying to open new TSDB - Ie: New request for a given tenant
+	// came in - while closing the tsdb for the same tenant.
+	// If this happens now, the request will get reject as the push will not be able to acquire the lock as the tsdb will be
+	// in closed state
+	defer func() {
+		i.userStatesMtx.Lock()
+		delete(i.TSDBState.dbs, userID)
+		i.userStatesMtx.Unlock()
+	}()
 
 	i.metrics.memUsers.Dec()
 	i.TSDBState.tsdbMetrics.removeRegistryForUser(userID)

@@ -152,14 +152,12 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	return u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
-		return u.syncUsersBlocksWithRetries(ctx, s)
+	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, s *store.BucketStore) error {
-	var lastErr error
-
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
@@ -167,15 +165,15 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, s *store.
 	})
 
 	for retries.Ongoing() {
-		lastErr = s.SyncBlocks(ctx)
-		if lastErr != nil {
-			return lastErr
+		err := u.syncUsersBlocks(ctx, f)
+		if err == nil {
+			return err
 		}
 
 		retries.Wait()
 	}
 
-	return nil
+	return retries.Err()
 }
 
 func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {

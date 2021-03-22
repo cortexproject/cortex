@@ -27,6 +27,8 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 
 	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
+
+	IngesterLimits ingester.GlobalLimits `yaml:"ingester_limits"`
 }
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager
@@ -121,6 +123,20 @@ func ingesterChunkStreaming(manager *runtimeconfig.Manager) func() ingester.Quer
 		}
 
 		return ingester.QueryStreamDefault
+	}
+}
+
+func ingesterGlobalLimits(manager *runtimeconfig.Manager) func() *ingester.GlobalLimits {
+	if manager == nil {
+		return nil
+	}
+
+	return func() *ingester.GlobalLimits {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return &cfg.IngesterLimits
+		}
+		return nil
 	}
 }
 

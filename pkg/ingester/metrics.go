@@ -55,9 +55,10 @@ type ingesterMetrics struct {
 	activeSeriesPerUser *prometheus.GaugeVec
 
 	// Global limit metrics
-	maxUsersGauge    prometheus.GaugeFunc
-	maxSeriesGauge   prometheus.GaugeFunc
-	maxIngestionRate prometheus.GaugeFunc
+	maxUsersGauge           prometheus.GaugeFunc
+	maxSeriesGauge          prometheus.GaugeFunc
+	maxIngestionRate        prometheus.GaugeFunc
+	maxInflightPushRequests prometheus.GaugeFunc
 }
 
 func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits) *ingesterMetrics {
@@ -229,6 +230,17 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		}, func() float64 {
 			if g := globalLimitsFn(); g != nil {
 				return float64(g.MaxIngestionRate)
+			}
+			return 0
+		}),
+
+		maxInflightPushRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        globalLimits,
+			Help:        "Max number of users allowed in ingester",
+			ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
+		}, func() float64 {
+			if g := globalLimitsFn(); g != nil {
+				return float64(g.MaxInflightPushRequests)
 			}
 			return 0
 		}),

@@ -3398,6 +3398,7 @@ func TestIngester_globalLimitsMetrics(t *testing.T) {
 		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
 		cortex_ingester_global_limit{limit="max_series"} 30
 		cortex_ingester_global_limit{limit="max_users"} 20
+		cortex_ingester_global_limit{limit="max_inflight_push_requests"} 0
 	`), "cortex_ingester_global_limit"))
 
 	l.MaxInMemoryUsers = 1000
@@ -3406,6 +3407,7 @@ func TestIngester_globalLimitsMetrics(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ingester_global_limit Max number of users allowed in ingester
 		# TYPE cortex_ingester_global_limit gauge
+		cortex_ingester_global_limit{limit="max_inflight_push_requests"} 0
 		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
 		cortex_ingester_global_limit{limit="max_series"} 2000
 		cortex_ingester_global_limit{limit="max_users"} 1000

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
+	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
@@ -125,9 +126,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
 
-	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.global-limits.max-ingestion-rate", 0, "Global max samples push rate used by ingester. Additional push requests will be rejected by error. 0 = disabled.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryUsers, "ingester.global-limits.max-users", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. 0 = disabled.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.global-limits.max-series", 0, "Max series that this ingester can hold. Requests to create additional series will be rejected. 0 = disabled.")
+	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.global-limits.max-ingestion-rate", 0, "Global max samples push rate used by ingester. Additional push requests will be rejected by error. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryUsers, "ingester.global-limits.max-users", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.global-limits.max-series", 0, "Max series that this ingester can hold. Requests to create additional series will be rejected. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.global-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle. Additional requests will be rejected. 0 = unlimited.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -176,7 +178,8 @@ type Ingester struct {
 	TSDBState TSDBState
 
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
-	ingestionRate *ewmaRate
+	ingestionRate        *ewmaRate
+	inflightPushRequests atomic.Int64
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -455,6 +458,16 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
 	}
+
+	gl := i.getGlobalLimits()
+	if gl != nil {
+		if inflight := i.inflightPushRequests.Load(); inflight > gl.MaxInflightPushRequests {
+			return nil, errTooManyInflightPushRequests{requests: inflight, limit: gl.MaxInflightPushRequests}
+		}
+	}
+
+	i.inflightPushRequests.Inc()
+	defer i.inflightPushRequests.Dec()
 
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2Push(ctx, req)

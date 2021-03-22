@@ -3451,7 +3451,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 			require.NoError(t, err)
 
 			elapsed := time.Since(start)
-			fmt.Println(count, elapsed)
+			t.Log(count, elapsed)
 			if elapsed > time.Second {
 				break
 			}

@@ -25,9 +25,9 @@ Read the [getting started guide](https://cortexmetrics.io/docs/getting-started) 
 project. Before deploying Cortex with a permanent storage backend you
 should read:
 1. [An overview of Cortex's architecture](https://cortexmetrics.io/docs/architecture/)
-1. [A guide to running Cortex](https://cortexmetrics.io/docs/guides/running-chunks-storage-in-production/)
+1. [A guide to running Cortex](https://cortexmetrics.io/docs/chunks-storage/running-chunks-storage-in-production/)
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
-1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/running-chunks-storage-with-cassandra/)
+1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/chunks-storage/running-chunks-storage-with-cassandra/)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 

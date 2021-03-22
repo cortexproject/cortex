@@ -186,8 +186,6 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	defaultGlobalLimits = &cfg.DefaultLimits
-
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}

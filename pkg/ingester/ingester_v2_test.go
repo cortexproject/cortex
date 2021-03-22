@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -3226,4 +3227,149 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 		# TYPE cortex_ingester_tsdb_compactions_total counter
 		cortex_ingester_tsdb_compactions_total 1
 	`), "cortex_ingester_tsdb_compactions_total"))
+}
+
+func TestIngester_v2PushGlobalLimits(t *testing.T) {
+	tests := map[string]struct {
+		limits          GlobalLimits
+		reqs            map[string][]*cortexpb.WriteRequest
+		expectedErr     error
+		expectedErrType interface{}
+	}{
+		"should succeed creating one user and series": {
+			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+			reqs: map[string][]*cortexpb.WriteRequest{
+				"test": {
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}})},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+						[]*cortexpb.MetricMetadata{
+							{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
+						},
+						cortexpb.API),
+				},
+			},
+			expectedErr: nil,
+		},
+
+		"should fail creating two series": {
+			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+
+			reqs: map[string][]*cortexpb.WriteRequest{
+				"test": {
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+						nil,
+						cortexpb.API),
+
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
+						cortexpb.API),
+				},
+			},
+
+			expectedErr: wrapWithUser(errMaxSeriesLimitReached{limit: 1, series: 1}, "test"),
+		},
+
+		"should fail creating two users": {
+			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+
+			reqs: map[string][]*cortexpb.WriteRequest{
+				"user1": {
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+						nil,
+						cortexpb.API),
+				},
+
+				"user2": {
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
+						cortexpb.API),
+				},
+			},
+			expectedErr: wrapWithUser(errMaxUsersLimitReached{users: 1, limit: 1}, "user2"),
+		},
+
+		"should fail pushing samples in two requests due to rate limit": {
+			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1, MaxIngestionRate: 0.001},
+
+			reqs: map[string][]*cortexpb.WriteRequest{
+				"user1": {
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+						nil,
+						cortexpb.API),
+
+					cortexpb.ToWriteRequest(
+						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
+						cortexpb.API),
+				},
+			},
+			expectedErrType: &errMaxSamplesPushRateLimitReached{},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Create a mocked ingester
+			cfg := defaultIngesterTestConfig()
+			cfg.DefaultLimits = testData.limits
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// Iterate through users in sorted order (by username).
+			uids := []string{}
+			totalPushes := 0
+			for uid, requests := range testData.reqs {
+				uids = append(uids, uid)
+				totalPushes += len(requests)
+			}
+			sort.Strings(uids)
+
+			pushIdx := 0
+			for _, uid := range uids {
+				ctx := user.InjectOrgID(context.Background(), uid)
+
+				for _, req := range testData.reqs[uid] {
+					pushIdx++
+					_, err := i.v2Push(ctx, req)
+
+					if pushIdx < totalPushes {
+						require.NoError(t, err)
+					} else {
+						// Last push may expect error.
+						if testData.expectedErr != nil {
+							assert.Equal(t, testData.expectedErr, err)
+						} else if testData.expectedErrType != nil {
+							assert.True(t, errors.As(err, testData.expectedErrType), "expected error type %T, got %v", testData.expectedErrType, err)
+						} else {
+							assert.NoError(t, err)
+						}
+					}
+
+					// imitate time ticking between each push
+					i.pushedSamples.tick()
+				}
+			}
+		})
+	}
 }

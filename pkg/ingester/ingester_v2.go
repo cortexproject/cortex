@@ -461,6 +461,8 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+	defaultGlobalLimits = &cfg.DefaultLimits
+
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -1403,12 +1405,6 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool, gl *GlobalLimits) 
 		return db, nil
 	}
 
-	if gl != nil && gl.MaxInMemoryUsers > 0 {
-		if users := int64(len(i.TSDBState.dbs)); users >= gl.MaxInMemoryUsers {
-			return nil, errMaxUsersLimitReached{users: users, limit: gl.MaxInMemoryUsers}
-		}
-	}
-
 	// We're ready to create the TSDB, however we must be sure that the ingester
 	// is in the ACTIVE state, otherwise it may conflict with the transfer in/out.
 	// The TSDB is created when the first series is pushed and this shouldn't happen
@@ -1417,6 +1413,12 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool, gl *GlobalLimits) 
 	// a transfer in occurs.
 	if ingesterState := i.lifecycler.GetState(); !force && ingesterState != ring.ACTIVE {
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
+	}
+
+	if gl != nil && gl.MaxInMemoryUsers > 0 {
+		if users := int64(len(i.TSDBState.dbs)); users >= gl.MaxInMemoryUsers {
+			return nil, errMaxUsersLimitReached{users: users, limit: gl.MaxInMemoryUsers}
+		}
 	}
 
 	// Create the database and a shipper for a user

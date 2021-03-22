@@ -37,6 +37,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -3412,4 +3413,92 @@ func TestIngester_globalLimitsMetrics(t *testing.T) {
 		cortex_ingester_global_limit{limit="max_series"} 2000
 		cortex_ingester_global_limit{limit="max_users"} 1000
 	`), "cortex_ingester_global_limit"))
+}
+
+func TestIngester_inflightPushRequests(t *testing.T) {
+	limits := GlobalLimits{MaxInflightPushRequests: 1}
+
+	// Create a mocked ingester
+	cfg := defaultIngesterTestConfig()
+	cfg.GlobalLimitsFn = func() *GlobalLimits { return &limits }
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	startCh := make(chan struct{})
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		count := 100000
+		target := time.Second
+
+		// find right count to make sure that push takes given target duration.
+		for {
+			req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("test-%d", count)), count)
+
+			start := time.Now()
+			_, err := i.Push(ctx, req)
+			require.NoError(t, err)
+
+			elapsed := time.Since(start)
+			fmt.Println(count, elapsed)
+			if elapsed > time.Second {
+				break
+			}
+
+			count = int(float64(count) * float64(target/elapsed) * 1.5) // Adjust number of samples to hit our target push duration.
+		}
+
+		// Now repeat push with number of samples calibrated to our target.
+		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count)
+
+		// Signal that we're going to do the real push now.
+		close(startCh)
+
+		_, err := i.Push(ctx, req)
+		return err
+	})
+
+	g.Go(func() error {
+		select {
+		case <-ctx.Done():
+		// failed to setup
+		case <-startCh:
+			// we can start the test.
+		}
+
+		time.Sleep(10 * time.Millisecond) // Give first goroutine a chance to start pushing...
+		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, "testcase"), 1024)
+
+		_, err := i.Push(ctx, req)
+		require.Equal(t, errTooManyInflightPushRequests{requests: 2, limit: 1}, err)
+		return nil
+	})
+
+	require.NoError(t, g.Wait())
+}
+
+func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {
+	var lbls = make([]labels.Labels, 0, count)
+	var samples = make([]cortexpb.Sample, 0, count)
+
+	for i := 0; i < count; i++ {
+		samples = append(samples, cortexpb.Sample{
+			Value:       float64(i),
+			TimestampMs: int64(i),
+		})
+		lbls = append(lbls, l)
+	}
+
+	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
 }

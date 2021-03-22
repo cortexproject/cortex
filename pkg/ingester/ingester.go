@@ -459,15 +459,16 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		return nil, err
 	}
 
+	// We will report *this* request in the error too.
+	inflight := i.inflightPushRequests.Inc()
+	defer i.inflightPushRequests.Dec()
+
 	gl := i.getGlobalLimits()
 	if gl != nil {
-		if inflight := i.inflightPushRequests.Load(); inflight > gl.MaxInflightPushRequests {
+		if inflight > gl.MaxInflightPushRequests {
 			return nil, errTooManyInflightPushRequests{requests: inflight, limit: gl.MaxInflightPushRequests}
 		}
 	}
-
-	i.inflightPushRequests.Inc()
-	defer i.inflightPushRequests.Dec()
 
 	if i.cfg.BlocksStorageEnabled {
 		return i.v2Push(ctx, req)

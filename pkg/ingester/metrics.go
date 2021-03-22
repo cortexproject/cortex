@@ -53,9 +53,19 @@ type ingesterMetrics struct {
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 
 	activeSeriesPerUser *prometheus.GaugeVec
+
+	// Global limit metrics
+	maxUsersGauge    prometheus.GaugeFunc
+	maxSeriesGauge   prometheus.GaugeFunc
+	maxIngestionRate prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits) *ingesterMetrics {
+	const (
+		globalLimits = "cortex_ingester_global_limit"
+		limitLabel   = "limit"
+	)
+
 	m := &ingesterMetrics{
 		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_flush_queue_length",
@@ -188,6 +198,39 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		oldestUnflushedChunkTimestamp: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
 			Help: "Unix timestamp of the oldest unflushed chunk in the memory",
+		}),
+
+		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        globalLimits,
+			Help:        "Max number of users allowed in ingester",
+			ConstLabels: map[string]string{limitLabel: "max_users"},
+		}, func() float64 {
+			if g := globalLimitsFn(); g != nil {
+				return float64(g.MaxInMemoryUsers)
+			}
+			return 0
+		}),
+
+		maxSeriesGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        globalLimits,
+			Help:        "Max number of users allowed in ingester",
+			ConstLabels: map[string]string{limitLabel: "max_series"},
+		}, func() float64 {
+			if g := globalLimitsFn(); g != nil {
+				return float64(g.MaxInMemorySeries)
+			}
+			return 0
+		}),
+
+		maxIngestionRate: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name:        globalLimits,
+			Help:        "Max number of users allowed in ingester",
+			ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
+		}, func() float64 {
+			if g := globalLimitsFn(); g != nil {
+				return float64(g.MaxIngestionRate)
+			}
+			return 0
 		}),
 
 		// Not registered automatically, but only if activeSeriesEnabled is true.

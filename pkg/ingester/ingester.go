@@ -176,7 +176,7 @@ type Ingester struct {
 	TSDBState TSDBState
 
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
-	pushedSamples *ewmaRate
+	ingestionRate *ewmaRate
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -186,6 +186,8 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+	defaultGlobalLimits = &cfg.DefaultLimits
+
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -219,7 +221,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
 		limits:           limits,
 		chunkStore:       chunkStore,
@@ -229,6 +230,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		registerer:       registerer,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits)
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
@@ -311,7 +313,6 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 
 	i := &Ingester{
 		cfg:              cfg,
-		metrics:          newIngesterMetrics(registerer, true, false),
 		chunkStore:       chunkStore,
 		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
@@ -319,6 +320,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:           limits,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, false, i.getGlobalLimits)
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil

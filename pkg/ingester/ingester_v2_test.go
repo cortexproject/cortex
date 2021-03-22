@@ -3367,9 +3367,47 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 					}
 
 					// imitate time ticking between each push
-					i.pushedSamples.tick()
+					i.ingestionRate.tick()
 				}
 			}
 		})
 	}
+}
+
+func TestIngester_globalLimitsMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+
+	l := GlobalLimits{
+		MaxIngestionRate:  10,
+		MaxInMemoryUsers:  20,
+		MaxInMemorySeries: 30,
+	}
+
+	cfg := defaultIngesterTestConfig()
+	cfg.GlobalLimitsFn = func() *GlobalLimits {
+		return &l
+	}
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	_, err := prepareIngesterWithBlocksStorage(t, cfg, reg)
+	require.NoError(t, err)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_global_limit Max number of users allowed in ingester
+		# TYPE cortex_ingester_global_limit gauge
+		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
+		cortex_ingester_global_limit{limit="max_series"} 30
+		cortex_ingester_global_limit{limit="max_users"} 20
+	`), "cortex_ingester_global_limit"))
+
+	l.MaxInMemoryUsers = 1000
+	l.MaxInMemorySeries = 2000
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ingester_global_limit Max number of users allowed in ingester
+		# TYPE cortex_ingester_global_limit gauge
+		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
+		cortex_ingester_global_limit{limit="max_series"} 2000
+		cortex_ingester_global_limit{limit="max_users"} 1000
+	`), "cortex_ingester_global_limit"))
 }

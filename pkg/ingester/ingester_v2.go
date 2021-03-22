@@ -461,8 +461,6 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	defaultGlobalLimits = &cfg.DefaultLimits
-
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -471,15 +469,15 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:           cfg,
 		clientConfig:  clientConfig,
-		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled),
 		limits:        limits,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
 		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
-		pushedSamples: newEWMARate(0.2, cfg.RateUpdatePeriod),
+		ingestionRate: newEWMARate(0.2, cfg.RateUpdatePeriod),
 	}
+	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -534,11 +532,11 @@ func NewV2ForFlusher(cfg Config, limits *validation.Overrides, registerer promet
 	i := &Ingester{
 		cfg:       cfg,
 		limits:    limits,
-		metrics:   newIngesterMetrics(registerer, false, false),
 		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, false, false, i.getGlobalLimits)
 
 	i.TSDBState.shipperIngesterID = "flusher"
 
@@ -652,7 +650,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		case <-metadataPurgeTicker.C:
 			i.purgeUserMetricsMetadata()
 		case <-rateUpdateTicker.C:
-			i.pushedSamples.tick()
+			i.ingestionRate.tick()
 
 			i.userStatesMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
@@ -707,7 +705,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	gl := i.getGlobalLimits()
 	if gl != nil && gl.MaxIngestionRate > 0 {
-		if rate := i.pushedSamples.rate(); rate >= gl.MaxIngestionRate {
+		if rate := i.ingestionRate.rate(); rate >= gl.MaxIngestionRate {
 			return nil, errMaxSamplesPushRateLimitReached{rate: rate, limit: gl.MaxIngestionRate}
 		}
 	}
@@ -873,7 +871,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 
-	i.pushedSamples.add(int64(succeededSamplesCount))
+	i.ingestionRate.add(int64(succeededSamplesCount))
 
 	switch req.Source {
 	case cortexpb.RULE:

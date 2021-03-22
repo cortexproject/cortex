@@ -3324,8 +3324,10 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
-			cfg.DefaultLimits = testData.limits
 			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.GlobalLimitsFn = func() *GlobalLimits {
+				return &testData.limits
+			}
 
 			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 			require.NoError(t, err)
@@ -3352,7 +3354,7 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 
 				for _, req := range testData.reqs[uid] {
 					pushIdx++
-					_, err := i.v2Push(ctx, req)
+					_, err := i.Push(ctx, req)
 
 					if pushIdx < totalPushes {
 						require.NoError(t, err)

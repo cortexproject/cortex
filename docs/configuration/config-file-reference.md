@@ -773,8 +773,9 @@ lifecycler:
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
 
 global_limits:
-  # Global max samples push rate used by ingester. Additional push requests will
-  # be rejected by error. 0 = unlimited.
+  # Max ingestion rate (samples/sec) that ingester will accept. This limit is
+  # per-ingester, not per-tenant. Additional push requests will be rejected. 0 =
+  # unlimited.
   # CLI flag: -ingester.global-limits.max-ingestion-rate
   [max_ingestion_rate: <float> | default = 0]
 
@@ -783,13 +784,13 @@ global_limits:
   # CLI flag: -ingester.global-limits.max-users
   [max_users: <int> | default = 0]
 
-  # Max series that this ingester can hold. Requests to create additional series
-  # will be rejected. 0 = unlimited.
+  # Max series that this ingester can hold (across all tenants). Requests to
+  # create additional series will be rejected. 0 = unlimited.
   # CLI flag: -ingester.global-limits.max-series
   [max_series: <int> | default = 0]
 
-  # Max inflight push requests that this ingester can handle. Additional
-  # requests will be rejected. 0 = unlimited.
+  # Max inflight push requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
   # CLI flag: -ingester.global-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
 ```

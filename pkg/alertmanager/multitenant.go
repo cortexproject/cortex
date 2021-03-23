@@ -1027,9 +1027,8 @@ func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, use
 	addrs := replicationSet.GetAddressesWithout(am.ringLifecycler.GetInstanceAddr())
 
 	var (
-		resultsMtx      sync.Mutex
-		results         []*clusterpb.FullState
-		numUserNotFound int
+		resultsMtx sync.Mutex
+		results    []*clusterpb.FullState
 	)
 
 	// Note that the jobs swallow the errors - this is because we want to give each replica a chance to respond.
@@ -1059,9 +1058,6 @@ func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, use
 			level.Error(am.logger).Log("msg", "error trying to read state", "addr", addr, "user", userID, "err", resp.Error)
 		case alertmanagerpb.READ_USER_NOT_FOUND:
 			level.Debug(am.logger).Log("msg", "user not found while trying to read state", "addr", addr, "user", userID)
-			resultsMtx.Lock()
-			numUserNotFound++
-			resultsMtx.Unlock()
 		default:
 			level.Error(am.logger).Log("msg", "unknown response trying to read state", "addr", addr, "user", userID)
 		}
@@ -1069,12 +1065,6 @@ func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, use
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	// If all replicas reply with user not found, then we're not going to improve by retrying.
-	if numUserNotFound == len(addrs) {
-		level.Debug(am.logger).Log("msg", "user unknown in all replicas", "user", userID)
-		return []*clusterpb.FullState{}, nil
 	}
 
 	// We only require the state from a single replica, though we return as many as we were able to obtain.

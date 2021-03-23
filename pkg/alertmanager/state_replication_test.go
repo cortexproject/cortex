@@ -44,8 +44,7 @@ type readStateResult struct {
 type fakeReplicator struct {
 	mtx     sync.Mutex
 	results map[string]*clusterpb.Part
-	reads   []readStateResult
-	readNum int
+	read    readStateResult
 }
 
 func newFakeReplicator() *fakeReplicator {
@@ -66,22 +65,15 @@ func (f *fakeReplicator) GetPositionForUser(_ string) int {
 }
 
 func (f *fakeReplicator) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
-	if f.readNum >= len(f.reads) {
-		return nil, errors.New("Unexpected ReadFullStateForUser")
-	}
-
 	if userID != "user-1" {
 		return nil, errors.New("Unexpected userID")
 	}
 
-	result := f.reads[f.readNum]
-	f.readNum++
-
-	if result.blocking {
+	if f.read.blocking {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	return result.res, result.err
+	return f.read.res, f.read.err
 }
 
 func TestStateReplication(t *testing.T) {
@@ -109,7 +101,7 @@ func TestStateReplication(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			replicator := newFakeReplicator()
-			replicator.reads = []readStateResult{{res: nil, err: nil}}
+			replicator.read = readStateResult{res: nil, err: nil}
 			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
 
 			require.False(t, s.Ready())
@@ -170,13 +162,13 @@ func TestStateReplication_Settle(t *testing.T) {
 	tc := []struct {
 		name              string
 		replicationFactor int
-		reads             []readStateResult
+		read              readStateResult
 		results           map[string][][]byte
 	}{
 		{
 			name:              "with a replication factor of <= 1, no state can be read from peers.",
 			replicationFactor: 1,
-			reads:             []readStateResult{},
+			read:              readStateResult{},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -185,12 +177,10 @@ func TestStateReplication_Settle(t *testing.T) {
 		{
 			name:              "with a replication factor of > 1, state is read from all peers.",
 			replicationFactor: 3,
-			reads: []readStateResult{
-				{
-					res: []*clusterpb.FullState{
-						{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}, {Key: "key2", Data: []byte("Datum2")}}},
-						{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum3")}, {Key: "key2", Data: []byte("Datum4")}}},
-					},
+			read: readStateResult{
+				res: []*clusterpb.FullState{
+					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}, {Key: "key2", Data: []byte("Datum2")}}},
+					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum3")}, {Key: "key2", Data: []byte("Datum4")}}},
 				},
 			},
 			results: map[string][][]byte{
@@ -201,9 +191,9 @@ func TestStateReplication_Settle(t *testing.T) {
 		{
 			name:              "with full state having no parts, nothing is merged.",
 			replicationFactor: 3,
-			reads: []readStateResult{{
+			read: readStateResult{
 				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{}}},
-			}},
+			},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -212,12 +202,12 @@ func TestStateReplication_Settle(t *testing.T) {
 		{
 			name:              "with an unknown key, parts in the same state are merged.",
 			replicationFactor: 3,
-			reads: []readStateResult{{
+			read: readStateResult{
 				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{
 					{Key: "unknown", Data: []byte("Wow")},
 					{Key: "key1", Data: []byte("Datum1")},
 				}}},
-			}},
+			},
 			results: map[string][][]byte{
 				"key1": {[]byte("Datum1")},
 				"key2": nil,
@@ -226,26 +216,11 @@ func TestStateReplication_Settle(t *testing.T) {
 		{
 			name:              "with an unknown key, parts in other states are merged.",
 			replicationFactor: 3,
-			reads: []readStateResult{{
+			read: readStateResult{
 				res: []*clusterpb.FullState{
 					{Parts: []clusterpb.Part{{Key: "unknown", Data: []byte("Wow")}}},
 					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}}},
 				},
-			}},
-			results: map[string][][]byte{
-				"key1": {[]byte("Datum1")},
-				"key2": nil,
-			},
-		},
-		{
-			name:              "when reading the full state fails, retry until successful.",
-			replicationFactor: 3,
-			reads: []readStateResult{
-				{err: errors.New("Read Error 1")},
-				{err: errors.New("Read Error 2")},
-				{res: []*clusterpb.FullState{
-					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}}},
-				}},
 			},
 			results: map[string][][]byte{
 				"key1": {[]byte("Datum1")},
@@ -253,13 +228,9 @@ func TestStateReplication_Settle(t *testing.T) {
 			},
 		},
 		{
-			name:              "when reading the full state fails too many times, hit max retries but become ready.",
+			name:              "when reading the full state fails, still become ready.",
 			replicationFactor: 3,
-			reads: []readStateResult{
-				{err: errors.New("Read Error 1")},
-				{err: errors.New("Read Error 2")},
-				{err: errors.New("Read Error 3")},
-			},
+			read:              readStateResult{err: errors.New("Read Error 1")},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -268,9 +239,7 @@ func TestStateReplication_Settle(t *testing.T) {
 		{
 			name:              "when reading the full state takes too long, hit timeout but become ready.",
 			replicationFactor: 3,
-			reads: []readStateResult{
-				{blocking: true},
-			},
+			read:              readStateResult{blocking: true},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -283,7 +252,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 
 			replicator := newFakeReplicator()
-			replicator.reads = tt.reads
+			replicator.read = tt.read
 			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
 
 			key1State := &fakeState{}
@@ -292,9 +261,6 @@ func TestStateReplication_Settle(t *testing.T) {
 			s.AddState("key1", key1State, reg)
 			s.AddState("key2", key2State, reg)
 
-			s.settleBackoff.MinBackoff = 100 * time.Millisecond
-			s.settleBackoff.MaxBackoff = 100 * time.Millisecond
-			s.settleBackoff.MaxRetries = 3
 			s.settleReadTimeout = 1 * time.Second
 
 			assert.False(t, s.Ready())

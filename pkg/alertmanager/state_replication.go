@@ -15,14 +15,10 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
-	defaultSettleMinBackoff  = 1 * time.Second
-	defaultSettleMaxBackoff  = 10 * time.Second
-	defaultSettleMaxRetries  = 5
 	defaultSettleReadTimeout = 15 * time.Second
 )
 
@@ -34,7 +30,6 @@ type state struct {
 	logger log.Logger
 	reg    prometheus.Registerer
 
-	settleBackoff     util.BackoffConfig
 	settleReadTimeout time.Duration
 
 	mtx    sync.Mutex
@@ -54,12 +49,6 @@ type state struct {
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
 func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
 
-	defaultSettleBackoff := util.BackoffConfig{
-		MinBackoff: defaultSettleMinBackoff,
-		MaxBackoff: defaultSettleMaxBackoff,
-		MaxRetries: defaultSettleMaxRetries,
-	}
-
 	s := &state{
 		logger:            l,
 		userID:            userID,
@@ -68,7 +57,6 @@ func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r p
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
 		reg:               r,
-		settleBackoff:     defaultSettleBackoff,
 		settleReadTimeout: defaultSettleReadTimeout,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
@@ -168,24 +156,18 @@ func (s *state) starting(ctx context.Context) error {
 	}
 
 	// We can check other alertmanager(s) and explicitly ask them to propagate their state to us if available.
-	backoff := util.NewBackoff(ctx, s.settleBackoff)
-	for backoff.Ongoing() {
-		readCtx, cancel := context.WithTimeout(ctx, s.settleReadTimeout)
-		defer cancel()
+	readCtx, cancel := context.WithTimeout(ctx, s.settleReadTimeout)
+	defer cancel()
 
-		fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
-		if err == nil {
-			if err = s.mergeFullStates(fullStates); err == nil {
-				level.Info(s.logger).Log("msg", "state settled; proceeding", "attempt", backoff.NumRetries()+1)
-				return nil
-			}
+	fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
+	if err == nil {
+		if err = s.mergeFullStates(fullStates); err == nil {
+			level.Info(s.logger).Log("msg", "state settled; proceeding", "attempt")
+			return nil
 		}
-
-		level.Info(s.logger).Log("msg", "failed to settle state", "err", err, "attempt", backoff.NumRetries()+1, "max_retries", s.settleBackoff.MaxRetries)
-		backoff.Wait()
 	}
 
-	level.Info(s.logger).Log("msg", "state not settled but continuing anyway", "attempts", backoff.NumRetries())
+	level.Info(s.logger).Log("msg", "state not settled but continuing anyway", "err", err)
 	return nil
 }
 

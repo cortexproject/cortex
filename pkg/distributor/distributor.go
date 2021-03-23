@@ -334,11 +334,11 @@ func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapt
 		return shardByAllLabels(userID, labels), nil
 	}
 
-	metricName, err := extract.MetricNameFromLabelAdapters(labels)
+	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
 	if err != nil {
 		return 0, err
 	}
-	return shardByMetricName(userID, metricName), nil
+	return shardByMetricName(userID, unsafeMetricName), nil
 }
 
 func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
@@ -349,6 +349,8 @@ func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 
 	return shardByUser(userID)
 }
 
+// shardByMetricName returns the token for the given metric. The provided metricName
+// is guaranteed to not be retained.
 func shardByMetricName(userID string, metricName string) uint32 {
 	h := shardByUser(userID)
 	h = ingester_client.HashAdd32(h, metricName)
@@ -410,16 +412,16 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // Validates a single series from a write request. Will remove labels if
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
+// The returned error may retain the series labels.
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
-	metricName, _ := extract.MetricNameFromLabelAdapters(ts.Labels)
 	samples := make([]cortexpb.Sample, 0, len(ts.Samples))
 	for _, s := range ts.Samples {
-		if err := validation.ValidateSample(d.limits, userID, metricName, s); err != nil {
+		if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
 			return emptyPreallocSeries, err
 		}
 		samples = append(samples, s)
@@ -549,6 +551,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
 		if validationErr != nil && firstPartialErr == nil {
+			// The series labels may be retained by validationErr but that's not a problem for this
+			// use case because we format it calling Error() and then we discard it.
 			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 

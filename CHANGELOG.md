@@ -21,6 +21,7 @@
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
 * [BUGFIX] Querier: streamline tracing spans. #3924
+* [BUGFIX] Experimental Ruler Storage: ignore objects with empty namespace or group in the name. #3999
 
 ## 1.8.0 in progress
 

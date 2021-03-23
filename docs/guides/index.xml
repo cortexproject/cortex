@@ -459,8 +459,14 @@ Number of chunks received by joining ingester.&lt;/li>
 &lt;p>This guide explains how to scale up and down ingesters.&lt;/p>
 &lt;p>&lt;em>If you&amp;rsquo;re looking how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
 &lt;h2 id="scaling-up">Scaling up&lt;/h2>
-&lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.&lt;/p>
-&lt;p>No special care is required to take when scaling up ingesters.&lt;/p>
+&lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.
+Ingesters that were previously receiving those series will see data stop arriving and will consider those series &amp;ldquo;idle&amp;rdquo;.&lt;/p>
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries.
+For chunks storage, this will start after &lt;code>-ingester.max-chunk-idle&lt;/code> time (default 5 minutes), and will finish when the flush queue is clear - how long depends on how fast your back-end store can accept writes.
+For blocks storage, this will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
+If you have set &lt;code>-querier.query-store-after&lt;/code> then that is also a minimum time you have to wait before adding a second ingester.&lt;/p>
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>,
+no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;h2 id="scaling-down">Scaling down&lt;/h2>
 &lt;p>A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
 &lt;p>The procedure to adopt when scaling down ingesters depends on your Cortex setup:&lt;/p>

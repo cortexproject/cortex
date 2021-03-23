@@ -46,8 +46,8 @@ require (
 	github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210319192855-d614ae9ecf1c
+	github.com/prometheus/common v0.20.0
+	github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
@@ -101,3 +101,15 @@ replace github.com/go-openapi/strfmt => github.com/go-openapi/strfmt v0.19.5
 replace github.com/go-openapi/swag => github.com/go-openapi/swag v0.19.9
 
 replace github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
+
+// Branch for testing
+replace github.com/prometheus/prometheus => github.com/bboreham/prometheus v1.7.2-0.20210323212203-73930f5e682c
+
+// Pin these otherwise they downgrade
+replace go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.3.2
+
+replace github.com/mitchellh/mapstructure => github.com/mitchellh/mapstructure v1.2.2
+
+replace github.com/hashicorp/go-hclog => github.com/hashicorp/go-hclog v0.12.2
+
+replace github.com/hashicorp/go-immutable-radix => github.com/hashicorp/go-immutable-radix v1.2.0

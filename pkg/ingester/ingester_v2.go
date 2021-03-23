@@ -724,15 +724,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
 	for _, ts := range req.Timeseries {
-		// Keeps a reference to labels copy, if it was needed. This is to avoid making a copy twice,
-		// once for TSDB, and second time for activeSeries map.
-		var copiedLabels []labels.Label
-
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
 
-		// Look up a reference for this series. Holding the appendLock ensures that no compaction will happen while we use it.
-		ref := app.GetRef(cortexpb.FromLabelAdaptersToLabels(ts.Labels))
+		// Look up a reference for this series.
+		ref, copiedLabels := app.GetRef(cortexpb.FromLabelAdaptersToLabels(ts.Labels))
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -742,14 +738,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
-				labels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
-				if _, err = app.Append(ref, labels, s.TimestampMs, s.Value); err == nil {
+				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
 					continue
 				}
 
 			} else {
-				// Copy the label set because both TSDB and the cache may retain it.
+				// Copy the label set because both TSDB and the active series tracker may retain it.
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
 				// Retain the reference in case there are multiple samples for the series.
@@ -789,9 +784,6 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			case errMaxSeriesPerMetricLimitExceeded:
 				perMetricSeriesLimitCount++
 				updateFirstPartial(func() error {
-					if copiedLabels == nil {
-						copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-					}
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
 				})
 				continue
@@ -807,11 +799,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
 			db.activeSeries.UpdateSeries(cortexpb.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
-				// If we have already made a copy during this push, no need to create new one.
-				if copiedLabels != nil {
-					return copiedLabels
-				}
-				return cortexpb.CopyLabels(l)
+				return copiedLabels
 			})
 		}
 	}

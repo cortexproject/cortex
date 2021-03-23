@@ -284,9 +284,9 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.1
 ## explicit
 github.com/hashicorp/go-cleanhttp
-# github.com/hashicorp/go-hclog v0.12.2
+# github.com/hashicorp/go-hclog v0.12.0 => github.com/hashicorp/go-hclog v0.12.2
 github.com/hashicorp/go-hclog
-# github.com/hashicorp/go-immutable-radix v1.2.0
+# github.com/hashicorp/go-immutable-radix v1.1.0 => github.com/hashicorp/go-immutable-radix v1.2.0
 github.com/hashicorp/go-immutable-radix
 # github.com/hashicorp/go-msgpack v0.5.5
 github.com/hashicorp/go-msgpack/codec
@@ -368,7 +368,7 @@ github.com/mitchellh/go-homedir
 # github.com/mitchellh/go-wordwrap v1.0.0
 ## explicit
 github.com/mitchellh/go-wordwrap
-# github.com/mitchellh/mapstructure v1.2.2
+# github.com/mitchellh/mapstructure v1.1.2 => github.com/mitchellh/mapstructure v1.2.2
 github.com/mitchellh/mapstructure
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 github.com/modern-go/concurrent
@@ -455,7 +455,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.18.0
+# github.com/prometheus/common v0.20.0
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -469,7 +469,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210319192855-d614ae9ecf1c
+# github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18 => github.com/bboreham/prometheus v1.7.2-0.20210323212203-73930f5e682c
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -518,7 +518,7 @@ github.com/prometheus/prometheus/web/api/v1
 github.com/rs/cors
 # github.com/rs/xid v1.2.1
 github.com/rs/xid
-# github.com/satori/go.uuid v1.2.1-0.20181028125025-b2ce2384e17b => github.com/satori/go.uuid v1.2.0
+# github.com/satori/go.uuid v1.2.0 => github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 github.com/sean-/seed
@@ -735,7 +735,7 @@ go.etcd.io/etcd/server/v3/mvcc/backend
 go.etcd.io/etcd/server/v3/proxy/grpcproxy/adapter
 go.etcd.io/etcd/server/v3/wal
 go.etcd.io/etcd/server/v3/wal/walpb
-# go.mongodb.org/mongo-driver v1.3.2
+# go.mongodb.org/mongo-driver v1.3.0 => go.mongodb.org/mongo-driver v1.3.2
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
 go.mongodb.org/mongo-driver/bson/bsonoptions
@@ -1039,3 +1039,8 @@ sigs.k8s.io/yaml
 # github.com/go-openapi/strfmt => github.com/go-openapi/strfmt v0.19.5
 # github.com/go-openapi/swag => github.com/go-openapi/swag v0.19.9
 # github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
+# github.com/prometheus/prometheus => github.com/bboreham/prometheus v1.7.2-0.20210323212203-73930f5e682c
+# go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.3.2
+# github.com/mitchellh/mapstructure => github.com/mitchellh/mapstructure v1.2.2
+# github.com/hashicorp/go-hclog => github.com/hashicorp/go-hclog v0.12.2
+# github.com/hashicorp/go-immutable-radix => github.com/hashicorp/go-immutable-radix v1.2.0

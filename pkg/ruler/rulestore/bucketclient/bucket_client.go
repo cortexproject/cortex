@@ -29,6 +29,9 @@ const (
 
 var (
 	errInvalidRuleGroupKey = errors.New("invalid rule group object key")
+	errEmptyUser           = errors.New("empty user")
+	errEmptyNamespace      = errors.New("empty namespace")
+	errEmptyGroupName      = errors.New("empty group name")
 )
 
 // BucketRuleStore is used to support the RuleStore interface against an object storage backend. It is implemented
@@ -102,13 +105,6 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
-		// Ignore objects that look like directories, ie. they have empty namespace or group name.
-		// Such objects can exist in the object store, but would cause trouble when loading them, because
-		// we check for user, namespace and group components not being empty.
-		if strings.HasSuffix(key, objstore.DirDelim) {
-			return nil
-		}
-
 		userID, namespace, group, err := parseRuleGroupObjectKeyWithUser(key)
 		if err != nil {
 			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key, "err", err)
@@ -148,7 +144,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 	err := userBucket.Iter(ctx, prefix, func(key string) error {
 		namespace, group, err := parseRuleGroupObjectKey(key)
 		if err != nil {
-			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "user", userID, "key", key)
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "user", userID, "key", key, "err", err)
 
 			// Do not fail just because of a spurious item in the bucket.
 			return nil
@@ -287,12 +283,15 @@ func parseRuleGroupObjectKeyWithUser(key string) (user, namespace, group string,
 	}
 
 	user = parts[0]
+	if user == "" {
+		return "", "", "", errEmptyUser
+	}
 	namespace, group, err = parseRuleGroupObjectKey(parts[1])
 	return
 }
 
 // parseRuleGroupObjectKey parses a bucket object key in the format "<namespace>/<rules group>".
-func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
+func parseRuleGroupObjectKey(key string) (namespace, group string, _ error) {
 	parts := strings.Split(key, objstore.DirDelim)
 	if len(parts) != 2 {
 		return "", "", errInvalidRuleGroupKey
@@ -300,12 +299,20 @@ func parseRuleGroupObjectKey(key string) (namespace, group string, err error) {
 
 	decodedNamespace, err := base64.URLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return
+		return "", "", err
+	}
+
+	if len(decodedNamespace) == 0 {
+		return "", "", errEmptyNamespace
 	}
 
 	decodedGroup, err := base64.URLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return
+		return "", "", err
+	}
+
+	if len(decodedGroup) == 0 {
+		return "", "", errEmptyGroupName
 	}
 
 	return string(decodedNamespace), string(decodedGroup), nil

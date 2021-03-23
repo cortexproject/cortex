@@ -291,9 +291,17 @@ func TestParseRuleGroupObjectKey(t *testing.T) {
 			key:         "way/too/long",
 			expectedErr: errInvalidRuleGroupKey,
 		},
+		"empty namespace": {
+			key:         fmt.Sprintf("/%s", encodedGroup),
+			expectedErr: errEmptyNamespace,
+		},
 		"invalid namespace encoding": {
 			key:         fmt.Sprintf("invalid/%s", encodedGroup),
 			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"empty group": {
+			key:         fmt.Sprintf("%s/", encodedNamespace),
+			expectedErr: errEmptyGroupName,
 		},
 		"invalid group encoding": {
 			key:         fmt.Sprintf("%s/invalid", encodedNamespace),
@@ -343,9 +351,21 @@ func TestParseRuleGroupObjectKeyWithUser(t *testing.T) {
 			key:         "way/too/much/long",
 			expectedErr: errInvalidRuleGroupKey,
 		},
+		"empty user": {
+			key:         fmt.Sprintf("/%s/%s", encodedNamespace, encodedGroup),
+			expectedErr: errEmptyUser,
+		},
+		"empty namespace": {
+			key:         fmt.Sprintf("user-1//%s", encodedGroup),
+			expectedErr: errEmptyNamespace,
+		},
 		"invalid namespace encoding": {
 			key:         fmt.Sprintf("user-1/invalid/%s", encodedGroup),
 			expectedErr: errors.New("illegal base64 data at input byte 4"),
+		},
+		"empty group name": {
+			key:         fmt.Sprintf("user-1/%s/", encodedNamespace),
+			expectedErr: errEmptyGroupName,
 		},
 		"invalid group encoding": {
 			key:         fmt.Sprintf("user-1/%s/invalid", encodedNamespace),
@@ -378,6 +398,7 @@ func TestParseRuleGroupObjectKeyWithUser(t *testing.T) {
 func TestListAllRuleGroupsWithNoNamespaceOrGroup(t *testing.T) {
 	obj := mockBucket{
 		names: []string{
+			"rules/",
 			"rules/user1/",
 			"rules/user2/bnM=/",         // namespace "ns", ends with '/'
 			"rules/user3/bnM=/Z3JvdXAx", // namespace "ns", group "group1"
@@ -399,7 +420,7 @@ type mockBucket struct {
 	names []string
 }
 
-func (mb mockBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (mb mockBucket) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	for _, n := range mb.names {
 		if err := f(n); err != nil {
 			return err

@@ -347,7 +347,6 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 			if util.StringsContain(distinctZones, info.Zone) {
 				continue
 			}
-			distinctZones = append(distinctZones, info.Zone)
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
@@ -357,6 +356,10 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		// this instance.
 		if op.ShouldExtendReplicaSetOnState(instance.State) {
 			n++
+		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
+			// We should only add the zone if we are not going to extend,
+			// as we want to extend the instance in the same AZ.
+			distinctZones = append(distinctZones, info.Zone)
 		}
 
 		instances = append(instances, instance)

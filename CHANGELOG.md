@@ -22,6 +22,7 @@
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
 * [BUGFIX] Querier: streamline tracing spans. #3924
+* [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 
 ## 1.8.0 in progress
 

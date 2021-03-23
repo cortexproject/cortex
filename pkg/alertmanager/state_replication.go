@@ -162,7 +162,7 @@ func (s *state) starting(ctx context.Context) error {
 	fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
 	if err == nil {
 		if err = s.mergeFullStates(fullStates); err == nil {
-			level.Info(s.logger).Log("msg", "state settled; proceeding", "attempt")
+			level.Info(s.logger).Log("msg", "state settled; proceeding")
 			return nil
 		}
 	}

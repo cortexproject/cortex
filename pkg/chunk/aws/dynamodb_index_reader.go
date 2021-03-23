@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -70,18 +71,17 @@ type sha256Set struct {
 // ReadIndexEntries reads the whole of a table on multiple goroutines in parallel.
 // Entries for the same HashValue and RangeValue should be passed to the same processor.
 func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []chunk.IndexEntryProcessor) error {
-	var outerErr error
 	projection := hashKey + "," + rangeKey
 
 	sm := &seriesMap{ // new map per table
 		seriesProcessed: make(map[string]sha256Set),
 	}
 
-	var readerGroup sync.WaitGroup
-	readerGroup.Add(len(processors))
+	var readerGroup errgroup.Group
 	// Start a goroutine for each processor
 	for i, processor := range processors {
-		go func(segment int, processor chunk.IndexEntryProcessor) {
+		segment, processor := i, processor // https://golang.org/doc/faq#closures_and_goroutines
+		readerGroup.Go(func() error {
 			input := &dynamodb.ScanInput{
 				TableName:              aws.String(tableName),
 				ProjectionExpression:   aws.String(projection),
@@ -101,16 +101,15 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 				return true
 			}, withRetrys)
 			if err != nil {
-				outerErr = err
-				// TODO: abort all segments
+				return err
 			}
 			processor.Flush()
 			level.Info(r.log).Log("msg", "Segment finished", "segment", segment)
-			readerGroup.Done()
-		}(i, processor)
+			return nil
+		})
 	}
 	// Wait until all reader segments have finished
-	readerGroup.Wait()
+	outerErr := readerGroup.Wait()
 	if outerErr != nil {
 		return outerErr
 	}

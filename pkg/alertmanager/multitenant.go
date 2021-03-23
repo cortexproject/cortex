@@ -1171,8 +1171,9 @@ func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmana
 	}
 
 	am.alertmanagersMtx.Lock()
-	defer am.alertmanagersMtx.Unlock()
 	userAM, ok := am.alertmanagers[userID]
+	am.alertmanagersMtx.Unlock()
+
 	if !ok {
 		level.Debug(am.logger).Log("msg", "user does not have an alertmanager in this instance", "user", userID)
 		return &alertmanagerpb.ReadStateResponse{
@@ -1183,7 +1184,6 @@ func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmana
 
 	state, err := userAM.getFullState()
 	if err != nil {
-		level.Error(am.logger).Log("msg", "failed to get full state", "user", userID, "err", err)
 		return &alertmanagerpb.ReadStateResponse{
 			Status: alertmanagerpb.READ_ERROR,
 			Error:  err.Error(),

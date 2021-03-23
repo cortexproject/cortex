@@ -1269,7 +1269,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 
 				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 				t.Cleanup(func() {
-					services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
+					require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
 				})
 
 				instances = append(instances, am)

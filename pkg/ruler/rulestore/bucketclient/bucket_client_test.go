@@ -374,3 +374,36 @@ func TestParseRuleGroupObjectKeyWithUser(t *testing.T) {
 		})
 	}
 }
+
+func TestListAllRuleGroupsWithNoNamespaceOrGroup(t *testing.T) {
+	obj := mockBucket{
+		names: []string{
+			"rules/user1/",
+			"rules/user2/bnM=/",         // namespace "ns", ends with '/'
+			"rules/user3/bnM=/Z3JvdXAx", // namespace "ns", group "group1"
+		},
+	}
+
+	s := NewBucketRuleStore(obj, nil, log.NewNopLogger())
+	out, err := s.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
+
+	require.Equal(t, 1, len(out))                    // one user
+	require.Equal(t, 1, len(out["user3"]))           // one group
+	require.Equal(t, "group1", out["user3"][0].Name) // one group
+}
+
+type mockBucket struct {
+	objstore.Bucket
+
+	names []string
+}
+
+func (mb mockBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+	for _, n := range mb.names {
+		if err := f(n); err != nil {
+			return err
+		}
+	}
+	return nil
+}

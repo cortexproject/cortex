@@ -102,9 +102,16 @@ func (b *BucketRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 
 	// List rule groups for all tenants.
 	err := b.bucket.Iter(ctx, "", func(key string) error {
+		// Ignore objects that look like directories, ie. they have empty namespace or group name.
+		// Such objects can exist in the object store, but would cause trouble when loading them, because
+		// we check for user, namespace and group components not being empty.
+		if strings.HasSuffix(key, objstore.DirDelim) {
+			return nil
+		}
+
 		userID, namespace, group, err := parseRuleGroupObjectKeyWithUser(key)
 		if err != nil {
-			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key)
+			level.Warn(b.logger).Log("msg", "invalid rule group object key found while listing rule groups", "key", key, "err", err)
 
 			// Do not fail just because of a spurious item in the bucket.
 			return nil

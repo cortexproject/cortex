@@ -217,7 +217,7 @@ func (s *Scanner) running(ctx context.Context) error {
 		case "aws-dynamo":
 			cfg := s.storageCfg.AWSStorageConfig
 
-			if cfg.DynamoDB.URL == nil { // TODO: what else do we need?
+			if cfg.DynamoDB.URL == nil {
 				level.Error(s.logger).Log("msg", "cannot scan DynamoDB, missing configuration", "schemaFrom", c.From.String())
 				continue
 			}

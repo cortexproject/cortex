@@ -47,7 +47,7 @@ type tsdbBuilder struct {
 
 	startTime          model.Time
 	endTime            model.Time
-	timestampTolerance int
+	timestampTolerance int // in milliseconds
 
 	series    *seriesList
 	seriesDir string
@@ -57,7 +57,7 @@ type tsdbBuilder struct {
 	seriesInMemory  prometheus.Gauge
 }
 
-func newTsdbBuilder(outDir string, start, end time.Time, timestampTolerance int, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
+func newTsdbBuilder(outDir string, start, end time.Time, timestampTolerance time.Duration, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
 	id, err := ulid.New(ulid.Now(), rand.Reader)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ULID")
@@ -90,7 +90,7 @@ func newTsdbBuilder(outDir string, start, end time.Time, timestampTolerance int,
 		unsortedChunksWriter: unsortedChunksWriter,
 		startTime:            model.TimeFromUnixNano(start.UnixNano()),
 		endTime:              model.TimeFromUnixNano(end.UnixNano()),
-		timestampTolerance:   timestampTolerance,
+		timestampTolerance:   int(timestampTolerance.Milliseconds()),
 		series:               newSeriesList(seriesBatchLimit, seriesDir),
 		seriesDir:            seriesDir,
 

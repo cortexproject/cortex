@@ -12,8 +12,15 @@ _If you're looking how to run ingesters rolling updates, please refer to the [de
 ## Scaling up
 
 Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the [hash ring](../architecture.md#the-hash-ring) and the distributors will reshard received series accordingly.
+Ingesters that were previously receiving those series will see data stop arriving and will consider those series "idle".
 
-No special care is required to take when scaling up ingesters.
+If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries.
+For chunks storage, this will start after `-ingester.max-chunk-idle` time (default 5 minutes), and will finish when the flush queue is clear - how long depends on how fast your back-end store can accept writes.
+For blocks storage, this will happen after the next "head compaction" (typically every 2 hours).
+If you have set `-querier.query-store-after` then that is also a minimum time you have to wait before adding a second ingester.
+
+If you run with `-distributor.shard-by-all-labels=true`,
+no special care is required to take when scaling up ingesters.
 
 ## Scaling down
 

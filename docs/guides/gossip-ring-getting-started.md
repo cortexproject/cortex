@@ -1,7 +1,7 @@
 ---
-title: "Getting Started with Gossiped Ring"
-linkTitle: "Gossip Ring"
-weight: 2
+title: "Getting started with gossiped ring"
+linkTitle: "Getting started with a gossip ring cluster"
+weight: 4
 slug: getting-started-with-gossiped-ring
 ---
 

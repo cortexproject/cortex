@@ -82,8 +82,7 @@ type SampleValidationConfig interface {
 	CreationGracePeriod(userID string) time.Duration
 }
 
-// ValidateSample returns an err if the sample is invalid. The returned ValidationError
-// provides a function to convert it to an HTTPGRPC error.
+// ValidateSample returns an err if the sample is invalid.
 func ValidateSample(cfg SampleValidationConfig, userID string, metricName string, s cortexpb.Sample) ValidationError {
 	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
@@ -106,8 +105,7 @@ type LabelValidationConfig interface {
 	MaxLabelValueLength(userID string) int
 }
 
-// ValidateLabels returns an err if the labels are invalid. The returned ValidationError
-// provides a function to convert it to an HTTPGRPC error.
+// ValidateLabels returns an err if the labels are invalid.
 func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
 	if cfg.EnforceMetricName(userID) {
 		metricName, err := extract.MetricNameFromLabelAdapters(ls)

@@ -549,7 +549,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
 		if validationErr != nil && firstPartialErr == nil {
-			firstPartialErr = validationErr.ToHTTPGRPCError()
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
 		}
 
 		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.

@@ -1,10 +1,6 @@
 # Changelog
 
-## 1.8.0-rc.1 / 2021-03-15
-
-* [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
-
-## 1.8.0-rc.0 / 2021-03-08
+## 1.8.0 / 2021-03-24
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled. #3903
 * [CHANGE] Ingester: don't update internal "last updated" timestamp of TSDB if tenant only sends invalid samples. This affects how "idle" time is computed. #3727
@@ -78,7 +74,6 @@
   * `cortex_ha_tracker_replicas_cleanup_delete_failed_total`
 * [ENHANCEMENT] Ruler now has new API endpoint `/ruler/delete_tenant_config` that can be used to delete all ruler groups for tenant. It is intended to be used by administrators who wish to clean up state after removed user. Note that this endpoint is enabled regardless of `-experimental.ruler.enable-api`. #3750 #3899
 * [ENHANCEMENT] Query-frontend, query-scheduler: cleanup metrics for inactive tenants. #3826
-* [ENHANCEMENT] Distributor: Prevent failed ingestion from affecting rate limiting. #3825
 * [ENHANCEMENT] Blocks storage: added `-blocks-storage.s3.region` support to S3 client configuration. #3811
 * [ENHANCEMENT] Distributor: Remove cached subrings for inactive users when using shuffle sharding. #3849
 * [ENHANCEMENT] Store-gateway: Reduced memory used to fetch chunks at query time. #3855

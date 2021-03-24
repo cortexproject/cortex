@@ -233,7 +233,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		registerer:       registerer,
 		logger:           logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits, nil)
+	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits, nil, &i.inflightPushRequests)
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
@@ -323,7 +323,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:           limits,
 		logger:           logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, true, false, i.getGlobalLimits, nil)
+	i.metrics = newIngesterMetrics(registerer, true, false, i.getGlobalLimits, nil, &i.inflightPushRequests)
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil

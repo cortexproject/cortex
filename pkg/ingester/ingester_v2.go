@@ -477,7 +477,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		logger:        logger,
 		ingestionRate: newEWMARate(0.2, cfg.RateUpdatePeriod),
 	}
-	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits, i.ingestionRate)
+	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits, i.ingestionRate, &i.inflightPushRequests)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -536,7 +536,7 @@ func NewV2ForFlusher(cfg Config, limits *validation.Overrides, registerer promet
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, false, false, i.getGlobalLimits, nil)
+	i.metrics = newIngesterMetrics(registerer, false, false, i.getGlobalLimits, nil, &i.inflightPushRequests)
 
 	i.TSDBState.shipperIngesterID = "flusher"
 

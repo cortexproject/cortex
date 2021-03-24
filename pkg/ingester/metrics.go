@@ -3,6 +3,7 @@ package ingester
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -60,9 +61,10 @@ type ingesterMetrics struct {
 	maxIngestionRate        prometheus.GaugeFunc
 	ingestionRate           prometheus.GaugeFunc
 	maxInflightPushRequests prometheus.GaugeFunc
+	inflightRequests        prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits, ingestionRate *ewmaRate) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits, ingestionRate *ewmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
 	const (
 		globalLimits = "cortex_ingester_global_limit"
 		limitLabel   = "limit"
@@ -246,20 +248,31 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			return 0
 		}),
 
+		ingestionRate: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_ingestion_rate_samples_per_second",
+			Help: "Current ingestion rate in samples/sec that ingester is using to limit access.",
+		}, func() float64 {
+			if ingestionRate != nil {
+				return ingestionRate.rate()
+			}
+			return 0
+		}),
+
+		inflightRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_inflight_push_requests",
+			Help: "Number of inflight push requests",
+		}, func() float64 {
+			if inflightRequests != nil {
+				return float64(inflightRequests.Load())
+			}
+			return 0
+		}),
+
 		// Not registered automatically, but only if activeSeriesEnabled is true.
 		activeSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
-	}
-
-	if ingestionRate != nil {
-		m.ingestionRate = promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "cortex_ingester_ingestion_rate_samples_per_second",
-			Help: "Current ingestion rate in samples/sec that ingester is using to limit access.",
-		}, func() float64 {
-			return ingestionRate.rate()
-		})
 	}
 
 	if activeSeriesEnabled && r != nil {

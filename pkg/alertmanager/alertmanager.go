@@ -129,7 +129,7 @@ type Replicator interface {
 	// The alertmanager replication protocol relies on a position related to other replicas.
 	// This position is then used to identify who should notify about the alert first.
 	GetPositionForUser(userID string) int
-	// ReadFullStateForUser obtains the full state from cluster peers.
+	// ReadFullStateForUser obtains the full state from other replicas in the cluster.
 	ReadFullStateForUser(context.Context, string) ([]*clusterpb.FullState, error)
 }
 

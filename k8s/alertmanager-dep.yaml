@@ -22,6 +22,6 @@ spec:
         - -log.level=debug
         - -server.http-listen-port=80
         - -alertmanager.configs.url=http://configs.default.svc.cluster.local:80
-        - -alertmanager.web.external-url=/api/prom/alertmanager
+        - -alertmanager.web.external-url=/alertmanager
         ports:
         - containerPort: 80

@@ -22,7 +22,7 @@ spec:
         - -log.level=debug
         - -server.http-listen-port=80
         - -ruler.configs.url=http://configs.default.svc.cluster.local:80
-        - -ruler.alertmanager-url=http://alertmanager.default.svc.cluster.local/api/prom/alertmanager/
+        - -ruler.alertmanager-url=http://alertmanager.default.svc.cluster.local/alertmanager/
         - -consul.hostname=consul.default.svc.cluster.local:8500
         - -s3.url=s3://cortex:supersecret@default.svc.cluster.local:9000/cortex
         - -s3.force-path-style=true

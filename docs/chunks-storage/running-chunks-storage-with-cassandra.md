@@ -165,7 +165,7 @@ Add the following section to your Prometheus configuration file. This will confi
 
 ```
 remote_write:
-   - url: http://localhost:9009/api/prom/push
+   - url: http://localhost:9009/api/v1/push
 ```
 ## Configure Grafana to visualise metrics
 
@@ -175,6 +175,6 @@ Run grafana to visualise metrics from Cortex:
 docker run -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
-Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/api/prom`.
+Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/prometheus`.
 
 Finally, You can monitor Cortex's reads & writes by creating the dashboard. If you're looking for ready to use dashboards, you can take a look at Grafana's [Cortex dashboards and alerts](https://github.com/grafana/cortex-jsonnet/) (Jsonnet) or Weaveworks's [Cortex dashboards](https://github.com/weaveworks/cortex-dashboards) (Python).

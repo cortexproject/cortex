@@ -27,6 +27,10 @@ data:
         listen 80;
         proxy_set_header X-Scope-OrgID 0;
 
+        location = /api/v1/push {
+          proxy_pass      http://distributor.default.svc.cluster.local$request_uri;
+        }
+        
         location = /api/prom/push {
           proxy_pass      http://distributor.default.svc.cluster.local$request_uri;
         }
@@ -36,6 +40,10 @@ data:
         }
         location = /all_user_stats {
           proxy_pass      http://distributor.default.svc.cluster.local$request_uri;
+        }
+        
+        location ~ /prometheus/.* {
+          proxy_pass      http://query-frontend.default.svc.cluster.local$request_uri;
         }
 
         location ~ /api/prom/.* {

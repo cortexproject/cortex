@@ -3373,6 +3373,9 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 
 					// imitate time ticking between each push
 					i.ingestionRate.tick()
+
+					rate := testutil.ToFloat64(i.metrics.ingestionRate)
+					require.NotZero(t, rate)
 				}
 			}
 		})

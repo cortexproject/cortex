@@ -58,10 +58,11 @@ type ingesterMetrics struct {
 	maxUsersGauge           prometheus.GaugeFunc
 	maxSeriesGauge          prometheus.GaugeFunc
 	maxIngestionRate        prometheus.GaugeFunc
+	ingestionRate           prometheus.GaugeFunc
 	maxInflightPushRequests prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits, ingestionRate *ewmaRate) *ingesterMetrics {
 	const (
 		globalLimits = "cortex_ingester_global_limit"
 		limitLabel   = "limit"
@@ -250,6 +251,15 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+	}
+
+	if ingestionRate != nil {
+		m.ingestionRate = promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_ingestion_rate_samples_per_second",
+			Help: "Current ingestion rate in samples/sec that ingester is using to limit access.",
+		}, func() float64 {
+			return ingestionRate.rate()
+		})
 	}
 
 	if activeSeriesEnabled && r != nil {

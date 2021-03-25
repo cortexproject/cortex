@@ -123,6 +123,12 @@ func TestRulerAPI(t *testing.T) {
 			require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
 			require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
 
+			// Get the rule group and ensure it returns a 404
+			resp, err := c.GetRuleGroup(namespaceOne, ruleGroup.Name)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
 			// Wait until the users manager has been terminated
 			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
 

@@ -45,8 +45,9 @@ type tsdbBuilder struct {
 	unsortedChunksWriterMu sync.Mutex
 	unsortedChunksWriter   tsdb.ChunkWriter
 
-	startTime model.Time
-	endTime   model.Time
+	startTime          model.Time
+	endTime            model.Time
+	timestampTolerance int // in milliseconds
 
 	series    *seriesList
 	seriesDir string
@@ -56,7 +57,7 @@ type tsdbBuilder struct {
 	seriesInMemory  prometheus.Gauge
 }
 
-func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
+func newTsdbBuilder(outDir string, start, end time.Time, timestampTolerance time.Duration, seriesBatchLimit int, log log.Logger, processedSeries, writtenSamples prometheus.Counter, seriesInMemory prometheus.Gauge) (*tsdbBuilder, error) {
 	id, err := ulid.New(ulid.Now(), rand.Reader)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ULID")
@@ -89,6 +90,7 @@ func newTsdbBuilder(outDir string, start, end time.Time, seriesBatchLimit int, l
 		unsortedChunksWriter: unsortedChunksWriter,
 		startTime:            model.TimeFromUnixNano(start.UnixNano()),
 		endTime:              model.TimeFromUnixNano(end.UnixNano()),
+		timestampTolerance:   int(timestampTolerance.Milliseconds()),
 		series:               newSeriesList(seriesBatchLimit, seriesDir),
 		seriesDir:            seriesDir,
 
@@ -138,6 +140,17 @@ func (d *tsdbBuilder) buildSingleSeries(metric labels.Labels, cs []chunk.Chunk) 
 			app, err = ch.Chunk.Appender()
 			if err != nil {
 				return err
+			}
+		}
+
+		// If gap since last scrape is very close to an exact number of seconds, tighten it up
+		if d.timestampTolerance != 0 && ch.MaxTime != 0 {
+			gap := t - ch.MaxTime
+			seconds := ((gap + 500) / 1000)
+			diff := int(gap - seconds*1000)
+			// Don't go past endTime.
+			if diff != 0 && diff >= -d.timestampTolerance && diff <= d.timestampTolerance && ch.MaxTime+seconds*1000 <= int64(d.endTime) {
+				t = ch.MaxTime + seconds*1000
 			}
 		}
 

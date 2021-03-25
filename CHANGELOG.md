@@ -27,6 +27,10 @@
 * [BUGFIX] Ruler Storage: ignore objects with empty namespace or group in the name. #3999
 * [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 
+## Blocksconvert
+
+* [ENHANCEMENT] Builder: add `-builder.timestamp-tolerance` option which may reduce block size by rounding timestamps to make difference whole seconds. #3891
+
 ## 1.8.0 in progress
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled.

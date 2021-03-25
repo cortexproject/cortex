@@ -996,12 +996,10 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 		}
 
 		switch resp.Status {
-		case alertmanagerpb.OK:
 		case alertmanagerpb.MERGE_ERROR:
 			level.Error(am.logger).Log("msg", "state replication failed", "user", userID, "key", part.Key, "err", resp.Error)
 		case alertmanagerpb.USER_NOT_FOUND:
 			level.Debug(am.logger).Log("msg", "user not found while trying to replicate state", "user", userID, "key", part.Key)
-		default:
 		}
 		return nil
 	}, func() {})

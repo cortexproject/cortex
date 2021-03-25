@@ -391,12 +391,11 @@ func TestShouldCache(t *testing.T) {
 
 func TestPartition(t *testing.T) {
 	for _, tc := range []struct {
-		name                      string
-		input                     Request
-		prevCachedResponse        []Extent
-		expectedUpdateCachedEntry []Extent
-		expectedRequests          []Request
-		expectedCachedResponse    []Response
+		name                   string
+		input                  Request
+		prevCachedResponse     []Extent
+		expectedRequests       []Request
+		expectedCachedResponse []Response
 	}{
 		{
 			name: "Test a complete hit.",
@@ -419,9 +418,6 @@ func TestPartition(t *testing.T) {
 				End:   100,
 			},
 			prevCachedResponse: []Extent{
-				mkExtent(110, 210),
-			},
-			expectedUpdateCachedEntry: []Extent{
 				mkExtent(110, 210),
 			},
 			expectedRequests: []Request{

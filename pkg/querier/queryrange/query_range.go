@@ -356,7 +356,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 					stream.Samples = stream.Samples[1:]
 				} else if existingEndTs > stream.Samples[0].TimestampMs {
 					// Overlap might be big, use heavier algorithm to remove overlap.
-					stream.Samples = chopOffOverlapPortion(stream.Samples, existingEndTs)
+					stream.Samples = sliceSamples(stream.Samples, existingEndTs)
 				} // else there is no overlap, yay!
 			}
 			existing.Samples = append(existing.Samples, stream.Samples...)
@@ -378,18 +378,25 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	return result
 }
 
-func chopOffOverlapPortion(samples []cortexpb.Sample, choppingPointTs int64) []cortexpb.Sample {
+// sliceSamples assumes given samples are sorted by timestamp in ascending order and
+// return a sub slice whose first element's timestamp is strictly bigger than
+// the given minTs. Empty slice is returned if minTs is bigger than all the timestamps in
+// samples.
+func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 
-	// assuming stream.Samples is sorted by by timestamp in ascending order.
-	searchResult := sort.Search(len(samples), func(i int) bool {
-		return samples[i].TimestampMs > choppingPointTs
-	})
-
-	if searchResult < len(samples) {
-		return samples[searchResult:]
+	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
+		return samples
 	}
 
-	return nil
+	if len(samples) > 0 && minTs > samples[len(samples)-1].TimestampMs {
+		return []cortexpb.Sample{}
+	}
+
+	searchResult := sort.Search(len(samples), func(i int) bool {
+		return samples[i].TimestampMs > minTs
+	})
+
+	return samples[searchResult:]
 }
 
 func parseDurationMs(s string) (int64, error) {

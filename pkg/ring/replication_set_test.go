@@ -22,7 +22,7 @@ func TestReplicationSet_GetAddresses(t *testing.T) {
 		},
 		"should return instances addresses (no order guaranteed)": {
 			rs: ReplicationSet{
-				Ingesters: []InstanceDesc{
+				Instances: []InstanceDesc{
 					{Addr: "127.0.0.1"},
 					{Addr: "127.0.0.2"},
 					{Addr: "127.0.0.3"},
@@ -35,6 +35,48 @@ func TestReplicationSet_GetAddresses(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			assert.ElementsMatch(t, testData.expected, testData.rs.GetAddresses())
+		})
+	}
+}
+
+func TestReplicationSet_GetAddressesWithout(t *testing.T) {
+	tests := map[string]struct {
+		rs       ReplicationSet
+		expected []string
+		exclude  string
+	}{
+		"should return an empty slice on empty replication set": {
+			rs:       ReplicationSet{},
+			expected: []string{},
+			exclude:  "127.0.0.1",
+		},
+		"non-matching exclusion, should return all addresses": {
+			rs: ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1"},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.3"},
+				},
+			},
+			expected: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+			exclude:  "127.0.0.4",
+		},
+		"matching exclusion, should return non-excluded addresses": {
+			rs: ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1"},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.3"},
+				},
+			},
+			expected: []string{"127.0.0.1", "127.0.0.3"},
+			exclude:  "127.0.0.2",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.ElementsMatch(t, testData.expected, testData.rs.GetAddressesWithout(testData.exclude))
 		})
 	}
 }
@@ -177,7 +219,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			require.False(t, tt.maxErrors > 0 && tt.maxUnavailableZones > 0)
 
 			r := ReplicationSet{
-				Ingesters:           tt.instances,
+				Instances:           tt.instances,
 				MaxErrors:           tt.maxErrors,
 				MaxUnavailableZones: tt.maxUnavailableZones,
 			}

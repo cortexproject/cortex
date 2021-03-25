@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -32,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -83,9 +85,19 @@ var (
 			desc:       "The ruler_config configures the Cortex ruler.",
 		},
 		{
+			name:       "ruler_storage_config",
+			structType: reflect.TypeOf(rulestore.Config{}),
+			desc:       "The ruler_storage_config configures the Cortex ruler storage backend.",
+		},
+		{
 			name:       "alertmanager_config",
 			structType: reflect.TypeOf(alertmanager.MultitenantAlertmanagerConfig{}),
 			desc:       "The alertmanager_config configures the Cortex alertmanager.",
+		},
+		{
+			name:       "alertmanager_storage_config",
+			structType: reflect.TypeOf(alertstore.Config{}),
+			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
 		},
 		{
 			name:       "table_manager_config",

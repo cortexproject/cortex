@@ -32,5 +32,6 @@ The current schema recommendation is the **v9 schema** for most use cases and **
 
 The following step-by-step guides can help you setting up Cortex running with the chunks storage:
 
-- [Running Cortex chunks storage in Production](../guides/running-chunks-storage-in-production.md)
-- [Running Cortex chunks storage with Cassandra](../guides/running-chunks-storage-with-cassandra.md)
+- [Getting started with Cortex chunks storage](./chunks-storage-getting-started.md)
+- [Running Cortex chunks storage in Production](./running-chunks-storage-in-production.md)
+- [Running Cortex chunks storage with Cassandra](./running-chunks-storage-with-cassandra.md)

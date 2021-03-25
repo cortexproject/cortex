@@ -14,7 +14,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestRequest(t *testing.T) {
@@ -97,9 +97,10 @@ func TestResponse(t *testing.T) {
 
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				StatusCode:    200,
+				Header:        http.Header{"Content-Type": []string{"application/json"}},
+				Body:          ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				ContentLength: int64(len(tc.body)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -177,8 +178,8 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []client.LabelAdapter{},
-								Samples: []client.Sample{
+								Labels: []cortexpb.LabelAdapter{},
+								Samples: []cortexpb.Sample{
 									{Value: 0, TimestampMs: 0},
 									{Value: 1, TimestampMs: 1},
 								},
@@ -191,8 +192,8 @@ func TestMergeAPIResponses(t *testing.T) {
 						ResultType: matrix,
 						Result: []SampleStream{
 							{
-								Labels: []client.LabelAdapter{},
-								Samples: []client.Sample{
+								Labels: []cortexpb.LabelAdapter{},
+								Samples: []cortexpb.Sample{
 									{Value: 2, TimestampMs: 2},
 									{Value: 3, TimestampMs: 3},
 								},
@@ -207,8 +208,8 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelAdapter{},
-							Samples: []client.Sample{
+							Labels: []cortexpb.LabelAdapter{},
+							Samples: []cortexpb.Sample{
 								{Value: 0, TimestampMs: 0},
 								{Value: 1, TimestampMs: 1},
 								{Value: 2, TimestampMs: 2},
@@ -232,8 +233,8 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []client.Sample{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
 								{Value: 0, TimestampMs: 0},
 								{Value: 1, TimestampMs: 1000},
 								{Value: 2, TimestampMs: 2000},
@@ -256,8 +257,8 @@ func TestMergeAPIResponses(t *testing.T) {
 					ResultType: matrix,
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
-							Samples: []client.Sample{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
 								{Value: 1, TimestampMs: 1000},
 								{Value: 2, TimestampMs: 2000},
 								{Value: 3, TimestampMs: 3000},

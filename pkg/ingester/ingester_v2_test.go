@@ -51,8 +51,8 @@ import (
 )
 
 func TestIngester_v2Push(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
 		"cortex_ingester_ingested_samples_failures_total",
@@ -66,38 +66,38 @@ func TestIngester_v2Push(t *testing.T) {
 	userID := "test"
 
 	tests := map[string]struct {
-		reqs                     []*client.WriteRequest
+		reqs                     []*cortexpb.WriteRequest
 		expectedErr              error
-		expectedIngested         []client.TimeSeries
-		expectedMetadataIngested []*client.MetricMetadata
+		expectedIngested         []cortexpb.TimeSeries
+		expectedMetadataIngested []*cortexpb.MetricMetadata
 		expectedMetrics          string
 		additionalMetrics        []string
 		disableActiveSeries      bool
 	}{
 		"should succeed on valid series and metadata": {
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 9}},
-					[]*client.MetricMetadata{
-						{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+					[]*cortexpb.MetricMetadata{
+						{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
 					},
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 10}},
-					[]*client.MetricMetadata{
-						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					[]*cortexpb.MetricMetadata{
+						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 					},
-					client.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
-			expectedIngested: []client.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
 			},
-			expectedMetadataIngested: []*client.MetricMetadata{
-				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: client.GAUGE},
-				{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: client.COUNTER},
+			expectedMetadataIngested: []*cortexpb.MetricMetadata{
+				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
+				{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
 			},
 			additionalMetrics: []string{
 				// Metadata.
@@ -144,21 +144,21 @@ func TestIngester_v2Push(t *testing.T) {
 		},
 		"successful push, active series disabled": {
 			disableActiveSeries: true,
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
 			expectedErr: nil,
-			expectedIngested: []client.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 9}, {Value: 2, TimestampMs: 10}}},
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -182,21 +182,21 @@ func TestIngester_v2Push(t *testing.T) {
 			`,
 		},
 		"should soft fail on sample out of order": {
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 10}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 9}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), client.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
-			expectedIngested: []client.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 10}}},
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfOrderSample, model.Time(9), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -226,21 +226,21 @@ func TestIngester_v2Push(t *testing.T) {
 			`,
 		},
 		"should soft fail on sample out of bound": {
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), client.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
-			expectedIngested: []client.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -270,21 +270,21 @@ func TestIngester_v2Push(t *testing.T) {
 			`,
 		},
 		"should soft fail on two different sample values at the same timestamp": {
-			reqs: []*client.WriteRequest{
-				client.ToWriteRequest(
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 2, TimestampMs: 1575043969}},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
-					client.API),
-				client.ToWriteRequest(
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
-					[]client.Sample{{Value: 1, TimestampMs: 1575043969}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969}},
 					nil,
-					client.API),
+					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrDuplicateSampleForTimestamp, model.Time(1575043969), client.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
-			expectedIngested: []client.TimeSeries{
-				{Labels: metricLabelAdapters, Samples: []client.Sample{{Value: 2, TimestampMs: 1575043969}}},
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrDuplicateSampleForTimestamp, model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -388,8 +388,8 @@ func TestIngester_v2Push(t *testing.T) {
 }
 
 func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
@@ -415,11 +415,11 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 	// Push the same series multiple times, each time with an increasing timestamp
 	for j := 1; j <= 3; j++ {
-		req := client.ToWriteRequest(
+		req := cortexpb.ToWriteRequest(
 			[]labels.Labels{metricLabels},
-			[]client.Sample{{Value: float64(j), TimestampMs: int64(j)}},
+			[]cortexpb.Sample{{Value: float64(j), TimestampMs: int64(j)}},
 			nil,
-			client.API)
+			cortexpb.API)
 
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
@@ -439,8 +439,8 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	assert.Equal(t, []client.TimeSeries{
-		{Labels: metricLabelAdapters, Samples: []client.Sample{
+	assert.Equal(t, []cortexpb.TimeSeries{
+		{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{
 			{Value: 1, TimestampMs: 1},
 			{Value: 2, TimestampMs: 2},
 			{Value: 3, TimestampMs: 3},
@@ -449,8 +449,8 @@ func TestIngester_v2Push_ShouldHandleTheCaseTheCachedReferenceIsInvalid(t *testi
 }
 
 func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_ingested_samples_total",
 		"cortex_ingester_ingested_samples_failures_total",
@@ -479,17 +479,17 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 
 	// Push timeseries for each user
 	for _, userID := range []string{"test-1", "test-2"} {
-		reqs := []*client.WriteRequest{
-			client.ToWriteRequest(
+		reqs := []*cortexpb.WriteRequest{
+			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
-				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
-				client.API),
-			client.ToWriteRequest(
+				cortexpb.API),
+			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
-				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 				nil,
-				client.API),
+				cortexpb.API),
 		}
 
 		for _, req := range reqs {
@@ -534,8 +534,8 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 }
 
 func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	metricNames := []string{
 		"cortex_ingester_memory_series_created_total",
 		"cortex_ingester_memory_series_removed_total",
@@ -561,17 +561,17 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 
 	// Push timeseries for each user
 	for _, userID := range []string{"test-1", "test-2"} {
-		reqs := []*client.WriteRequest{
-			client.ToWriteRequest(
+		reqs := []*cortexpb.WriteRequest{
+			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
-				[]client.Sample{{Value: 1, TimestampMs: 9}},
+				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
-				client.API),
-			client.ToWriteRequest(
+				cortexpb.API),
+			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
-				[]client.Sample{{Value: 2, TimestampMs: 10}},
+				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 				nil,
-				client.API),
+				cortexpb.API),
 		}
 
 		for _, req := range reqs {
@@ -606,70 +606,206 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	assert.NoError(t, testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
-func Benchmark_Ingester_v2PushOnOutOfBoundsSamplesWithHighConcurrency(b *testing.B) {
-	const (
-		numSamplesPerRequest = 1000
-		numRequestsPerClient = 10
-		numConcurrentClients = 10000
+func Benchmark_Ingester_v2PushOnError(b *testing.B) {
+	var (
+		ctx             = user.InjectOrgID(context.Background(), userID)
+		sampleTimestamp = int64(100)
+		metricName      = "test"
 	)
 
-	registry := prometheus.NewRegistry()
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
-	cfg.LifecyclerConfig.JoinAfter = 0
-
-	ingester, err := prepareIngesterWithBlocksStorage(b, cfg, registry)
-	require.NoError(b, err)
-	require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
-	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
-
-	// Wait until the ingester is ACTIVE
-	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
-		return ingester.lifecycler.GetState()
-	})
-
-	// Push a single time series to set the TSDB min time.
-	metricLabelAdapters := []client.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
-	metricLabels := client.FromLabelAdaptersToLabels(metricLabelAdapters)
-
-	currTimeReq := client.ToWriteRequest(
-		[]labels.Labels{metricLabels},
-		[]client.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
-		nil,
-		client.API)
-	_, err = ingester.v2Push(ctx, currTimeReq)
-	require.NoError(b, err)
-
-	// Prepare a request containing out of bound samples.
-	metrics := make([]labels.Labels, 0, numSamplesPerRequest)
-	samples := make([]client.Sample, 0, numSamplesPerRequest)
-	for i := 0; i < numSamplesPerRequest; i++ {
-		metrics = append(metrics, metricLabels)
-		samples = append(samples, client.Sample{Value: float64(i), TimestampMs: 0})
-	}
-	outOfBoundReq := client.ToWriteRequest(metrics, samples, nil, client.API)
-
-	// Run the benchmark.
-	wg := sync.WaitGroup{}
-	wg.Add(numConcurrentClients)
-	start := make(chan struct{})
-
-	for c := 0; c < numConcurrentClients; c++ {
-		go func() {
-			defer wg.Done()
-			<-start
-
-			for n := 0; n < numRequestsPerClient; n++ {
-				ingester.v2Push(ctx, outOfBoundReq) // nolint:errcheck
-			}
-		}()
+	scenarios := map[string]struct {
+		numSeriesPerRequest  int
+		numConcurrentClients int
+	}{
+		"no concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 1,
+		},
+		"low concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 100,
+		},
+		"high concurrency": {
+			numSeriesPerRequest:  1000,
+			numConcurrentClients: 1000,
+		},
 	}
 
-	b.ResetTimer()
-	close(start)
-	wg.Wait()
+	tests := map[string]struct {
+		prepareConfig   func(limits *validation.Limits)
+		beforeBenchmark func(b *testing.B, ingester *Ingester, numSeriesPerRequest int)
+		runBenchmark    func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample)
+	}{
+		"out of bound samples": {
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a single time series to set the TSDB min time.
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := storage.ErrOutOfBounds.Error()
+
+				// Push out of bound samples.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"out of order samples": {
+			prepareConfig: func(limits *validation.Limits) {},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// For each series, push a single sample with a timestamp greater than next pushes.
+				for i := 0; i < numSeriesPerRequest; i++ {
+					currTimeReq := cortexpb.ToWriteRequest(
+						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
+						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+						nil,
+						cortexpb.API)
+
+					_, err := ingester.v2Push(ctx, currTimeReq)
+					require.NoError(b, err)
+				}
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := storage.ErrOutOfOrderSample.Error()
+
+				// Push out of order samples.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"per-user series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerUser = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with a metric name different than the one used during the benchmark.
+				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "another"}}
+				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := "per-user series limit"
+
+				// Push series with a different name than the one already pushed.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+		"per-metric series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLocalSeriesPerMetric = 1
+			},
+			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
+				// Push a series with the same metric name but different labels than the one used during the benchmark.
+				metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: "another"}}
+				metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+				currTimeReq := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
+					nil,
+					cortexpb.API)
+				_, err := ingester.v2Push(ctx, currTimeReq)
+				require.NoError(b, err)
+			},
+			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
+				expectedErr := "per-metric series limit"
+
+				// Push series with different labels than the one already pushed.
+				for n := 0; n < b.N; n++ {
+					_, err := ingester.v2Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+
+					if !strings.Contains(err.Error(), expectedErr) {
+						b.Fatalf("unexpected error. expected: %s actual: %s", expectedErr, err.Error())
+					}
+				}
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		for scenarioName, scenario := range scenarios {
+			b.Run(fmt.Sprintf("failure: %s, scenario: %s", testName, scenarioName), func(b *testing.B) {
+				registry := prometheus.NewRegistry()
+
+				// Create a mocked ingester
+				cfg := defaultIngesterTestConfig()
+				cfg.LifecyclerConfig.JoinAfter = 0
+
+				limits := defaultLimitsTestConfig()
+				testData.prepareConfig(&limits)
+
+				ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, "", registry)
+				require.NoError(b, err)
+				require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
+				defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
+
+				// Wait until the ingester is ACTIVE
+				test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+					return ingester.lifecycler.GetState()
+				})
+
+				testData.beforeBenchmark(b, ingester, scenario.numSeriesPerRequest)
+
+				// Prepare the request.
+				metrics := make([]labels.Labels, 0, scenario.numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, 0, scenario.numSeriesPerRequest)
+				for i := 0; i < scenario.numSeriesPerRequest; i++ {
+					metrics = append(metrics, labels.Labels{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}})
+					samples = append(samples, cortexpb.Sample{Value: float64(i), TimestampMs: sampleTimestamp})
+				}
+
+				// Run the benchmark.
+				wg := sync.WaitGroup{}
+				wg.Add(scenario.numConcurrentClients)
+				start := make(chan struct{})
+
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for c := 0; c < scenario.numConcurrentClients; c++ {
+					go func() {
+						defer wg.Done()
+						<-start
+
+						testData.runBenchmark(b, ingester, metrics, samples)
+					}()
+				}
+
+				b.ResetTimer()
+				close(start)
+				wg.Wait()
+			})
+		}
+	}
 }
 
 func Test_Ingester_v2LabelNames(t *testing.T) {
@@ -773,7 +909,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 		from     int64
 		to       int64
 		matchers []*client.LabelMatcher
-		expected []client.TimeSeries
+		expected []cortexpb.TimeSeries
 	}{
 		"should return an empty response if no metric matches": {
 			from: math.MinInt64,
@@ -781,7 +917,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "unknown"},
 			},
-			expected: []client.TimeSeries{},
+			expected: []cortexpb.TimeSeries{},
 		},
 		"should filter series by == matcher": {
 			from: math.MinInt64,
@@ -789,9 +925,9 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[0].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 100000}}},
-				{Labels: client.FromLabelsToLabelAdapters(series[1].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 110000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[0].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 100000}}},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[1].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 110000}}},
 			},
 		},
 		"should filter series by != matcher": {
@@ -800,8 +936,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.NOT_EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[2].lbls), Samples: []client.Sample{{Value: 2, TimestampMs: 200000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[2].lbls), Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 200000}}},
 			},
 		},
 		"should filter series by =~ matcher": {
@@ -810,9 +946,9 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: ".*_1"},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[0].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 100000}}},
-				{Labels: client.FromLabelsToLabelAdapters(series[1].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 110000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[0].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 100000}}},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[1].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 110000}}},
 			},
 		},
 		"should filter series by !~ matcher": {
@@ -821,8 +957,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.REGEX_NO_MATCH, Name: model.MetricNameLabel, Value: ".*_1"},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[2].lbls), Samples: []client.Sample{{Value: 2, TimestampMs: 200000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[2].lbls), Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 200000}}},
 			},
 		},
 		"should filter series by multiple matchers": {
@@ -832,8 +968,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 				{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 				{Type: client.REGEX_MATCH, Name: "status", Value: "5.."},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[1].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 110000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[1].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 110000}}},
 			},
 		},
 		"should filter series by matcher and time range": {
@@ -842,8 +978,8 @@ func Test_Ingester_v2Query(t *testing.T) {
 			matchers: []*client.LabelMatcher{
 				{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 			},
-			expected: []client.TimeSeries{
-				{Labels: client.FromLabelsToLabelAdapters(series[0].lbls), Samples: []client.Sample{{Value: 1, TimestampMs: 100000}}},
+			expected: []cortexpb.TimeSeries{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(series[0].lbls), Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 100000}}},
 			},
 		},
 	}
@@ -958,7 +1094,7 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 	// Mock request
 	userID := "test"
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req := &client.WriteRequest{}
+	req := &cortexpb.WriteRequest{}
 
 	res, err := i.v2Push(ctx, req)
 	assert.Equal(t, wrapWithUser(fmt.Errorf(errTSDBCreateIncompatibleState, "PENDING"), userID).Error(), err.Error())
@@ -971,7 +1107,7 @@ func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 
 func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNotActive(t *testing.T) {
 	tests := map[string]struct {
-		state       ring.IngesterState
+		state       ring.InstanceState
 		expectedErr error
 	}{
 		"not allow to create TSDB if in PENDING state": {
@@ -1004,12 +1140,12 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 
 			// Switch ingester state to the expected one in the test
 			if i.lifecycler.GetState() != testData.state {
-				var stateChain []ring.IngesterState
+				var stateChain []ring.InstanceState
 
 				if testData.state == ring.LEAVING {
-					stateChain = []ring.IngesterState{ring.ACTIVE, ring.LEAVING}
+					stateChain = []ring.InstanceState{ring.ACTIVE, ring.LEAVING}
 				} else {
-					stateChain = []ring.IngesterState{testData.state}
+					stateChain = []ring.InstanceState{testData.state}
 				}
 
 				for _, s := range stateChain {
@@ -1048,7 +1184,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 		from     int64
 		to       int64
 		matchers []*client.LabelMatchers
-		expected []*client.Metric
+		expected []*cortexpb.Metric
 	}{
 		"should return an empty response if no metric match": {
 			from: math.MinInt64,
@@ -1058,7 +1194,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "unknown"},
 				},
 			}},
-			expected: []*client.Metric{},
+			expected: []*cortexpb.Metric{},
 		},
 		"should filter metrics by single matcher": {
 			from: math.MinInt64,
@@ -1068,9 +1204,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 				},
 			}},
-			expected: []*client.Metric{
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[1].lbls)},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
 		"should filter metrics by multiple matchers": {
@@ -1088,9 +1224,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					},
 				},
 			},
-			expected: []*client.Metric{
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[2].lbls)},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[2].lbls)},
 			},
 		},
 		"should NOT filter metrics by time range to always return known metrics even when queried for older time ranges": {
@@ -1101,9 +1237,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 				},
 			}},
-			expected: []*client.Metric{
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[1].lbls)},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
 		},
 		"should not return duplicated metrics on overlapping matchers": {
@@ -1121,10 +1257,10 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					},
 				},
 			},
-			expected: []*client.Metric{
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[0].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[1].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[2].lbls)},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[2].lbls)},
 			},
 		},
 		"should return all matching metrics even if their FastFingerprint collide": {
@@ -1135,9 +1271,9 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "collision"},
 				},
 			}},
-			expected: []*client.Metric{
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[3].lbls)},
-				{Labels: client.FromLabelsToLabelAdapters(fixtures[4].lbls)},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[3].lbls)},
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[4].lbls)},
 			},
 		},
 	}
@@ -1262,21 +1398,21 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timest
 
 		// Generate metrics and samples (1 for each series).
 		metrics := make([]labels.Labels, 0, batchSize)
-		samples := make([]client.Sample, 0, batchSize)
+		samples := make([]cortexpb.Sample, 0, batchSize)
 
 		for s := 0; s < batchSize; s++ {
 			metrics = append(metrics, labels.Labels{
 				{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
 			})
 
-			samples = append(samples, client.Sample{
+			samples = append(samples, cortexpb.Sample{
 				TimestampMs: timestamp,
 				Value:       1,
 			})
 		}
 
 		// Send metrics to the ingester.
-		req := client.ToWriteRequest(metrics, samples, nil, client.API)
+		req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
 		_, err := i.v2Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1407,7 +1543,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
-		samples = append(samples, client.Sample{
+		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
 			TimestampMs: int64(i),
 		})
@@ -1638,10 +1774,10 @@ func benchmarkV2QueryStream(b *testing.B, streamChunks bool) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	const samplesCount = 1000
-	samples := make([]client.Sample, 0, samplesCount)
+	samples := make([]cortexpb.Sample, 0, samplesCount)
 
 	for i := 0; i < samplesCount; i++ {
-		samples = append(samples, client.Sample{
+		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
 			TimestampMs: int64(i),
 		})
@@ -1674,7 +1810,7 @@ func benchmarkV2QueryStream(b *testing.B, streamChunks bool) {
 	}
 }
 
-func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestampMs int64) (*client.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse, *client.QueryStreamResponse) {
+func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestampMs int64) (*cortexpb.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse, *client.QueryStreamResponse) {
 	samples := []cortexpb.Sample{
 		{
 			TimestampMs: timestampMs,
@@ -1682,7 +1818,7 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 		},
 	}
 
-	req := cortexpb.ToWriteRequest([]labels.Labels{lbls}, samples, nil, client.API)
+	req := cortexpb.ToWriteRequest([]labels.Labels{lbls}, samples, nil, cortexpb.API)
 
 	// Generate the expected response
 	expectedQueryRes := &client.QueryResponse{
@@ -1729,19 +1865,22 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	dataDir, err := ioutil.TempDir("", "ingester")
-	if err != nil {
-		return nil, err
-	}
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(dataDir))
-	})
-
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), dataDir, registerer)
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), "", registerer)
 }
 
 func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
+	// Create a data dir if none has been provided.
+	if dataDir == "" {
+		var err error
+		if dataDir, err = ioutil.TempDir("", "ingester"); err != nil {
+			return nil, err
+		}
+
+		t.Cleanup(func() {
+			require.NoError(t, os.RemoveAll(dataDir))
+		})
+	}
+
 	bucketDir, err := ioutil.TempDir("", "bucket")
 	if err != nil {
 		return nil, err
@@ -2049,6 +2188,57 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	})
 
 	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
+}
+
+func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig()
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	_, err = i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+
+	iterations := 5000
+	chanErr := make(chan error, 1)
+	quit := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-quit:
+				return
+			default:
+				_, err = i.getOrCreateTSDB(userID, false)
+				if err != nil {
+					chanErr <- err
+				}
+			}
+		}
+	}()
+
+	for k := 0; k < iterations; k++ {
+		i.closeAndDeleteUserTSDBIfIdle(userID)
+	}
+
+	select {
+	case err := <-chanErr:
+		assert.Fail(t, err.Error())
+		quit <- true
+	default:
+		quit <- true
+	}
 }
 
 func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
@@ -2723,7 +2913,7 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
-	req.Metadata = append(req.Metadata, &client.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: client.COUNTER})
+	req.Metadata = append(req.Metadata, &cortexpb.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: cortexpb.COUNTER})
 	_, err := i.v2Push(ctx, req)
 	require.NoError(t, err)
 }
@@ -2767,9 +2957,9 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		for i := 0; i < numFullChunks; i++ {
 			// Not using db.Appender() as it checks for compaction.
 			app := head.Appender(context.Background())
-			_, err := app.Add(l, int64(i)*chunkRange+1, 9.99)
+			_, err := app.Append(0, l, int64(i)*chunkRange+1, 9.99)
 			require.NoError(t, err)
-			_, err = app.Add(l, int64(i+1)*chunkRange, 9.99)
+			_, err = app.Append(0, l, int64(i+1)*chunkRange, 9.99)
 			require.NoError(t, err)
 			require.NoError(t, app.Commit())
 		}
@@ -2807,6 +2997,52 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	dur := time.Duration(h.MaxTime()-h.MinTime()) * time.Millisecond
 	require.True(t, dur <= 2*time.Hour)
 	require.Equal(t, 11, len(db.Blocks()))
+}
+
+func TestIngesterCacheUpdatesOnRefChange(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push a sample, verify that the labels are in ref-cache.
+	// Compact the head to remove the labels from HEAD but they will still exist in ref-cache.
+	// Push again to make the ref change and verify the refCache is updated in this case.
+
+	pushSingleSampleAtTime(t, i, 10)
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	startAppend := time.Now()
+	l := labels.Labels{{Name: labels.MetricName, Value: "test"}}
+	cachedRef, _, cachedRefExists := db.refCache.Ref(startAppend, l)
+	require.True(t, cachedRefExists)
+	require.Equal(t, uint64(1), cachedRef)
+
+	// Compact to remove the series from HEAD.
+	i.compactBlocks(context.Background(), true)
+	cachedRef, _, cachedRefExists = db.refCache.Ref(startAppend, l)
+	require.True(t, cachedRefExists)
+	require.Equal(t, uint64(1), cachedRef)
+
+	// New sample to create a new ref.
+	pushSingleSampleAtTime(t, i, 11)
+	cachedRef, _, cachedRefExists = db.refCache.Ref(startAppend, l)
+	require.True(t, cachedRefExists)
+	require.Equal(t, uint64(2), cachedRef)
 }
 
 func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {

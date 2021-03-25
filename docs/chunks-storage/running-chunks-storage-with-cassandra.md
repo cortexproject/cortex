@@ -116,7 +116,7 @@ Run Cortex using the latest stable version:
 ```
 docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.8.0 -config.file=/etc/single-process-config.yaml
 ```
-In case you prefer to run the master version, please follow this [documentation](../getting-started/getting-started-chunks.md) on how to build Cortex from source.
+In case you prefer to run the master version, please follow this [documentation](./chunks-storage-getting-started.md) on how to build Cortex from source.
 
 ### Configure the index and chunk table options
 

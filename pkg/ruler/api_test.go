@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	io "io"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -171,7 +171,7 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulestore.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -301,7 +301,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_Limits(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulestore.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)

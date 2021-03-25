@@ -92,7 +92,7 @@ func TestConfig_Validate(t *testing.T) {
 func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	tests := map[string]struct {
 		initialExists bool
-		initialState  ring.IngesterState
+		initialState  ring.InstanceState
 		initialTokens ring.Tokens
 	}{
 		"instance not in the ring": {
@@ -862,7 +862,7 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
 		app := db.Appender(context.Background())
-		_, err := app.Add(lbls, minT+(step*int64(i)), float64(i))
+		_, err := app.Append(0, lbls, minT+(step*int64(i)), float64(i))
 		require.NoError(t, err)
 		require.NoError(t, app.Commit())
 		require.NoError(t, db.Compact())

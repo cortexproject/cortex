@@ -11,8 +11,11 @@ import (
 	"testing"
 	"time"
 
+	amlabels "github.com/prometheus/alertmanager/pkg/labels"
+	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -290,31 +293,48 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, s.StartAndWaitReady(am))
 			}
 
-			for _, am := range alertmanagers.Instances() {
-				require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(3), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
-					labels.MustNewMatcher(labels.MatchEqual, "name", "alertmanager"),
-					labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"),
-				)))
+			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(9), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+				labels.MustNewMatcher(labels.MatchEqual, "name", "alertmanager"),
+				labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"),
+			)))
 
-				// We expect every instance to discover every configuration but only own a subset of them.
-				require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(30)), "cortex_alertmanager_tenants_discovered"))
-				// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
-				require.NoError(t, am.WaitSumMetrics(e2e.Greater(float64(0)), "cortex_alertmanager_tenants_owned"))
-				require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(384)), "cortex_ring_tokens_total"))
-			}
-
-			var totalTenants int
-			for _, am := range alertmanagers.Instances() {
-				values, err := am.SumMetrics([]string{"cortex_alertmanager_tenants_owned"})
-				require.NoError(t, err)
-
-				tenants := int(e2e.SumValues(values))
-				totalTenants += tenants
-			}
-
+			// We expect every instance to discover every configuration but only own a subset of them.
+			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(90), "cortex_alertmanager_tenants_discovered"))
+			// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
 			// The total number of tenants across all instances is: total alertmanager configs * replication factor.
 			// In this case: 30 * 2
-			require.Equal(t, 60, totalTenants)
+			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(60), "cortex_alertmanager_tenants_owned"))
+			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(float64(1152)), "cortex_ring_tokens_total"))
+
+			// Now, let's make sure state is replicated across instances.
+			// 1. Let's select a random tenant
+			userID := "user-5"
+
+			// 2. Let's create a silence
+			silence := types.Silence{
+				Matchers: amlabels.Matchers{
+					{Name: "instance", Value: "prometheus-one"},
+				},
+				Comment:  "Created for a test case.",
+				StartsAt: time.Now(),
+				EndsAt:   time.Now().Add(time.Hour),
+			}
+
+			// 2b. For each tenant, with a replication factor of 2 and 3 instances there's a chance the user might not be in the first selected replica.
+			c1, err := e2ecortex.NewClient("", "", alertmanager1.HTTPEndpoint(), "", userID)
+			require.NoError(t, err)
+			c2, err := e2ecortex.NewClient("", "", alertmanager2.HTTPEndpoint(), "", userID)
+			require.NoError(t, err)
+
+			err = c1.CreateSilence(context.Background(), silence)
+			if err != nil {
+				err := c2.CreateSilence(context.Background(), silence)
+				require.NoError(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_alertmanager_silences"}), e2e.WaitMissingMetrics)
 		})
 	}
 }

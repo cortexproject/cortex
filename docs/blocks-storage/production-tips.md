@@ -17,6 +17,16 @@ If your Cortex cluster has many tenants or ingester is running with a long `-blo
 
 The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
 
+### Ingester disk space
+
+Ingesters create blocks on disk as samples come in, then every 2 hours (configurable) they cut off those blocks and start a new block.
+
+We typically configure ingesters to retain these blocks for longer, to allow time to recover if something goes wrong uploading to the long-term store and to reduce work in queriers - more detail [here](#how-to-estimate--querierquery-store-after).
+
+If you configure ingesters with `-blocks-storage.tsdb.retention-period=24h`, a rule of thumb for disk space required is to take the number of timeseries after replication and multiply by 30KB.
+
+For example, if you have 20M active series replicated 3 ways, this gives approx 1.7TB.  Divide by the number of ingesters and allow some margin for growth, e.g. if you have 20 ingesters then 100GB each should work, or 150GB each to be more comfortable.
+
 ## Querier
 
 ### Ensure caching is enabled

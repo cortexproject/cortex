@@ -1,5 +1,36 @@
 # Changelog
 
+## master / unreleased
+
+* [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
+* [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. Support for this migration will be removed in Cortex 1.11. #3910
+* [CHANGE] Ruler: deprecated `-ruler.storage.*` CLI flags (and their respective YAML config options) in favour of `-ruler-storage.*`. The deprecated config will be removed in Cortex 1.11. #3945
+* [CHANGE] Alertmanager: deprecated `-alertmanager.storage.*` CLI flags (and their respective YAML config options) in favour of `-alertmanager-storage.*`. The deprecated config will be removed in Cortex 1.11. #4002
+* [CHANGE] Alertmanager: removed `-cluster.` CLI flags deprecated in Cortex 1.7. The new config options to use are: #3946
+  * `-alertmanager.cluster.listen-address` instead of `-cluster.listen-address`
+  * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
+  * `-alertmanager.cluster.peers` instead of `-cluster.peer`
+  * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
+* [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
+* [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
+* [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
+  * `cortex_ruler_clients`
+  * `cortex_ruler_client_request_duration_seconds`
+* [ENHANCEMENT] Query-frontend/scheduler: added querier forget delay (`-query-frontend.querier-forget-delay` and `-query-scheduler.querier-forget-delay`) to mitigate the blast radius in the event queriers crash because of a repeatedly sent "query of death" when shuffle-sharding is enabled. #3901
+* [ENHANCEMENT] Query-frontend: reduced memory allocations when serializing query response. #3964
+* [ENHANCEMENT] Querier / ruler: some optimizations to PromQL query engine. #3934 #3989
+* [ENHANCEMENT] Ingester: reduce CPU and memory when an high number of errors are returned by the ingester on the write path with the blocks storage. #3969 #3971 #3973
+* [ENHANCEMENT] Distributor: reduce CPU and memory when an high number of errors are returned by the distributor on the write path. #3990
+* [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
+* [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
+* [BUGFIX] Querier: streamline tracing spans. #3924
+* [BUGFIX] Ruler Storage: ignore objects with empty namespace or group in the name. #3999
+* [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
+
+## Blocksconvert
+
+* [ENHANCEMENT] Builder: add `-builder.timestamp-tolerance` option which may reduce block size by rounding timestamps to make difference whole seconds. #3891
+
 ## 1.8.0 / 2021-03-24
 
 * [CHANGE] Alertmanager: Don't expose cluster information to tenants via the `/alertmanager/api/v1/status` API endpoint when operating with clustering enabled. #3903
@@ -79,7 +110,7 @@
 * [ENHANCEMENT] Store-gateway: Reduced memory used to fetch chunks at query time. #3855
 * [ENHANCEMENT] Ingester: attempt to prevent idle compaction from happening in concurrent ingesters by introducing a 25% jitter to the configured idle timeout (`-blocks-storage.tsdb.head-compaction-idle-timeout`). #3850
 * [ENHANCEMENT] Compactor: cleanup local files for users that are no longer owned by compactor. #3851
-* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenats that no longer belong to store-gateway. #3853
+* [ENHANCEMENT] Store-gateway: close empty bucket stores, and delete leftover local files for tenants that no longer belong to store-gateway. #3853
 * [ENHANCEMENT] Store-gateway: added metrics to track partitioner behaviour. #3877
   * `cortex_bucket_store_partitioner_requested_bytes_total`
   * `cortex_bucket_store_partitioner_requested_ranges_total`
@@ -91,6 +122,7 @@
 * [ENHANCEMENT] Alertmanager: load alertmanager configurations from object storage concurrently, and only load necessary configurations, speeding configuration synchronization process and executing fewer "GET object" operations to the storage when sharding is enabled. #3898
 * [ENHANCEMENT] Ingester (blocks storage): Ingester can now stream entire chunks instead of individual samples to the querier. At the moment this feature must be explicitly enabled either by using `-ingester.stream-chunks-when-using-blocks` flag or `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file, but these configuration options are temporary and will be removed when feature is stable. #3889
 * [ENHANCEMENT] Alertmanager: New endpoint `/multitenant_alertmanager/delete_tenant_config` to delete configuration for tenant identified by `X-Scope-OrgID` header. This is an internal endpoint, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`. #3900
+* [ENHANCEMENT] MemCached: Add `max_item_size` support. #3929
 * [BUGFIX] Cortex: Fixed issue where fatal errors and various log messages where not logged. #3778
 * [BUGFIX] HA Tracker: don't track as error in the `cortex_kv_request_duration_seconds` metric a CAS operation intentionally aborted. #3745
 * [BUGFIX] Querier / ruler: do not log "error removing stale clients" if the ring is empty. #3761

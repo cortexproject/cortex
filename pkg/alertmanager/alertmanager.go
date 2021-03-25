@@ -14,8 +14,11 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
 	"github.com/prometheus/alertmanager/inhibit"
@@ -39,20 +42,35 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-const notificationLogMaintenancePeriod = 15 * time.Minute
+const (
+	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
+	maintenancePeriod = 15 * time.Minute
+
+	// Filenames used within tenant-directory
+	notificationLogSnapshot = "notifications"
+	silencesSnapshot        = "silences"
+	templatesDir            = "templates"
+)
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID string
-	// Used to persist notification logs and silences on disk.
-	DataDir     string
+	UserID      string
 	Logger      log.Logger
 	Peer        *cluster.Peer
 	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
+
+	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
+	TenantDataDir string
+
+	ShardingEnabled   bool
+	ReplicationFactor int
+	Replicator        Replicator
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -60,6 +78,7 @@ type Alertmanager struct {
 	cfg             *Config
 	api             *api.API
 	logger          log.Logger
+	state           State
 	nflog           *nflog.Log
 	silences        *silence.Silences
 	marker          types.Marker
@@ -96,8 +115,30 @@ func init() {
 	}()
 }
 
+// State helps with replication and synchronization of notifications and silences across several alertmanager replicas.
+type State interface {
+	AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel
+	Position() int
+	WaitReady(context.Context) error
+}
+
+// Replicator is used to exchange state with peers via the ring when sharding is enabled.
+type Replicator interface {
+	// ReplicateStateForUser writes the given partial state to the necessary replicas.
+	ReplicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error
+	// The alertmanager replication protocol relies on a position related to other replicas.
+	// This position is then used to identify who should notify about the alert first.
+	GetPositionForUser(userID string) int
+	// ReadFullStateForUser obtains the full state from other replicas in the cluster.
+	ReadFullStateForUser(context.Context, string) ([]*clusterpb.FullState, error)
+}
+
 // New creates a new Alertmanager.
 func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
+	if cfg.TenantDataDir == "" {
+		return nil, fmt.Errorf("directory for tenant-specific AlertManager is not configured")
+	}
+
 	am := &Alertmanager{
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
@@ -110,29 +151,43 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.registry = reg
 
+	// We currently have 3 operational modes:
+	// 1) Alertmanager clustering with upstream Gossip
+	// 2) Alertmanager sharding and ring-based replication
+	// 3) Alertmanager no replication
+	// These are covered in order.
+	if cfg.Peer != nil {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with gossip-based replication")
+		am.state = cfg.Peer
+	} else if cfg.ShardingEnabled {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
+		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
+	} else {
+		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
+		am.state = &NilPeer{}
+	}
+
 	am.wg.Add(1)
-	nflogID := fmt.Sprintf("nflog:%s", cfg.UserID)
 	var err error
 	am.nflog, err = nflog.New(
 		nflog.WithRetention(cfg.Retention),
-		nflog.WithSnapshot(filepath.Join(cfg.DataDir, nflogID)),
-		nflog.WithMaintenance(notificationLogMaintenancePeriod, am.stop, am.wg.Done),
+		nflog.WithSnapshot(filepath.Join(cfg.TenantDataDir, notificationLogSnapshot)),
+		nflog.WithMaintenance(maintenancePeriod, am.stop, am.wg.Done),
 		nflog.WithMetrics(am.registry),
 		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
-	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
-		am.nflog.SetBroadcast(c.Broadcast)
-	}
+
+	c := am.state.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
+	am.nflog.SetBroadcast(c.Broadcast)
 
 	am.marker = types.NewMarker(am.registry)
 
-	silencesID := fmt.Sprintf("silences:%s", cfg.UserID)
+	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 	am.silences, err = silence.New(silence.Options{
-		SnapshotFile: filepath.Join(cfg.DataDir, silencesID),
+		SnapshotFile: silencesFile,
 		Retention:    cfg.Retention,
 		Logger:       log.With(am.logger, "component", "silences"),
 		Metrics:      am.registry,
@@ -140,16 +195,22 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
-	if cfg.Peer != nil {
-		c := cfg.Peer.AddState("sil:"+cfg.UserID, am.silences, am.registry)
-		am.silences.SetBroadcast(c.Broadcast)
+
+	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
+	am.silences.SetBroadcast(c.Broadcast)
+
+	// State replication needs to be started after the state keys are defined.
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
 	}
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
 	am.wg.Add(1)
 	go func() {
-		am.silences.Maintenance(15*time.Minute, filepath.Join(cfg.DataDir, silencesID), am.stop)
+		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop)
 		am.wg.Done()
 	}()
 
@@ -162,9 +223,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Alerts:     am.alerts,
 		Silences:   am.silences,
 		StatusFunc: am.marker.Status,
-		Peer:       &NilPeer{},
-		Registry:   am.registry,
-		Logger:     log.With(am.logger, "component", "api"),
+		// Cortex should not expose cluster information back to its tenants.
+		Peer:     &NilPeer{},
+		Registry: am.registry,
+		Logger:   log.With(am.logger, "component", "api"),
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)
 		},
@@ -190,14 +252,16 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
+
+	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
 }
 
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
-func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
+func clusterWait(position func() int, timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
-		return time.Duration(p.Position()) * timeout
+		return time.Duration(position()) * timeout
 	}
 }
 
@@ -206,7 +270,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {
-			templateFiles[i] = filepath.Join(am.cfg.DataDir, "templates", userID, t)
+			templateFiles[i] = filepath.Join(am.cfg.TenantDataDir, templatesDir, t)
 		}
 	}
 
@@ -230,7 +294,8 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 
 	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.marker, log.With(am.logger, "component", "inhibitor"))
 
-	waitFunc := clusterWait(am.cfg.Peer, am.cfg.PeerTimeout)
+	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
+
 	timeoutFunc := func(d time.Duration) time.Duration {
 		if d < notify.MinTimeout {
 			d = notify.MinTimeout
@@ -255,7 +320,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		silence.NewSilencer(am.silences, am.marker, am.logger),
 		muteTimes,
 		am.nflog,
-		am.cfg.Peer,
+		am.state,
 	)
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
@@ -284,13 +349,38 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
+	if service, ok := am.state.(services.Service); ok {
+		service.StopAsync()
+	}
+
 	am.alerts.Close()
 	close(am.stop)
 }
 
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
+
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(am.logger).Log("msg", "error while stopping ring-based replication service", "err", err)
+		}
+	}
+
 	am.wg.Wait()
+}
+
+func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
+	if state, ok := am.state.(*state); ok {
+		return state.MergePartialState(part)
+	}
+	return errors.New("ring-based sharding not enabled")
+}
+
+func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
+	if state, ok := am.state.(*state); ok {
+		return state.GetFullState()
+	}
+	return nil, errors.New("ring-based sharding not enabled")
 }
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
@@ -367,11 +457,11 @@ func md5HashAsMetricValue(data []byte) float64 {
 // In a multi-tenant environment, we choose not to expose these to tenants and thus are not implemented.
 type NilPeer struct{}
 
-func (p *NilPeer) Name() string                   { return "" }
-func (p *NilPeer) Status() string                 { return "ready" }
-func (p *NilPeer) Peers() []cluster.ClusterMember { return nil }
-func (p *NilPeer) Position() int                  { return 0 }
-func (p *NilPeer) WaitReady()                     {}
+func (p *NilPeer) Name() string                    { return "" }
+func (p *NilPeer) Status() string                  { return "ready" }
+func (p *NilPeer) Peers() []cluster.ClusterMember  { return nil }
+func (p *NilPeer) Position() int                   { return 0 }
+func (p *NilPeer) WaitReady(context.Context) error { return nil }
 func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster.ClusterChannel {
 	return &NilChannel{}
 }

@@ -34,10 +34,10 @@ func TestDeriv(t *testing.T) {
 	a := storage.Appender(context.Background())
 
 	metric := labels.FromStrings("__name__", "foo")
-	_, err := a.Add(metric, 1493712816939, 1.0)
+	_, err := a.Append(0, metric, 1493712816939, 1.0)
 	assert.NoError(t, err)
 
-	_, err = a.Add(metric, 1493712846939, 1.0)
+	_, err = a.Append(0, metric, 1493712846939, 1.0)
 	assert.NoError(t, err)
 
 	err = a.Commit()

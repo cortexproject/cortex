@@ -132,6 +132,83 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
 
+func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
+	const testCount = 10000
+
+	tests := map[string]struct {
+		replicationFactor int
+		expectedInstances int
+		expectedZones     int
+	}{
+		"should succeed if there are enough instances per zone on RF = 3": {
+			replicationFactor: 3,
+			expectedInstances: 3,
+			expectedZones:     3,
+		},
+		"should succeed if there are enough instances per zone on RF = 2": {
+			replicationFactor: 2,
+			expectedInstances: 2,
+			expectedZones:     2,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			r := NewDesc()
+			instances := map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", State: ACTIVE},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", State: ACTIVE},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-c", State: LEAVING},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", State: ACTIVE},
+			}
+			var prevTokens []uint32
+			for id, instance := range instances {
+				ingTokens := GenerateTokens(128, prevTokens)
+				r.AddIngester(id, instance.Addr, instance.Zone, ingTokens, instance.State, time.Now())
+				prevTokens = append(prevTokens, ingTokens...)
+			}
+			instancesList := make([]InstanceDesc, 0, len(r.GetIngesters()))
+			for _, v := range r.GetIngesters() {
+				instancesList = append(instancesList, v)
+			}
+
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ReplicationFactor:    testData.replicationFactor,
+					ZoneAwarenessEnabled: true,
+				},
+				ringDesc:            r,
+				ringTokens:          r.GetTokens(),
+				ringTokensByZone:    r.getTokensByZone(),
+				ringInstanceByToken: r.getTokensInfo(),
+				ringZones:           getZones(r.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+			}
+
+			_, bufHosts, bufZones := MakeBuffersForGet()
+
+			// Use the GenerateTokens to get an array of random uint32 values.
+			testValues := GenerateTokens(testCount, nil)
+
+			for i := 0; i < testCount; i++ {
+				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
+				require.NoError(t, err)
+
+				distinctZones := map[string]int{}
+				for _, instance := range set.Instances {
+					distinctZones[instance.Zone]++
+				}
+
+				assert.Len(t, set.Instances, testData.expectedInstances)
+				assert.Len(t, distinctZones, testData.expectedZones)
+			}
+		})
+	}
+}
+
 func TestRing_Get_ZoneAwareness(t *testing.T) {
 	// Number of tests to run.
 	const testCount = 10000
@@ -229,16 +306,16 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				}
 
 				// Check that we have the expected number of instances for replication.
-				assert.Equal(t, testData.expectedInstances, len(set.Ingesters))
+				assert.Equal(t, testData.expectedInstances, len(set.Instances))
 
 				// Ensure all instances are in a different zone (only if zone-awareness is enabled).
 				if testData.zoneAwarenessEnabled {
 					zones := make(map[string]struct{})
-					for i := 0; i < len(set.Ingesters); i++ {
-						if _, ok := zones[set.Ingesters[i].Zone]; ok {
+					for i := 0; i < len(set.Instances); i++ {
+						if _, ok := zones[set.Instances[i].Zone]; ok {
 							t.Fatal("found multiple instances in the same zone")
 						}
-						zones[set.Ingesters[i].Zone] = struct{}{}
+						zones[set.Instances[i].Zone] = struct{}{}
 					}
 				}
 			}
@@ -738,13 +815,13 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			assert.Equal(t, testData.expectedMaxUnavailableZones, replicationSet.MaxUnavailableZones)
 
 			returnAddresses := []string{}
-			for _, instance := range replicationSet.Ingesters {
+			for _, instance := range replicationSet.Instances {
 				returnAddresses = append(returnAddresses, instance.Addr)
 			}
 			for _, addr := range testData.expectedAddresses {
 				assert.Contains(t, returnAddresses, addr)
 			}
-			assert.Equal(t, len(testData.expectedAddresses), len(replicationSet.Ingesters))
+			assert.Equal(t, len(testData.expectedAddresses), len(replicationSet.Instances))
 		})
 	}
 }
@@ -874,7 +951,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 					require.NoError(t, err)
 
 					countByZone := map[string]int{}
-					for _, instance := range all.Ingesters {
+					for _, instance := range all.Instances {
 						countByZone[instance.Zone]++
 					}
 
@@ -927,7 +1004,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 				r := ring.ShuffleShard(tenantID, size)
 				actual, err := r.GetAllHealthy(Read)
 				require.NoError(t, err)
-				assert.ElementsMatch(t, expected.Ingesters, actual.Ingesters)
+				assert.ElementsMatch(t, expected.Instances, actual.Instances)
 			}
 		}
 	}
@@ -991,8 +1068,8 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 		set, err := r.GetAllHealthy(Read)
 		require.NoError(t, err)
 
-		instances := make([]string, 0, len(set.Ingesters))
-		for _, instance := range set.Ingesters {
+		instances := make([]string, 0, len(set.Instances))
+		for _, instance := range set.Instances {
 			instances = append(instances, instance.Addr)
 		}
 
@@ -1159,7 +1236,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 
@@ -1170,7 +1247,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
@@ -1182,7 +1259,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 6.
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, fourthSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
@@ -1194,7 +1271,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 3.
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, fifthSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 }
@@ -1236,7 +1313,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 
@@ -1259,7 +1336,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
@@ -1270,7 +1347,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	fourthSet, err := fourthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, thirdInstance := range thirdSet.Ingesters {
+	for _, thirdInstance := range thirdSet.Instances {
 		assert.True(t, fourthSet.Includes(thirdInstance.Addr), "new replication set is expected to include previous instance %s", thirdInstance.Addr)
 	}
 }
@@ -1603,13 +1680,13 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 
 						// Remove the terminated instance from the history.
 						for ringTime, ringState := range history {
-							for idx, desc := range ringState.Ingesters {
+							for idx, desc := range ringState.Instances {
 								// In this simulation instance ID == instance address.
 								if desc.Addr != idToRemove {
 									continue
 								}
 
-								ringState.Ingesters = append(ringState.Ingesters[:idx], ringState.Ingesters[idx+1:]...)
+								ringState.Instances = append(ringState.Instances[:idx], ringState.Instances[idx+1:]...)
 								history[ringTime] = ringState
 								break
 							}
@@ -1735,7 +1812,7 @@ func BenchmarkRing_Get(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
-		if err != nil || len(set.Ingesters) != replicationFactor {
+		if err != nil || len(set.Instances) != replicationFactor {
 			b.Fatal()
 		}
 	}
@@ -1761,7 +1838,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 
 	numAllocs := testing.AllocsPerRun(10, func() {
 		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
-		if err != nil || len(set.Ingesters) != 3 {
+		if err != nil || len(set.Instances) != 3 {
 			t.Fail()
 		}
 	})
@@ -1813,13 +1890,13 @@ func generateRingInstanceWithInfo(addr, zone string, tokens []uint32, registered
 
 // compareReplicationSets returns the list of instance addresses which differ between the two sets.
 func compareReplicationSets(first, second ReplicationSet) (added, removed []string) {
-	for _, instance := range first.Ingesters {
+	for _, instance := range first.Instances {
 		if !second.Includes(instance.Addr) {
 			added = append(added, instance.Addr)
 		}
 	}
 
-	for _, instance := range second.Ingesters {
+	for _, instance := range second.Instances {
 		if !first.Includes(instance.Addr) {
 			removed = append(removed, instance.Addr)
 		}
@@ -1870,7 +1947,7 @@ func TestRingUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	for _, ing := range rs.Ingesters {
+	for _, ing := range rs.Instances {
 		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
 	}
 
@@ -1957,7 +2034,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
 		active := 0
 		rs, _ := ring.GetReplicationSetForOperation(Read)
-		for _, ing := range rs.Ingesters {
+		for _, ing := range rs.Instances {
 			if ing.State == ACTIVE {
 				active++
 			}
@@ -1988,7 +2065,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		require.NoError(t, err)
 
 		now := time.Now()
-		for _, ing := range rs.Ingesters {
+		for _, ing := range rs.Instances {
 			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so we better give it some extra buffer.
 			assert.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
 		}

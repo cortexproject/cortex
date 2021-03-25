@@ -26,7 +26,7 @@ require (
 	github.com/gogo/status v1.0.3
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/golang/protobuf v1.4.3
-	github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
+	github.com/golang/snappy v0.0.3
 	github.com/gorilla/mux v1.7.3
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/hashicorp/consul/api v1.8.1
@@ -43,11 +43,11 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/alertmanager v0.21.1-0.20210303154452-7866b9bb0927
+	github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6
 	github.com/prometheus/client_golang v1.9.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210215121130-6f488061dfb4
+	github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
@@ -73,9 +73,9 @@ require (
 // Override since git.apache.org is down.  The docs say to fetch from github.
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
 
-replace k8s.io/client-go => k8s.io/client-go v0.19.2
+replace k8s.io/client-go => k8s.io/client-go v0.20.4
 
-replace k8s.io/api => k8s.io/api v0.19.4
+replace k8s.io/api => k8s.io/api v0.20.4
 
 // >v1.2.0 has some conflict with prometheus/alertmanager. Hence prevent the upgrade till it's fixed.
 replace github.com/satori/go.uuid => github.com/satori/go.uuid v1.2.0

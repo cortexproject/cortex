@@ -33,7 +33,7 @@ project. Before deploying Cortex with a permanent storage backend you
 should read:
 
 1. [An overview of Cortex's architecture](architecture.md)
-1. [A guide to running Cortex chunks storage](guides/running-chunks-storage-in-production.md)
+1. [A guide to running Cortex chunks storage](chunks-storage/running-chunks-storage-in-production.md)
 1. [Information regarding configuring Cortex](configuration/_index.md)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](contributing/).
@@ -44,7 +44,7 @@ To learn more about Cortex, consult the following talks and articles.
 
 ### Recent talks and articles
 
-- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)
+- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
 - Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won’t look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
 - Oct 2020 blog post "[Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity](https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/)"
 - Sep 2020 blog post "[A Tale of Tail Latencies](https://www.weave.works/blog/a-tale-of-tail-latencies)"

@@ -1205,6 +1205,185 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 	}
 }
 
+func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testing.T) {
+	tc := []struct {
+		name              string
+		replicationFactor int
+	}{
+		{
+			name:              "RF = 2",
+			replicationFactor: 2,
+		},
+		{
+			name:              "RF = 3",
+			replicationFactor: 3,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			mockStore := prepareInMemoryAlertStore()
+			clientPool := newPassthroughAlertmanagerClientPool()
+			externalURL := flagext.URLValue{}
+			err := externalURL.Set("http://localhost:8080/alertmanager")
+			require.NoError(t, err)
+
+			var instances []*MultitenantAlertmanager
+			var instanceIDs []string
+			registries := util.NewUserRegistries()
+
+			// Create only two users - no need for more for these test cases.
+			for i := 1; i <= 2; i++ {
+				u := fmt.Sprintf("u-%d", i)
+				require.NoError(t, mockStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+					User:      u,
+					RawConfig: simpleConfigOne,
+					Templates: []*alertspb.TemplateDesc{},
+				}))
+			}
+
+			createInstance := func(i int) *MultitenantAlertmanager {
+				instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
+				instanceID := fmt.Sprintf("alertmanager-%d", i)
+
+				amConfig := mockAlertmanagerConfig(t)
+				amConfig.ExternalURL = externalURL
+				amConfig.ShardingRing.ReplicationFactor = tt.replicationFactor
+				amConfig.ShardingRing.InstanceID = instanceID
+				amConfig.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+
+				// Do not check the ring topology changes or poll in an interval in this test (we explicitly sync alertmanagers).
+				amConfig.PollInterval = time.Hour
+				amConfig.ShardingRing.RingCheckPeriod = time.Hour
+
+				amConfig.ShardingEnabled = true
+
+				reg := prometheus.NewPedanticRegistry()
+				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
+				require.NoError(t, err)
+
+				clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+				am.alertmanagerClientsPool = clientPool
+
+				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+				t.Cleanup(func() {
+					require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+				})
+
+				instances = append(instances, am)
+				instanceIDs = append(instanceIDs, instanceID)
+				registries.AddUserRegistry(instanceID, reg)
+
+				// Make sure the ring is settled.
+				{
+					ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					defer cancel()
+
+					// The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
+					for _, am := range instances {
+						for _, id := range instanceIDs {
+							require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
+						}
+					}
+				}
+
+				// Now that the ring has settled, sync configs with the instances.
+				require.NoError(t, am.loadAndSyncConfigs(ctx, reasonRingChange))
+
+				return am
+			}
+
+			writeSilence := func(i *MultitenantAlertmanager, userID string) {
+				silence := types.Silence{
+					Matchers: labels.Matchers{
+						{Name: "instance", Value: "prometheus-one"},
+					},
+					Comment:  "Created for a test case.",
+					StartsAt: time.Now(),
+					EndsAt:   time.Now().Add(time.Hour),
+				}
+				data, err := json.Marshal(silence)
+				require.NoError(t, err)
+
+				req := httptest.NewRequest(http.MethodPost, externalURL.String()+"/api/v2/silences", bytes.NewReader(data))
+				req.Header.Set("content-type", "application/json")
+				reqCtx := user.InjectOrgID(req.Context(), userID)
+				{
+					w := httptest.NewRecorder()
+					i.ServeHTTP(w, req.WithContext(reqCtx))
+
+					resp := w.Result()
+					body, _ := ioutil.ReadAll(resp.Body)
+					assert.Equal(t, http.StatusOK, w.Code)
+					require.Regexp(t, regexp.MustCompile(`{"silenceID":".+"}`), string(body))
+				}
+			}
+
+			checkSilence := func(i *MultitenantAlertmanager, userID string) {
+				req := httptest.NewRequest(http.MethodGet, externalURL.String()+"/api/v2/silences", nil)
+				req.Header.Set("content-type", "application/json")
+				reqCtx := user.InjectOrgID(req.Context(), userID)
+				{
+					w := httptest.NewRecorder()
+					i.ServeHTTP(w, req.WithContext(reqCtx))
+
+					resp := w.Result()
+					body, _ := ioutil.ReadAll(resp.Body)
+					assert.Equal(t, http.StatusOK, w.Code)
+					require.Regexp(t, regexp.MustCompile(`"comment":"Created for a test case."`), string(body))
+				}
+			}
+
+			// 1. Create the first instance and load the user configurations.
+			i1 := createInstance(1)
+
+			// 2. Create a silence in the first alertmanager instance and check we can read it.
+			writeSilence(i1, "u-1")
+			// 2.a. Check the silence was created (paranoia).
+			checkSilence(i1, "u-1")
+			// 2.b. Check the relevant metrics were updated.
+			{
+				metrics := registries.BuildMetricFamiliesPerUser()
+				assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
+			}
+
+			// 3. Create a second instance. This should attempt to fetch the silence from the first.
+			i2 := createInstance(2)
+
+			// 3.a. Check the silence was fetched from the first instance successfully.
+			checkSilence(i2, "u-1")
+
+			// 3.b. Check the metrics: We should see the additional silences without any replication activity.
+			{
+				metrics := registries.BuildMetricFamiliesPerUser()
+				assert.Equal(t, float64(2), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
+			}
+
+			if tt.replicationFactor >= 3 {
+				// 4. When testing RF = 3, create a third instance, to test obtaining state from multiple places.
+				i3 := createInstance(3)
+
+				// 4.a. Check the silence was fetched one or both of the instances successfully.
+				checkSilence(i3, "u-1")
+
+				// 4.b. Check the metrics one more time. We should have three replicas of the silence.
+				{
+					metrics := registries.BuildMetricFamiliesPerUser()
+					assert.Equal(t, float64(3), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+					assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+					assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
+				}
+			}
+		})
+	}
+}
+
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.
 func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
@@ -1249,6 +1428,10 @@ type passthroughAlertmanagerClient struct {
 
 func (am *passthroughAlertmanagerClient) UpdateState(ctx context.Context, in *clusterpb.Part, opts ...grpc.CallOption) (*alertmanagerpb.UpdateStateResponse, error) {
 	return am.server.UpdateState(ctx, in)
+}
+
+func (am *passthroughAlertmanagerClient) ReadState(ctx context.Context, in *alertmanagerpb.ReadStateRequest, opts ...grpc.CallOption) (*alertmanagerpb.ReadStateResponse, error) {
+	return am.server.ReadState(ctx, in)
 }
 
 func (am *passthroughAlertmanagerClient) HandleRequest(context.Context, *httpgrpc.HTTPRequest, ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {

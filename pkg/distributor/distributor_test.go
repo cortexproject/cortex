@@ -969,6 +969,274 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 }
 
+func BenchmarkDistributor_Push(b *testing.B) {
+	const (
+		numSeriesPerRequest = 1000
+	)
+
+	tests := map[string]struct {
+		prepareConfig func(limits *validation.Limits)
+		prepareSeries func() ([]labels.Labels, []cortexpb.Sample)
+		expectedErr   string
+	}{
+		"all samples successfully pushed": {
+			prepareConfig: func(limits *validation.Limits) {},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "",
+		},
+		"ingestion rate limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.IngestionRate = 1
+				limits.IngestionBurstSize = 1
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "ingestion rate limit",
+		},
+		"too many labels limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelNamesPerSeries = 30
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 1; i < 31; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "series has too many labels",
+		},
+		"max label name length limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelNameLength = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long name.
+					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "label name too long",
+		},
+		"max label value length limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelValueLength = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long value.
+					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "label value too long",
+		},
+		"timestamp too old": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.RejectOldSamples = true
+				limits.RejectOldSamplesMaxAge = time.Hour
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "timestamp too old",
+		},
+		"timestamp too new": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.CreationGracePeriod = time.Minute
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "timestamp too new",
+		},
+	}
+
+	for testName, testData := range tests {
+		b.Run(testName, func(b *testing.B) {
+			// Create an in-memory KV store for the ring with 1 ingester registered.
+			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
+				func(_ interface{}) (interface{}, bool, error) {
+					d := &ring.Desc{}
+					d.AddIngester("ingester-1", "127.0.0.1", "", ring.GenerateTokens(128, nil), ring.ACTIVE, time.Now())
+					return d, true, nil
+				},
+			)
+			require.NoError(b, err)
+
+			ingestersRing, err := ring.New(ring.Config{
+				KVStore:           kv.Config{Mock: kvStore},
+				HeartbeatTimeout:  60 * time.Minute,
+				ReplicationFactor: 1,
+			}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
+			require.NoError(b, err)
+			require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingestersRing))
+			b.Cleanup(func() {
+				require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ingestersRing))
+			})
+
+			test.Poll(b, time.Second, 1, func() interface{} {
+				return ingestersRing.InstancesCount()
+			})
+
+			// Prepare the distributor configuration.
+			var distributorCfg Config
+			var clientConfig client.Config
+			limits := validation.Limits{}
+			flagext.DefaultValues(&distributorCfg, &clientConfig, &limits)
+
+			limits.IngestionRate = 0 // Unlimited.
+			testData.prepareConfig(&limits)
+
+			distributorCfg.ShardByAllLabels = true
+			distributorCfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
+				return &noopIngester{}, nil
+			}
+
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(b, err)
+
+			// Start the distributor.
+			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+			require.NoError(b, err)
+			require.NoError(b, services.StartAndAwaitRunning(context.Background(), distributor))
+
+			b.Cleanup(func() {
+				require.NoError(b, services.StopAndAwaitTerminated(context.Background(), distributor))
+			})
+
+			// Prepare the series to remote write before starting the benchmark.
+			metrics, samples := testData.prepareSeries()
+
+			// Run the benchmark.
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+
+				if testData.expectedErr == "" && err != nil {
+					b.Fatalf("no error expected but got %v", err)
+				}
+				if testData.expectedErr != "" && (err == nil || !strings.Contains(err.Error(), testData.expectedErr)) {
+					b.Fatalf("expected %v error but got %v", testData.expectedErr, err)
+				}
+			}
+		})
+	}
+}
+
 func TestSlowQueries(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
@@ -1661,6 +1929,20 @@ func (i *mockIngester) countCalls(name string) int {
 	return i.calls[name]
 }
 
+// noopIngester is a mocked ingester which does nothing.
+type noopIngester struct {
+	client.IngesterClient
+	grpc_health_v1.HealthClient
+}
+
+func (i *noopIngester) Close() error {
+	return nil
+}
+
+func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
 type stream struct {
 	grpc.ClientStream
 	i       int
@@ -1724,7 +2006,7 @@ func TestDistributorValidation(t *testing.T) {
 				TimestampMs: int64(past),
 				Value:       2,
 			}},
-			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too old: %d", past),
+			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past),
 		},
 
 		// Test validation fails for samples from the future.
@@ -1734,7 +2016,7 @@ func TestDistributorValidation(t *testing.T) {
 				TimestampMs: int64(future),
 				Value:       4,
 			}},
-			err: httpgrpc.Errorf(http.StatusBadRequest, "sample for 'testmetric' has timestamp too new: %d", future),
+			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too new: %d metric: "testmetric"`, future),
 		},
 
 		// Test maximum labels names per series.

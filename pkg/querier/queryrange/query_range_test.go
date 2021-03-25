@@ -97,9 +97,10 @@ func TestResponse(t *testing.T) {
 
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
-				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				StatusCode:    200,
+				Header:        http.Header{"Content-Type": []string{"application/json"}},
+				Body:          ioutil.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				ContentLength: int64(len(tc.body)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)

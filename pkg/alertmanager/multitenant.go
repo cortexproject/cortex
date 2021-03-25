@@ -996,17 +996,12 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 		}
 
 		switch resp.Status {
-		case alertmanagerpb.OK:
-			return nil
 		case alertmanagerpb.MERGE_ERROR:
 			level.Error(am.logger).Log("msg", "state replication failed", "user", userID, "key", part.Key, "err", resp.Error)
-			return nil
 		case alertmanagerpb.USER_NOT_FOUND:
 			level.Debug(am.logger).Log("msg", "user not found while trying to replicate state", "user", userID, "key", part.Key)
-			return nil
-		default:
-			return nil
 		}
+		return nil
 	}, func() {})
 
 	return err
@@ -1083,8 +1078,9 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	}
 
 	am.alertmanagersMtx.Lock()
-	defer am.alertmanagersMtx.Unlock()
 	userAM, ok := am.alertmanagers[userID]
+	am.alertmanagersMtx.Unlock()
+
 	if !ok {
 		// We can end up trying to replicate state to an alertmanager that is no longer available due to e.g. a ring topology change.
 		level.Debug(am.logger).Log("msg", "user does not have an alertmanager in this instance", "user", userID)
@@ -1095,7 +1091,6 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	}
 
 	if err = userAM.mergePartialExternalState(part); err != nil {
-		level.Error(am.logger).Log("msg", "failed to merge state", "err", err, "key", part.Key)
 		return &alertmanagerpb.UpdateStateResponse{
 			Status: alertmanagerpb.MERGE_ERROR,
 			Error:  err.Error(),

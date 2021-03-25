@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -1011,6 +1012,69 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 	return err
 }
 
+// ReadFullStateForUser attempts to read the full state from each replica for user. Note that it will try to obtain and return
+// state from all replicas, but will consider it a success if state is obtained from at least one replica.
+func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
+
+	// Only get the set of replicas which contain the specified user.
+	key := shardByUser(userID)
+	replicationSet, err := am.ring.Get(key, RingOp, nil, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// We should only query state from other replicas, and not our own state.
+	addrs := replicationSet.GetAddressesWithout(am.ringLifecycler.GetInstanceAddr())
+
+	var (
+		resultsMtx sync.Mutex
+		results    []*clusterpb.FullState
+	)
+
+	// Note that the jobs swallow the errors - this is because we want to give each replica a chance to respond.
+	jobs := concurrency.CreateJobsFromStrings(addrs)
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+		addr := job.(string)
+		level.Debug(am.logger).Log("msg", "contacting replica for full state", "user", userID, "addr", addr)
+
+		c, err := am.alertmanagerClientsPool.GetClientFor(addr)
+		if err != nil {
+			level.Error(am.logger).Log("msg", "failed to get rpc client", "err", err)
+			return nil
+		}
+
+		resp, err := c.ReadState(user.InjectOrgID(ctx, userID), &alertmanagerpb.ReadStateRequest{})
+		if err != nil {
+			level.Error(am.logger).Log("msg", "rpc reading state from replica failed", "addr", addr, "user", userID, "err", err)
+			return nil
+		}
+
+		switch resp.Status {
+		case alertmanagerpb.READ_OK:
+			resultsMtx.Lock()
+			results = append(results, resp.State)
+			resultsMtx.Unlock()
+		case alertmanagerpb.READ_ERROR:
+			level.Error(am.logger).Log("msg", "error trying to read state", "addr", addr, "user", userID, "err", resp.Error)
+		case alertmanagerpb.READ_USER_NOT_FOUND:
+			level.Debug(am.logger).Log("msg", "user not found while trying to read state", "addr", addr, "user", userID)
+		default:
+			level.Error(am.logger).Log("msg", "unknown response trying to read state", "addr", addr, "user", userID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// We only require the state from a single replica, though we return as many as we were able to obtain.
+	if len(results) == 0 {
+		return nil, fmt.Errorf("failed to read state from any replica")
+	}
+
+	return results, nil
+}
+
 // UpdateState implements the Alertmanager service.
 func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *clusterpb.Part) (*alertmanagerpb.UpdateStateResponse, error) {
 	userID, err := tenant.TenantID(ctx)
@@ -1087,6 +1151,39 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 		result[f.Name()] = fullPath
 	}
 	return result
+}
+
+// UpdateState implements the Alertmanager service.
+func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmanagerpb.ReadStateRequest) (*alertmanagerpb.ReadStateResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	am.alertmanagersMtx.Lock()
+	userAM, ok := am.alertmanagers[userID]
+	am.alertmanagersMtx.Unlock()
+
+	if !ok {
+		level.Debug(am.logger).Log("msg", "user does not have an alertmanager in this instance", "user", userID)
+		return &alertmanagerpb.ReadStateResponse{
+			Status: alertmanagerpb.READ_USER_NOT_FOUND,
+			Error:  "alertmanager for this user does not exists",
+		}, nil
+	}
+
+	state, err := userAM.getFullState()
+	if err != nil {
+		return &alertmanagerpb.ReadStateResponse{
+			Status: alertmanagerpb.READ_ERROR,
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &alertmanagerpb.ReadStateResponse{
+		Status: alertmanagerpb.READ_OK,
+		State:  state,
+	}, nil
 }
 
 // StatusHandler shows the status of the alertmanager.

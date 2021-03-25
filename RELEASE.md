@@ -112,7 +112,7 @@ To publish a stable release:
    - Create `merge-release-to-master` branch locally
    - Merge upstream `master` branch into your `merge-release-to-master` and resolve conflicts
    - Send PR to for merging your `merge-release-to-master` branch into `master`
-   - Once approved, merge the PR by using "Merge" commit. 
+   - Once approved, merge the PR by using "Merge" commit.
      - This can either be done by temporarily enabling "Allow merge commits" option in "Settings > Options".
      - Alternatively, this can be done locally by merging `merge-release-to-master` branch into `master`, and pushing resulting `master` to upstream repository. This doesn't break `master` branch protection, since PR has been approved already, and also doesn't require removing the protection.
 1. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)

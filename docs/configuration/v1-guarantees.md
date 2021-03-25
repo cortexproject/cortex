@@ -70,7 +70,6 @@ Currently experimental features are:
 - Alertmanager: Sharding of tenants across multiple instances
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Alertmanager storage: backend client configuration options using a config fields similar to the blocks storage backend clients.
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
   - `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file

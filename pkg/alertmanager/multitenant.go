@@ -112,7 +112,7 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store   alertstore.LegacyConfig `yaml:"storage"`
+	Store   alertstore.LegacyConfig `yaml:"storage" doc:"description=Deprecated. Use -alertmanager-storage.* CLI flags and their respective YAML config options instead."`
 	Cluster ClusterConfig           `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`

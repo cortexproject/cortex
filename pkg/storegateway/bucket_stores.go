@@ -164,16 +164,17 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 		MaxRetries: 3,
 	})
 
+	var lastErr error
 	for retries.Ongoing() {
-		err := u.syncUsersBlocks(ctx, f)
-		if err == nil {
-			return err
+		lastErr = u.syncUsersBlocks(ctx, f)
+		if lastErr == nil {
+			return nil
 		}
 
 		retries.Wait()
 	}
 
-	return retries.Err()
+	return lastErr
 }
 
 func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {

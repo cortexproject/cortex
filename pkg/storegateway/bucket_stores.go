@@ -74,19 +74,6 @@ type BucketStores struct {
 	tenantsSynced     prometheus.Gauge
 }
 
-type ChunkLimiter struct {
-	limiter *store.Limiter
-}
-
-func (c *ChunkLimiter) Reserve(num uint64) error {
-	err := c.limiter.Reserve(num)
-	if err != nil {
-		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
-	}
-
-	return nil
-}
-
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
@@ -613,11 +600,24 @@ func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
 }
 
+type chunkLimiter struct {
+	limiter *store.Limiter
+}
+
+func (c *chunkLimiter) Reserve(num uint64) error {
+	err := c.limiter.Reserve(num)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+	}
+
+	return nil
+}
+
 func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		return &ChunkLimiter{
+		return &chunkLimiter{
 			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter),
 		}
 	}

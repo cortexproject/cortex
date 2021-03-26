@@ -427,7 +427,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
-		if err == rulestore.ErrGroupNotFound {
+		if errors.Is(err, rulestore.ErrGroupNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

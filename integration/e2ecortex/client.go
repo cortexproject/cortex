@@ -321,6 +321,24 @@ func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) err
 	return nil
 }
 
+// GetRuleGroup gets a rule group.
+func (c *Client) GetRuleGroup(namespace string, groupName string) (*http.Response, error) {
+	// Create HTTP request
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/rules/%s/%s", c.rulerAddress, url.PathEscape(namespace), url.PathEscape(groupName)), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/yaml")
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	return c.httpClient.Do(req.WithContext(ctx))
+}
+
 // DeleteRuleGroup deletes a rule group.
 func (c *Client) DeleteRuleGroup(namespace string, groupName string) error {
 	// Create HTTP request

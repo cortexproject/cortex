@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -189,4 +190,75 @@ func objectExists(bucketClient interface{}, key string) (bool, error) {
 	}
 
 	panic("unexpected bucket client")
+}
+
+func makeTestFullState(content string) alertspb.FullStateDesc {
+	return alertspb.FullStateDesc{
+		State: &clusterpb.FullState{
+			Parts: []clusterpb.Part{
+				{
+					Key:  "key",
+					Data: []byte(content),
+				},
+			},
+		},
+	}
+}
+
+func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	store := bucketclient.NewBucketAlertStore(bucket, nil, log.NewNopLogger())
+	ctx := context.Background()
+
+	state1 := makeTestFullState("one")
+	state2 := makeTestFullState("two")
+
+	// The storage is empty.
+	{
+		_, err := store.GetFullState(ctx, "user-1")
+		assert.Equal(t, alertspb.ErrNotFound, err)
+
+		_, err = store.GetFullState(ctx, "user-2")
+		assert.Equal(t, alertspb.ErrNotFound, err)
+	}
+
+	// The storage contains users.
+	{
+		require.NoError(t, store.SetFullState(ctx, "user-1", state1))
+		require.NoError(t, store.SetFullState(ctx, "user-2", state2))
+
+		res, err := store.GetFullState(ctx, "user-1")
+		require.NoError(t, err)
+		assert.Equal(t, state1, res)
+
+		res, err = store.GetFullState(ctx, "user-2")
+		require.NoError(t, err)
+		assert.Equal(t, state2, res)
+
+		// Ensure the config is stored at the expected location. Without this check
+		// we have no guarantee that the objects are stored at the expected location.
+		exists, err := bucket.Exists(ctx, "alertmanager/user-1/fullstate")
+		require.NoError(t, err)
+		assert.True(t, exists)
+
+		exists, err = bucket.Exists(ctx, "alertmanager/user-2/fullstate")
+		require.NoError(t, err)
+		assert.True(t, exists)
+	}
+
+	// The storage has had user-1 deleted.
+	{
+		require.NoError(t, store.DeleteFullState(ctx, "user-1"))
+
+		// Ensure the correct entry has been deleted.
+		_, err := store.GetFullState(ctx, "user-1")
+		assert.Equal(t, alertspb.ErrNotFound, err)
+
+		res, err := store.GetFullState(ctx, "user-2")
+		require.NoError(t, err)
+		assert.Equal(t, state2, res)
+
+		// Delete again (should be idempotent).
+		require.NoError(t, store.DeleteFullState(ctx, "user-1"))
+	}
 }

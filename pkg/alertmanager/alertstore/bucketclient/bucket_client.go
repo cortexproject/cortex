@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -18,7 +19,17 @@ import (
 
 const (
 	// The bucket prefix under which all tenants alertmanager configs are stored.
+	// Note that objects stored under this prefix follow the pattern:
+	//     alerts/<user-id>
 	alertsPrefix = "alerts"
+
+	// The bucket prefix under which other alertmanager state is stored.
+	// Note that objects stored under this prefix follow the pattern:
+	//     alertmanager/<user-id>/<object>
+	alertmanagerPrefix = "alertmanager"
+
+	// The name of alertmanager full state objects (notification log + silences).
+	fullStateName = "fullstate"
 
 	// How many users to load concurrently.
 	fetchConcurrency = 16
@@ -28,6 +39,7 @@ const (
 // using the Thanos objstore.Bucket interface
 type BucketAlertStore struct {
 	bucket      objstore.Bucket
+	amBucket    objstore.Bucket
 	cfgProvider bucket.TenantConfigProvider
 	logger      log.Logger
 }
@@ -35,6 +47,7 @@ type BucketAlertStore struct {
 func NewBucketAlertStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketAlertStore {
 	return &BucketAlertStore{
 		bucket:      bucket.NewPrefixedBucketClient(bkt, alertsPrefix),
+		amBucket:    bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
 		cfgProvider: cfgProvider,
 		logger:      logger,
 	}
@@ -110,29 +123,74 @@ func (s *BucketAlertStore) DeleteAlertConfig(ctx context.Context, userID string)
 	return err
 }
 
-func (s *BucketAlertStore) getAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
-	readCloser, err := s.getUserBucket(userID).Get(ctx, userID)
-	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+// GetFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) GetFullState(ctx context.Context, userID string) (alertspb.FullStateDesc, error) {
+	bkt := s.getAlertmanagerUserBucket(userID)
+	fs := alertspb.FullStateDesc{}
+
+	err := s.get(ctx, bkt, fullStateName, &fs)
+	if s.amBucket.IsObjNotFoundErr(err) {
+		return fs, alertspb.ErrNotFound
 	}
 
-	defer runutil.CloseWithLogOnErr(s.logger, readCloser, "close alertmanager config reader")
+	return fs, err
+}
+
+// SetFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) SetFullState(ctx context.Context, userID string, fs alertspb.FullStateDesc) error {
+	bkt := s.getAlertmanagerUserBucket(userID)
+
+	fsBytes, err := fs.Marshal()
+	if err != nil {
+		return err
+	}
+
+	return bkt.Upload(ctx, fullStateName, bytes.NewBuffer(fsBytes))
+}
+
+// DeleteFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) DeleteFullState(ctx context.Context, userID string) error {
+	userBkt := s.getAlertmanagerUserBucket(userID)
+
+	err := userBkt.Delete(ctx, fullStateName)
+	if userBkt.IsObjNotFoundErr(err) {
+		return nil
+	}
+	return err
+}
+
+func (s *BucketAlertStore) getAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
+	config := alertspb.AlertConfigDesc{}
+	err := s.get(ctx, s.getUserBucket(userID), userID, &config)
+	return config, err
+}
+
+func (s *BucketAlertStore) get(ctx context.Context, bkt objstore.Bucket, name string, msg proto.Message) error {
+	readCloser, err := bkt.Get(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	defer runutil.CloseWithLogOnErr(s.logger, readCloser, "close bucket reader")
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return err
 	}
 
-	config := alertspb.AlertConfigDesc{}
-	err = config.Unmarshal(buf)
+	err = proto.Unmarshal(buf, msg)
 	if err != nil {
-		return alertspb.AlertConfigDesc{}, err
+		return err
 	}
 
-	return config, nil
+	return nil
 }
 
 func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 	// Inject server-side encryption based on the tenant config.
 	return bucket.NewSSEBucketClient(userID, s.bucket, s.cfgProvider)
+}
+
+func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
+	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
 }

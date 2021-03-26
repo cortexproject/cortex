@@ -90,6 +90,7 @@ pkg/storegateway/storegatewaypb/gateway.pb.go: pkg/storegateway/storegatewaypb/g
 pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
 tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
 pkg/alertmanager/alertmanagerpb/alertmanager.pb.go: pkg/alertmanager/alertmanagerpb/alertmanager.proto
+pkg/alertmanager/alertspb/alerts.pb.go: pkg/alertmanager/alertspb/alerts.proto
 
 all: $(UPTODATE_FILES)
 test: protos

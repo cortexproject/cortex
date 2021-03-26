@@ -398,7 +398,7 @@ func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 	}
 
 	if len(samples) > 0 && minTs > samples[len(samples)-1].TimestampMs {
-		return []cortexpb.Sample{}
+		return samples[len(samples):]
 	}
 
 	searchResult := sort.Search(len(samples), func(i int) bool {

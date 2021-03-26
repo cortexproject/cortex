@@ -5655,7 +5655,7 @@ and development.&lt;/p>
 &lt;h2 id="reading-old-data">Reading old data&lt;/h2>
 &lt;p>The Cortex maintainers commit to ensuring future version of Cortex can read data written by versions up to two years old. In practice we expect to be able to read more, but this is our guarantee.&lt;/p>
 &lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
-&lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
+&lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/prometheus/*&lt;/code> and &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
 &lt;ul>
 &lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
 &lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the &lt;em>blocks&lt;/em> storage engine when &lt;code>-querier.query-store-for-labels-enabled&lt;/code> is set.&lt;/li>

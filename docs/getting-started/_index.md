@@ -41,7 +41,7 @@ Add the following to your Prometheus config (documentation/examples/prometheus.y
 
 ```yaml
 remote_write:
-- url: http://localhost:9009/api/prom/push
+- url: http://localhost:9009/api/v1/push
 ```
 
 And start Prometheus with that config file:
@@ -56,7 +56,7 @@ Your Prometheus instance will now start pushing data to Cortex.  To query that d
 $ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
-In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/api/prom`).
+In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/prometheus`).
 
 **To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
 
@@ -103,7 +103,7 @@ Point Prometheus at the first:
 
 ```yaml
 remote_write:
-- url: http://localhost:9001/api/prom/push
+- url: http://localhost:9001/api/v1/push
 ```
 
 ```sh
@@ -116,7 +116,7 @@ And Grafana at the second:
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 
-In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://cortex2:9009/api/prom`).
+In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://cortex2:9009/prometheus`).
 
 **To clean up:** CTRL-C the Prometheus process and run:
 
@@ -171,14 +171,14 @@ Configure Prometheus to send data to the first replica:
 
 ```yaml
 remote_write:
-- url: http://localhost:9001/api/prom/push
+- url: http://localhost:9001/api/v1/push
 ```
 
 ```sh
 $ ./prometheus --config.file=./documentation/examples/prometheus.yml
 ```
 
-In Grafana, add a datasource for the 3rd Cortex replica (`http://cortex3:9009/api/prom`)
+In Grafana, add a datasource for the 3rd Cortex replica (`http://cortex3:9009/prometheus`)
 and verify the same data appears in both Prometheus and Cortex.
 
 To show that Cortex can tolerate a node failure, hard kill one of the Cortex replicas:

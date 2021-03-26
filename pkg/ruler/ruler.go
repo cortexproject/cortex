@@ -331,11 +331,15 @@ func (r *Ruler) stopping(_ error) error {
 	return nil
 }
 
+type sender interface {
+	Send(alerts ...*notifier.Alert)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n *notifier.Manager, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 

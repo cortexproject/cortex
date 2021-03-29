@@ -31,7 +31,7 @@ const (
 )
 
 var (
-	errState = errors.New("legacy object alertmanager storage does not support state")
+	errState = errors.New("legacy object alertmanager storage does not support state persistency")
 )
 
 // AlertStore allows cortex alertmanager configs to be stored using an object store backend.

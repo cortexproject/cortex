@@ -38,18 +38,18 @@ const (
 // BucketAlertStore is used to support the AlertStore interface against an object storage backend. It is implemented
 // using the Thanos objstore.Bucket interface
 type BucketAlertStore struct {
-	bucket      objstore.Bucket
-	amBucket    objstore.Bucket
-	cfgProvider bucket.TenantConfigProvider
-	logger      log.Logger
+	alertsBucket objstore.Bucket
+	amBucket     objstore.Bucket
+	cfgProvider  bucket.TenantConfigProvider
+	logger       log.Logger
 }
 
 func NewBucketAlertStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketAlertStore {
 	return &BucketAlertStore{
-		bucket:      bucket.NewPrefixedBucketClient(bkt, alertsPrefix),
-		amBucket:    bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
-		cfgProvider: cfgProvider,
-		logger:      logger,
+		alertsBucket: bucket.NewPrefixedBucketClient(bkt, alertsPrefix),
+		amBucket:     bucket.NewPrefixedBucketClient(bkt, alertmanagerPrefix),
+		cfgProvider:  cfgProvider,
+		logger:       logger,
 	}
 }
 
@@ -57,7 +57,7 @@ func NewBucketAlertStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigPro
 func (s *BucketAlertStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	var userIDs []string
 
-	err := s.bucket.Iter(ctx, "", func(key string) error {
+	err := s.alertsBucket.Iter(ctx, "", func(key string) error {
 		userIDs = append(userIDs, key)
 		return nil
 	})
@@ -76,7 +76,7 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 		userID := job.(string)
 
 		cfg, err := s.getAlertConfig(ctx, userID)
-		if s.bucket.IsObjNotFoundErr(err) {
+		if s.alertsBucket.IsObjNotFoundErr(err) {
 			return nil
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
@@ -95,7 +95,7 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 // GetAlertConfig implements alertstore.AlertStore.
 func (s *BucketAlertStore) GetAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
 	cfg, err := s.getAlertConfig(ctx, userID)
-	if s.bucket.IsObjNotFoundErr(err) {
+	if s.alertsBucket.IsObjNotFoundErr(err) {
 		return cfg, alertspb.ErrNotFound
 	}
 
@@ -188,7 +188,7 @@ func (s *BucketAlertStore) get(ctx context.Context, bkt objstore.Bucket, name st
 
 func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 	// Inject server-side encryption based on the tenant config.
-	return bucket.NewSSEBucketClient(userID, s.bucket, s.cfgProvider)
+	return bucket.NewSSEBucketClient(userID, s.alertsBucket, s.cfgProvider)
 }
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {

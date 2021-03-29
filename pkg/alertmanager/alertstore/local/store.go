@@ -20,7 +20,7 @@ const (
 
 var (
 	errReadOnly = errors.New("local alertmanager config storage is read-only")
-	errState    = errors.New("legacy local alertmanager storage does not support state")
+	errState    = errors.New("local alertmanager storage does not support state persistency")
 )
 
 // StoreConfig configures a static file alertmanager store

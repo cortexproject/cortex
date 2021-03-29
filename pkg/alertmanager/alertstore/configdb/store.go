@@ -15,7 +15,7 @@ const (
 
 var (
 	errReadOnly = errors.New("configdb alertmanager config storage is read-only")
-	errState    = errors.New("legacy configdb alertmanager storage does not support state")
+	errState    = errors.New("configdb alertmanager storage does not support state persistency")
 )
 
 // Store is a concrete implementation of RuleStore that sources rules from the config service

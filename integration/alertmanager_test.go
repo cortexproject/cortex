@@ -233,6 +233,8 @@ func TestAlertmanagerClustering(t *testing.T) {
 }
 
 func TestAlertmanagerSharding(t *testing.T) {
+	t.Skip("Flaky test under investigation")
+
 	tests := map[string]struct {
 		legacyAlertStore bool
 	}{

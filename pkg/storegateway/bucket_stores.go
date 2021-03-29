@@ -174,6 +174,10 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 		retries.Wait()
 	}
 
+	if lastErr == nil {
+		return retries.Err()
+	}
+
 	return lastErr
 }
 

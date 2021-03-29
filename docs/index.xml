@@ -6579,7 +6579,7 @@ The ingester is shutting down and leaving the ring. While in this state the inge
 &lt;li>&lt;strong>&lt;code>UNHEALTHY&lt;/code>&lt;/strong>&lt;br />
 The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.&lt;/li>
 &lt;/ul>
-&lt;p>&lt;em>The ingester states are interally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">Ingester hand-over&lt;/a> documentation.&lt;/em>&lt;/p>
+&lt;p>&lt;em>The ingester states are internally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the &lt;a href="/docs/guides/ingesters-rolling-updates/#chunks-storage-with-wal-disabled-hand-over">Ingester hand-over&lt;/a> documentation.&lt;/em>&lt;/p>
 &lt;p>Ingesters are &lt;strong>semi-stateful&lt;/strong>.&lt;/p>
 &lt;h4 id="ingesters-failure-and-data-loss">Ingesters failure and data loss&lt;/h4>
 &lt;p>If an ingester process crashes or exits abruptly, all the in-memory series that have not yet been flushed to the long-term storage will be lost. There are two main ways to mitigate this failure mode:&lt;/p>

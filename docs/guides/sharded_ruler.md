@@ -31,7 +31,7 @@ Unlike ingesters, rulers do not hand over responsibility: all rules are re-shard
 
 The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local).  Most kinds of storage work with the sharded ruler configuration in an obvious way.  i.e. configure all rulers to use the same backend.
 
-The local implementation reads [Prometheus recording rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](https://cortexmetrics.io/docs/apis/#ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every ruler pod.
+The local implementation reads [Prometheus recording rules](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/) off of the local filesystem.  This is a read only backend that does not support the creation and deletion of rules through [the API](../api/_index.md#ruler).  Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler.  For instance this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every ruler pod.
 
 A typical local config may look something like:
 ```

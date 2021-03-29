@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -709,4 +710,74 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockS
 
 type ruleGroupKey struct {
 	user, namespace, group string
+}
+
+type senderFunc func(alerts ...*notifier.Alert)
+
+func (s senderFunc) Send(alerts ...*notifier.Alert) {
+	s(alerts...)
+}
+
+func TestSendAlerts(t *testing.T) {
+	testCases := []struct {
+		in  []*promRules.Alert
+		exp []*notifier.Alert
+	}{
+		{
+			in: []*promRules.Alert{
+				{
+					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
+					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ValidUntil:  time.Unix(3, 0),
+				},
+			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
+					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(3, 0),
+					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+				},
+			},
+		},
+		{
+			in: []*promRules.Alert{
+				{
+					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
+					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ResolvedAt:  time.Unix(4, 0),
+				},
+			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
+					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(4, 0),
+					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+				},
+			},
+		},
+		{
+			in: []*promRules.Alert{},
+		},
+	}
+
+	for i, tc := range testCases {
+		tc := tc
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
+				if len(tc.in) == 0 {
+					t.Fatalf("sender called with 0 alert")
+				}
+				require.Equal(t, tc.exp, alerts)
+			})
+			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+		})
+	}
 }

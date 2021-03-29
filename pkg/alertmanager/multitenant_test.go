@@ -1397,28 +1397,30 @@ func TestStoreTemplateFile(t *testing.T) {
 		require.NoError(t, os.RemoveAll(tempDir))
 	})
 
-	changed, err := storeTemplateFile(templatesDir, "some-template", "content")
+	testTemplateDir := filepath.Join(tempDir, templatesDir)
+
+	changed, err := storeTemplateFile(testTemplateDir, "some-template", "content")
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	changed, err = storeTemplateFile(templatesDir, "some-template", "new content")
+	changed, err = storeTemplateFile(testTemplateDir, "some-template", "new content")
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	changed, err = storeTemplateFile(templatesDir, "some-template", "new content") // reusing previous content
+	changed, err = storeTemplateFile(testTemplateDir, "some-template", "new content") // reusing previous content
 	require.NoError(t, err)
 	require.False(t, changed)
 
-	_, err = storeTemplateFile(templatesDir, ".", "content")
+	_, err = storeTemplateFile(testTemplateDir, ".", "content")
 	require.Error(t, err)
 
-	_, err = storeTemplateFile(templatesDir, "..", "content")
+	_, err = storeTemplateFile(testTemplateDir, "..", "content")
 	require.Error(t, err)
 
-	_, err = storeTemplateFile(templatesDir, "./test", "content")
+	_, err = storeTemplateFile(testTemplateDir, "./test", "content")
 	require.Error(t, err)
 
-	_, err = storeTemplateFile(templatesDir, "../test", "content")
+	_, err = storeTemplateFile(testTemplateDir, "../test", "content")
 	require.Error(t, err)
 }
 

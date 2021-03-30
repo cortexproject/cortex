@@ -262,6 +262,8 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
 
 	for _, metric := range metrics {
+		fmt.Println("Deleted", metrics)
+
 		metricName, err := extract.MetricNameFromLabels(metric)
 		if err != nil {
 			// This should never happen because it has already been checked in PreCreation().
@@ -1918,6 +1920,11 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	} else if result == tsdbTenantMarkedForDeletion {
 		tenantDeleted = true
 	}
+
+	// At this point there are no more pushes to TSDB, and no possible compaction. Normally TSDB is empty,
+	// but if we're closing TSDB because of tenant deletion mark, then it may still contain some series.
+	// We need to remove these series from series count.
+	i.TSDBState.seriesCount.Sub(int64(userDB.Head().NumSeries()))
 
 	dir := userDB.db.Dir()
 

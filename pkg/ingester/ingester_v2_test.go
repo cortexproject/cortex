@@ -2124,7 +2124,9 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	})
 
 	pushSingleSampleWithMetadata(t, i)
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 	i.compactBlocks(context.Background(), true)
+	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
 	i.shipBlocks(context.Background())
 
 	numObjects := len(bucket.Objects())
@@ -2139,12 +2141,57 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 
 	// After writing tenant deletion mark,
 	pushSingleSampleWithMetadata(t, i)
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 	i.compactBlocks(context.Background(), true)
+	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
 	i.shipBlocks(context.Background())
 
 	numObjectsAfterMarkingTenantForDeletion := len(bucket.Objects())
 	require.Equal(t, numObjects, numObjectsAfterMarkingTenantForDeletion)
 	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
+}
+
+func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	// Use in-memory bucket.
+	bucket := objstore.NewInMemBucket()
+
+	// Write tenant deletion mark.
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, nil, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+
+	i.TSDBState.bucket = bucket
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSampleWithMetadata(t, i)
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
+
+	// We call shipBlocks to check for deletion marker (it happens inside this method).
+	i.shipBlocks(context.Background())
+
+	// Verify that tenant deletion mark was found.
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+	require.True(t, db.deletionMarkFound.Load())
+
+	// If we try to close TSDB now, it should succeed, even though TSDB is not idle and empty.
+	require.Equal(t, uint64(1), db.Head().NumSeries())
+	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
+
+	// Closing should decrease series count.
+	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
 }
 
 func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInProgress(t *testing.T) {
@@ -2811,6 +2858,8 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	pushSingleSampleWithMetadata(t, i)
 	i.v2UpdateActiveSeries()
 
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
+
 	metricsToCheck := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
 		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total"}
 
@@ -2849,6 +2898,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
 	i.v2UpdateActiveSeries()
+	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`

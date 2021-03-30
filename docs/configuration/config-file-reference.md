@@ -774,8 +774,8 @@ lifecycler:
 
 global_limits:
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
-  # per-ingester, not per-tenant. Additional push requests will be rejected. 0 =
-  # unlimited.
+  # per-ingester, not per-tenant. Additional push requests will be rejected.
+  # This limit only works when using blocks engine. 0 = unlimited.
   # CLI flag: -ingester.instance-limits.max-ingestion-rate
   [max_ingestion_rate: <float> | default = 0]
 

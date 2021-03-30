@@ -26,6 +26,14 @@ func (e *genericValidationError) Error() string {
 	return fmt.Sprintf(e.message, e.cause, formatLabelSet(e.series))
 }
 
+func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
+	return &genericValidationError{
+		message: "label name too long: %.200q metric %.200q",
+		cause:   labelName,
+		series:  series,
+	}
+}
+
 // labelValueTooLongError is a customized ValidationError, in that the cause and the series are
 // are formatted in different order in Error.
 type labelValueTooLongError struct {
@@ -35,14 +43,6 @@ type labelValueTooLongError struct {
 
 func (e *labelValueTooLongError) Error() string {
 	return fmt.Sprintf("label value too long for metric: %.200q label value: %.200q", formatLabelSet(e.series), e.labelValue)
-}
-
-func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
-	return &genericValidationError{
-		message: "label name too long: %.200q metric %.200q",
-		cause:   labelName,
-		series:  series,
-	}
 }
 
 func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelValue string) ValidationError {

@@ -21,7 +21,7 @@ The Cortex maintainers commit to ensuring future version of Cortex can read data
 
 ## API Compatibility
 
-Cortex strives to be 100% API compatible with Prometheus (under `/api/prom/*`); any deviation from this is considered a bug, except:
+Cortex strives to be 100% API compatible with Prometheus (under `/prometheus/*` and `/api/prom/*`); any deviation from this is considered a bug, except:
 
 - Requiring the `__name__` label on queries when querying the [chunks storage](../chunks-storage/_index.md) (queries to ingesters or clusters running the blocks storage are not affected).
 - For queries to the `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` endpoints, query's time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
@@ -70,7 +70,6 @@ Currently experimental features are:
 - Alertmanager: Sharding of tenants across multiple instances
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Alertmanager storage: backend client configuration options using a config fields similar to the blocks storage backend clients.
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
   - `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file

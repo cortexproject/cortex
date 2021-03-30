@@ -110,12 +110,13 @@ func TestResponse(t *testing.T) {
 }
 
 func TestMergeAPIResponses(t *testing.T) {
-	for i, tc := range []struct {
+	for _, tc := range []struct {
+		name     string
 		input    []Response
 		expected Response
 	}{
-		// No responses shouldn't panic and return a non-null result and result type.
 		{
+			name:  "No responses shouldn't panic and return a non-null result and result type.",
 			input: []Response{},
 			expected: &PrometheusResponse{
 				Status: StatusSuccess,
@@ -126,8 +127,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		},
 
-		// A single empty response shouldn't panic.
 		{
+			name: "A single empty response shouldn't panic.",
 			input: []Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
@@ -145,8 +146,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		},
 
-		// Multiple empty responses shouldn't panic.
 		{
+			name: "Multiple empty responses shouldn't panic.",
 			input: []Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
@@ -170,8 +171,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		},
 
-		// Basic merging of two responses.
 		{
+			name: "Basic merging of two responses.",
 			input: []Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
@@ -221,8 +222,8 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		},
 
-		// Merging of responses when labels are in different order.
 		{
+			name: "Merging of responses when labels are in different order.",
 			input: []Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[0,"0"],[1,"1"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
@@ -245,8 +246,9 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-		// Merging of samples where there is overlap.
+
 		{
+			name: "Merging of samples where there is single overlap.",
 			input: []Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
@@ -267,8 +269,57 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "Merging of samples where there is multiple partial overlaps.",
+			input: []Response{
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}]}}`),
+			},
+			expected: &PrometheusResponse{
+				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+								{Value: 4, TimestampMs: 4000},
+								{Value: 5, TimestampMs: 5000},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Merging of samples where there is complete overlap.",
+			input: []Response{
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}]}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}]}}`),
+			},
+			expected: &PrometheusResponse{
+				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+								{Value: 4, TimestampMs: 4000},
+								{Value: 5, TimestampMs: 5000},
+							},
+						},
+					},
+				},
+			},
 		}} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			output, err := PrometheusCodec.MergeResponse(tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)

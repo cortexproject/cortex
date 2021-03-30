@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -92,6 +93,11 @@ var (
 			name:       "alertmanager_config",
 			structType: reflect.TypeOf(alertmanager.MultitenantAlertmanagerConfig{}),
 			desc:       "The alertmanager_config configures the Cortex alertmanager.",
+		},
+		{
+			name:       "alertmanager_storage_config",
+			structType: reflect.TypeOf(alertstore.Config{}),
+			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
 		},
 		{
 			name:       "table_manager_config",

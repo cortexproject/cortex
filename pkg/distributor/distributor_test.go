@@ -969,7 +969,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 }
 
-func BenchmarkDistributor_PushOnError(b *testing.B) {
+func BenchmarkDistributor_Push(b *testing.B) {
 	const (
 		numSeriesPerRequest = 1000
 	)
@@ -979,6 +979,29 @@ func BenchmarkDistributor_PushOnError(b *testing.B) {
 		prepareSeries func() ([]labels.Labels, []cortexpb.Sample)
 		expectedErr   string
 	}{
+		"all samples successfully pushed": {
+			prepareConfig: func(limits *validation.Limits) {},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "",
+		},
 		"ingestion rate limit reached": {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.IngestionRate = 1
@@ -1202,7 +1225,11 @@ func BenchmarkDistributor_PushOnError(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
-				if err == nil || !strings.Contains(err.Error(), testData.expectedErr) {
+
+				if testData.expectedErr == "" && err != nil {
+					b.Fatalf("no error expected but got %v", err)
+				}
+				if testData.expectedErr != "" && (err == nil || !strings.Contains(err.Error(), testData.expectedErr)) {
 					b.Fatalf("expected %v error but got %v", testData.expectedErr, err)
 				}
 			}

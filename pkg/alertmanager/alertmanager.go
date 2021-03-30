@@ -129,6 +129,8 @@ type Replicator interface {
 	// The alertmanager replication protocol relies on a position related to other replicas.
 	// This position is then used to identify who should notify about the alert first.
 	GetPositionForUser(userID string) int
+	// ReadFullStateForUser obtains the full state from other replicas in the cluster.
+	ReadFullStateForUser(context.Context, string) ([]*clusterpb.FullState, error)
 }
 
 // New creates a new Alertmanager.
@@ -159,13 +161,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
-
-		if err := state.Service.StartAsync(context.Background()); err != nil {
-			return nil, errors.Wrap(err, "failed to start ring-based replication service")
-		}
-
-		am.state = state
+		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -202,6 +198,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 	am.silences.SetBroadcast(c.Broadcast)
+
+	// State replication needs to be started after the state keys are defined.
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
+	}
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
@@ -371,6 +374,13 @@ func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
 		return state.MergePartialState(part)
 	}
 	return errors.New("ring-based sharding not enabled")
+}
+
+func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
+	if state, ok := am.state.(*state); ok {
+		return state.GetFullState()
+	}
+	return nil, errors.New("ring-based sharding not enabled")
 }
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a

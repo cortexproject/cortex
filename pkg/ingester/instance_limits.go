@@ -1,7 +1,5 @@
 package ingester
 
-import "fmt"
-
 // InstanceLimits describes limits used by ingester. Reaching any of these will result in Push method to return
 // (internal) error.
 type InstanceLimits struct {
@@ -29,7 +27,8 @@ type errMaxSamplesPushRateLimitReached struct {
 }
 
 func (e errMaxSamplesPushRateLimitReached) Error() string {
-	return fmt.Sprintf("cannot push more samples: ingester's max samples push rate reached, rate=%g, limit=%g", e.rate, e.limit)
+	// We don't include values in the message to avoid leaking Cortex cluster configuration to users.
+	return "cannot push more samples: ingester's max samples push rate reached"
 }
 
 type errMaxUsersLimitReached struct {
@@ -38,7 +37,8 @@ type errMaxUsersLimitReached struct {
 }
 
 func (e errMaxUsersLimitReached) Error() string {
-	return fmt.Sprintf("cannot create TSDB: ingesters's max users limit reached, users=%d, limit=%d", e.users, e.limit)
+	// We don't include values in the message to avoid leaking Cortex cluster configuration to users.
+	return "cannot create TSDB: ingesters's max tenants limit reached"
 }
 
 type errMaxSeriesLimitReached struct {
@@ -47,7 +47,8 @@ type errMaxSeriesLimitReached struct {
 }
 
 func (e errMaxSeriesLimitReached) Error() string {
-	return fmt.Sprintf("cannot add series: ingesters's max series limit reached, series=%d, limit=%d", e.series, e.limit)
+	// We don't include values in the message to avoid leaking Cortex cluster configuration to users.
+	return "cannot add series: ingesters's max series limit reached"
 }
 
 type errTooManyInflightPushRequests struct {
@@ -56,5 +57,6 @@ type errTooManyInflightPushRequests struct {
 }
 
 func (e errTooManyInflightPushRequests) Error() string {
-	return fmt.Sprintf("cannot push: too many inflight push requests, requests=%d, limit=%d", e.requests, e.limit)
+	// We don't include values in the message to avoid leaking Cortex cluster configuration to users.
+	return "cannot push: too many inflight push requests"
 }

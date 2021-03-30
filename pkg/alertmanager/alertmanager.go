@@ -81,6 +81,7 @@ type Alertmanager struct {
 	api             *api.API
 	logger          log.Logger
 	state           State
+	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
 	marker          types.Marker
@@ -163,7 +164,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
+		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
+		am.state = state
+		am.persister = newStatePersister(cfg.UserID, state, cfg.Store, am.logger)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -205,6 +208,12 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if service, ok := am.state.(services.Service); ok {
 		if err := service.StartAsync(context.Background()); err != nil {
 			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
+	}
+
+	if am.persister != nil {
+		if err := am.persister.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start state persister service")
 		}
 	}
 
@@ -351,6 +360,10 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
+	if am.persister != nil {
+		am.persister.StopAsync()
+	}
+
 	if service, ok := am.state.(services.Service); ok {
 		service.StopAsync()
 	}
@@ -361,6 +374,12 @@ func (am *Alertmanager) Stop() {
 
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
+
+	if am.persister != nil {
+		if err := am.persister.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(am.logger).Log("msg", "error while stopping state persister service", "err", err)
+		}
+	}
 
 	if service, ok := am.state.(services.Service); ok {
 		if err := service.AwaitTerminated(context.Background()); err != nil {

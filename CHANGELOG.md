@@ -31,7 +31,6 @@
 * [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 * [BUGFIX] Query-frontend: Fix issue where cached entry size keeps increasing when making tiny query repeatedly. #3968
 
-
 ## Blocksconvert
 
 * [ENHANCEMENT] Builder: add `-builder.timestamp-tolerance` option which may reduce block size by rounding timestamps to make difference whole seconds. #3891

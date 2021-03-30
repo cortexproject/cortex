@@ -1154,7 +1154,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 				}
 			}
 
-			db, err := i.getOrCreateTSDB("test", false, nil)
+			db, err := i.getOrCreateTSDB("test", false)
 			assert.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr != nil {
@@ -2083,7 +2083,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 	// Create the TSDB for 3 users and then replace the shipper with the mocked one
 	mocks := []*shipperMock{}
 	for _, userID := range []string{"user-1", "user-2", "user-3"} {
-		userDB, err := i.getOrCreateTSDB(userID, false, nil)
+		userDB, err := i.getOrCreateTSDB(userID, false)
 		require.NoError(t, err)
 		require.NotNil(t, userDB)
 
@@ -2207,7 +2207,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	_, err = i.getOrCreateTSDB(userID, false, nil)
+	_, err = i.getOrCreateTSDB(userID, false)
 	require.NoError(t, err)
 
 	iterations := 5000
@@ -2220,7 +2220,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 			case <-quit:
 				return
 			default:
-				_, err = i.getOrCreateTSDB(userID, false, nil)
+				_, err = i.getOrCreateTSDB(userID, false)
 				if err != nil {
 					chanErr <- err
 				}
@@ -2260,7 +2260,7 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 		return i.lifecycler.GetState()
 	})
 
-	db, err := i.getOrCreateTSDB(userID, true, nil)
+	db, err := i.getOrCreateTSDB(userID, true)
 	require.NoError(t, err)
 	require.NotNil(t, db)
 
@@ -2276,7 +2276,7 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	require.Nil(t, db)
 
 	// And we can recreate it again, if needed.
-	db, err = i.getOrCreateTSDB(userID, true, nil)
+	db, err = i.getOrCreateTSDB(userID, true)
 	require.NoError(t, err)
 	require.NotNil(t, db)
 }
@@ -2586,7 +2586,7 @@ func TestIngester_ForFlush(t *testing.T) {
 
 func mockUserShipper(t *testing.T, i *Ingester) *shipperMock {
 	m := &shipperMock{}
-	userDB, err := i.getOrCreateTSDB(userID, false, nil)
+	userDB, err := i.getOrCreateTSDB(userID, false)
 	require.NoError(t, err)
 	require.NotNil(t, userDB)
 
@@ -3230,15 +3230,15 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	`), "cortex_ingester_tsdb_compactions_total"))
 }
 
-func TestIngester_v2PushGlobalLimits(t *testing.T) {
+func TestIngester_v2PushInstanceLimits(t *testing.T) {
 	tests := map[string]struct {
-		limits          GlobalLimits
+		limits          InstanceLimits
 		reqs            map[string][]*cortexpb.WriteRequest
 		expectedErr     error
 		expectedErrType interface{}
 	}{
 		"should succeed creating one user and series": {
-			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"test": {
 					cortexpb.ToWriteRequest(
@@ -3254,7 +3254,7 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		},
 
 		"should fail creating two series": {
-			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
 
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"test": {
@@ -3276,7 +3276,7 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		},
 
 		"should fail creating two users": {
-			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1},
+			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
 
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"user1": {
@@ -3299,7 +3299,7 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		},
 
 		"should fail pushing samples in two requests due to rate limit": {
-			limits: GlobalLimits{MaxInMemorySeries: 1, MaxInMemoryUsers: 1, MaxIngestionRate: 0.001},
+			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1, MaxIngestionRate: 0.001},
 
 			reqs: map[string][]*cortexpb.WriteRequest{
 				"user1": {
@@ -3320,14 +3320,14 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 		},
 	}
 
-	defaultGlobalLimits = nil
+	defaultInstanceLimits = nil
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
-			cfg.GlobalLimitsFn = func() *GlobalLimits {
+			cfg.InstanceLimitsFn = func() *InstanceLimits {
 				return &testData.limits
 			}
 
@@ -3382,17 +3382,17 @@ func TestIngester_v2PushGlobalLimits(t *testing.T) {
 	}
 }
 
-func TestIngester_globalLimitsMetrics(t *testing.T) {
+func TestIngester_instanceLimitsMetrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
 
-	l := GlobalLimits{
-		MaxIngestionRate:  10,
-		MaxInMemoryUsers:  20,
-		MaxInMemorySeries: 30,
+	l := InstanceLimits{
+		MaxIngestionRate:   10,
+		MaxInMemoryTenants: 20,
+		MaxInMemorySeries:  30,
 	}
 
 	cfg := defaultIngesterTestConfig()
-	cfg.GlobalLimitsFn = func() *GlobalLimits {
+	cfg.InstanceLimitsFn = func() *InstanceLimits {
 		return &l
 	}
 	cfg.LifecyclerConfig.JoinAfter = 0
@@ -3401,33 +3401,33 @@ func TestIngester_globalLimitsMetrics(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_ingester_global_limit Max number of users allowed in ingester
-		# TYPE cortex_ingester_global_limit gauge
-		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
-		cortex_ingester_global_limit{limit="max_series"} 30
-		cortex_ingester_global_limit{limit="max_users"} 20
-		cortex_ingester_global_limit{limit="max_inflight_push_requests"} 0
-	`), "cortex_ingester_global_limit"))
+		# HELP cortex_ingester_instance_limits Instance limits used by this ingester.
+		# TYPE cortex_ingester_instance_limits gauge
+		cortex_ingester_instance_limits{limit="max_inflight_push_requests"} 0
+		cortex_ingester_instance_limits{limit="max_ingestion_rate"} 10
+		cortex_ingester_instance_limits{limit="max_series"} 30
+		cortex_ingester_instance_limits{limit="max_tenants"} 20
+	`), "cortex_ingester_instance_limits"))
 
-	l.MaxInMemoryUsers = 1000
+	l.MaxInMemoryTenants = 1000
 	l.MaxInMemorySeries = 2000
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-		# HELP cortex_ingester_global_limit Max number of users allowed in ingester
-		# TYPE cortex_ingester_global_limit gauge
-		cortex_ingester_global_limit{limit="max_inflight_push_requests"} 0
-		cortex_ingester_global_limit{limit="max_ingestion_rate"} 10
-		cortex_ingester_global_limit{limit="max_series"} 2000
-		cortex_ingester_global_limit{limit="max_users"} 1000
-	`), "cortex_ingester_global_limit"))
+		# HELP cortex_ingester_instance_limits Instance limits used by this ingester.
+		# TYPE cortex_ingester_instance_limits gauge
+		cortex_ingester_instance_limits{limit="max_inflight_push_requests"} 0
+		cortex_ingester_instance_limits{limit="max_ingestion_rate"} 10
+		cortex_ingester_instance_limits{limit="max_series"} 2000
+		cortex_ingester_instance_limits{limit="max_tenants"} 1000
+	`), "cortex_ingester_instance_limits"))
 }
 
 func TestIngester_inflightPushRequests(t *testing.T) {
-	limits := GlobalLimits{MaxInflightPushRequests: 1}
+	limits := InstanceLimits{MaxInflightPushRequests: 1}
 
 	// Create a mocked ingester
 	cfg := defaultIngesterTestConfig()
-	cfg.GlobalLimitsFn = func() *GlobalLimits { return &limits }
+	cfg.InstanceLimitsFn = func() *InstanceLimits { return &limits }
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)

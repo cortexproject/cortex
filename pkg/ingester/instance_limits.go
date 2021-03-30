@@ -2,24 +2,24 @@ package ingester
 
 import "fmt"
 
-// GlobalLimits describes global limits used by ingester. Reaching any of these will result in Push method to return
+// InstanceLimits describes limits used by ingester. Reaching any of these will result in Push method to return
 // (internal) error.
-type GlobalLimits struct {
+type InstanceLimits struct {
 	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
-	MaxInMemoryUsers        int64   `yaml:"max_users"`
+	MaxInMemoryTenants      int64   `yaml:"max_tenants"`
 	MaxInMemorySeries       int64   `yaml:"max_series"`
 	MaxInflightPushRequests int64   `yaml:"max_inflight_push_requests"`
 }
 
 // Sets default limit values for unmarshalling.
-var defaultGlobalLimits *GlobalLimits = nil
+var defaultInstanceLimits *InstanceLimits = nil
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. If give
-func (l *GlobalLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	if defaultGlobalLimits != nil {
-		*l = *defaultGlobalLimits
+func (l *InstanceLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	if defaultInstanceLimits != nil {
+		*l = *defaultInstanceLimits
 	}
-	type plain GlobalLimits // type indirection to make sure we don't go into recursive loop
+	type plain InstanceLimits // type indirection to make sure we don't go into recursive loop
 	return unmarshal((*plain)(l))
 }
 

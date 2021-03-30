@@ -94,8 +94,8 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
-	DefaultLimits  GlobalLimits         `yaml:"global_limits"`
-	GlobalLimitsFn func() *GlobalLimits `yaml:"-"`
+	DefaultLimits    InstanceLimits         `yaml:"global_limits"`
+	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
@@ -127,7 +127,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
 
 	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.global-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. 0 = unlimited.")
-	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryUsers, "ingester.global-limits.max-users", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.global-limits.max-users", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.global-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.global-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 }
@@ -189,7 +189,7 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	defaultGlobalLimits = &cfg.DefaultLimits
+	defaultInstanceLimits = &cfg.DefaultLimits
 
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
@@ -233,7 +233,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		registerer:       registerer,
 		logger:           logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getGlobalLimits, nil, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
@@ -323,7 +323,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:           limits,
 		logger:           logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, true, false, i.getGlobalLimits, nil, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer, true, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil
@@ -463,7 +463,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	inflight := i.inflightPushRequests.Inc()
 	defer i.inflightPushRequests.Dec()
 
-	gl := i.getGlobalLimits()
+	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInflightPushRequests > 0 {
 		if inflight > gl.MaxInflightPushRequests {
 			return nil, errTooManyInflightPushRequests{requests: inflight, limit: gl.MaxInflightPushRequests}

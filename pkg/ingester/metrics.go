@@ -64,10 +64,11 @@ type ingesterMetrics struct {
 	inflightRequests        prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, globalLimitsFn func() *GlobalLimits, ingestionRate *ewmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, instanceLimitsFn func() *InstanceLimits, ingestionRate *ewmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
 	const (
-		globalLimits = "cortex_ingester_global_limit"
-		limitLabel   = "limit"
+		instanceLimits     = "cortex_ingester_instance_limits"
+		instanceLimitsHelp = "Instance limits used by this ingester." // Must be same for all registrations.
+		limitLabel         = "limit"
 	)
 
 	m := &ingesterMetrics{
@@ -205,44 +206,44 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 		}),
 
 		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name:        globalLimits,
-			Help:        "Max number of users allowed in ingester",
-			ConstLabels: map[string]string{limitLabel: "max_users"},
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
+			ConstLabels: map[string]string{limitLabel: "max_tenants"},
 		}, func() float64 {
-			if g := globalLimitsFn(); g != nil {
-				return float64(g.MaxInMemoryUsers)
+			if g := instanceLimitsFn(); g != nil {
+				return float64(g.MaxInMemoryTenants)
 			}
 			return 0
 		}),
 
 		maxSeriesGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name:        globalLimits,
-			Help:        "Max number of users allowed in ingester",
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
 			ConstLabels: map[string]string{limitLabel: "max_series"},
 		}, func() float64 {
-			if g := globalLimitsFn(); g != nil {
+			if g := instanceLimitsFn(); g != nil {
 				return float64(g.MaxInMemorySeries)
 			}
 			return 0
 		}),
 
 		maxIngestionRate: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name:        globalLimits,
-			Help:        "Max number of users allowed in ingester",
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
 			ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
 		}, func() float64 {
-			if g := globalLimitsFn(); g != nil {
+			if g := instanceLimitsFn(); g != nil {
 				return float64(g.MaxIngestionRate)
 			}
 			return 0
 		}),
 
 		maxInflightPushRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name:        globalLimits,
-			Help:        "Max number of users allowed in ingester",
+			Name:        instanceLimits,
+			Help:        instanceLimitsHelp,
 			ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
 		}, func() float64 {
-			if g := globalLimitsFn(); g != nil {
+			if g := instanceLimitsFn(); g != nil {
 				return float64(g.MaxInflightPushRequests)
 			}
 			return 0
@@ -260,7 +261,7 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 
 		inflightRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_ingester_inflight_push_requests",
-			Help: "Number of inflight push requests",
+			Help: "Current number of inflight push requests",
 		}, func() float64 {
 			if inflightRequests != nil {
 				return float64(inflightRequests.Load())

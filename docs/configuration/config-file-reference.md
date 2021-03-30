@@ -776,22 +776,24 @@ global_limits:
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected. 0 =
   # unlimited.
-  # CLI flag: -ingester.global-limits.max-ingestion-rate
+  # CLI flag: -ingester.instance-limits.max-ingestion-rate
   [max_ingestion_rate: <float> | default = 0]
 
   # Max users that this ingester can hold. Requests from additional users will
-  # be rejected. 0 = unlimited.
-  # CLI flag: -ingester.global-limits.max-users
-  [max_users: <int> | default = 0]
+  # be rejected. This limit only works when using blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-tenants
+  [max_tenants: <int> | default = 0]
 
   # Max series that this ingester can hold (across all tenants). Requests to
-  # create additional series will be rejected. 0 = unlimited.
-  # CLI flag: -ingester.global-limits.max-series
+  # create additional series will be rejected. This limit only works when using
+  # blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-series
   [max_series: <int> | default = 0]
 
   # Max inflight push requests that this ingester can handle (across all
-  # tenants). Additional requests will be rejected. 0 = unlimited.
-  # CLI flag: -ingester.global-limits.max-inflight-push-requests
+  # tenants). Additional requests will be rejected. This limit only works when
+  # using blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
 ```
 

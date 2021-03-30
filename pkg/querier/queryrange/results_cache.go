@@ -385,6 +385,13 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		extents = append(extents, extent)
 	}
 	sort.Slice(extents, func(i, j int) bool {
+		if extents[i].Start == extents[j].Start {
+			// as an optimization, for two extents starts at the same time, we
+			// put bigger extent at the front of the slice, which helps
+			// to reduce the amount of merge we have to do later.
+			return extents[i].End > extents[j].End
+		}
+
 		return extents[i].Start < extents[j].Start
 	})
 

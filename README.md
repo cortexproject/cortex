@@ -25,9 +25,9 @@ Read the [getting started guide](https://cortexmetrics.io/docs/getting-started) 
 project. Before deploying Cortex with a permanent storage backend you
 should read:
 1. [An overview of Cortex's architecture](https://cortexmetrics.io/docs/architecture/)
-1. [A guide to running Cortex](https://cortexmetrics.io/docs/guides/running-chunks-storage-in-production/)
+1. [A guide to running Cortex](https://cortexmetrics.io/docs/chunks-storage/running-chunks-storage-in-production/)
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
-1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/running-chunks-storage-with-cassandra/)
+1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/chunks-storage/running-chunks-storage-with-cassandra/)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
@@ -37,7 +37,7 @@ To learn more about Cortex, consult the following talks and articles.
 
 ### Recent talks and articles
 
-- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)
+- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
 - Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won’t look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
 - Oct 2020 blog post "[Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity](https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/)"
 - Sep 2020 blog post "[A Tale of Tail Latencies](https://www.weave.works/blog/a-tale-of-tail-latencies)"

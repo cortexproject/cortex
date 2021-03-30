@@ -54,4 +54,4 @@ scrape_configs:
           namespace: 'tsdb-blocks-storage-s3'
 
 remote_write:
-  - url: http://distributor:8001/api/prom/push
+  - url: http://distributor:8001/api/v1/push

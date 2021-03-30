@@ -1,7 +1,7 @@
 ---
-title: "Getting Started with Gossiped Ring"
-linkTitle: "Gossip Ring"
-weight: 2
+title: "Getting started with gossiped ring"
+linkTitle: "Getting started with a gossip ring cluster"
+weight: 4
 slug: getting-started-with-gossiped-ring
 ---
 
@@ -33,13 +33,13 @@ Download Prometheus and configure it to use our first Cortex instance for remote
 
 ```yaml
 remote_write:
-- url: http://localhost:9109/api/prom/push
+- url: http://localhost:9109/api/v1/push
 ```
 
 After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
 distribute incoming samples between the two instances.
 
-To query that data, you can configure your Grafana instance to use http://localhost:9109/api/prom (first Cortex) as a Prometheus data source.
+To query that data, you can configure your Grafana instance to use http://localhost:9109/prometheus (first Cortex) as a Prometheus data source.
 
 ## How it works
 

@@ -162,7 +162,7 @@ Ingesters contain a **lifecycler** which manages the lifecycle of an ingester an
 - **`UNHEALTHY`**<br />
   The ingester has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
-_The ingester states are interally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
+_The ingester states are internally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
 
 Ingesters are **semi-stateful**.
 

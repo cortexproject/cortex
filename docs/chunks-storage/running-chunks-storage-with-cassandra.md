@@ -109,14 +109,14 @@ storage:
 ```
 
 The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is `v1.7.0`).
+to find the latest stable version tag and use it in the command below (currently it is `v1.8.0`).
 
 Run Cortex using the latest stable version:
 
 ```
-docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.7.0 -config.file=/etc/single-process-config.yaml
+docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.8.0 -config.file=/etc/single-process-config.yaml
 ```
-In case you prefer to run the master version, please follow this [documentation](../getting-started/getting-started-chunks.md) on how to build Cortex from source.
+In case you prefer to run the master version, please follow this [documentation](./chunks-storage-getting-started.md) on how to build Cortex from source.
 
 ### Configure the index and chunk table options
 
@@ -165,7 +165,7 @@ Add the following section to your Prometheus configuration file. This will confi
 
 ```
 remote_write:
-   - url: http://localhost:9009/api/prom/push
+   - url: http://localhost:9009/api/v1/push
 ```
 ## Configure Grafana to visualise metrics
 
@@ -175,6 +175,6 @@ Run grafana to visualise metrics from Cortex:
 docker run -d --name=grafana -p 3000:3000 grafana/grafana
 ```
 
-Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/api/prom`.
+Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: `http://localhost:9009/prometheus`.
 
 Finally, You can monitor Cortex's reads & writes by creating the dashboard. If you're looking for ready to use dashboards, you can take a look at Grafana's [Cortex dashboards and alerts](https://github.com/grafana/cortex-jsonnet/) (Jsonnet) or Weaveworks's [Cortex dashboards](https://github.com/weaveworks/cortex-dashboards) (Python).

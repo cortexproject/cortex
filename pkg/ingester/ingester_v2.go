@@ -395,6 +395,7 @@ type TSDBState struct {
 	// Timeout chosen for idle compactions.
 	compactionIdleTimeout time.Duration
 
+	// Number of series in memory, across for all tenants.
 	seriesCount atomic.Int64
 
 	// Head compactions metrics.

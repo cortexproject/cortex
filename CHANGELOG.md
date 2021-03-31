@@ -30,6 +30,7 @@
 * [BUGFIX] Ruler Storage: ignore objects with empty namespace or group in the name. #3999
 * [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 * [BUGFIX] Query-frontend: Fix issue where cached entry size keeps increasing when making tiny query repeatedly. #3968
+* [BUGFIX] Compactor: `-compactor.blocks-retention-period` now supports weeks (`w`) and years (`y`). #4027
 
 ## Blocksconvert
 

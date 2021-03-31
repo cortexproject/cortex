@@ -12,7 +12,7 @@ require (
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
 	github.com/alicebob/miniredis v2.5.0+incompatible
 	github.com/armon/go-metrics v0.3.6
-	github.com/aws/aws-sdk-go v1.37.8
+	github.com/aws/aws-sdk-go v1.38.3
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
@@ -44,10 +44,10 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6
-	github.com/prometheus/client_golang v1.9.0
+	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.18.0
-	github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
+	github.com/prometheus/common v0.20.0
+	github.com/prometheus/prometheus v1.8.2-0.20210324152458-c7a62b95cea0
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
@@ -60,11 +60,11 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
 	go.etcd.io/etcd/server/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
 	go.uber.org/atomic v1.7.0
-	golang.org/x/net v0.0.0-20210119194325-5f4716e94777
-	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
-	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
-	google.golang.org/api v0.39.0
-	google.golang.org/grpc v1.34.0
+	golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
+	google.golang.org/api v0.42.0
+	google.golang.org/grpc v1.36.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	sigs.k8s.io/yaml v1.2.0
@@ -101,3 +101,18 @@ replace github.com/go-openapi/strfmt => github.com/go-openapi/strfmt v0.19.5
 replace github.com/go-openapi/swag => github.com/go-openapi/swag v0.19.9
 
 replace github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
+
+// Pin these, which are updated as dependencies in Prometheus; we will take those updates separately and carefully
+replace (
+	github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.37.8
+	github.com/google/pprof => github.com/google/pprof v0.0.0-20210208152844-1612e9be7af6
+	github.com/miekg/dns => github.com/miekg/dns v1.1.38
+	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.9.0
+	golang.org/x/crypto => golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
+	golang.org/x/net => golang.org/x/net v0.0.0-20210119194325-5f4716e94777
+	golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210210192628-66670185b0cd
+	golang.org/x/sync => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+	golang.org/x/sys => golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+	google.golang.org/api => google.golang.org/api v0.39.0
+	google.golang.org/grpc => google.golang.org/grpc v1.34.0
+)

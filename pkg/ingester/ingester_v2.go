@@ -101,7 +101,6 @@ const (
 type userTSDB struct {
 	db             *tsdb.DB
 	userID         string
-	refCache       *cortex_tsdb.RefCache
 	activeSeries   *ActiveSeries
 	seriesInMetric *metricCounter
 	limiter        *Limiter
@@ -185,7 +184,8 @@ func (u *userTSDB) compactHead(blockDuration int64) error {
 
 	defer u.casState(forceCompacting, active)
 
-	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks.
+	// Ingestion of samples in parallel with forced compaction can lead to overlapping blocks,
+	// and possible invalidation of the references returned from Appender.GetRef().
 	// So we wait for existing in-flight requests to finish. Future push requests would fail until compaction is over.
 	u.pushesInFlight.Wait()
 
@@ -383,7 +383,6 @@ type TSDBState struct {
 	walReplayTime          prometheus.Histogram
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
-	refCachePurgeDuration  prometheus.Histogram
 	idleTsdbChecks         *prometheus.CounterVec
 }
 
@@ -434,11 +433,6 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
 			Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
 			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}),
-		refCachePurgeDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_tsdb_refcache_purge_duration_seconds",
-			Help:    "The total time it takes to purge the TSDB series reference cache for a single tenant.",
-			Buckets: prometheus.DefBuckets,
 		}),
 
 		idleTsdbChecks: idleTsdbChecks,
@@ -619,11 +613,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
-	// We use an hardcoded value for this ticker because there should be no
-	// real value in customizing it.
-	refCachePurgeTicker := time.NewTicker(5 * time.Minute)
-	defer refCachePurgeTicker.Stop()
-
 	var activeSeriesTickerChan <-chan time.Time
 	if i.cfg.ActiveSeriesMetricsEnabled {
 		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
@@ -646,17 +635,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 				db.ingestedRuleSamples.tick()
 			}
 			i.userStatesMtx.RUnlock()
-		case <-refCachePurgeTicker.C:
-			for _, userID := range i.getTSDBUsers() {
-				userDB := i.getTSDB(userID)
-				if userDB == nil {
-					continue
-				}
-
-				startTime := time.Now()
-				userDB.refCache.Purge(startTime.Add(-cortex_tsdb.DefaultRefCacheTTL))
-				i.TSDBState.refCachePurgeDuration.Observe(time.Since(startTime).Seconds())
-			}
 
 		case <-activeSeriesTickerChan:
 			i.v2UpdateActiveSeries()
@@ -681,6 +659,12 @@ func (i *Ingester) v2UpdateActiveSeries() {
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 	}
+}
+
+// GetRef() is an extra method added to TSDB to let Cortex check before calling Add()
+type extendedAppender interface {
+	storage.Appender
+	storage.GetRef
 }
 
 // v2Push adds metrics to a block
@@ -738,13 +722,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	)
 
 	// Walk the samples, appending them to the users database
-	app := db.Appender(ctx)
+	app := db.Appender(ctx).(extendedAppender)
 	for _, ts := range req.Timeseries {
-		// Check if we already have a cached reference for this series. Be aware
-		// that even if we have a reference it's not guaranteed to be still valid.
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
-		cachedRef, copiedLabels, cachedRefExists := db.refCache.Ref(startAppend, cortexpb.FromLabelAdaptersToLabels(ts.Labels))
+
+		// Look up a reference for this series.
+		ref, copiedLabels := app.GetRef(cortexpb.FromLabelAdaptersToLabels(ts.Labels))
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -753,30 +737,18 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			var err error
 
 			// If the cached reference exists, we try to use it.
-			if cachedRefExists {
-				var ref uint64
-				if ref, err = app.Append(cachedRef, copiedLabels, s.TimestampMs, s.Value); err == nil {
+			if ref != 0 {
+				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
-					// This means the reference changes which means we need to update our cache.
-					if ref != cachedRef {
-						db.refCache.SetRef(startAppend, copiedLabels, ref)
-					}
 					continue
 				}
 
 			} else {
-				var ref uint64
-
-				// Copy the label set because both TSDB and the cache may retain it.
+				// Copy the label set because both TSDB and the active series tracker may retain it.
 				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 
+				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
-					db.refCache.SetRef(startAppend, copiedLabels, ref)
-
-					// Set these in case there are multiple samples for the series.
-					cachedRef = ref
-					cachedRefExists = true
-
 					succeededSamplesCount++
 					continue
 				}
@@ -827,11 +799,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
 			db.activeSeries.UpdateSeries(cortexpb.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
-				// If we have already made a copy during this push, no need to create new one.
-				if copiedLabels != nil {
-					return copiedLabels
-				}
-				return cortexpb.CopyLabels(l)
+				// we must already have copied the labels if succeededSamplesCount has been incremented.
+				return copiedLabels
 			})
 		}
 	}
@@ -1435,7 +1404,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	userDB := &userTSDB{
 		userID:              userID,
-		refCache:            cortex_tsdb.NewRefCache(),
 		activeSeries:        NewActiveSeries(),
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),

@@ -637,6 +637,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
+	ingestionRateTicker := time.NewTicker(1 * time.Second)
+	defer ingestionRateTicker.Stop()
+
 	var activeSeriesTickerChan <-chan time.Time
 	if i.cfg.ActiveSeriesMetricsEnabled {
 		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
@@ -652,9 +655,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		select {
 		case <-metadataPurgeTicker.C:
 			i.purgeUserMetricsMetadata()
-		case <-rateUpdateTicker.C:
+		case <-ingestionRateTicker.C:
 			i.ingestionRate.tick()
-
+		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
 				db.ingestedAPISamples.tick()

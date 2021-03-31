@@ -94,7 +94,7 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
-	DefaultLimits    InstanceLimits         `yaml:"global_limits"`
+	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.

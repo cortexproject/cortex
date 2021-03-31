@@ -51,7 +51,7 @@ Now, some rules of thumb:
  2. Each million series (including churn) consumes 15GB of chunk
  storage and 4GB of index, per day (so multiply by the retention
  period).
- 3. Each 100,000 samples/sec arriving takes 1 CPU in distributors.
+ 3. Each 10,000 samples/sec arriving takes about 1 CPU core in distributors.
  Distributors don't need much RAM.
 
 If you turn on compression between distributors and ingesters (for

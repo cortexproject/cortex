@@ -337,26 +337,26 @@ func (u *userTSDB) setLastUpdate(t time.Time) {
 }
 
 // Checks if TSDB can be closed.
-func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) (tsdbCloseCheckResult, error) {
+func (u *userTSDB) shouldCloseTSDB(idleTimeout time.Duration) tsdbCloseCheckResult {
 	if u.deletionMarkFound.Load() {
-		return tsdbTenantMarkedForDeletion, nil
+		return tsdbTenantMarkedForDeletion
 	}
 
 	if !u.isIdle(time.Now(), idleTimeout) {
-		return tsdbNotIdle, nil
+		return tsdbNotIdle
 	}
 
 	// If head is not compacted, we cannot close this yet.
 	if u.Head().NumSeries() > 0 {
-		return tsdbNotCompacted, nil
+		return tsdbNotCompacted
 	}
 
 	// Ensure that all blocks have been shipped.
 	if oldest := u.getOldestUnshippedBlockTime(); oldest > 0 {
-		return tsdbNotShipped, nil
+		return tsdbNotShipped
 	}
 
-	return tsdbIdle, nil
+	return tsdbIdle
 }
 
 // TSDBState holds data structures used by the TSDB storage engine
@@ -1851,10 +1851,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		return tsdbShippingDisabled
 	}
 
-	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
-		if err != nil {
-			level.Error(i.logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
-		}
+	if result := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
 		return result
 	}
 
@@ -1871,10 +1868,8 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 
 	// Verify again, things may have changed during the checks and pushes.
 	tenantDeleted := false
-	if result, err := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
-		if err != nil {
-			level.Error(i.logger).Log("msg", "cannot close idle TSDB", "user", userID, "err", err)
-		}
+	if result := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
+		// This will also change TSDB state back to active (via defer above).
 		return result
 	} else if result == tsdbTenantMarkedForDeletion {
 		tenantDeleted = true

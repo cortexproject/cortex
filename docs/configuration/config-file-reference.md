@@ -791,8 +791,7 @@ global_limits:
   [max_series: <int> | default = 0]
 
   # Max inflight push requests that this ingester can handle (across all
-  # tenants). Additional requests will be rejected. This limit only works when
-  # using blocks engine. 0 = unlimited.
+  # tenants). Additional requests will be rejected. 0 = unlimited.
   # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
 ```

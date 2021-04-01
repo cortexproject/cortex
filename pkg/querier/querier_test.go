@@ -439,7 +439,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 
 			limits := defaultLimitsConfig()
-			limits.MaxQueryLength = maxQueryLength
+			limits.MaxQueryLength = model.Duration(maxQueryLength)
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 

@@ -166,6 +166,22 @@ max_query_length: 1s
 	assert.Equal(t, limitsYAML, limitsJSON)
 }
 
+func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
+	stdlibDuration := reflect.TypeOf(time.Duration(0))
+	limits := reflect.TypeOf(Limits{})
+	n := limits.NumField()
+	var badDurationType []string
+
+	for i := 0; i < n; i++ {
+		field := limits.Field(i)
+		if field.Type == stdlibDuration {
+			badDurationType = append(badDurationType, field.Name)
+		}
+	}
+
+	assert.Empty(t, badDurationType, "some Limits fields are using stdlib time.Duration instead of model.Duration")
+}
+
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{})
 
@@ -256,10 +272,10 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
-			MaxQueryLength: time.Hour,
+			MaxQueryLength: model.Duration(time.Hour),
 		},
 		"tenant-b": {
-			MaxQueryLength: 4 * time.Hour,
+			MaxQueryLength: model.Duration(4 * time.Hour),
 		},
 	}
 

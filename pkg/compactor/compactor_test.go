@@ -129,8 +129,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	// No user blocks stored in the bucket.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
-
-	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
+	cfg := prepareConfig()
+	c, _, _, logs, registry := prepare(t, cfg, bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -139,6 +139,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.Equal(t, prom_testutil.ToFloat64(c.compactionRunInterval), cfg.CompactionInterval.Seconds())
 
 	assert.Equal(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,

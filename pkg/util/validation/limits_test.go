@@ -148,6 +148,24 @@ func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	assert.Empty(t, mismatch, "expected no mismatched JSON and YAML tags")
 }
 
+func TestLimitsStringDurationYamlMatchJson(t *testing.T) {
+	inputYAML := `
+max_query_lookback: 1s
+max_query_length: 1s
+`
+	inputJSON := `{"max_query_lookback": "1s", "max_query_length": "1s"}`
+
+	limitsYAML := Limits{}
+	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
+	require.NoError(t, err, "expected to be able to unmarshal from YAML")
+
+	limitsJSON := Limits{}
+	err = json.Unmarshal([]byte(inputJSON), &limitsJSON)
+	require.NoError(t, err, "expected to be able to unmarshal from JSON")
+
+	assert.Equal(t, limitsYAML, limitsJSON)
+}
+
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{})
 

@@ -3829,7 +3829,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h]
+[reject_old_samples_max_age: <duration> | default = 2w]
 
 # Duration which table will be created/deleted before/after it's needed; we
 # won't accept sample from before this time.

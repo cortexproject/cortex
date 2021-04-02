@@ -1112,7 +1112,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		"timestamp too old": {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.RejectOldSamples = true
-				limits.RejectOldSamplesMaxAge = time.Hour
+				limits.RejectOldSamplesMaxAge = model.Duration(time.Hour)
 			},
 			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
@@ -1137,7 +1137,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		},
 		"timestamp too new": {
 			prepareConfig: func(limits *validation.Limits) {
-				limits.CreationGracePeriod = time.Minute
+				limits.CreationGracePeriod = model.Duration(time.Minute)
 			},
 			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
 				metrics := make([]labels.Labels, numSeriesPerRequest)
@@ -2055,9 +2055,9 @@ func TestDistributorValidation(t *testing.T) {
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)
 
-			limits.CreationGracePeriod = 2 * time.Hour
+			limits.CreationGracePeriod = model.Duration(2 * time.Hour)
 			limits.RejectOldSamples = true
-			limits.RejectOldSamplesMaxAge = 24 * time.Hour
+			limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 			limits.MaxLabelNamesPerSeries = 2
 
 			ds, _, r, _ := prepare(t, prepConfig{

@@ -11,6 +11,14 @@
   * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
   * `-alertmanager.cluster.peers` instead of `-cluster.peer`
   * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
+* [FEATURE] Memberlist: add TLS configuration options for the memberlist transport layer used by the gossip KV store. #4046
+  * New flags added for memberlist communication:
+    * `-memberlist.tls-enabled`
+    * `-memberlist.tls-cert-path`
+    * `-memberlist.tls-key-path`
+    * `-memberlist.tls-ca-path`
+    * `-memberlist.tls-server-name`
+    * `-memberlist.tls-insecure-skip-verify`
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.13`. #4042
 * [ENHANCEMENT] Blocks storage: reduce ingester memory by eliminating series reference cache. #3951

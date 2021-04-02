@@ -32,6 +32,21 @@ const (
 	StorageEngineBlocks = "blocks"
 )
 
+// Supported storage clients
+const (
+	AWS            = "aws"
+	Azure          = "azure"
+	Cassandra      = "cassandra"
+	InMemory       = "inmemory"
+	BigTable       = "bigtable"
+	BigTableHashed = "bigtable-hashed"
+	FileSystem     = "filesystem"
+	GCP            = "gcp"
+	GCS            = "gcs"
+	GrpcStore      = "grpc-store"
+	S3             = "s3"
+)
+
 type indexStoreFactories struct {
 	indexClientFactoryFunc IndexClientFactoryFunc
 	tableClientFactoryFunc TableClientFactoryFunc
@@ -239,7 +254,7 @@ func NewIndexClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case "grpc-store":
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, AWS, Cassandra, InMemory, GCP, BigTable, BigTableHashed)
 	}
 }
 
@@ -280,7 +295,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg chunk.SchemaConfig, regis
 	case "grpc-store":
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v", name, AWS, Azure, Cassandra, InMemory, GCP, BigTable, BigTableHashed, GrpcStore)
 	}
 }
 
@@ -320,7 +335,7 @@ func NewTableClient(name string, cfg Config, registerer prometheus.Registerer) (
 	case "grpc-store":
 		return grpc.NewTableClient(cfg.GrpcConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, AWS, Cassandra, InMemory, GCP, BigTable, BigTableHashed, GrpcStore)
 	}
 }
 
@@ -349,6 +364,6 @@ func NewObjectClient(name string, cfg Config) (chunk.ObjectClient, error) {
 	case "filesystem":
 		return local.NewFSObjectClient(cfg.FSConfig)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: aws, s3, gcs, azure, filesystem", name)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, AWS, S3, GCS, Azure, FileSystem)
 	}
 }

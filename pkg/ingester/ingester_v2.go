@@ -1475,6 +1475,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			metadata.ReceiveSource,
 			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
 			true,  // Allow out of order uploads. It's fine in Cortex's context.
+			metadata.NoneFunc,
 		)
 
 		// Initialise the shipper blocks cache.

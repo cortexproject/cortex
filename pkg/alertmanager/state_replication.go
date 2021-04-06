@@ -181,7 +181,7 @@ func (s *state) starting(ctx context.Context) error {
 	defer cancel()
 
 	fullState, err := s.store.GetFullState(storeReadCtx, s.userID)
-	if err == alertspb.ErrNotFound {
+	if errors.Is(err, alertspb.ErrNotFound) {
 		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
 		return nil
 	}

@@ -120,6 +120,9 @@ type MultitenantAlertmanagerConfig struct {
 
 	// For distributor.
 	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
+
+	// For the state persister.
+	PersistInterval time.Duration `yaml:"persist_interval"`
 }
 
 type ClusterConfig struct {
@@ -134,6 +137,10 @@ type ClusterConfig struct {
 const (
 	defaultClusterAddr = "0.0.0.0:9094"
 	defaultPeerTimeout = 15 * time.Second
+)
+
+var (
+	errInvalidPersistInterval = errors.New("invalid alertmanager persist interval, must be greater than zero")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -153,6 +160,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
+
+	f.DurationVar(&cfg.PersistInterval, "alertmanager.persist-interval", 15*time.Minute, "The interval between persisting the current alertmanager state (notification log and silences) to object storage. This state is read when all replicas for a shard have failed. In this scenario, having persisted the state more frequently will result in potentially fewer lost silences, and fewer duplicate notifications.")
 
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
@@ -174,6 +183,11 @@ func (cfg *MultitenantAlertmanagerConfig) Validate() error {
 	if err := cfg.Store.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
+
+	if cfg.PersistInterval <= 0 {
+		return errInvalidPersistInterval
+	}
+
 	return nil
 }
 
@@ -856,6 +870,9 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Replicator:        am,
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 		Store:             am.store,
+		PersisterConfig: PersisterConfig{
+			Interval: am.cfg.PersistInterval,
+		},
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

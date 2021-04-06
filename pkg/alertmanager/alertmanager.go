@@ -73,6 +73,7 @@ type Config struct {
 	ReplicationFactor int
 	Replicator        Replicator
 	Store             alertstore.AlertStore
+	PersisterConfig   PersisterConfig
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -166,7 +167,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
 		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
 		am.state = state
-		am.persister = newStatePersister(cfg.UserID, state, cfg.Store, am.logger)
+		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}

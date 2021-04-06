@@ -45,7 +45,7 @@ func (f *fakePersistableState) WaitReady(ctx context.Context) error {
 	return nil
 }
 
-type fakeStoreSet struct {
+type fakeStoreWrite struct {
 	user string
 	desc alertspb.FullStateDesc
 }
@@ -53,120 +53,105 @@ type fakeStoreSet struct {
 type fakeStore struct {
 	alertstore.AlertStore
 
-	setsMtx sync.Mutex
-	sets    []fakeStoreSet
+	writesMtx sync.Mutex
+	writes    []fakeStoreWrite
 }
 
 func (f *fakeStore) SetFullState(ctx context.Context, user string, desc alertspb.FullStateDesc) error {
-	f.setsMtx.Lock()
-	defer f.setsMtx.Unlock()
-	f.sets = append(f.sets, fakeStoreSet{user, desc})
+	f.writesMtx.Lock()
+	defer f.writesMtx.Unlock()
+	f.writes = append(f.writes, fakeStoreWrite{user, desc})
 	return nil
 }
 
-func TestStatePersister_Position0ShouldWrite(t *testing.T) {
-	state := newFakePersistableState()
-	store := &fakeStore{}
+func (f *fakeStore) getWrites() []fakeStoreWrite {
+	f.writesMtx.Lock()
+	defer f.writesMtx.Unlock()
+	return f.writes
+}
 
-	s := newStatePersister("user-1", state, store, log.NewNopLogger())
-	s.interval = 1 * time.Second
+func makeTestFullState() *clusterpb.FullState {
+	return &clusterpb.FullState{
+		Parts: []clusterpb.Part{
+			{
+				Key:  "key",
+				Data: []byte("data"),
+			},
+		},
+	}
+}
+
+func makeTestStatePersister(t *testing.T, position int, userID string) (*fakePersistableState, *fakeStore, *statePersister) {
+	state := newFakePersistableState()
+	state.position = position
+	store := &fakeStore{}
+	cfg := PersisterConfig{Interval: 1 * time.Second}
+
+	s := newStatePersister(cfg, userID, state, store, log.NewNopLogger())
 
 	require.NoError(t, s.StartAsync(context.Background()))
 	t.Cleanup(func() {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
 	})
 
-	time.Sleep(5 * time.Second)
+	return state, store, s
+}
 
-	// Should not have started until the state becomes ready.
+func TestStatePersister_Position0ShouldWrite(t *testing.T) {
+	userID := "user-1"
+	state, store, s := makeTestStatePersister(t, 0, userID)
+
+	// Should not start until the state becomes ready.
 	{
+		time.Sleep(5 * time.Second)
+
 		assert.Equal(t, services.Starting, s.Service.State())
-		store.setsMtx.Lock()
-		numSets := len(store.sets)
-		store.setsMtx.Unlock()
-		assert.Equal(t, 0, numSets)
+		assert.Equal(t, 0, len(store.getWrites()))
 	}
 
-	// Should now start.
+	// Should start successfully once the state returns from WaitReady.
 	{
-		state.getResult = &clusterpb.FullState{
-			Parts: []clusterpb.Part{
-				{
-					Key:  "key",
-					Data: []byte("data"),
-				},
-			},
-		}
-
+		state.getResult = makeTestFullState()
 		close(state.readyc)
-		require.NoError(t, s.AwaitRunning(context.Background()))
+
+		assert.NoError(t, s.AwaitRunning(context.Background()))
 	}
 
 	// Should receive a write to the store.
 	{
-		var storeSets []fakeStoreSet
+		var storeWrites []fakeStoreWrite
 		require.Eventually(t, func() bool {
-			store.setsMtx.Lock()
-			storeSets = store.sets
-			store.setsMtx.Unlock()
-
-			return len(storeSets) == 1
+			storeWrites = store.getWrites()
+			return len(storeWrites) == 1
 		}, 5*time.Second, 100*time.Millisecond)
 
-		expectedSet := alertspb.FullStateDesc{
-			State: &clusterpb.FullState{
-				Parts: []clusterpb.Part{
-					{
-						Key:  "key",
-						Data: []byte("data"),
-					},
-				},
-			},
+		expectedDesc := alertspb.FullStateDesc{
+			State: makeTestFullState(),
 		}
 
-		assert.Equal(t, "user-1", storeSets[0].user)
-		assert.Equal(t, expectedSet, storeSets[0].desc)
+		assert.Equal(t, userID, storeWrites[0].user)
+		assert.Equal(t, expectedDesc, storeWrites[0].desc)
 	}
 }
 
 func TestStatePersister_Position1ShouldNotWrite(t *testing.T) {
-	state := newFakePersistableState()
-	state.position = 1
-	store := &fakeStore{}
-
-	s := newStatePersister("user-1", state, store, log.NewNopLogger())
-	s.interval = 1 * time.Second
-
-	require.NoError(t, s.StartAsync(context.Background()))
-	t.Cleanup(func() {
-		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
-	})
+	state, store, s := makeTestStatePersister(t, 1, "x")
 
 	// Start the persister.
 	{
-		state.getResult = &clusterpb.FullState{
-			Parts: []clusterpb.Part{
-				{
-					Key:  "key",
-					Data: []byte("data"),
-				},
-			},
-		}
+		require.Equal(t, services.Starting, s.Service.State())
 
-		assert.Equal(t, services.Starting, s.Service.State())
+		state.getResult = makeTestFullState()
 		close(state.readyc)
+
 		require.NoError(t, s.AwaitRunning(context.Background()))
+		require.Equal(t, services.Running, s.Service.State())
 	}
 
-	// Wait for the interval to be hit a few times.
-	time.Sleep(5 * time.Second)
-
-	// Should not have stored anything.
+	// Should not have stored anything, having passed the interval multiple times.
 	{
-		assert.Equal(t, services.Running, s.Service.State())
-		store.setsMtx.Lock()
-		numSets := len(store.sets)
-		store.setsMtx.Unlock()
-		assert.Equal(t, 0, numSets)
+		time.Sleep(5 * time.Second)
+
+		assert.Equal(t, 0, len(store.getWrites()))
 	}
 }

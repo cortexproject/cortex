@@ -14,9 +14,12 @@ import (
 )
 
 const (
-	defaultPersistInterval = 15 * time.Minute
-	defaultPersistTimeout  = 30 * time.Second
+	defaultPersistTimeout = 30 * time.Second
 )
+
+type PersisterConfig struct {
+	Interval time.Duration
+}
 
 type PersistableState interface {
 	State
@@ -32,23 +35,21 @@ type statePersister struct {
 	userID string
 	logger log.Logger
 
-	interval time.Duration
-	timeout  time.Duration
+	timeout time.Duration
 }
 
 // newStatePersister creates a new state persister.
-func newStatePersister(userID string, state PersistableState, store alertstore.AlertStore, l log.Logger) *statePersister {
+func newStatePersister(cfg PersisterConfig, userID string, state PersistableState, store alertstore.AlertStore, l log.Logger) *statePersister {
 
 	s := &statePersister{
-		state:    state,
-		store:    store,
-		userID:   userID,
-		logger:   l,
-		interval: defaultPersistInterval,
-		timeout:  defaultPersistTimeout,
+		state:   state,
+		store:   store,
+		userID:  userID,
+		logger:  l,
+		timeout: defaultPersistTimeout,
 	}
 
-	s.Service = services.NewBasicService(s.starting, s.running, nil)
+	s.Service = services.NewTimerService(cfg.Interval, s.starting, s.iteration, nil)
 
 	return s
 }
@@ -59,20 +60,11 @@ func (s *statePersister) starting(ctx context.Context) error {
 	return s.state.WaitReady(ctx)
 }
 
-func (s *statePersister) running(ctx context.Context) error {
-	level.Debug(s.logger).Log("msg", "started state persister", "user", s.userID, "interval", s.interval)
-
-	ticker := time.NewTicker(s.interval)
-	for {
-		select {
-		case <-ticker.C:
-			if err := s.persist(ctx); err != nil {
-				level.Error(s.logger).Log("msg", "failed to persist state", "user", s.userID, "err", err)
-			}
-		case <-ctx.Done():
-			return nil
-		}
+func (s *statePersister) iteration(ctx context.Context) error {
+	if err := s.persist(ctx); err != nil {
+		level.Error(s.logger).Log("msg", "failed to persist state", "user", s.userID, "err", err)
 	}
+	return nil
 }
 
 func (s *statePersister) persist(ctx context.Context) error {

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -180,6 +181,10 @@ func (s *state) starting(ctx context.Context) error {
 	defer cancel()
 
 	fullState, err := s.store.GetFullState(storeReadCtx, s.userID)
+	if err == alertspb.ErrNotFound {
+		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
+		return nil
+	}
 	if err == nil {
 		if err = s.mergeFullStates([]*clusterpb.FullState{fullState.State}); err == nil {
 			level.Info(s.logger).Log("msg", "state read from storage; proceeding")
@@ -187,7 +192,7 @@ func (s *state) starting(ctx context.Context) error {
 		}
 	}
 
-	level.Info(s.logger).Log("msg", "failed to read state from storage; continuing anyway", "err", err)
+	level.Warn(s.logger).Log("msg", "failed to read state from storage; continuing anyway", "err", err)
 
 	return nil
 }

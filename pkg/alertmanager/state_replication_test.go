@@ -185,7 +185,7 @@ func TestStateReplication_Settle(t *testing.T) {
 		name              string
 		replicationFactor int
 		read              readStateResult
-		states            map[string]alertspb.FullStateDesc
+		storeStates       map[string]alertspb.FullStateDesc
 		results           map[string][][]byte
 	}{
 		{
@@ -254,7 +254,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			name:              "when reading from replicas fails, state is read from storage.",
 			replicationFactor: 3,
 			read:              readStateResult{err: errors.New("Read Error 1")},
-			states: map[string]alertspb.FullStateDesc{
+			storeStates: map[string]alertspb.FullStateDesc{
 				"user-1": {
 					State: &clusterpb.FullState{
 						Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}},
@@ -270,7 +270,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			name:              "when reading from replicas and from storage fails, still become ready.",
 			replicationFactor: 3,
 			read:              readStateResult{err: errors.New("Read Error 1")},
-			states:            map[string]alertspb.FullStateDesc{},
+			storeStates:       map[string]alertspb.FullStateDesc{},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -294,7 +294,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			replicator := newFakeReplicator()
 			replicator.read = tt.read
 			store := newFakeAlertStore()
-			store.states = tt.states
+			store.states = tt.storeStates
 			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, store, log.NewNopLogger(), reg)
 
 			key1State := &fakeState{}

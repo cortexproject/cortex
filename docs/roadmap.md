@@ -42,9 +42,6 @@ Cortex blocks storage supports deleting all data for a tenant after a time perio
 let you link metric samples to other data, such as distributed tracing.
 As of early 2021 Prometheus will collect exemplars and send them via remote write, but Cortex needs to be extended to handle them.
 
-## Bulk loading historical data
-This is another highly requested feature.  As of 1.8.0 there is a tool to import Thanos blocks into Cortex, but not for basic Prometheus.
-
 ## Scalability
 
 Scalability has always been a focus for the project, but there is a lot more work to be done. We can now scale to 100s of Millions of active series but 1 Billion active series is still an unknown.

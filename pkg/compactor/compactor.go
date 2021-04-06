@@ -306,7 +306,7 @@ func newCompactor(
 			Help: "Number of tenants failed processing during the current compaction run. Reset to 0 when compactor is idle.",
 		}),
 		compactionRunInterval: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_compactor_run_interval_seconds",
+			Name: "cortex_compactor_compaction_interval_seconds",
 			Help: "The configured interval on which compaction is run in seconds. Useful when compared to the last successful run metric to accurately detect multiple failed compaction runs.",
 		}),
 		blocksMarkedForDeletion: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -339,6 +339,9 @@ func newCompactor(
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
+
+	// The last successful compaction run metric is exposed as seconds since epoch, so we need to use seconds for this metric.
+	c.compactionRunInterval.Set(c.compactorCfg.CompactionInterval.Seconds())
 
 	return c, nil
 }
@@ -432,9 +435,6 @@ func (c *Compactor) starting(ctx context.Context) error {
 		c.ringSubservices.StopAsync()
 		return errors.Wrap(err, "failed to start the blocks cleaner")
 	}
-
-	// The last successful compaction run metric is exposed as seconds since epoch, so we need to use seconds for this metric.
-	c.compactionRunInterval.Set(c.compactorCfg.CompactionInterval.Seconds())
 
 	return nil
 }

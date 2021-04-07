@@ -855,6 +855,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		ShardingEnabled:   am.cfg.ShardingEnabled,
 		Replicator:        am,
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
+		Store:             am.store,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

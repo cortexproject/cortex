@@ -15,11 +15,14 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
 	defaultSettleReadTimeout = 15 * time.Second
+	defaultStoreReadTimeout  = 15 * time.Second
 )
 
 // state represents the Alertmanager silences and notification log internal state.
@@ -31,12 +34,14 @@ type state struct {
 	reg    prometheus.Registerer
 
 	settleReadTimeout time.Duration
+	storeReadTimeout  time.Duration
 
 	mtx    sync.Mutex
 	states map[string]cluster.State
 
 	replicationFactor int
 	replicator        Replicator
+	store             alertstore.AlertStore
 
 	partialStateMergesTotal  *prometheus.CounterVec
 	partialStateMergesFailed *prometheus.CounterVec
@@ -47,17 +52,19 @@ type state struct {
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.AlertStore, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
 		logger:            l,
 		userID:            userID,
 		replicationFactor: rf,
 		replicator:        re,
+		store:             st,
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
 		reg:               r,
 		settleReadTimeout: defaultSettleReadTimeout,
+		storeReadTimeout:  defaultStoreReadTimeout,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -167,7 +174,26 @@ func (s *state) starting(ctx context.Context) error {
 		}
 	}
 
-	level.Info(s.logger).Log("msg", "state not settled but continuing anyway", "err", err)
+	level.Info(s.logger).Log("msg", "state not settled; trying to read from storage", "err", err)
+
+	// Attempt to read the state from persistent storage instead.
+	storeReadCtx, cancel := context.WithTimeout(ctx, s.storeReadTimeout)
+	defer cancel()
+
+	fullState, err := s.store.GetFullState(storeReadCtx, s.userID)
+	if errors.Is(err, alertspb.ErrNotFound) {
+		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
+		return nil
+	}
+	if err == nil {
+		if err = s.mergeFullStates([]*clusterpb.FullState{fullState.State}); err == nil {
+			level.Info(s.logger).Log("msg", "state read from storage; proceeding")
+			return nil
+		}
+	}
+
+	level.Warn(s.logger).Log("msg", "failed to read state from storage; continuing anyway", "err", err)
+
 	return nil
 }
 

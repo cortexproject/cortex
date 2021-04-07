@@ -43,6 +43,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -71,6 +72,7 @@ type Config struct {
 	ShardingEnabled   bool
 	ReplicationFactor int
 	Replicator        Replicator
+	Store             alertstore.AlertStore
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -161,7 +163,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
+		am.state = newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}

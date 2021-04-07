@@ -511,7 +511,7 @@ func (t *TCPTransport) PacketCh() <-chan *memberlist.Packet {
 // two-way communication with a peer.
 func (t *TCPTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
 	t.outgoingStreams.Inc()
-	c, err := t.getConnection(addr, t.cfg.PacketDialTimeout)
+	c, err := t.getConnection(addr, timeout)
 
 	if err != nil {
 		t.outgoingStreamErrors.Inc()

@@ -42,20 +42,20 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	var cortex1, cortex2, cortex3 *e2ecortex.CortexService
 	if tlsEnabled {
+		var (
+			memberlistDNS = "cortex-memberlist"
+		)
 		// set the ca
 		cert := ca.New("single-binary-memberlist")
 
 		// Ensure the entire path of directories exist.
 		require.NoError(t, os.MkdirAll(filepath.Join(s.SharedDir(), "certs"), os.ModePerm))
-
 		require.NoError(t, cert.WriteCACertificate(filepath.Join(s.SharedDir(), caCertFile)))
 		require.NoError(t, cert.WriteCertificate(
 			&x509.Certificate{
 				Subject: pkix.Name{CommonName: "memberlist"},
 				DNSNames: []string{
-					networkName + "-cortex-1",
-					networkName + "-cortex-2",
-					networkName + "-cortex-3",
+					memberlistDNS,
 				},
 				ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 			},
@@ -63,9 +63,9 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
 			filepath.Join(s.SharedDir(), clientKeyFile),
 		))
 
-		cortex1 = newSingleBinary("cortex-1", networkName+"-cortex-1", "")
-		cortex2 = newSingleBinary("cortex-2", networkName+"-cortex-2", networkName+"-cortex-1:8000")
-		cortex3 = newSingleBinary("cortex-3", networkName+"-cortex-3", networkName+"-cortex-1:8000")
+		cortex1 = newSingleBinary("cortex-1", memberlistDNS, "")
+		cortex2 = newSingleBinary("cortex-2", memberlistDNS, networkName+"-cortex-1:8000")
+		cortex3 = newSingleBinary("cortex-3", memberlistDNS, networkName+"-cortex-1:8000")
 	} else {
 		cortex1 = newSingleBinary("cortex-1", "", "")
 		cortex2 = newSingleBinary("cortex-2", "", networkName+"-cortex-1:8000")

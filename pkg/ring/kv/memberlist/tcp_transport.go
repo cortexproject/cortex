@@ -73,7 +73,7 @@ func (cfg *TCPTransportConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.PacketWriteTimeout, prefix+"memberlist.packet-write-timeout", 5*time.Second, "Timeout for writing 'packet' data.")
 	f.BoolVar(&cfg.TransportDebug, prefix+"memberlist.transport-debug", false, "Log debug transport messages. Note: global log.level must be at debug level as well.")
 
-	f.BoolVar(&cfg.TLSEnabled, prefix+"memberlist.tls-enabled", false, "Enable TLS on the memberlist transport layer")
+	f.BoolVar(&cfg.TLSEnabled, prefix+"memberlist.tls-enabled", false, "Enable TLS on the memberlist transport layer.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix+"memberlist", f)
 }
 
@@ -152,12 +152,12 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		if config.TLSEnabled {
 			tcpLn, err = tls.Listen("tcp", tcpAddr.String(), t.tlsConfig)
 			if err != nil {
-				return nil, fmt.Errorf("failed to start tls TCP listener on %q port %d: %v", addr, port, err)
+				return nil, errors.Wrapf(err, "failed to start TLS TCP listener on %q port %d", addr, port)
 			}
 		} else {
 			tcpLn, err = net.ListenTCP("tcp", tcpAddr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to start TCP listener on %q port %d: %v", addr, port, err)
+				return nil, errors.Wrapf(err, "failed to start TCP listener on %q port %d", addr, port)
 			}
 		}
 

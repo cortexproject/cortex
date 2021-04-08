@@ -12,6 +12,8 @@
   * `-alertmanager.cluster.peers` instead of `-cluster.peer`
   * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.13`. #4042
+* [ENHANCEMENT] Blocks storage: reduce ingester memory by eliminating series reference cache. #3951
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
 * [ENHANCEMENT] Ruler: added the following metrics when ruler sharding is enabled: #3916
   * `cortex_ruler_clients`
@@ -22,7 +24,9 @@
 * [ENHANCEMENT] Ingester: reduce CPU and memory when an high number of errors are returned by the ingester on the write path with the blocks storage. #3969 #3971 #3973
 * [ENHANCEMENT] Distributor: reduce CPU and memory when an high number of errors are returned by the distributor on the write path. #3990
 * [ENHANCEMENT] Put metric before label value in the "label value too long" error message. #4018
+* [ENHANCEMENT] Allow use of `y|w|d` suffixes for duration related limits and per-tenant limits. #4044
 * [ENHANCEMENT] Query-frontend: Small optimization on top of PR #3968 to avoid unnecessary Extents merging. #4026
+
 * [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
@@ -30,6 +34,7 @@
 * [BUGFIX] Ruler Storage: ignore objects with empty namespace or group in the name. #3999
 * [BUGFIX] Distributor: fix issue causing distributors to not extend the replication set because of failing instances when zone-aware replication is enabled. #3977
 * [BUGFIX] Query-frontend: Fix issue where cached entry size keeps increasing when making tiny query repeatedly. #3968
+* [BUGFIX] Compactor: `-compactor.blocks-retention-period` now supports weeks (`w`) and years (`y`). #4027
 
 ## Blocksconvert
 

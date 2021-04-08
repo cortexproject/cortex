@@ -50,7 +50,7 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.37.8
+# github.com/aws/aws-sdk-go v1.38.3 => github.com/aws/aws-sdk-go v1.37.8
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -251,7 +251,7 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20210208152844-1612e9be7af6
+# github.com/google/pprof v0.0.0-20210323184331-8eee2492667d => github.com/google/pprof v0.0.0-20210208152844-1612e9be7af6
 github.com/google/pprof/profile
 # github.com/google/uuid v1.1.2
 github.com/google/uuid
@@ -344,7 +344,7 @@ github.com/mattn/go-ieproxy
 github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.38
+# github.com/miekg/dns v1.1.41 => github.com/miekg/dns v1.1.38
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.0
 github.com/minio/md5-simd
@@ -441,7 +441,7 @@ github.com/prometheus/alertmanager/template
 github.com/prometheus/alertmanager/timeinterval
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
-# github.com/prometheus/client_golang v1.9.0
+# github.com/prometheus/client_golang v1.10.0 => github.com/prometheus/client_golang v1.9.0
 ## explicit
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
@@ -455,7 +455,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.18.0
+# github.com/prometheus/common v0.20.0
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -469,7 +469,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210321183757-31a518faab18
+# github.com/prometheus/prometheus v1.8.2-0.20210324152458-c7a62b95cea0
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -789,7 +789,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
+# golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad => golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
@@ -802,7 +802,7 @@ golang.org/x/lint/golint
 # golang.org/x/mod v0.4.0
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20210119194325-5f4716e94777
+# golang.org/x/net v0.0.0-20210324051636-2c4c8ecb7826 => golang.org/x/net v0.0.0-20210119194325-5f4716e94777
 ## explicit
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -820,18 +820,18 @@ golang.org/x/net/ipv6
 golang.org/x/net/netutil
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.0.0-20210210192628-66670185b0cd
+# golang.org/x/oauth2 v0.0.0-20210323180902-22b0adad7558 => golang.org/x/oauth2 v0.0.0-20210210192628-66670185b0cd
 golang.org/x/oauth2
 golang.org/x/oauth2/google
 golang.org/x/oauth2/google/internal/externalaccount
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+# golang.org/x/sync v0.0.0-20210220032951-036812b2e83c => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+# golang.org/x/sys v0.0.0-20210324051608-47abb6519492 => golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
@@ -844,7 +844,7 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
+# golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 ## explicit
 golang.org/x/time/rate
 # golang.org/x/tools v0.1.0
@@ -863,7 +863,7 @@ golang.org/x/tools/internal/imports
 # golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.39.0
+# google.golang.org/api v0.42.0 => google.golang.org/api v0.39.0
 ## explicit
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/googleapi
@@ -905,7 +905,7 @@ google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/grpc v1.34.0
+# google.golang.org/grpc v1.36.0 => google.golang.org/grpc v1.34.0
 ## explicit
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1039,3 +1039,14 @@ sigs.k8s.io/yaml
 # github.com/go-openapi/strfmt => github.com/go-openapi/strfmt v0.19.5
 # github.com/go-openapi/swag => github.com/go-openapi/swag v0.19.9
 # github.com/go-openapi/validate => github.com/go-openapi/validate v0.19.8
+# github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.37.8
+# github.com/google/pprof => github.com/google/pprof v0.0.0-20210208152844-1612e9be7af6
+# github.com/miekg/dns => github.com/miekg/dns v1.1.38
+# github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.9.0
+# golang.org/x/crypto => golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9
+# golang.org/x/net => golang.org/x/net v0.0.0-20210119194325-5f4716e94777
+# golang.org/x/oauth2 => golang.org/x/oauth2 v0.0.0-20210210192628-66670185b0cd
+# golang.org/x/sync => golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+# golang.org/x/sys => golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+# google.golang.org/api => google.golang.org/api v0.39.0
+# google.golang.org/grpc => google.golang.org/grpc v1.34.0

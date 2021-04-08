@@ -148,6 +148,40 @@ func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	assert.Empty(t, mismatch, "expected no mismatched JSON and YAML tags")
 }
 
+func TestLimitsStringDurationYamlMatchJson(t *testing.T) {
+	inputYAML := `
+max_query_lookback: 1s
+max_query_length: 1s
+`
+	inputJSON := `{"max_query_lookback": "1s", "max_query_length": "1s"}`
+
+	limitsYAML := Limits{}
+	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
+	require.NoError(t, err, "expected to be able to unmarshal from YAML")
+
+	limitsJSON := Limits{}
+	err = json.Unmarshal([]byte(inputJSON), &limitsJSON)
+	require.NoError(t, err, "expected to be able to unmarshal from JSON")
+
+	assert.Equal(t, limitsYAML, limitsJSON)
+}
+
+func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
+	stdlibDuration := reflect.TypeOf(time.Duration(0))
+	limits := reflect.TypeOf(Limits{})
+	n := limits.NumField()
+	var badDurationType []string
+
+	for i := 0; i < n; i++ {
+		field := limits.Field(i)
+		if field.Type == stdlibDuration {
+			badDurationType = append(badDurationType, field.Name)
+		}
+	}
+
+	assert.Empty(t, badDurationType, "some Limits fields are using stdlib time.Duration instead of model.Duration")
+}
+
 func TestMetricRelabelConfigLimitsLoadingFromYaml(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{})
 
@@ -238,10 +272,10 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
-			MaxQueryLength: time.Hour,
+			MaxQueryLength: model.Duration(time.Hour),
 		},
 		"tenant-b": {
-			MaxQueryLength: 4 * time.Hour,
+			MaxQueryLength: model.Duration(4 * time.Hour),
 		},
 	}
 

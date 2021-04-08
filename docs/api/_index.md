@@ -724,6 +724,9 @@ _This experimental endpoint is disabled by default and can be enabled via the `-
 
 _Requires [authentication](#authentication)._
 
+> **Note:** When using `curl` send the request body from a file, ensure that you use the `--data-binary` flag instead of `-d`, `--data`, or `--data-ascii`.
+> The latter options do not preserve carriage returns and newlines.
+
 #### Example request body
 
 ```yaml

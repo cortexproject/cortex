@@ -18,6 +18,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -76,6 +78,25 @@ func (f *fakeReplicator) ReadFullStateForUser(ctx context.Context, userID string
 	return f.read.res, f.read.err
 }
 
+type fakeAlertStore struct {
+	alertstore.AlertStore
+
+	states map[string]alertspb.FullStateDesc
+}
+
+func newFakeAlertStore() *fakeAlertStore {
+	return &fakeAlertStore{
+		states: make(map[string]alertspb.FullStateDesc),
+	}
+}
+
+func (f *fakeAlertStore) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	if result, ok := f.states[user]; ok {
+		return result, nil
+	}
+	return alertspb.FullStateDesc{}, alertspb.ErrNotFound
+}
+
 func TestStateReplication(t *testing.T) {
 	tc := []struct {
 		name              string
@@ -102,7 +123,8 @@ func TestStateReplication(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			replicator := newFakeReplicator()
 			replicator.read = readStateResult{res: nil, err: nil}
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
+			store := newFakeAlertStore()
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, store, log.NewNopLogger(), reg)
 
 			require.False(t, s.Ready())
 			{
@@ -163,6 +185,7 @@ func TestStateReplication_Settle(t *testing.T) {
 		name              string
 		replicationFactor int
 		read              readStateResult
+		storeStates       map[string]alertspb.FullStateDesc
 		results           map[string][][]byte
 	}{
 		{
@@ -228,9 +251,26 @@ func TestStateReplication_Settle(t *testing.T) {
 			},
 		},
 		{
-			name:              "when reading the full state fails, still become ready.",
+			name:              "when reading from replicas fails, state is read from storage.",
 			replicationFactor: 3,
 			read:              readStateResult{err: errors.New("Read Error 1")},
+			storeStates: map[string]alertspb.FullStateDesc{
+				"user-1": {
+					State: &clusterpb.FullState{
+						Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}},
+					},
+				},
+			},
+			results: map[string][][]byte{
+				"key1": {[]byte("Datum1")},
+				"key2": nil,
+			},
+		},
+		{
+			name:              "when reading from replicas and from storage fails, still become ready.",
+			replicationFactor: 3,
+			read:              readStateResult{err: errors.New("Read Error 1")},
+			storeStates:       map[string]alertspb.FullStateDesc{},
 			results: map[string][][]byte{
 				"key1": nil,
 				"key2": nil,
@@ -253,7 +293,9 @@ func TestStateReplication_Settle(t *testing.T) {
 
 			replicator := newFakeReplicator()
 			replicator.read = tt.read
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
+			store := newFakeAlertStore()
+			store.states = tt.storeStates
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, store, log.NewNopLogger(), reg)
 
 			key1State := &fakeState{}
 			key2State := &fakeState{}
@@ -322,7 +364,7 @@ func TestStateReplication_GetFullState(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			s := newReplicatedStates("user-1", 1, nil, log.NewNopLogger(), reg)
+			s := newReplicatedStates("user-1", 1, nil, nil, log.NewNopLogger(), reg)
 
 			for key, datum := range tt.data {
 				state := &fakeState{binary: datum}

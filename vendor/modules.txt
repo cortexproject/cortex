@@ -265,9 +265,12 @@ github.com/gorilla/websocket
 # github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 ## explicit
 github.com/grpc-ecosystem/go-grpc-middleware
-github.com/grpc-ecosystem/go-grpc-middleware/tags
-github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing
-github.com/grpc-ecosystem/go-grpc-middleware/util/metautils
+# github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0-rc.2.0.20201207153454-9f6bf00c00a7
+github.com/grpc-ecosystem/go-grpc-middleware/v2
+github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors
+github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tags
+github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing
+github.com/grpc-ecosystem/go-grpc-middleware/v2/util/metautils
 # github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 github.com/grpc-ecosystem/go-grpc-prometheus
 # github.com/grpc-ecosystem/grpc-gateway v1.16.0
@@ -553,7 +556,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.13.1-0.20210226164558-03dace0a1aa1
+# github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -568,6 +571,7 @@ github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/godns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
 github.com/thanos-io/thanos/pkg/errutil
+github.com/thanos-io/thanos/pkg/exemplars/exemplarspb
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/http

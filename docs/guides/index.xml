@@ -214,7 +214,13 @@ high values:&lt;/p>
 of series in ingesters is number of active series times the
 replication factor. This is with the default of 12-hour chunks - RAM
 required will reduce if you set &lt;code>-ingester.max-chunk-age&lt;/code> lower
-(trading off more back-end database IO)&lt;/li>
+(trading off more back-end database IO).
+There are some additional considerations for planning for ingester memory usage.
+&lt;ol>
+&lt;li>Memory increases during write ahead log (WAL) replay, &lt;a href="https://github.com/prometheus/prometheus/issues/6934#issuecomment-726039115">See Prometheus issue #6934&lt;/a>. If you do not have enough memory for WAL replay, the ingester will not be able to restart successfully without intervention.&lt;/li>
+&lt;li>Memory temporarily increases during resharding since timeseries are temporarily on both the new and old ingesters. This means you should scale up the number of ingesters before memory utilization is too high, otherwise you will not have the headroom to account for the temporary increase.&lt;/li>
+&lt;/ol>
+&lt;/li>
 &lt;li>Each million series (including churn) consumes 15GB of chunk
 storage and 4GB of index, per day (so multiply by the retention
 period).&lt;/li>

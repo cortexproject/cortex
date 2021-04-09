@@ -120,6 +120,9 @@ type MultitenantAlertmanagerConfig struct {
 
 	// For distributor.
 	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
+
+	// For the state persister.
+	Persister PersisterConfig `yaml:",inline"`
 }
 
 type ClusterConfig struct {
@@ -154,6 +157,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 
+	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
+
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
@@ -174,6 +179,11 @@ func (cfg *MultitenantAlertmanagerConfig) Validate() error {
 	if err := cfg.Store.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}
+
+	if err := cfg.Persister.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -856,6 +866,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Replicator:        am,
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 		Store:             am.store,
+		PersisterConfig:   am.cfg.Persister,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

@@ -189,7 +189,7 @@ func TestGrpcAuthMiddleware(t *testing.T) {
 	}
 
 	{
-		// Verify that we can call frontendClient.NotifyClientShutdown without user in the context, and we don't get any error.
+		// Verify that we can call schedulerClient.NotifyQuerierShutdown without user in the context, and we don't get any error.
 		require.False(t, msch.querierShutdownCalled.Load())
 		schedulerClient := schedulerpb.NewSchedulerForQuerierClient(conn)
 		_, err = schedulerClient.NotifyQuerierShutdown(ctx, &schedulerpb.NotifyQuerierShutdownRequest{QuerierID: "random-querier-id"})

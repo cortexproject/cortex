@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+      image: quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -34,7 +34,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+      image: quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021
     services:
       cassandra:
         image: cassandra:3.11
@@ -55,7 +55,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+      image: quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -173,14 +173,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021 TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+      image: quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -217,7 +217,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-latest
     container:
-      image: quay.io/cortexproject/build-image:upgrade-build-image-debian-491e60715-WIP
+      image: quay.io/cortexproject/build-image:2021w14_go1.16-afe06f021
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2

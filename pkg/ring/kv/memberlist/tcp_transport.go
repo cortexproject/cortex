@@ -3,6 +3,7 @@ package memberlist
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -15,10 +16,12 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	tlsutil "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 type messageType uint8
@@ -56,6 +59,9 @@ type TCPTransportConfig struct {
 	// Where to put custom metrics. nil = don't register.
 	MetricsRegisterer prometheus.Registerer `yaml:"-"`
 	MetricsNamespace  string                `yaml:"-"`
+
+	TLSEnabled bool                 `yaml:"tls_enabled"`
+	TLS        tlsutil.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
@@ -66,6 +72,9 @@ func (cfg *TCPTransportConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.PacketDialTimeout, prefix+"memberlist.packet-dial-timeout", 5*time.Second, "Timeout used when connecting to other nodes to send packet.")
 	f.DurationVar(&cfg.PacketWriteTimeout, prefix+"memberlist.packet-write-timeout", 5*time.Second, "Timeout for writing 'packet' data.")
 	f.BoolVar(&cfg.TransportDebug, prefix+"memberlist.transport-debug", false, "Log debug transport messages. Note: global log.level must be at debug level as well.")
+
+	f.BoolVar(&cfg.TLSEnabled, prefix+"memberlist.tls-enabled", false, "Enable TLS on the memberlist transport layer.")
+	cfg.TLS.RegisterFlagsWithPrefix(prefix+"memberlist", f)
 }
 
 // TCPTransport is a memberlist.Transport implementation that uses TCP for both packet and stream
@@ -77,7 +86,8 @@ type TCPTransport struct {
 	packetCh     chan *memberlist.Packet
 	connCh       chan net.Conn
 	wg           sync.WaitGroup
-	tcpListeners []*net.TCPListener
+	tcpListeners []net.Listener
+	tlsConfig    *tls.Config
 
 	shutdown atomic.Int32
 
@@ -114,6 +124,14 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		connCh:   make(chan net.Conn),
 	}
 
+	var err error
+	if config.TLSEnabled {
+		t.tlsConfig, err = config.TLS.GetTLSConfig()
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to create TLS config")
+		}
+	}
+
 	t.registerMetrics()
 
 	// Clean up listeners if there's an error.
@@ -129,10 +147,20 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		ip := net.ParseIP(addr)
 
 		tcpAddr := &net.TCPAddr{IP: ip, Port: port}
-		tcpLn, err := net.ListenTCP("tcp", tcpAddr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to start TCP listener on %q port %d: %v", addr, port, err)
+
+		var tcpLn net.Listener
+		if config.TLSEnabled {
+			tcpLn, err = tls.Listen("tcp", tcpAddr.String(), t.tlsConfig)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to start TLS TCP listener on %q port %d", addr, port)
+			}
+		} else {
+			tcpLn, err = net.ListenTCP("tcp", tcpAddr)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to start TCP listener on %q port %d", addr, port)
+			}
 		}
+
 		t.tcpListeners = append(t.tcpListeners, tcpLn)
 
 		// If the config port given was zero, use the first TCP listener
@@ -157,7 +185,7 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 // and spawns new go routine to handle each connection. This transport uses TCP connections
 // for both packet sending and streams.
 // (copied from Memberlist net_transport.go)
-func (t *TCPTransport) tcpListen(tcpLn *net.TCPListener) {
+func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 	defer t.wg.Done()
 
 	// baseDelay is the initial delay after an AcceptTCP() error before attempting again
@@ -170,7 +198,7 @@ func (t *TCPTransport) tcpListen(tcpLn *net.TCPListener) {
 
 	var loopDelay time.Duration
 	for {
-		conn, err := tcpLn.AcceptTCP()
+		conn, err := tcpLn.Accept()
 		if err != nil {
 			if s := t.shutdown.Load(); s == 1 {
 				break
@@ -206,7 +234,7 @@ func (t *TCPTransport) debugLog() log.Logger {
 	return noopLogger
 }
 
-func (t *TCPTransport) handleConnection(conn *net.TCPConn) {
+func (t *TCPTransport) handleConnection(conn net.Conn) {
 	t.debugLog().Log("msg", "TCPTransport: New connection", "addr", conn.RemoteAddr())
 
 	closeConn := true
@@ -298,6 +326,13 @@ func (a addr) Network() string {
 
 func (a addr) String() string {
 	return string(a)
+}
+
+func (t *TCPTransport) getConnection(addr string, timeout time.Duration) (net.Conn, error) {
+	if t.cfg.TLSEnabled {
+		return tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, t.tlsConfig)
+	}
+	return net.DialTimeout("tcp", addr, timeout)
 }
 
 // GetAutoBindPort returns the bind port that was automatically given by the
@@ -396,9 +431,9 @@ func (t *TCPTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 
 func (t *TCPTransport) writeTo(b []byte, addr string) error {
 	// Open connection, write packet header and data, data hash, close. Simple.
-	c, err := net.DialTimeout("tcp", addr, t.cfg.PacketDialTimeout)
+	c, err := t.getConnection(addr, t.cfg.PacketDialTimeout)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	closed := false
@@ -476,8 +511,8 @@ func (t *TCPTransport) PacketCh() <-chan *memberlist.Packet {
 // two-way communication with a peer.
 func (t *TCPTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
 	t.outgoingStreams.Inc()
+	c, err := t.getConnection(addr, timeout)
 
-	c, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		t.outgoingStreamErrors.Inc()
 		return nil, err

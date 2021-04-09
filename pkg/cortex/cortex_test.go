@@ -1,17 +1,26 @@
 package cortex
 
 import (
+	"context"
+	"net"
 	"net/url"
+	"strconv"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/server"
+	"go.uber.org/atomic"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -136,4 +145,112 @@ func TestConfigValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGrpcAuthMiddleware(t *testing.T) {
+	prepareGlobalMetricsRegistry(t)
+
+	cfg := Config{
+		AuthEnabled: true, // We must enable this to enable Auth middleware for gRPC server.
+		Server:      getServerConfig(t),
+		Target:      []string{API}, // Something innocent that doesn't require much config.
+	}
+
+	msch := &mockGrpcServiceHandler{}
+	ctx := context.Background()
+
+	// Setup server, using Cortex config. This includes authentication middleware.
+	{
+		c, err := New(cfg)
+		require.NoError(t, err)
+
+		serv, err := c.initServer()
+		require.NoError(t, err)
+
+		schedulerpb.RegisterSchedulerForQuerierServer(c.Server.GRPC, msch)
+		frontendv1pb.RegisterFrontendServer(c.Server.GRPC, msch)
+
+		require.NoError(t, services.StartAndAwaitRunning(ctx, serv))
+		defer func() {
+			require.NoError(t, services.StopAndAwaitTerminated(ctx, serv))
+		}()
+	}
+
+	conn, err := grpc.Dial(net.JoinHostPort(cfg.Server.GRPCListenAddress, strconv.Itoa(cfg.Server.GRPCListenPort)), grpc.WithInsecure())
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, conn.Close())
+	}()
+
+	{
+		// Verify that we can call frontendClient.NotifyClientShutdown without user in the context, and we don't get any error.
+		require.False(t, msch.clientShutdownCalled.Load())
+		frontendClient := frontendv1pb.NewFrontendClient(conn)
+		_, err = frontendClient.NotifyClientShutdown(ctx, &frontendv1pb.NotifyClientShutdownRequest{ClientID: "random-client-id"})
+		require.NoError(t, err)
+		require.True(t, msch.clientShutdownCalled.Load())
+	}
+
+	{
+		// Verify that we can call schedulerClient.NotifyQuerierShutdown without user in the context, and we don't get any error.
+		require.False(t, msch.querierShutdownCalled.Load())
+		schedulerClient := schedulerpb.NewSchedulerForQuerierClient(conn)
+		_, err = schedulerClient.NotifyQuerierShutdown(ctx, &schedulerpb.NotifyQuerierShutdownRequest{QuerierID: "random-querier-id"})
+		require.NoError(t, err)
+		require.True(t, msch.querierShutdownCalled.Load())
+	}
+}
+
+// Generates server config, with gRPC listening on random port.
+func getServerConfig(t *testing.T) server.Config {
+	listen, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	host, port, err := net.SplitHostPort(listen.Addr().String())
+	require.NoError(t, err)
+	require.NoError(t, listen.Close())
+
+	portNum, err := strconv.Atoi(port)
+	require.NoError(t, err)
+
+	return server.Config{
+		GRPCListenAddress: host,
+		GRPCListenPort:    portNum,
+
+		GPRCServerMaxRecvMsgSize: 1024,
+	}
+}
+
+type mockGrpcServiceHandler struct {
+	clientShutdownCalled  atomic.Bool
+	querierShutdownCalled atomic.Bool
+}
+
+func (m *mockGrpcServiceHandler) NotifyClientShutdown(_ context.Context, _ *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {
+	m.clientShutdownCalled.Store(true)
+	return &frontendv1pb.NotifyClientShutdownResponse{}, nil
+}
+
+func (m *mockGrpcServiceHandler) NotifyQuerierShutdown(_ context.Context, _ *schedulerpb.NotifyQuerierShutdownRequest) (*schedulerpb.NotifyQuerierShutdownResponse, error) {
+	m.querierShutdownCalled.Store(true)
+	return &schedulerpb.NotifyQuerierShutdownResponse{}, nil
+}
+
+func (m *mockGrpcServiceHandler) Process(_ frontendv1pb.Frontend_ProcessServer) error {
+	panic("implement me")
+}
+
+func (m *mockGrpcServiceHandler) QuerierLoop(_ schedulerpb.SchedulerForQuerier_QuerierLoopServer) error {
+	panic("implement me")
+}
+
+func prepareGlobalMetricsRegistry(t *testing.T) {
+	oldReg, oldGat := prometheus.DefaultRegisterer, prometheus.DefaultGatherer
+
+	reg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer, prometheus.DefaultGatherer = reg, reg
+
+	t.Cleanup(func() {
+		prometheus.DefaultRegisterer, prometheus.DefaultGatherer = oldReg, oldGat
+	})
 }

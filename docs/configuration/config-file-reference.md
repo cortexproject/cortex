@@ -2083,10 +2083,10 @@ alertmanager_client:
   [tls_insecure_skip_verify: <boolean> | default = false]
 
 # The interval between persisting the current alertmanager state (notification
-# log and silences) to object storage. This state is read when all replicas for
-# a shard have failed. In this scenario, having persisted the state more
-# frequently will result in potentially fewer lost silences, and fewer duplicate
-# notifications.
+# log and silences) to object storage. This is only used when sharding is
+# enabled. This state is read when all replicas for a shard can not be
+# contacted. In this scenario, having persisted the state more frequently will
+# result in potentially fewer lost silences, and fewer duplicate notifications.
 # CLI flag: -alertmanager.persist-interval
 [persist_interval: <duration> | default = 15m]
 ```

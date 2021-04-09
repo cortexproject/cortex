@@ -3795,7 +3795,7 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 
-# Enable TLS on the memberlist transport layer
+# Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]
 

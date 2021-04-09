@@ -96,14 +96,14 @@ func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 	{
 		cfg := &MultitenantAlertmanagerConfig{}
 		flagext.DefaultValues(cfg)
-		cfg.PersistInterval = 0
+		cfg.Persister.Interval = 0
 		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
 	}
 	// Invalid persist interval (negative).
 	{
 		cfg := &MultitenantAlertmanagerConfig{}
 		flagext.DefaultValues(cfg)
-		cfg.PersistInterval = -1
+		cfg.Persister.Interval = -1
 		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
 	}
 }

@@ -2,10 +2,12 @@ package alertmanager
 
 import (
 	"context"
+	"flag"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -17,8 +19,23 @@ const (
 	defaultPersistTimeout = 30 * time.Second
 )
 
+var (
+	errInvalidPersistInterval = errors.New("invalid alertmanager persist interval, must be greater than zero")
+)
+
 type PersisterConfig struct {
-	Interval time.Duration
+	Interval time.Duration `yaml:"persist_interval"`
+}
+
+func (cfg *PersisterConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&cfg.Interval, prefix+".persist-interval", 15*time.Minute, "The interval between persisting the current alertmanager state (notification log and silences) to object storage. This is only used when sharding is enabled. This state is read when all replicas for a shard can not be contacted. In this scenario, having persisted the state more frequently will result in potentially fewer lost silences, and fewer duplicate notifications.")
+}
+
+func (cfg *PersisterConfig) Validate() error {
+	if cfg.Interval <= 0 {
+		return errInvalidPersistInterval
+	}
+	return nil
 }
 
 type PersistableState interface {

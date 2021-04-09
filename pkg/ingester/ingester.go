@@ -466,7 +466,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInflightPushRequests > 0 {
 		if inflight > gl.MaxInflightPushRequests {
-			return nil, errTooManyInflightPushRequests{requests: inflight, limit: gl.MaxInflightPushRequests}
+			return nil, errTooManyInflightPushRequests
 		}
 	}
 

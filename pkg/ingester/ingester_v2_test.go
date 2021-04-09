@@ -3414,7 +3414,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 				},
 			},
 
-			expectedErr: wrapWithUser(errMaxSeriesLimitReached{limit: 1, series: 1}, "test"),
+			expectedErr: wrapWithUser(errMaxSeriesLimitReached, "test"),
 		},
 
 		"should fail creating two users": {
@@ -3437,7 +3437,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 						cortexpb.API),
 				},
 			},
-			expectedErr: wrapWithUser(errMaxUsersLimitReached{users: 1, limit: 1}, "user2"),
+			expectedErr: wrapWithUser(errMaxUsersLimitReached, "user2"),
 		},
 
 		"should fail pushing samples in two requests due to rate limit": {
@@ -3458,7 +3458,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 						cortexpb.API),
 				},
 			},
-			expectedErrType: &errMaxSamplesPushRateLimitReached{},
+			expectedErr: errMaxSamplesPushRateLimitReached,
 		},
 	}
 
@@ -3630,7 +3630,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, "testcase"), 1024)
 
 		_, err := i.Push(ctx, req)
-		require.Equal(t, errTooManyInflightPushRequests{requests: 2, limit: 1}, err)
+		require.Equal(t, errTooManyInflightPushRequests, err)
 		return nil
 	})
 

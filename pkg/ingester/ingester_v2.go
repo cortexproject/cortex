@@ -221,10 +221,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	gl := u.instanceLimitsFn()
 	if gl != nil && gl.MaxInMemorySeries > 0 {
 		if series := u.instanceSeriesCount.Load(); series >= gl.MaxInMemorySeries {
-			return errMaxSeriesLimitReached{
-				series: series,
-				limit:  gl.MaxInMemorySeries,
-			}
+			return errMaxSeriesLimitReached
 		}
 	}
 
@@ -710,7 +707,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	il := i.getInstanceLimits()
 	if il != nil && il.MaxIngestionRate > 0 {
 		if rate := i.ingestionRate.rate(); rate >= il.MaxIngestionRate {
-			return nil, errMaxSamplesPushRateLimitReached{rate: rate, limit: il.MaxIngestionRate}
+			return nil, errMaxSamplesPushRateLimitReached
 		}
 	}
 
@@ -1420,7 +1417,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 	gl := i.getInstanceLimits()
 	if gl != nil && gl.MaxInMemoryTenants > 0 {
 		if users := int64(len(i.TSDBState.dbs)); users >= gl.MaxInMemoryTenants {
-			return nil, errMaxUsersLimitReached{users: users, limit: gl.MaxInMemoryTenants}
+			return nil, errMaxUsersLimitReached
 		}
 	}
 

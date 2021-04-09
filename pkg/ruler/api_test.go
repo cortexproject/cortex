@@ -300,7 +300,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	require.Equal(t, "{\"status\":\"error\",\"data\":null,\"errorType\":\"server_error\",\"error\":\"unable to delete rg\"}", w.Body.String())
 }
 
-func TestRuler_Limits(t *testing.T) {
+func TestRuler_LimitsPerGroup(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
@@ -338,24 +338,74 @@ rules:
 `,
 			output: "per-user rules per rule group limit (limit: 1 actual: 2) exceeded\n",
 		},
-		{
-			name:   "when exceeding the rule group limit",
-			status: 400,
-			input: `
-name: test
-interval: 15s
-rules:
-- record: up_rule
-  expr: up{}
-`,
-			output: "per-user rules per rule group limit (limit: 1 actual: 1) exceeded\n",
-		},
 	}
 
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			router := mux.NewRouter()
 			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+			// POST
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+		})
+	}
+}
+
+func TestRuler_RulerGroupLimits(t *testing.T) {
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	defer cleanup()
+
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	tc := []struct {
+		name   string
+		input  string
+		output string
+		err    error
+		status int
+	}{
+		{
+			name:   "when pushing the first group within bounds of the limit",
+			status: 202,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: up{}
+`,
+			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+		},
+		{
+			name:   "when exceeding the rule group limit after sending the first group",
+			status: 400,
+			input: `
+name: test_second_group_will_fail
+interval: 15s
+rules:
+- record: up_rule
+  expr: up{}
+`,
+			output: "per-user rule groups limit (limit: 1 actual: 2) exceeded\n",
+		},
+	}
+
+	// define once so the requests build on each other so the number of rules can be tested
+	router := mux.NewRouter()
+	router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
 			// POST
 			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
 			w := httptest.NewRecorder()

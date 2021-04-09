@@ -770,7 +770,7 @@ func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {
 		return nil
 	}
 
-	if rg < limit {
+	if rg <= limit {
 		return nil
 	}
 
@@ -786,7 +786,7 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 		return nil
 	}
 
-	if rules < limit {
+	if rules <= limit {
 		return nil
 	}
 	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)

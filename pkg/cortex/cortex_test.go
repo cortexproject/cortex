@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 	"go.uber.org/atomic"
@@ -147,6 +148,8 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestGrpcAuthMiddleware(t *testing.T) {
+	prepareGlobalMetricsRegistry(t)
+
 	cfg := Config{
 		AuthEnabled: true, // We must enable this to enable Auth middleware for gRPC server.
 		Server:      getServerConfig(t),
@@ -239,4 +242,15 @@ func (m *mockGrpcServiceHandler) Process(_ frontendv1pb.Frontend_ProcessServer) 
 
 func (m *mockGrpcServiceHandler) QuerierLoop(_ schedulerpb.SchedulerForQuerier_QuerierLoopServer) error {
 	panic("implement me")
+}
+
+func prepareGlobalMetricsRegistry(t *testing.T) {
+	oldReg, oldGat := prometheus.DefaultRegisterer, prometheus.DefaultGatherer
+
+	reg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer, prometheus.DefaultGatherer = reg, reg
+
+	t.Cleanup(func() {
+		prometheus.DefaultRegisterer, prometheus.DefaultGatherer = oldReg, oldGat
+	})
 }

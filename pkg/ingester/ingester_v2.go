@@ -262,8 +262,6 @@ func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
 
 	for _, metric := range metrics {
-		fmt.Println("Deleted", metrics)
-
 		metricName, err := extract.MetricNameFromLabels(metric)
 		if err != nil {
 			// This should never happen because it has already been checked in PreCreation().

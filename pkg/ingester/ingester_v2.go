@@ -105,6 +105,9 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	instanceSeriesCount *atomic.Int64 // Shared across all userTSDB instances created by ingester.
+	instanceLimitsFn    func() *InstanceLimits
+
 	stateMtx       sync.RWMutex
 	state          tsdbState
 	pushesInFlight sync.WaitGroup // Increased with stateMtx read lock held, only if state == active or activeShipping.
@@ -214,6 +217,14 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return nil
 	}
 
+	// Verify ingester's global limit
+	gl := u.instanceLimitsFn()
+	if gl != nil && gl.MaxInMemorySeries > 0 {
+		if series := u.instanceSeriesCount.Load(); series >= gl.MaxInMemorySeries {
+			return errMaxSeriesLimitReached
+		}
+	}
+
 	// Total series limit.
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
 		return err
@@ -233,6 +244,8 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 
 // PostCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostCreation(metric labels.Labels) {
+	u.instanceSeriesCount.Inc()
+
 	metricName, err := extract.MetricNameFromLabels(metric)
 	if err != nil {
 		// This should never happen because it has already been checked in PreCreation().
@@ -243,6 +256,8 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 
 // PostDeletion implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+	u.instanceSeriesCount.Sub(int64(len(metrics)))
+
 	for _, metric := range metrics {
 		metricName, err := extract.MetricNameFromLabels(metric)
 		if err != nil {
@@ -377,6 +392,9 @@ type TSDBState struct {
 	// Timeout chosen for idle compactions.
 	compactionIdleTimeout time.Duration
 
+	// Number of series in memory, across all tenants.
+	seriesCount atomic.Int64
+
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
 	compactionsFailed      prometheus.Counter
@@ -449,14 +467,15 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 	i := &Ingester{
 		cfg:           cfg,
 		clientConfig:  clientConfig,
-		metrics:       newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled),
 		limits:        limits,
 		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
 		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
+		ingestionRate: newEWMARate(0.2, cfg.RateUpdatePeriod),
 	}
+	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -511,11 +530,11 @@ func NewV2ForFlusher(cfg Config, limits *validation.Overrides, registerer promet
 	i := &Ingester{
 		cfg:       cfg,
 		limits:    limits,
-		metrics:   newIngesterMetrics(registerer, false, false),
 		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, false, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	i.TSDBState.shipperIngesterID = "flusher"
 
@@ -613,6 +632,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
+	ingestionRateTicker := time.NewTicker(1 * time.Second)
+	defer ingestionRateTicker.Stop()
+
 	var activeSeriesTickerChan <-chan time.Time
 	if i.cfg.ActiveSeriesMetricsEnabled {
 		t := time.NewTicker(i.cfg.ActiveSeriesMetricsUpdatePeriod)
@@ -628,6 +650,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		select {
 		case <-metadataPurgeTicker.C:
 			i.purgeUserMetricsMetadata()
+		case <-ingestionRateTicker.C:
+			i.ingestionRate.tick()
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
@@ -678,6 +702,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	il := i.getInstanceLimits()
+	if il != nil && il.MaxIngestionRate > 0 {
+		if rate := i.ingestionRate.rate(); rate >= il.MaxIngestionRate {
+			return nil, errMaxSamplesPushRateLimitReached
+		}
 	}
 
 	db, err := i.getOrCreateTSDB(userID, false)
@@ -840,6 +871,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	if perMetricSeriesLimitCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
+
+	i.ingestionRate.add(int64(succeededSamplesCount))
 
 	switch req.Source {
 	case cortexpb.RULE:
@@ -1381,6 +1414,13 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 		return nil, fmt.Errorf(errTSDBCreateIncompatibleState, ingesterState)
 	}
 
+	gl := i.getInstanceLimits()
+	if gl != nil && gl.MaxInMemoryTenants > 0 {
+		if users := int64(len(i.TSDBState.dbs)); users >= gl.MaxInMemoryTenants {
+			return nil, errMaxUsersLimitReached
+		}
+	}
+
 	// Create the database and a shipper for a user
 	db, err := i.createTSDB(userID)
 	if err != nil {
@@ -1408,6 +1448,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+
+		instanceLimitsFn:    i.getInstanceLimits,
+		instanceSeriesCount: &i.TSDBState.seriesCount,
 	}
 
 	// Create a new user database
@@ -1876,6 +1919,11 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		tenantDeleted = true
 	}
 
+	// At this point there are no more pushes to TSDB, and no possible compaction. Normally TSDB is empty,
+	// but if we're closing TSDB because of tenant deletion mark, then it may still contain some series.
+	// We need to remove these series from series count.
+	i.TSDBState.seriesCount.Sub(int64(userDB.Head().NumSeries()))
+
 	dir := userDB.db.Dir()
 
 	if err := userDB.Close(); err != nil {
@@ -2030,4 +2078,22 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	}
 
 	return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
+}
+
+func (i *Ingester) getInstanceLimits() *InstanceLimits {
+	// Don't apply any limits while starting. We especially don't want to apply series in memory limit while replaying WAL.
+	if i.State() == services.Starting {
+		return nil
+	}
+
+	if i.cfg.InstanceLimitsFn == nil {
+		return defaultInstanceLimits
+	}
+
+	l := i.cfg.InstanceLimitsFn()
+	if l == nil {
+		return defaultInstanceLimits
+	}
+
+	return l
 }

@@ -2,8 +2,8 @@ package tenantfederation
 
 import (
 	"context"
-	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
@@ -65,6 +66,7 @@ func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (s
 	}
 
 	return &mergeQuerier{
+		ctx:       ctx,
 		queriers:  queriers,
 		tenantIDs: tenantIDs,
 	}, nil
@@ -77,6 +79,7 @@ func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (s
 // overwritten by the tenant ID and the previous value is exposed through a new
 // label prefixed with "original_". This behaviour is not implemented recursively
 type mergeQuerier struct {
+	ctx       context.Context
 	queriers  []storage.Querier
 	tenantIDs []string
 }
@@ -144,22 +147,69 @@ type stringSliceFunc func(storage.Querier) ([]string, storage.Warnings, error)
 // the output of the stringSliceFunc to be sorted, as results of LabelValues
 // are not sorted.
 //
-// TODO: Consider running stringSliceFunc calls concurrently
+
+type stringSliceFuncResult struct {
+	Result   []string
+	Warnings storage.Warnings
+}
+
 func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
+
+	g, _ := errgroup.WithContext(m.ctx)
+
 	var warnings storage.Warnings
 	resultMap := make(map[string]struct{})
-	for pos, tenantID := range m.tenantIDs {
-		result, resultWarnings, err := f(m.queriers[pos])
-		if err != nil {
-			return nil, nil, err
+	resultCh := make(chan *stringSliceFuncResult)
+	resultDone := make(chan struct{})
+
+	go func() {
+		defer func() {
+			close(resultDone)
+		}()
+		for result := range resultCh {
+			for _, e := range result.Result {
+				resultMap[e] = struct{}{}
+			}
+			warnings = append(warnings, result.Warnings...)
 		}
-		for _, e := range result {
-			resultMap[e] = struct{}{}
-		}
-		for _, w := range resultWarnings {
-			warnings = append(warnings, fmt.Errorf("error querying tenant id %s: %w", tenantID, w))
-		}
+	}()
+
+	for pos := range m.tenantIDs {
+		querier := m.queriers[pos]
+		tenantID := m.tenantIDs[pos]
+		g.Go(func() error {
+			result, resultWarnings, err := f(querier)
+			if err != nil {
+				return errors.Wrapf(err, `error querying {%s="%s"}`, defaultTenantLabel, tenantID)
+			}
+
+			var warnings = make(storage.Warnings, len(resultWarnings))
+			for pos := range resultWarnings {
+				warnings[pos] = errors.Wrapf(resultWarnings[pos], `warning querying {%s="%s"}`, defaultTenantLabel, tenantID)
+			}
+
+			resultCh <- &stringSliceFuncResult{
+				Result:   result,
+				Warnings: warnings,
+			}
+
+			return nil
+		})
 	}
+
+	// await first error or return of all results
+	err := g.Wait()
+
+	//.stop result channel
+	close(resultCh)
+
+	// return error of slice functions
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// wait for all results
+	<-resultDone
 
 	var result = make([]string, 0, len(resultMap))
 	for e := range resultMap {
@@ -173,7 +223,7 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 func (m *mergeQuerier) Close() error {
 	errs := tsdb_errors.NewMulti()
 	for pos, tenantID := range m.tenantIDs {
-		errs.Add(errors.Wrapf(m.queriers[pos].Close(), "failed to close querier for tenant id %s", tenantID))
+		errs.Add(errors.Wrapf(m.queriers[pos].Close(), `failed to close querier for {%s="%s"}`, defaultTenantLabel, tenantID))
 	}
 	return errs.Err()
 }
@@ -184,22 +234,29 @@ func (m *mergeQuerier) Close() error {
 // tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, m.tenantIDs, matchers...)
-	var seriesSets = make([]storage.SeriesSet, 0, len(matchedTenants))
-	for pos, tenantID := range m.tenantIDs {
-		if _, matched := matchedTenants[tenantID]; !matched {
+	var seriesSets = make([]storage.SeriesSet, len(matchedTenants))
+	var ssPos int
+	var wg sync.WaitGroup
+	for tenantPos := range m.tenantIDs {
+		if _, matched := matchedTenants[m.tenantIDs[tenantPos]]; !matched {
 			continue
 		}
-		seriesSets = append(seriesSets, &addLabelsSeriesSet{
-			// TODO: Consider running Select calls concurrently
-			upstream: m.queriers[pos].Select(sortSeries, hints, filteredMatchers...),
-			labels: labels.Labels{
-				{
-					Name:  defaultTenantLabel,
-					Value: tenantID,
+		wg.Add(1)
+		go func(ssPos, tenantPos int) {
+			defer wg.Done()
+			seriesSets[ssPos] = &addLabelsSeriesSet{
+				upstream: m.queriers[tenantPos].Select(sortSeries, hints, filteredMatchers...),
+				labels: labels.Labels{
+					{
+						Name:  defaultTenantLabel,
+						Value: m.tenantIDs[tenantPos],
+					},
 				},
-			},
-		})
+			}
+		}(ssPos, tenantPos)
+		ssPos++
 	}
+	wg.Wait()
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
 }
 
@@ -266,13 +323,18 @@ func (m *addLabelsSeriesSet) At() storage.Series {
 // The error that iteration as failed with.
 // When an error occurs, set cannot continue to iterate.
 func (m *addLabelsSeriesSet) Err() error {
-	return m.upstream.Err()
+	return errors.Wrapf(m.upstream.Err(), "error querying %s", m.labels.String())
 }
 
 // A collection of warnings for the whole set.
 // Warnings could be return even iteration has not failed with error.
 func (m *addLabelsSeriesSet) Warnings() storage.Warnings {
-	return m.upstream.Warnings()
+	upstream := m.upstream.Warnings()
+	var warnings = make(storage.Warnings, len(upstream))
+	for pos := range upstream {
+		warnings[pos] = errors.Wrapf(upstream[pos], "warning querying %s", m.labels.String())
+	}
+	return warnings
 }
 
 type addLabelsSeries struct {

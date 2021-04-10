@@ -690,6 +690,31 @@ func TestHandleHit(t *testing.T) {
 				mkExtentWithStep(60, 180, 20),
 			},
 		},
+		{
+			name: "Should not throw error if complete-overlapped smaller Extent is erroneous",
+			input: &PrometheusRequest{
+				// This request is carefully crated such that cachedEntry is not used to fulfill
+				// the request.
+				Start: 160,
+				End:   180,
+				Step:  20,
+			},
+			cachedEntry: []Extent{
+				{
+					Start: 60,
+					End:   80,
+
+					// if the optimization of "sorting by End when Start of 2 Extents are equal" is not there, this nil
+					// response would cause error during Extents merge phase. With the optimization
+					// this bad Extent should be dropped. The good Extent below can be used instead.
+					Response: nil,
+				},
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 180, 20),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sut := resultsCache{

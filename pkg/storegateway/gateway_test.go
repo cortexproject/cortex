@@ -3,6 +3,8 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"io/ioutil"
 	"os"
 	"path"
@@ -29,6 +31,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
@@ -732,19 +735,19 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 
 	tests := map[string]struct {
 		limit       int
-		expectedErr string
+		expectedErr error
 	}{
 		"no limit enforced if zero": {
 			limit:       0,
-			expectedErr: "",
+			expectedErr: nil,
 		},
 		"should return NO error if the actual number of queried chunks is <= limit": {
 			limit:       chunksQueried,
-			expectedErr: "",
+			expectedErr: nil,
 		},
 		"should return error if the actual number of queried chunks is > limit": {
 			limit:       chunksQueried - 1,
-			expectedErr: fmt.Sprintf("exceeded chunks limit: limit %d violated (got %d)", chunksQueried-1, chunksQueried),
+			expectedErr: status.Error(http.StatusUnprocessableEntity, fmt.Sprintf("exceeded chunks limit: rpc error: code = Code(422) desc = limit %d violated (got %d)", chunksQueried-1, chunksQueried)),
 		},
 	}
 
@@ -798,9 +801,15 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 			srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
 			err = g.Series(req, srv)
 
-			if testData.expectedErr != "" {
+			if testData.expectedErr != nil {
 				require.Error(t, err)
-				assert.True(t, strings.Contains(err.Error(), testData.expectedErr))
+				assert.IsType(t, testData.expectedErr, err)
+				s1, ok := status.FromError(errors.Cause(err))
+				assert.True(t, ok)
+				s2, ok := status.FromError(errors.Cause(testData.expectedErr))
+				assert.True(t, ok)
+				assert.True(t, strings.Contains(s1.Message(), s2.Message()))
+				assert.Equal(t, s1.Code(), s2.Code())
 			} else {
 				require.NoError(t, err)
 				assert.Empty(t, srv.Warnings)

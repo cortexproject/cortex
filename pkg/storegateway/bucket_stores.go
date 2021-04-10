@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/metadata"
 
@@ -598,10 +600,25 @@ func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
 }
 
+type chunkLimiter struct {
+	limiter *store.Limiter
+}
+
+func (c *chunkLimiter) Reserve(num uint64) error {
+	err := c.limiter.Reserve(num)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
+	}
+
+	return nil
+}
+
 func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		return store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter)
+		return &chunkLimiter{
+			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter),
+		}
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/labels"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
+	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 
@@ -93,6 +94,9 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
+	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
+	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -121,6 +125,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
+
+	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
+	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x
@@ -167,6 +176,10 @@ type Ingester struct {
 
 	// Prometheus block storage
 	TSDBState TSDBState
+
+	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
+	ingestionRate        *ewmaRate
+	inflightPushRequests atomic.Int64
 }
 
 // ChunkStore is the interface we need to store chunks
@@ -176,6 +189,8 @@ type ChunkStore interface {
 
 // New constructs a new Ingester.
 func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, chunkStore ChunkStore, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+	defaultInstanceLimits = &cfg.DefaultLimits
+
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.MakeIngesterClient
 	}
@@ -209,7 +224,6 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	i := &Ingester{
 		cfg:          cfg,
 		clientConfig: clientConfig,
-		metrics:      newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled),
 
 		limits:           limits,
 		chunkStore:       chunkStore,
@@ -219,6 +233,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 		registerer:       registerer,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	var err error
 	// During WAL recovery, it will create new user states which requires the limiter.
@@ -301,7 +316,6 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 
 	i := &Ingester{
 		cfg:              cfg,
-		metrics:          newIngesterMetrics(registerer, true, false),
 		chunkStore:       chunkStore,
 		flushQueues:      make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		flushRateLimiter: rate.NewLimiter(rate.Inf, 1),
@@ -309,6 +323,7 @@ func NewForFlusher(cfg Config, chunkStore ChunkStore, limits *validation.Overrid
 		limits:           limits,
 		logger:           logger,
 	}
+	i.metrics = newIngesterMetrics(registerer, true, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
 
 	i.BasicService = services.NewBasicService(i.startingForFlusher, i.loopForFlusher, i.stopping)
 	return i, nil
@@ -442,6 +457,17 @@ func (i *Ingester) checkRunningOrStopping() error {
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
+	}
+
+	// We will report *this* request in the error too.
+	inflight := i.inflightPushRequests.Inc()
+	defer i.inflightPushRequests.Dec()
+
+	gl := i.getInstanceLimits()
+	if gl != nil && gl.MaxInflightPushRequests > 0 {
+		if inflight > gl.MaxInflightPushRequests {
+			return nil, errTooManyInflightPushRequests
+		}
 	}
 
 	if i.cfg.BlocksStorageEnabled {

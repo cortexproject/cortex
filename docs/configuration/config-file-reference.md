@@ -771,6 +771,31 @@ lifecycler:
 # After what time a series is considered to be inactive.
 # CLI flag: -ingester.active-series-metrics-idle-timeout
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
+
+instance_limits:
+  # Max ingestion rate (samples/sec) that ingester will accept. This limit is
+  # per-ingester, not per-tenant. Additional push requests will be rejected.
+  # Current ingestion rate is computed as exponentially weighted moving average,
+  # updated every second. This limit only works when using blocks engine. 0 =
+  # unlimited.
+  # CLI flag: -ingester.instance-limits.max-ingestion-rate
+  [max_ingestion_rate: <float> | default = 0]
+
+  # Max users that this ingester can hold. Requests from additional users will
+  # be rejected. This limit only works when using blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-tenants
+  [max_tenants: <int> | default = 0]
+
+  # Max series that this ingester can hold (across all tenants). Requests to
+  # create additional series will be rejected. This limit only works when using
+  # blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-series
+  [max_series: <int> | default = 0]
+
+  # Max inflight push requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-inflight-push-requests
+  [max_inflight_push_requests: <int> | default = 0]
 ```
 
 ### `querier_config`
@@ -2081,6 +2106,14 @@ alertmanager_client:
   # Skip validating server certificate.
   # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+# The interval between persisting the current alertmanager state (notification
+# log and silences) to object storage. This is only used when sharding is
+# enabled. This state is read when all replicas for a shard can not be
+# contacted. In this scenario, having persisted the state more frequently will
+# result in potentially fewer lost silences, and fewer duplicate notifications.
+# CLI flag: -alertmanager.persist-interval
+[persist_interval: <duration> | default = 15m]
 ```
 
 ### `alertmanager_storage_config`
@@ -3761,6 +3794,33 @@ The `memberlist_config` configures the Gossip memberlist.
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Enable TLS on the memberlist transport layer.
+# CLI flag: -memberlist.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -memberlist.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -memberlist.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -memberlist.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -memberlist.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -memberlist.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `limits_config`
@@ -3829,7 +3889,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h]
+[reject_old_samples_max_age: <duration> | default = 2w]
 
 # Duration which table will be created/deleted before/after it's needed; we
 # won't accept sample from before this time.

@@ -98,36 +98,8 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
-// RespIterator is a iterator for stream http response
-type RespIterator interface {
-	// Close must be called to release resources once the iterator is not
-	// used anymore.
-	Close()
-	// Next returns a channel that will be closed once the iterator is
-	// exhausted.
-	Next() <-chan []byte
-	// Put input a new item to iterator
-	Put(v []byte)
-}
-
-type respIter struct {
-	ch chan []byte
-}
-
-// NewRespIter returns a new streamResp
-func NewRespIter(ch chan []byte) RespIterator {
-	return &respIter{ch: ch}
-}
-func (it respIter) Next() <-chan []byte {
-	return it.ch
-}
-func (it respIter) Close() { close(it.ch) }
-func (it respIter) Put(v []byte) {
-	it.ch <- v
-}
-
 // StreamWriteResponse stream writes data as http response
-func StreamWriteResponse(w http.ResponseWriter, iter RespIterator, contentType string) {
+func StreamWriteResponse(w http.ResponseWriter, iter chan []byte, contentType string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "expected http.ResponseWriter to be an http.Flusher", http.StatusInternalServerError)
@@ -140,7 +112,7 @@ func StreamWriteResponse(w http.ResponseWriter, iter RespIterator, contentType s
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	for m := range iter.Next() {
+	for m := range iter {
 		_, _ = w.Write(m)
 		flusher.Flush()
 	}

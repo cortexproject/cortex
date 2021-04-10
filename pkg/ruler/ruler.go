@@ -830,11 +830,11 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	done := make(chan struct{})
-	iter := util.NewRespIter(make(chan []byte))
+	iter := make(chan []byte)
 
 	go func() {
 		util.StreamWriteResponse(w, iter, "text/yaml")
-		done <- struct{}{}
+		close(done)
 	}()
 
 	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
@@ -850,13 +850,16 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 
-		iter.Put(data)
+		select {
+		case iter <- data:
+		case <-done: // stop early, if sending response has already finished
+		}
 
 		return nil
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
 	}
-	iter.Close()
+	close(iter)
 	<-done
 }

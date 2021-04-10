@@ -118,17 +118,17 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	done := make(chan struct{})
-	iter := util.NewRespIter(make(chan []byte))
+	iter := make(chan []byte)
 	go func() {
 		util.StreamWriteResponse(w, iter, "text/yaml")
-		done <- struct{}{}
+		close(done)
 	}()
 	for k, v := range tt.value {
 		data, err := yaml.Marshal(map[string]*testStruct{k: v})
 		assert.Nil(t, err)
-		iter.Put(data)
+		iter <- data
 	}
-	iter.Close()
+	close(iter)
 	<-done
 	assert.Equal(t, tt.expectedContentType, w.Header().Get("Content-Type"))
 	assert.Equal(t, 200, w.Code)

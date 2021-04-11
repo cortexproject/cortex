@@ -100,21 +100,12 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 
 // StreamWriteResponse stream writes data as http response
 func StreamWriteResponse(w http.ResponseWriter, iter chan []byte, contentType string) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "expected http.ResponseWriter to be an http.Flusher", http.StatusInternalServerError)
-		return
-	}
-
 	// Send the initial headers saying we're gonna stream the response.
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	for m := range iter {
 		_, _ = w.Write(m)
-		flusher.Flush()
 	}
 }
 

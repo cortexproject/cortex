@@ -204,10 +204,10 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 	}
 
 	done := make(chan struct{})
-	iter := make(chan []byte)
+	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteResponse(w, iter, "text/yaml")
+		util.StreamWriteYAMLResponse(w, iter)
 		close(done)
 	}()
 
@@ -218,15 +218,11 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
 		}
-		cfgMap := map[string]*UserConfig{
+		data := map[string]*UserConfig{
 			userID: {
 				TemplateFiles:      alertspb.ParseTemplates(cfg),
 				AlertmanagerConfig: cfg.RawConfig,
 			},
-		}
-		data, err := yaml.Marshal(cfgMap)
-		if err != nil {
-			return err
 		}
 
 		select {

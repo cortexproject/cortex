@@ -735,7 +735,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 
 	// Check status code and header
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, "text/yaml", resp.Header.Get("Content-Type"))
+	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
 
 	// Testing the running rules for user1 in the mock store
 	gs := make(map[string]map[string][]rulefmt.RuleGroup) // user:namespace:[]rulefmt.RuleGroup

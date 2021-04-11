@@ -98,14 +98,16 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
-// StreamWriteResponse stream writes data as http response
-func StreamWriteResponse(w http.ResponseWriter, iter chan []byte, contentType string) {
-	// Send the initial headers saying we're gonna stream the response.
-	w.Header().Set("Transfer-Encoding", "chunked")
-	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(http.StatusOK)
-	for m := range iter {
-		_, _ = w.Write(m)
+// StreamWriteYAMLResponse stream writes data as http response
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}) {
+	w.Header().Set("Content-Type", "application/yaml")
+	for v := range iter {
+		data, err := yaml.Marshal(v)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(data)
 	}
 }
 

@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -830,10 +829,10 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	done := make(chan struct{})
-	iter := make(chan []byte)
+	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteResponse(w, iter, "text/yaml")
+		util.StreamWriteYAMLResponse(w, iter)
 		close(done)
 	}()
 
@@ -844,11 +843,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
-		rgMap := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}
-		data, err := yaml.Marshal(rgMap)
-		if err != nil {
-			return err
-		}
+		data := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}
 
 		select {
 		case iter <- data:

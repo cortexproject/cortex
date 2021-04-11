@@ -101,9 +101,9 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	}{
 		name: "Test Stream Render YAML",
 		headers: map[string]string{
-			"Content-Type": "text/yaml",
+			"Content-Type": "application/yaml",
 		},
-		expectedContentType: "text/yaml",
+		expectedContentType: "application/yaml",
 		value:               make(map[string]*testStruct),
 	}
 	for i := 0; i < rand.Intn(100); i++ {
@@ -118,15 +118,13 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	done := make(chan struct{})
-	iter := make(chan []byte)
+	iter := make(chan interface{})
 	go func() {
-		util.StreamWriteResponse(w, iter, "text/yaml")
+		util.StreamWriteYAMLResponse(w, iter)
 		close(done)
 	}()
 	for k, v := range tt.value {
-		data, err := yaml.Marshal(map[string]*testStruct{k: v})
-		assert.Nil(t, err)
-		iter <- data
+		iter <- map[string]*testStruct{k: v}
 	}
 	close(iter)
 	<-done

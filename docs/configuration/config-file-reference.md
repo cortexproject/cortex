@@ -576,8 +576,8 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# Max ingestion rate (samples/sec) that distributor will accept. This limit is
-# per-distributor, not per-tenant. Additional push requests will be rejected.
+# Max ingestion rate (samples/sec) that this distributor will accept. This limit
+# is per-distributor, not per-tenant. Additional push requests will be rejected.
 # Current ingestion rate is computed as exponentially weighted moving average,
 # updated every second. 0 = unlimited.
 # CLI flag: -distributor.max-ingestion-rate

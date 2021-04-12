@@ -127,7 +127,7 @@ func (m *mockSeriesSet) Next() bool {
 	return m.upstream.Next()
 }
 
-// At returns full series. Returned series should be iteratable even after Next is called.
+// At returns full series. Returned series should be iterable even after Next is called.
 func (m *mockSeriesSet) At() storage.Series {
 	return m.upstream.At()
 }
@@ -139,7 +139,7 @@ func (m *mockSeriesSet) Err() error {
 }
 
 // A collection of warnings for the whole set.
-// Warnings could be return even iteration has not failed with error.
+// Warnings could be returned even if iteration has not failed with error.
 func (m *mockSeriesSet) Warnings() storage.Warnings {
 	return m.warnings
 }
@@ -443,9 +443,7 @@ func assertEqualWarnings(t *testing.T, exp []string, act storage.Warnings) {
 	for pos := range act {
 		actStrings[pos] = act[pos].Error()
 	}
-	sort.Strings(exp)
-	sort.Strings(actStrings)
-	assert.Equal(t, exp, actStrings)
+	assert.ElementsMatch(t, exp, actStrings)
 }
 
 func TestSetLabelsRetainExisting(t *testing.T) {

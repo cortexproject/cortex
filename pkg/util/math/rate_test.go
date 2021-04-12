@@ -1,4 +1,4 @@
-package ingester
+package math
 
 import (
 	"testing"
@@ -24,24 +24,24 @@ func TestRate(t *testing.T) {
 		{0, 0.203423744},
 		{0, 0.1627389952},
 	}
-	r := newEWMARate(0.2, time.Minute)
+	r := NewEWMARate(0.2, time.Minute)
 
 	for _, tick := range ticks {
 		for e := 0; e < tick.events; e++ {
-			r.inc()
+			r.Inc()
 		}
-		r.tick()
+		r.Tick()
 		// We cannot do double comparison, because double operations on different
 		// platforms may actually produce results that differ slightly.
 		// There are multiple issues about this in Go's github, eg: 18354 or 20319.
-		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate")
+		require.InDelta(t, tick.want, r.Rate(), 0.0000000001, "unexpected rate")
 	}
 
-	r = newEWMARate(0.2, time.Minute)
+	r = NewEWMARate(0.2, time.Minute)
 
 	for _, tick := range ticks {
-		r.add(int64(tick.events))
-		r.tick()
-		require.InDelta(t, tick.want, r.rate(), 0.0000000001, "unexpected rate")
+		r.Add(int64(tick.events))
+		r.Tick()
+		require.InDelta(t, tick.want, r.Rate(), 0.0000000001, "unexpected rate")
 	}
 }

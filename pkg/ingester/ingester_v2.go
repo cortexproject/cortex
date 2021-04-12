@@ -40,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -126,8 +127,8 @@ type userTSDB struct {
 	lastDeletionMarkCheck atomic.Int64
 
 	// for statistics
-	ingestedAPISamples  *ewmaRate
-	ingestedRuleSamples *ewmaRate
+	ingestedAPISamples  *util_math.EwmaRate
+	ingestedRuleSamples *util_math.EwmaRate
 
 	// Cached shipped blocks.
 	shippedBlocksMtx sync.Mutex
@@ -473,7 +474,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
-		ingestionRate: newEWMARate(0.2, cfg.RateUpdatePeriod),
+		ingestionRate: util_math.NewEWMARate(0.2, cfg.RateUpdatePeriod),
 	}
 	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
 
@@ -651,12 +652,12 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		case <-metadataPurgeTicker.C:
 			i.purgeUserMetricsMetadata()
 		case <-ingestionRateTicker.C:
-			i.ingestionRate.tick()
+			i.ingestionRate.Tick()
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
-				db.ingestedAPISamples.tick()
-				db.ingestedRuleSamples.tick()
+				db.ingestedAPISamples.Tick()
+				db.ingestedRuleSamples.Tick()
 			}
 			i.userStatesMtx.RUnlock()
 
@@ -706,7 +707,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	il := i.getInstanceLimits()
 	if il != nil && il.MaxIngestionRate > 0 {
-		if rate := i.ingestionRate.rate(); rate >= il.MaxIngestionRate {
+		if rate := i.ingestionRate.Rate(); rate >= il.MaxIngestionRate {
 			return nil, errMaxSamplesPushRateLimitReached
 		}
 	}
@@ -872,15 +873,15 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 
-	i.ingestionRate.add(int64(succeededSamplesCount))
+	i.ingestionRate.Add(int64(succeededSamplesCount))
 
 	switch req.Source {
 	case cortexpb.RULE:
-		db.ingestedRuleSamples.add(int64(succeededSamplesCount))
+		db.ingestedRuleSamples.Add(int64(succeededSamplesCount))
 	case cortexpb.API:
 		fallthrough
 	default:
-		db.ingestedAPISamples.add(int64(succeededSamplesCount))
+		db.ingestedAPISamples.Add(int64(succeededSamplesCount))
 	}
 
 	if firstPartialErr != nil {
@@ -1138,8 +1139,8 @@ func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequ
 }
 
 func createUserStats(db *userTSDB) *client.UserStatsResponse {
-	apiRate := db.ingestedAPISamples.rate()
-	ruleRate := db.ingestedRuleSamples.rate()
+	apiRate := db.ingestedAPISamples.Rate()
+	ruleRate := db.ingestedRuleSamples.Rate()
 	return &client.UserStatsResponse{
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
@@ -1446,8 +1447,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
 		seriesInMetric:      newMetricCounter(i.limiter),
-		ingestedAPISamples:  newEWMARate(0.2, i.cfg.RateUpdatePeriod),
-		ingestedRuleSamples: newEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 
 		instanceLimitsFn:    i.getInstanceLimits,
 		instanceSeriesCount: &i.TSDBState.seriesCount,

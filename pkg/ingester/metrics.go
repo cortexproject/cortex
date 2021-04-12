@@ -262,7 +262,7 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 
 		inflightRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cortex_ingester_inflight_push_requests",
-			Help: "Current number of inflight push requests",
+			Help: "Current number of inflight push requests in ingester.",
 		}, func() float64 {
 			if inflightRequests != nil {
 				return float64(inflightRequests.Load())

@@ -52,6 +52,8 @@ const (
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
+
+	instanceIngestionRateTickInterval = time.Second
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -474,7 +476,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
-		ingestionRate: util_math.NewEWMARate(0.2, cfg.RateUpdatePeriod),
+		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 	}
 	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
 
@@ -633,7 +635,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
-	ingestionRateTicker := time.NewTicker(1 * time.Second)
+	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
 	defer ingestionRateTicker.Stop()
 
 	var activeSeriesTickerChan <-chan time.Time

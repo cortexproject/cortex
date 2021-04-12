@@ -756,7 +756,7 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 				_, err := ingester.v2Push(ctx, generateSamplesForLabel(labels.FromStrings(labels.MetricName, "test"), 10000))
 				require.NoError(b, err)
 
-				ingester.ingestionRate.tick()
+				ingester.ingestionRate.Tick()
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
@@ -2766,8 +2766,8 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 
 	// force update statistics
 	for _, db := range i.TSDBState.dbs {
-		db.ingestedAPISamples.tick()
-		db.ingestedRuleSamples.tick()
+		db.ingestedAPISamples.Tick()
+		db.ingestedRuleSamples.Tick()
 	}
 
 	// Get label names
@@ -2811,8 +2811,8 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 
 	// force update statistics
 	for _, db := range i.TSDBState.dbs {
-		db.ingestedAPISamples.tick()
-		db.ingestedRuleSamples.tick()
+		db.ingestedAPISamples.Tick()
+		db.ingestedRuleSamples.Tick()
 	}
 
 	// Get label names
@@ -3514,7 +3514,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 					}
 
 					// imitate time ticking between each push
-					i.ingestionRate.tick()
+					i.ingestionRate.Tick()
 
 					rate := testutil.ToFloat64(i.metrics.ingestionRate)
 					require.NotZero(t, rate)

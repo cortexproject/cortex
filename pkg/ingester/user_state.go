@@ -21,7 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	"github.com/cortexproject/cortex/pkg/util/math"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -44,8 +43,8 @@ type userState struct {
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
 	index               *index.InvertedIndex
-	ingestedAPISamples  *math.EwmaRate
-	ingestedRuleSamples *math.EwmaRate
+	ingestedAPISamples  *util_math.EwmaRate
+	ingestedRuleSamples *util_math.EwmaRate
 	activeSeries        *ActiveSeries
 	logger              log.Logger
 

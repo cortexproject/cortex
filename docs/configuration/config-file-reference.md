@@ -1584,6 +1584,18 @@ ring:
 # Enable the ruler api
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
+
+# Comma separated list of tenants whose rules this ruler can evaluate. If
+# specified, only these tenants will be handled by ruler, otherwise this ruler
+# can process rules from all tenants. Subject to sharding.
+# CLI flag: -ruler.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose rules this ruler cannot evaluate. If
+# specified, and ruler would normally pick given tenant for processing (eg. via
+# sharding), tenant will be ignored instead.
+# CLI flag: -ruler.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 ```
 
 ### `ruler_storage_config`

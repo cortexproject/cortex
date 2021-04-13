@@ -507,7 +507,7 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 		return
 	}
 
-	for userID, _ := range result {
+	for userID := range result {
 		if !r.allowedUsers.IsAllowed(userID) {
 			level.Debug(r.logger).Log("msg", "ignoring rule groups for user, not allowed", "user", userID)
 			delete(result, userID)

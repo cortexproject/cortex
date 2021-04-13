@@ -1998,6 +1998,8 @@ func (i *Ingester) v2LifecyclerFlush() {
 	level.Info(i.logger).Log("msg", "finished flushing and shipping TSDB blocks")
 }
 
+const tenantParam = "t"
+
 // Blocks version of Flush handler. It force-compacts blocks, and triggers shipping.
 func (i *Ingester) v2FlushHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
@@ -2007,7 +2009,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tenants := r.Form["tenant"]
+	tenants := r.Form[tenantParam]
 
 	var allowedUsers map[string]struct{} = nil // All users are allowed.
 	if len(tenants) > 0 {

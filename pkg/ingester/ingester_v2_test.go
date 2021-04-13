@@ -2579,8 +2579,8 @@ func TestIngester_flushing(t *testing.T) {
 				`), "cortex_ingester_shipper_uploads_total"))
 
 				users := url.Values{}
-				users.Add("tenant", "unknown-user")
-				users.Add("tenant", "another-unknown-user")
+				users.Add(tenantParam, "unknown-user")
+				users.Add(tenantParam, "another-unknown-user")
 
 				// Using wait=true makes this a synchronous call.
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true&"+users.Encode(), nil))
@@ -2594,9 +2594,9 @@ func TestIngester_flushing(t *testing.T) {
 				verifyCompactedHead(t, i, false)
 
 				users = url.Values{}
-				users.Add("tenant", "different-user")
-				users.Add("tenant", userID) // Our user
-				users.Add("tenant", "yet-another-user")
+				users.Add(tenantParam, "different-user")
+				users.Add(tenantParam, userID) // Our user
+				users.Add(tenantParam, "yet-another-user")
 
 				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true&"+users.Encode(), nil))
 

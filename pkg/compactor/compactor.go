@@ -178,12 +178,7 @@ type Compactor struct {
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
-
-	// If empty, all users are enabled. If not empty, only users in the map are enabled (possibly owned by compactor, also subject to sharding configuration).
-	enabledUsers map[string]struct{}
-
-	// If empty, no users are disabled. If not empty, users in the map are disabled (not owned by this compactor).
-	disabledUsers map[string]struct{}
+	allowedUsers *util.AllowedUsers
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -272,6 +267,7 @@ func newCompactor(
 		bucketClientFactory:    bucketClientFactory,
 		blocksGrouperFactory:   blocksGrouperFactory,
 		blocksCompactorFactory: blocksCompactorFactory,
+		allowedUsers:           util.NewAllowedUsers(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -321,20 +317,9 @@ func newCompactor(
 	}
 
 	if len(compactorCfg.EnabledTenants) > 0 {
-		c.enabledUsers = map[string]struct{}{}
-		for _, u := range compactorCfg.EnabledTenants {
-			c.enabledUsers[u] = struct{}{}
-		}
-
 		level.Info(c.logger).Log("msg", "using enabled users", "enabled", strings.Join(compactorCfg.EnabledTenants, ", "))
 	}
-
 	if len(compactorCfg.DisabledTenants) > 0 {
-		c.disabledUsers = map[string]struct{}{}
-		for _, u := range compactorCfg.DisabledTenants {
-			c.disabledUsers[u] = struct{}{}
-		}
-
 		level.Info(c.logger).Log("msg", "using disabled users", "disabled", strings.Join(compactorCfg.DisabledTenants, ", "))
 	}
 
@@ -711,7 +696,7 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Compactor) ownUser(userID string) (bool, error) {
-	if !isAllowedUser(c.enabledUsers, c.disabledUsers, userID) {
+	if !c.allowedUsers.IsAllowed(userID) {
 		return false, nil
 	}
 
@@ -736,22 +721,6 @@ func (c *Compactor) ownUser(userID string) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
-}
-
-func isAllowedUser(enabledUsers, disabledUsers map[string]struct{}, userID string) bool {
-	if len(enabledUsers) > 0 {
-		if _, ok := enabledUsers[userID]; !ok {
-			return false
-		}
-	}
-
-	if len(disabledUsers) > 0 {
-		if _, ok := disabledUsers[userID]; ok {
-			return false
-		}
-	}
-
-	return true
 }
 
 const compactorMetaPrefix = "compactor-meta-"

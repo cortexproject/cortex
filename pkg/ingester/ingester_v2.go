@@ -1996,7 +1996,10 @@ func (i *Ingester) v2LifecyclerFlush() {
 	level.Info(i.logger).Log("msg", "finished flushing and shipping TSDB blocks")
 }
 
-const tenantParam = "t"
+const (
+	tenantParam = "tenant"
+	waitParam   = "wait"
+)
 
 // Blocks version of Flush handler. It force-compacts blocks, and triggers shipping.
 func (i *Ingester) v2FlushHandler(w http.ResponseWriter, r *http.Request) {
@@ -2070,7 +2073,6 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, r *http.Request) {
 		level.Info(i.logger).Log("msg", "flushing TSDB blocks: finished")
 	}
 
-	const waitParam = "wait"
 	if len(r.Form[waitParam]) > 0 && r.Form[waitParam][0] == "true" {
 		// Run synchronously. This simplifies and speeds up tests.
 		run()

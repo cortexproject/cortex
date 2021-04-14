@@ -1152,48 +1152,6 @@ func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	return string(content)
 }
 
-func TestAllowedUser(t *testing.T) {
-	testCases := map[string]struct {
-		enabled, disabled map[string]struct{}
-		user              string
-		expected          bool
-	}{
-		"no enabled or disabled": {
-			user:     "test",
-			expected: true,
-		},
-
-		"only enabled, enabled": {
-			enabled:  map[string]struct{}{"user": {}},
-			user:     "user",
-			expected: true,
-		},
-
-		"only enabled, disabled": {
-			enabled:  map[string]struct{}{"user": {}},
-			user:     "not user",
-			expected: false,
-		},
-
-		"only disabled, disabled": {
-			disabled: map[string]struct{}{"user": {}},
-			user:     "user",
-			expected: false,
-		},
-
-		"only disabled, enabled": {
-			disabled: map[string]struct{}{"user": {}},
-			user:     "not user",
-			expected: true,
-		},
-	}
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, tc.expected, isAllowedUser(tc.enabled, tc.disabled, tc.user))
-		})
-	}
-}
-
 func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	numUsers := 10
 

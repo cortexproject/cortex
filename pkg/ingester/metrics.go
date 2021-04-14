@@ -6,6 +6,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -64,7 +65,7 @@ type ingesterMetrics struct {
 	inflightRequests        prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, instanceLimitsFn func() *InstanceLimits, ingestionRate *ewmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, instanceLimitsFn func() *InstanceLimits, ingestionRate *util_math.EwmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
 		instanceLimitsHelp = "Instance limits used by this ingester." // Must be same for all registrations.
@@ -254,7 +255,7 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Help: "Current ingestion rate in samples/sec that ingester is using to limit access.",
 		}, func() float64 {
 			if ingestionRate != nil {
-				return ingestionRate.rate()
+				return ingestionRate.Rate()
 			}
 			return 0
 		}),

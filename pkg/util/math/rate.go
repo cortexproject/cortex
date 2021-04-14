@@ -1,4 +1,4 @@
-package ingester
+package math
 
 import (
 	"sync"
@@ -7,8 +7,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-// ewmaRate tracks an exponentially weighted moving average of a per-second rate.
-type ewmaRate struct {
+// EwmaRate tracks an exponentially weighted moving average of a per-second rate.
+type EwmaRate struct {
 	newEvents atomic.Int64
 
 	alpha    float64
@@ -19,22 +19,22 @@ type ewmaRate struct {
 	init     bool
 }
 
-func newEWMARate(alpha float64, interval time.Duration) *ewmaRate {
-	return &ewmaRate{
+func NewEWMARate(alpha float64, interval time.Duration) *EwmaRate {
+	return &EwmaRate{
 		alpha:    alpha,
 		interval: interval,
 	}
 }
 
-// rate returns the per-second rate.
-func (r *ewmaRate) rate() float64 {
+// Rate returns the per-second rate.
+func (r *EwmaRate) Rate() float64 {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 	return r.lastRate
 }
 
-// tick assumes to be called every r.interval.
-func (r *ewmaRate) tick() {
+// Tick assumes to be called every r.interval.
+func (r *EwmaRate) Tick() {
 	newEvents := r.newEvents.Swap(0)
 	instantRate := float64(newEvents) / r.interval.Seconds()
 
@@ -49,11 +49,11 @@ func (r *ewmaRate) tick() {
 	}
 }
 
-// inc counts one event.
-func (r *ewmaRate) inc() {
+// Inc counts one event.
+func (r *EwmaRate) Inc() {
 	r.newEvents.Inc()
 }
 
-func (r *ewmaRate) add(delta int64) {
+func (r *EwmaRate) Add(delta int64) {
 	r.newEvents.Add(delta)
 }

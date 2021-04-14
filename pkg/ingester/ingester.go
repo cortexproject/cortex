@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -178,7 +179,7 @@ type Ingester struct {
 	TSDBState TSDBState
 
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
-	ingestionRate        *ewmaRate
+	ingestionRate        *util_math.EwmaRate
 	inflightPushRequests atomic.Int64
 }
 
@@ -615,11 +616,11 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	i.metrics.ingestedSamples.Inc()
 	switch source {
 	case cortexpb.RULE:
-		state.ingestedRuleSamples.inc()
+		state.ingestedRuleSamples.Inc()
 	case cortexpb.API:
 		fallthrough
 	default:
-		state.ingestedAPISamples.inc()
+		state.ingestedAPISamples.Inc()
 	}
 
 	return err
@@ -1014,8 +1015,8 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	apiRate := state.ingestedAPISamples.rate()
-	ruleRate := state.ingestedRuleSamples.rate()
+	apiRate := state.ingestedAPISamples.Rate()
+	ruleRate := state.ingestedRuleSamples.Rate()
 	return &client.UserStatsResponse{
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
@@ -1042,8 +1043,8 @@ func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsReques
 		Stats: make([]*client.UserIDStatsResponse, 0, len(users)),
 	}
 	for userID, state := range users {
-		apiRate := state.ingestedAPISamples.rate()
-		ruleRate := state.ingestedRuleSamples.rate()
+		apiRate := state.ingestedAPISamples.Rate()
+		ruleRate := state.ingestedRuleSamples.Rate()
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
 			UserId: userID,
 			Data: &client.UserStatsResponse{

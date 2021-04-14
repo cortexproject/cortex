@@ -230,7 +230,7 @@ type Ruler struct {
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
 
-	allowedUsers *util.AllowedTenants
+	allowedTenants *util.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -239,14 +239,14 @@ type Ruler struct {
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:          cfg,
-		store:        ruleStore,
-		manager:      manager,
-		registry:     reg,
-		logger:       logger,
-		limits:       limits,
-		clientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
-		allowedUsers: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		cfg:            cfg,
+		store:          ruleStore,
+		manager:        manager,
+		registry:       reg,
+		logger:         logger,
+		limits:         limits,
+		clientsPool:    newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -508,7 +508,7 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 	}
 
 	for userID := range result {
-		if !r.allowedUsers.IsAllowed(userID) {
+		if !r.allowedTenants.IsAllowed(userID) {
 			level.Debug(r.logger).Log("msg", "ignoring rule groups for user, not allowed", "user", userID)
 			delete(result, userID)
 		}

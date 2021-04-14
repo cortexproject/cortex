@@ -172,13 +172,13 @@ type ConfigProvider interface {
 type Compactor struct {
 	services.Service
 
-	compactorCfg Config
-	storageCfg   cortex_tsdb.BlocksStorageConfig
-	cfgProvider  ConfigProvider
-	logger       log.Logger
-	parentLogger log.Logger
-	registerer   prometheus.Registerer
-	allowedUsers *util.AllowedTenants
+	compactorCfg   Config
+	storageCfg     cortex_tsdb.BlocksStorageConfig
+	cfgProvider    ConfigProvider
+	logger         log.Logger
+	parentLogger   log.Logger
+	registerer     prometheus.Registerer
+	allowedTenants *util.AllowedTenants
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -267,7 +267,7 @@ func newCompactor(
 		bucketClientFactory:    bucketClientFactory,
 		blocksGrouperFactory:   blocksGrouperFactory,
 		blocksCompactorFactory: blocksCompactorFactory,
-		allowedUsers:           util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedTenants:         util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -696,7 +696,7 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 }
 
 func (c *Compactor) ownUser(userID string) (bool, error) {
-	if !c.allowedUsers.IsAllowed(userID) {
+	if !c.allowedTenants.IsAllowed(userID) {
 		return false, nil
 	}
 

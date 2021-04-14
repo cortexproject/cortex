@@ -1592,8 +1592,8 @@ ring:
 [enabled_tenants: <string> | default = ""]
 
 # Comma separated list of tenants whose rules this ruler cannot evaluate. If
-# specified, and ruler would normally pick given tenant for processing (eg. via
-# sharding), tenant will be ignored instead.
+# specified, a ruler that would normally pick the specified tenant(s) for
+# processing will ignore them instead. Subject to sharding.
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
 ```

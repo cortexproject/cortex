@@ -167,7 +167,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
-	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, and ruler would normally pick given tenant for processing (eg. via sharding), tenant will be ignored instead.")
+	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -230,7 +230,7 @@ type Ruler struct {
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
 
-	allowedUsers *util.AllowedUsers
+	allowedUsers *util.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -246,7 +246,7 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		logger:       logger,
 		limits:       limits,
 		clientsPool:  newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
-		allowedUsers: util.NewAllowedUsers(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedUsers: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -260,10 +260,10 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 	}
 
 	if len(cfg.EnabledTenants) > 0 {
-		level.Info(ruler.logger).Log("msg", "using enabled users", "enabled", strings.Join(cfg.EnabledTenants, ", "))
+		level.Info(ruler.logger).Log("msg", "ruler using enabled users", "enabled", strings.Join(cfg.EnabledTenants, ", "))
 	}
 	if len(cfg.DisabledTenants) > 0 {
-		level.Info(ruler.logger).Log("msg", "using disabled users", "disabled", strings.Join(cfg.DisabledTenants, ", "))
+		level.Info(ruler.logger).Log("msg", "ruler using disabled users", "disabled", strings.Join(cfg.DisabledTenants, ", "))
 	}
 
 	if cfg.EnableSharding {

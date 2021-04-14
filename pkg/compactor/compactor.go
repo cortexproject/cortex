@@ -178,7 +178,7 @@ type Compactor struct {
 	logger       log.Logger
 	parentLogger log.Logger
 	registerer   prometheus.Registerer
-	allowedUsers *util.AllowedUsers
+	allowedUsers *util.AllowedTenants
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -267,7 +267,7 @@ func newCompactor(
 		bucketClientFactory:    bucketClientFactory,
 		blocksGrouperFactory:   blocksGrouperFactory,
 		blocksCompactorFactory: blocksCompactorFactory,
-		allowedUsers:           util.NewAllowedUsers(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedUsers:           util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
@@ -317,10 +317,10 @@ func newCompactor(
 	}
 
 	if len(compactorCfg.EnabledTenants) > 0 {
-		level.Info(c.logger).Log("msg", "using enabled users", "enabled", strings.Join(compactorCfg.EnabledTenants, ", "))
+		level.Info(c.logger).Log("msg", "compactor using enabled users", "enabled", strings.Join(compactorCfg.EnabledTenants, ", "))
 	}
 	if len(compactorCfg.DisabledTenants) > 0 {
-		level.Info(c.logger).Log("msg", "using disabled users", "disabled", strings.Join(compactorCfg.DisabledTenants, ", "))
+		level.Info(c.logger).Log("msg", "compactor using disabled users", "disabled", strings.Join(compactorCfg.DisabledTenants, ", "))
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)

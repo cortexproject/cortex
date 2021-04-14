@@ -19,6 +19,7 @@
     * `-memberlist.tls-ca-path`
     * `-memberlist.tls-server-name`
     * `-memberlist.tls-insecure-skip-verify`
+* [CHANGE] Cortex now fast fails on startup if unable to connect to the ring backend. #4068
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.13`. #4042
 * [ENHANCEMENT] Blocks storage: reduce ingester memory by eliminating series reference cache. #3951
@@ -48,6 +49,7 @@
 * [BUGFIX] Querier: returning 422 (instead of 500) when query hits `max_chunks_per_query` limit with block storage, when the limit is hit in the store-gateway. #3937
 * [BUGFIX] Ruler: Rule group limit enforcement should now allow the same number of rules in a group as the limit. #3615
 * [BUGFIX] Frontend, Query-scheduler: allow querier to notify about shutdown without providing any authentication. #4066
+* [BUGFIX] Querier: fixed race condition causing queries to fail right after querier startup with the "empty ring" error. #4068
 
 ## Blocksconvert
 

@@ -1,5 +1,7 @@
 package util
 
+// AllowedTenants that can answer whether tenant is allowed or not based on configuration.
+// Default value (nil) allows all tenants.
 type AllowedTenants struct {
 	// If empty, all tenants are enabled. If not empty, only tenants in the map are enabled.
 	enabled map[string]struct{}
@@ -8,6 +10,9 @@ type AllowedTenants struct {
 	disabled map[string]struct{}
 }
 
+// NewAllowedTenants builds new allowed tenants based on enabled and disabled tenants.
+// If there are any enabled tenants, then only those tenants are allowed.
+// If there are any disabled tenants, then tenant from that list, that would normally be allowed, is disabled instead.
 func NewAllowedTenants(enabled []string, disabled []string) *AllowedTenants {
 	a := &AllowedTenants{}
 
@@ -29,6 +34,10 @@ func NewAllowedTenants(enabled []string, disabled []string) *AllowedTenants {
 }
 
 func (a *AllowedTenants) IsAllowed(tenantID string) bool {
+	if a == nil {
+		return true
+	}
+
 	if len(a.enabled) > 0 {
 		if _, ok := a.enabled[tenantID]; !ok {
 			return false

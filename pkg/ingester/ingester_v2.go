@@ -406,8 +406,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    map[string]struct{} // if nil or empty, all users are compacted/shipped. Otherwise only users in the map are compacted/shipped.
-	callback chan<- struct{}     // when compaction/shipping is finished, this channel is closed
+	users    *util.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}      // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -1725,8 +1725,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-// allowedUsers, if not empty, is used to only ship blocks for users in this map. (nil map = empty)
-func (i *Ingester) shipBlocks(ctx context.Context, allowedUsers map[string]struct{}) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -1741,7 +1740,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowedUsers map[string]struc
 	// Number of concurrent workers is limited in order to avoid to concurrently sync a lot
 	// of tenants in a large cluster.
 	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.ShipConcurrency, func(ctx context.Context, userID string) error {
-		if _, ok := allowedUsers[userID]; len(allowedUsers) > 0 && !ok {
+		if !allowed.IsAllowed(userID) {
 			return nil
 		}
 
@@ -1823,8 +1822,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-// allowedUsers, if not empty, is used to only compact users in this map. (nil map = empty)
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowedUsers map[string]struct{}) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -1835,7 +1833,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowedUsers m
 	}
 
 	_ = concurrency.ForEachUser(ctx, i.getTSDBUsers(), i.cfg.BlocksStorageConfig.TSDB.HeadCompactionConcurrency, func(ctx context.Context, userID string) error {
-		if _, ok := allowedUsers[userID]; len(allowedUsers) > 0 && !ok {
+		if !allowed.IsAllowed(userID) {
 			return nil
 		}
 
@@ -2012,14 +2010,7 @@ func (i *Ingester) v2FlushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	var allowedUsers map[string]struct{} = nil // All users are allowed.
-	if len(tenants) > 0 {
-		allowedUsers = make(map[string]struct{}, len(tenants))
-		for _, t := range tenants {
-			allowedUsers[t] = struct{}{}
-		}
-	}
-
+	allowedUsers := util.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.BasicService.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {

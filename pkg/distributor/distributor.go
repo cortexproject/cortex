@@ -135,6 +135,10 @@ type Config struct {
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
 
 	// Limits for distributor
+	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+}
+
+type InstanceLimits struct {
 	MaxIngestionRate        float64 `yaml:"max_ingestion_rate"`
 	MaxInflightPushRequests int     `yaml:"max_inflight_push_requests"`
 }
@@ -151,8 +155,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
-	f.Float64Var(&cfg.MaxIngestionRate, "distributor.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
-	f.IntVar(&cfg.MaxInflightPushRequests, "distributor.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. Additional requests will be rejected. 0 = unlimited.")
+
+	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
+	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
 }
 
 // Validate config and returns error on failure
@@ -291,27 +296,35 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}, []string{"user"}),
 	}
 
+	const (
+		instanceLimits     = "cortex_distributor_instance_limits"
+		instanceLimitsHelp = "Instance limits used by this distributor." // Must be same for all registrations.
+		limitLabel         = "limit"
+	)
+
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimits,
+		Help:        instanceLimitsHelp,
+		ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
+	}).Set(float64(cfg.InstanceLimits.MaxInflightPushRequests))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimits,
+		Help:        instanceLimitsHelp,
+		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
+	}).Set(cfg.InstanceLimits.MaxIngestionRate)
+
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_distributor_inflight_push_requests",
 		Help: "Current number of inflight push requests in distributor.",
 	}, func() float64 {
 		return float64(d.inflightPushRequests.Load())
 	})
-	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_distributor_inflight_push_requests_limit",
-		Help: "Limit for inflight push requests",
-	}).Set(float64(cfg.MaxInflightPushRequests))
-
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_distributor_ingestion_rate_samples_per_second",
 		Help: "Current ingestion rate in samples/sec that distributor is using to limit access.",
 	}, func() float64 {
 		return d.ingestionRate.Rate()
 	})
-	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_distributor_ingestion_rate_samples_per_second_limit",
-		Help: "Limit for Distributor's ingestion rate.",
-	}).Set(cfg.MaxIngestionRate)
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
@@ -493,12 +506,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
 
-	if d.cfg.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.MaxInflightPushRequests) {
+	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
 		return nil, errTooManyInflightPushRequests
 	}
 
-	if d.cfg.MaxIngestionRate > 0 {
-		if rate := d.ingestionRate.Rate(); rate >= d.cfg.MaxIngestionRate {
+	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
+		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
 			return nil, errMaxSamplesPushRateLimitReached
 		}
 	}
@@ -663,7 +676,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}
 
-	d.ingestionRate.Add(int64(validatedSamples))
+	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
+	d.ingestionRate.Add(int64(totalN))
 
 	subRing := d.ingestersRing
 

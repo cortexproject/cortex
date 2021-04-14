@@ -626,20 +626,27 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 	return err
 }
 
-func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*cortexpb.MetricMetadata) {
+// pushMetadata returns number of ingested metadata.
+func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*cortexpb.MetricMetadata) int {
+	ingestedMetadata := 0
+	failedMetadata := 0
+
 	var firstMetadataErr error
 	for _, metadata := range metadata {
 		err := i.appendMetadata(userID, metadata)
 		if err == nil {
-			i.metrics.ingestedMetadata.Inc()
+			ingestedMetadata++
 			continue
 		}
 
-		i.metrics.ingestedMetadataFail.Inc()
+		failedMetadata++
 		if firstMetadataErr == nil {
 			firstMetadataErr = err
 		}
 	}
+
+	i.metrics.ingestedMetadata.Add(float64(ingestedMetadata))
+	i.metrics.ingestedMetadataFail.Add(float64(failedMetadata))
 
 	// If we have any error with regard to metadata we just log and no-op.
 	// We consider metadata a best effort approach, errors here should not stop processing.
@@ -647,6 +654,8 @@ func (i *Ingester) pushMetadata(ctx context.Context, userID string, metadata []*
 		logger := logutil.WithContext(ctx, i.logger)
 		level.Warn(logger).Log("msg", "failed to ingest some metadata", "err", firstMetadataErr)
 	}
+
+	return ingestedMetadata
 }
 
 func (i *Ingester) appendMetadata(userID string, m *cortexpb.MetricMetadata) error {

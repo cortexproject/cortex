@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/go-kit/kit/log"
@@ -263,10 +262,6 @@ receivers:
 	err := externalURL.Set("http://localhost:8080/alertmanager")
 	require.NoError(t, err)
 
-	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
 	// Create the Multitenant Alertmanager.
 	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
@@ -277,10 +272,10 @@ receivers:
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
+	require.Len(t, am.alertmanagers, 2)
 
 	router := mux.NewRouter()
 	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListAllConfigs)
-	// Request when no user configuration is present.
 	req := httptest.NewRequest("GET", "https://localhost:8080/multitenant_alertmanager/configs", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -291,7 +286,4 @@ receivers:
 	body, _ := ioutil.ReadAll(resp.Body)
 	old, _ := yaml.Marshal(testCases)
 	require.YAMLEq(t, string(old), string(body))
-
-	// It succeeds and the Alertmanager is started
-	require.Len(t, am.alertmanagers, 2)
 }

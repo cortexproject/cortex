@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRenderHTTPResponse(t *testing.T) {
@@ -120,7 +121,7 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	done := make(chan struct{})
 	iter := make(chan interface{})
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter)
+		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
 		close(done)
 	}()
 	for k, v := range tt.value {

@@ -207,7 +207,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter)
+		util.StreamWriteYAMLResponse(w, iter, logger)
 		close(done)
 	}()
 

@@ -1,0 +1,28 @@
+
+# Configuration for running Cortex in single-process mode.
+# This configuration should not be used in production.
+# It is only for getting started and development.
+
+# Disable the requirement that every request to Cortex has a
+# X-Scope-OrgID header. `fake` will be substituted in instead.
+auth_enabled: true
+
+target: alertmanager
+
+server:
+  http_listen_port: 9009
+  log_level: debug
+
+  # Configure the server to allow messages up to 100MB.
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+
+
+alertmanager:
+  external_url: http://127.0.0.1/
+  storage:
+    type: local
+    local:
+      path: /data/cortex/data/amconfig/
+

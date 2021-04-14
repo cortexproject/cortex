@@ -832,7 +832,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter)
+		util.StreamWriteYAMLResponse(w, iter, logger)
 		close(done)
 	}()
 
@@ -853,7 +853,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		return nil
 	})
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to list all alertmanager configs", "err", err)
+		level.Error(logger).Log("msg", "failed to list all ruler configs", "err", err)
 	}
 	close(iter)
 	<-done

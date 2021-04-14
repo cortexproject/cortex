@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
@@ -99,15 +101,19 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 }
 
 // StreamWriteYAMLResponse stream writes data as http response
-func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}) {
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
 	w.Header().Set("Content-Type", "application/yaml")
 	for v := range iter {
 		data, err := yaml.Marshal(v)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			level.Error(logger).Log("msg", "yaml marshal filed", "err", err)
+			continue
+		}
+		_, err = w.Write(data)
+		if err != nil {
+			level.Error(logger).Log("msg", "write http response filed", "err", err)
 			return
 		}
-		_, _ = w.Write(data)
 	}
 }
 

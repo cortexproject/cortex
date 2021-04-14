@@ -173,6 +173,12 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	return cfg.HATrackerConfig.Validate()
 }
 
+const (
+	instanceLimitsMetric     = "cortex_distributor_instance_limits"
+	instanceLimitsMetricHelp = "Instance limits used by this distributor." // Must be same for all registrations.
+	limitLabel               = "limit"
+)
+
 // New constructs a new Distributor
 func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Overrides, ingestersRing ring.ReadRing, canJoinDistributorsRing bool, reg prometheus.Registerer, log log.Logger) (*Distributor, error) {
 	if cfg.IngesterClientFactory == nil {
@@ -296,20 +302,14 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		}, []string{"user"}),
 	}
 
-	const (
-		instanceLimits     = "cortex_distributor_instance_limits"
-		instanceLimitsHelp = "Instance limits used by this distributor." // Must be same for all registrations.
-		limitLabel         = "limit"
-	)
-
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name:        instanceLimits,
-		Help:        instanceLimitsHelp,
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
 		ConstLabels: map[string]string{limitLabel: "max_inflight_push_requests"},
 	}).Set(float64(cfg.InstanceLimits.MaxInflightPushRequests))
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name:        instanceLimits,
-		Help:        instanceLimitsHelp,
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
 		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
 	}).Set(cfg.InstanceLimits.MaxIngestionRate)
 

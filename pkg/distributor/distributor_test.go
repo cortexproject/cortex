@@ -473,15 +473,12 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 				{samples: 100, expectedError: nil},
 			},
 
-			metricNames: []string{"cortex_distributor_inflight_push_requests_limit", "cortex_distributor_ingestion_rate_samples_per_second_limit"},
+			metricNames: []string{instanceLimitsMetric},
 			expectedMetrics: `
-				# HELP cortex_distributor_inflight_push_requests_limit Limit for inflight push requests
-				# TYPE cortex_distributor_inflight_push_requests_limit gauge
-				cortex_distributor_inflight_push_requests_limit 0
-
-				# HELP cortex_distributor_ingestion_rate_samples_per_second_limit Limit for Distributor's ingestion rate.
-				# TYPE cortex_distributor_ingestion_rate_samples_per_second_limit gauge
-				cortex_distributor_ingestion_rate_samples_per_second_limit 0
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
 		},
 		"below inflight limit": {
@@ -491,15 +488,16 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 				{samples: 100, expectedError: nil},
 			},
 
-			metricNames: []string{"cortex_distributor_inflight_push_requests_limit", "cortex_distributor_inflight_push_requests"},
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_inflight_push_requests"},
 			expectedMetrics: `
 				# HELP cortex_distributor_inflight_push_requests Current number of inflight push requests in distributor.
 				# TYPE cortex_distributor_inflight_push_requests gauge
 				cortex_distributor_inflight_push_requests 100
 
-				# HELP cortex_distributor_inflight_push_requests_limit Limit for inflight push requests
-				# TYPE cortex_distributor_inflight_push_requests_limit gauge
-				cortex_distributor_inflight_push_requests_limit 101
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 101
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
 			`,
 		},
 		"hits inflight limit": {
@@ -517,15 +515,16 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 				{samples: 1000, expectedError: nil},
 			},
 
-			metricNames: []string{"cortex_distributor_ingestion_rate_samples_per_second_limit", "cortex_distributor_ingestion_rate_samples_per_second"},
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_ingestion_rate_samples_per_second"},
 			expectedMetrics: `
 				# HELP cortex_distributor_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that distributor is using to limit access.
 				# TYPE cortex_distributor_ingestion_rate_samples_per_second gauge
 				cortex_distributor_ingestion_rate_samples_per_second 600
 
-				# HELP cortex_distributor_ingestion_rate_samples_per_second_limit Limit for Distributor's ingestion rate.
-				# TYPE cortex_distributor_ingestion_rate_samples_per_second_limit gauge
-				cortex_distributor_ingestion_rate_samples_per_second_limit 1000
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 1000
 			`,
 		},
 		"hits rate limit on first request, but second request can proceed": {

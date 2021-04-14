@@ -49,10 +49,6 @@ type TCPTransportConfig struct {
 	// Timeout for writing packet data. Zero = no timeout.
 	PacketWriteTimeout time.Duration `yaml:"packet_write_timeout"`
 
-	// WriteTo is used to send "UDP" packets. Since we use TCP, we can detect more errors,
-	// but memberlist doesn't seem to cope with that very well.
-	ReportWriteToErrors bool `yaml:"-"`
-
 	// Transport logs lot of messages at debug level, so it deserves an extra flag for turning it on
 	TransportDebug bool `yaml:"-"`
 
@@ -418,11 +414,10 @@ func (t *TCPTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 	if err != nil {
 		t.sentPacketsErrors.Inc()
 
-		if t.cfg.ReportWriteToErrors {
-			return time.Time{}, fmt.Errorf("WriteTo %s: %w", addr, err)
-		}
-
 		level.Warn(t.logger).Log("msg", "TCPTransport: WriteTo failed", "addr", addr, "err", err)
+
+		// WriteTo is used to send "UDP" packets. Since we use TCP, we can detect more errors,
+		// but memberlist library doesn't seem to cope with that very well. That is why we return nil instead.
 		return time.Now(), nil
 	}
 

@@ -220,7 +220,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18031 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8031 -server.grpc-listen-port=9031 -alertmanager.web.external-url=localhost:8031"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18031 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8031 -server.grpc-listen-port=9031 -alertmanager.web.external-url=http://localhost:8031/alertmanager"]
     depends_on:
       - consul
       - minio
@@ -235,7 +235,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18032 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8032 -server.grpc-listen-port=9032 -alertmanager.web.external-url=localhost:8032"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18032 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8032 -server.grpc-listen-port=9032 -alertmanager.web.external-url=http://localhost:8032/alertmanager"]
     depends_on:
       - consul
       - minio
@@ -250,7 +250,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18033 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8033 -server.grpc-listen-port=9033 -alertmanager.web.external-url=localhost:8033"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18033 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8033 -server.grpc-listen-port=9033 -alertmanager.web.external-url=http://localhost:8033/alertmanager"]
     depends_on:
       - consul
       - minio

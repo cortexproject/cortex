@@ -220,7 +220,7 @@ services:
       context:    .
       dockerfile: dev.dockerfile
     image: cortex
-    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18010 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8010 -server.grpc-listen-port=9010  -alertmanager.web.external-url=localhost:8010"]
+    command: ["sh", "-c", "sleep 3 && exec ./dlv exec ./cortex --listen=:18010 --headless=true --api-version=2 --accept-multiclient --continue -- -config.file=./config/cortex.yaml -target=alertmanager -server.http-listen-port=8010 -server.grpc-listen-port=9010 -alertmanager.web.external-url=http://localhost:8010/alertmanager"]
     depends_on:
       - consul
       - minio

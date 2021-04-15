@@ -85,6 +85,8 @@ const (
 
 var (
 	statusTemplate *template.Template
+
+	errInvalidExternalURL = errors.New("the configured external URL is invalid: should not end with /")
 )
 
 func init() {
@@ -176,6 +178,10 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *MultitenantAlertmanagerConfig) Validate() error {
+	if cfg.ExternalURL.URL != nil && strings.HasSuffix(cfg.ExternalURL.Path, "/") {
+		return errInvalidExternalURL
+	}
+
 	if err := cfg.Store.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
 	}

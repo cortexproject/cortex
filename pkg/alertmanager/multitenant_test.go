@@ -85,6 +85,29 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	return cfg
 }
 
+func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
+	// Default values only.
+	{
+		cfg := &MultitenantAlertmanagerConfig{}
+		flagext.DefaultValues(cfg)
+		assert.NoError(t, cfg.Validate())
+	}
+	// Invalid persist interval (zero).
+	{
+		cfg := &MultitenantAlertmanagerConfig{}
+		flagext.DefaultValues(cfg)
+		cfg.Persister.Interval = 0
+		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
+	}
+	// Invalid persist interval (negative).
+	{
+		cfg := &MultitenantAlertmanagerConfig{}
+		flagext.DefaultValues(cfg)
+		cfg.Persister.Interval = -1
+		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
+	}
+}
+
 func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 	ctx := context.Background()
 

@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -261,7 +262,7 @@ func uploadBlock(ctx context.Context, planLog log.Logger, userBucket objstore.Bu
 	})
 
 	for boff.Ongoing() {
-		err := block.Upload(ctx, planLog, userBucket, blockDir)
+		err := block.Upload(ctx, planLog, userBucket, blockDir, metadata.NoneFunc)
 		if err == nil {
 			return nil
 		}

@@ -1,8 +1,11 @@
 // Copyright 2017 Michal Witkowski. All Rights Reserved.
 // See LICENSE for licensing terms.
 
+//
 /*
-`grpc_opentracing` adds OpenTracing
+tracing is a "parent" package for gRPC logging middlewares.
+
+This middleware relies on OpenTracing as our tracing interface.
 
 OpenTracing Interceptors
 
@@ -17,6 +20,5 @@ All server-side spans are tagged with grpc_ctxtags information.
 For more information see:
 http://opentracing.io/documentation/
 https://github.com/opentracing/specification/blob/master/semantic_conventions.md
-
 */
-package grpc_opentracing
+package tracing

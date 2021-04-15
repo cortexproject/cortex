@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
@@ -99,6 +99,12 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            context.Canceled,
 			expectedString: "context canceled",
+			expectedCode:   422,
+		},
+		// Status code 400 is remapped to 422 (only choice we have)
+		{
+			err:            errors.Wrap(httpgrpc.Errorf(http.StatusBadRequest, "test string"), "wrapped error"),
+			expectedString: "test string",
 			expectedCode:   422,
 		},
 	} {

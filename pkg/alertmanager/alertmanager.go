@@ -59,12 +59,13 @@ const (
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID      string
-	Logger      log.Logger
-	Peer        *cluster.Peer
-	PeerTimeout time.Duration
-	Retention   time.Duration
-	ExternalURL *url.URL
+	UserID            string
+	Logger            log.Logger
+	Peer              *cluster.Peer
+	PeerTimeout       time.Duration
+	Retention         time.Duration
+	ExternalURL       *url.URL
+	ReceiversFirewall FirewallConfig
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -279,6 +280,8 @@ func clusterWait(position func() int, timeout time.Duration) func() time.Duratio
 
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
+	conf = injectFirewallToAlertmanagerConfig(conf, am.cfg.ReceiversFirewall)
+
 	templateFiles := make([]string, len(conf.Templates))
 	if len(conf.Templates) > 0 {
 		for i, t := range conf.Templates {

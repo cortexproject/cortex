@@ -1849,6 +1849,18 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
+receivers_firewall:
+  block:
+    # Comma-separated list of network CIDRs to block in Alertmanager receiver
+    # integrations.
+    # CLI flag: -alertmanager.receivers-firewall.block.cidrs
+    [cidrs: <string> | default = ""]
+
+    # True to block private and local addresses in Alertmanager receiver
+    # integrations.
+    # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
+    [private_addresses: <boolean> | default = false]
+
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
 [sharding_enabled: <boolean> | default = false]

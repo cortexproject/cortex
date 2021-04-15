@@ -36,3 +36,12 @@ func TestAllowedTenants_Combination(t *testing.T) {
 	require.False(t, a.IsAllowed("C")) // disabled
 	require.False(t, a.IsAllowed("D")) // not enabled
 }
+
+func TestAllowedTenants_Nil(t *testing.T) {
+	var a *AllowedTenants = nil
+
+	// All tenants are allowed when using nil as allowed tenants.
+	require.True(t, a.IsAllowed("A"))
+	require.True(t, a.IsAllowed("B"))
+	require.True(t, a.IsAllowed("C"))
+}

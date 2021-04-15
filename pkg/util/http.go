@@ -106,12 +106,12 @@ func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logge
 	for v := range iter {
 		data, err := yaml.Marshal(v)
 		if err != nil {
-			level.Error(logger).Log("msg", "yaml marshal filed", "err", err)
+			level.Error(logger).Log("msg", "yaml marshal failed", "err", err)
 			continue
 		}
 		_, err = w.Write(data)
 		if err != nil {
-			level.Error(logger).Log("msg", "write http response filed", "err", err)
+			level.Error(logger).Log("msg", "write http response failed", "err", err)
 			return
 		}
 	}

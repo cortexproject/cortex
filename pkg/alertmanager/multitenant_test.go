@@ -87,34 +87,34 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 
 func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 	tests := map[string]struct {
-		setup    func(cfg *MultitenantAlertmanagerConfig)
+		setup    func(t *testing.T, cfg *MultitenantAlertmanagerConfig)
 		expected error
 	}{
 		"should pass with default config": {
-			setup:    func(cfg *MultitenantAlertmanagerConfig) {},
+			setup:    func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {},
 			expected: nil,
 		},
 		"should fail if persistent interval is 0": {
-			setup: func(cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
 				cfg.Persister.Interval = 0
 			},
 			expected: errInvalidPersistInterval,
 		},
 		"should fail if persistent interval is negative": {
-			setup: func(cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
 				cfg.Persister.Interval = -1
 			},
 			expected: errInvalidPersistInterval,
 		},
 		"should fail if external URL ends with /": {
-			setup: func(cfg *MultitenantAlertmanagerConfig) {
-				cfg.ExternalURL.Set("http://localhost/prefix/")
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix/"))
 			},
 			expected: errInvalidExternalURL,
 		},
 		"should succeed if external URL does not end with /": {
-			setup: func(cfg *MultitenantAlertmanagerConfig) {
-				cfg.ExternalURL.Set("http://localhost/prefix")
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix"))
 			},
 			expected: nil,
 		},
@@ -124,7 +124,7 @@ func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			cfg := &MultitenantAlertmanagerConfig{}
 			flagext.DefaultValues(cfg)
-			testData.setup(cfg)
+			testData.setup(t, cfg)
 			assert.Equal(t, testData.expected, cfg.Validate())
 		})
 	}

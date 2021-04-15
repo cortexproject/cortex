@@ -1232,7 +1232,6 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 					float64(tt.replicationFactor) == metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
 			}, 5*time.Second, 100*time.Millisecond)
 
-			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
 			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
 			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 
@@ -1249,7 +1248,6 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				return float64(nMerges) == metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_total")
 			}, 5*time.Second, 100*time.Millisecond)
 
-			assert.Equal(t, float64(nMerges), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_total"))
 			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_failed_total"))
 		})
 	}

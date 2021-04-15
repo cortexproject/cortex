@@ -52,6 +52,8 @@ const (
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
+
+	instanceIngestionRateTickInterval = time.Second
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -479,7 +481,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
-		ingestionRate: util_math.NewEWMARate(0.2, cfg.RateUpdatePeriod),
+		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 	}
 	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
 
@@ -638,7 +640,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
-	ingestionRateTicker := time.NewTicker(1 * time.Second)
+	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
 	defer ingestionRateTicker.Stop()
 
 	var activeSeriesTickerChan <-chan time.Time
@@ -737,7 +739,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
-	i.pushMetadata(ctx, userID, req.GetMetadata())
+	ingestedMetadata := i.pushMetadata(ctx, userID, req.GetMetadata())
 
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
@@ -878,7 +880,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 
-	i.ingestionRate.Add(int64(succeededSamplesCount))
+	// Distributor counts both samples and metadata, so for consistency ingester does the same.
+	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
 
 	switch req.Source {
 	case cortexpb.RULE:

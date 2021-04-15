@@ -19,6 +19,7 @@
     * `-memberlist.tls-ca-path`
     * `-memberlist.tls-server-name`
     * `-memberlist.tls-insecure-skip-verify`
+* [CHANGE] Cortex now fast fails on startup if unable to connect to the ring backend. #4068
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.13`. #4042
 * [ENHANCEMENT] Blocks storage: reduce ingester memory by eliminating series reference cache. #3951
@@ -38,6 +39,8 @@
 * [ENHANCEMENT] Ingester: added following per-ingester (instance) limits: max number of series in memory (`-ingester.instance-limits.max-series`), max number of users in memory (`-ingester.instance-limits.max-tenants`), max ingestion rate (`-ingester.instance-limits.max-ingestion-rate`), and max inflight requests (`-ingester.instance-limits.max-inflight-push-requests`). These limits are only used when using blocks storage. Limits can also be configured using runtime-config feature, and current values are exported as `cortex_ingester_instance_limits` metric. #3992.
 * [ENHANCEMENT] Cortex is now built with Go 1.16. #4062
 * [ENHANCEMENT] Distributor: added per-distributor limits: max number of inflight requests (`-distributor.instance-limits.max-inflight-push-requests`) and max ingestion rate in samples/sec (`-distributor.instance-limits.max-ingestion-rate`). If not set, these two are unlimited. Also added metrics to expose current values (`cortex_distributor_inflight_push_requests`, `cortex_distributor_ingestion_rate_samples_per_second`) as well as limits (`cortex_distributor_instance_limits` with various `limit` label values). #4071
+* [ENHANCEMENT] Ruler: Added `-ruler.enabled-tenants` and `-ruler.disabled-tenants` to explicitly enable or disable rules processing for specific tenants. #4074
+* [ENHANCEMENT] Block Storage Ingester: `/flush` now accepts two new parameters: `tenant` to specify tenant to flush and `wait=true` to make call synchronous. Multiple tenants can be specified by repeating `tenant` parameter. If no `tenant` is specified, all tenants are flushed, as before. #4073
 * [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959
@@ -49,6 +52,7 @@
 * [BUGFIX] Querier: returning 422 (instead of 500) when query hits `max_chunks_per_query` limit with block storage, when the limit is hit in the store-gateway. #3937
 * [BUGFIX] Ruler: Rule group limit enforcement should now allow the same number of rules in a group as the limit. #3615
 * [BUGFIX] Frontend, Query-scheduler: allow querier to notify about shutdown without providing any authentication. #4066
+* [BUGFIX] Querier: fixed race condition causing queries to fail right after querier startup with the "empty ring" error. #4068
 
 ## Blocksconvert
 

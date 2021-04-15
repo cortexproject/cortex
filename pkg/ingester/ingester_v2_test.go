@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -2187,7 +2188,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 	}
 
 	// Ship blocks and assert on the mocked shipper
-	i.shipBlocks(context.Background())
+	i.shipBlocks(context.Background(), nil)
 
 	for _, m := range mocks {
 		m.AssertNumberOfCalls(t, "Sync", 1)
@@ -2217,9 +2218,9 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 
 	pushSingleSampleWithMetadata(t, i)
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
-	i.compactBlocks(context.Background(), true)
+	i.compactBlocks(context.Background(), true, nil)
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
-	i.shipBlocks(context.Background())
+	i.shipBlocks(context.Background(), nil)
 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
@@ -2234,9 +2235,9 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	// After writing tenant deletion mark,
 	pushSingleSampleWithMetadata(t, i)
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
-	i.compactBlocks(context.Background(), true)
+	i.compactBlocks(context.Background(), true, nil)
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
-	i.shipBlocks(context.Background())
+	i.shipBlocks(context.Background(), nil)
 
 	numObjectsAfterMarkingTenantForDeletion := len(bucket.Objects())
 	require.Equal(t, numObjects, numObjectsAfterMarkingTenantForDeletion)
@@ -2271,7 +2272,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
 	// We call shipBlocks to check for deletion marker (it happens inside this method).
-	i.shipBlocks(context.Background())
+	i.shipBlocks(context.Background(), nil)
 
 	// Verify that tenant deletion mark was found.
 	db := i.getTSDB(userID)
@@ -2317,7 +2318,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	}))
 
 	// Run blocks shipping in a separate go routine.
-	go i.shipBlocks(ctx)
+	go i.shipBlocks(ctx, nil)
 
 	// Wait until shipping starts.
 	test.Poll(t, 1*time.Second, activeShipping, func() interface{} {
@@ -2404,8 +2405,8 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	require.NotNil(t, db)
 
 	// Run compaction and shipping.
-	i.compactBlocks(context.Background(), true)
-	i.shipBlocks(context.Background())
+	i.compactBlocks(context.Background(), true, nil)
+	i.shipBlocks(context.Background(), nil)
 
 	// Make sure we can close completely empty TSDB without problems.
 	require.Equal(t, tsdbIdleClosed, i.closeAndDeleteUserTSDBIfIdle(userID))
@@ -2550,19 +2551,54 @@ func TestIngester_flushing(t *testing.T) {
 					cortex_ingester_shipper_uploads_total 0
 				`), "cortex_ingester_shipper_uploads_total"))
 
-				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
+				// Using wait=true makes this a synchronous call.
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true", nil))
 
-				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
-				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
-					db := i.getTSDB(userID)
-					if db == nil {
-						return false
-					}
-					return db.Head().NumSeries()
-				})
+				verifyCompactedHead(t, i, true)
+				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+					# HELP cortex_ingester_shipper_uploads_total Total number of uploaded TSDB blocks
+					# TYPE cortex_ingester_shipper_uploads_total counter
+					cortex_ingester_shipper_uploads_total 1
+				`), "cortex_ingester_shipper_uploads_total"))
+			},
+		},
 
-				// The above waiting only ensures compaction, waiting another second to register the Sync call.
-				time.Sleep(1 * time.Second)
+		"flushHandlerWithListOfTenants": {
+			setupIngester: func(cfg *Config) {
+				cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown = false
+			},
+
+			action: func(t *testing.T, i *Ingester, reg *prometheus.Registry) {
+				pushSingleSampleWithMetadata(t, i)
+
+				// Nothing shipped yet.
+				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+					# HELP cortex_ingester_shipper_uploads_total Total number of uploaded TSDB blocks
+					# TYPE cortex_ingester_shipper_uploads_total counter
+					cortex_ingester_shipper_uploads_total 0
+				`), "cortex_ingester_shipper_uploads_total"))
+
+				users := url.Values{}
+				users.Add(tenantParam, "unknown-user")
+				users.Add(tenantParam, "another-unknown-user")
+
+				// Using wait=true makes this a synchronous call.
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true&"+users.Encode(), nil))
+
+				// Still nothing shipped or compacted.
+				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+					# HELP cortex_ingester_shipper_uploads_total Total number of uploaded TSDB blocks
+					# TYPE cortex_ingester_shipper_uploads_total counter
+					cortex_ingester_shipper_uploads_total 0
+				`), "cortex_ingester_shipper_uploads_total"))
+				verifyCompactedHead(t, i, false)
+
+				users = url.Values{}
+				users.Add(tenantParam, "different-user")
+				users.Add(tenantParam, userID) // Our user
+				users.Add(tenantParam, "yet-another-user")
+
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true&"+users.Encode(), nil))
 
 				verifyCompactedHead(t, i, true)
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
@@ -2598,19 +2634,7 @@ func TestIngester_flushing(t *testing.T) {
 					cortex_ingester_shipper_uploads_total 0
 				`), "cortex_ingester_shipper_uploads_total"))
 
-				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
-
-				// Flush handler only triggers compactions, but doesn't wait for them to finish. Let's wait for a moment, and then verify.
-				test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
-					db := i.getTSDB(userID)
-					if db == nil {
-						return false
-					}
-					return db.Head().NumSeries()
-				})
-
-				// The above waiting only ensures compaction, waiting another second to register the Sync call.
-				time.Sleep(1 * time.Second)
+				i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush?wait=true", nil))
 
 				verifyCompactedHead(t, i, true)
 
@@ -2867,7 +2891,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 
 	pushSingleSampleWithMetadata(t, i)
 
-	i.compactBlocks(context.Background(), false)
+	i.compactBlocks(context.Background(), false, nil)
 	verifyCompactedHead(t, i, false)
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -2886,7 +2910,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	// wait one second (plus maximum jitter) -- TSDB is now idle.
 	time.Sleep(time.Duration(float64(cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout) * (1 + compactionIdleTimeoutJitter)))
 
-	i.compactBlocks(context.Background(), false)
+	i.compactBlocks(context.Background(), false, nil)
 	verifyCompactedHead(t, i, true)
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -3342,7 +3366,8 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	db := i.getTSDB(userID)
 	require.NoError(t, db.acquireAppendLock())
 
-	// Flush handler only triggers compactions, but doesn't wait for them to finish.
+	// Flush handler only triggers compactions, but doesn't wait for them to finish. We cannot use ?wait=true here,
+	// because it would deadlock -- flush will wait for appendLock to be released.
 	i.FlushHandler(httptest.NewRecorder(), httptest.NewRequest("POST", "/flush", nil))
 
 	// Flushing should not have succeeded even after 5 seconds.

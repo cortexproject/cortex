@@ -1071,8 +1071,6 @@ func TestAlertmanager_ReplicasPosition(t *testing.T) {
 }
 
 func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
-	t.Skip("Flaky test under investigation")
-
 	tc := []struct {
 		name              string
 		replicationFactor int
@@ -1183,10 +1181,22 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 
 			// With sharding enabled, we propagate messages over gRPC instead of using a gossip over TCP.
 			// 1. First, get a random multitenant instance
-			multitenantAM := instances[rand.Intn(len(instances))]
+			//    We must pick an instance which actually has a user configured.
+			var multitenantAM *MultitenantAlertmanager
+			for {
+				multitenantAM = instances[rand.Intn(len(instances))]
+
+				multitenantAM.alertmanagersMtx.Lock()
+				amount := len(multitenantAM.alertmanagers)
+				multitenantAM.alertmanagersMtx.Unlock()
+				if amount > 0 {
+					break
+				}
+			}
 
 			// 2. Then, get a random user that exists in that particular alertmanager instance.
 			multitenantAM.alertmanagersMtx.Lock()
+			require.Greater(t, len(multitenantAM.alertmanagers), 0)
 			k := rand.Intn(len(multitenantAM.alertmanagers))
 			var userID string
 			for u := range multitenantAM.alertmanagers {
@@ -1216,7 +1226,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			reqCtx := user.InjectOrgID(req.Context(), userID)
 			{
 				w := httptest.NewRecorder()
-				multitenantAM.ServeHTTP(w, req.WithContext(reqCtx))
+				multitenantAM.serveRequest(w, req.WithContext(reqCtx))
 
 				resp := w.Result()
 				body, _ := ioutil.ReadAll(resp.Body)
@@ -1224,18 +1234,26 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				require.Regexp(t, regexp.MustCompile(`{"silenceID":".+"}`), string(body))
 			}
 
-			metrics := registries.BuildMetricFamiliesPerUser()
-
 			// If sharding is not enabled, we never propagate any messages amongst replicas in this way, and we can stop here.
 			if !tt.withSharding {
+				metrics := registries.BuildMetricFamiliesPerUser()
+
 				assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
 				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
 				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 				return
 			}
 
+			var metrics util.MetricFamiliesPerUser
+
 			// 5. Then, make sure it is propagated successfully.
-			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
+			//    Replication is asynchronous, so we may have to wait a short period of time.
+			assert.Eventually(t, func() bool {
+				metrics = registries.BuildMetricFamiliesPerUser()
+				return (float64(tt.replicationFactor) == metrics.GetSumOfGauges("cortex_alertmanager_silences") &&
+					float64(tt.replicationFactor) == metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+			}, 5*time.Second, 100*time.Millisecond)
+
 			assert.Equal(t, float64(tt.replicationFactor), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
 			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 
@@ -1246,7 +1264,12 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			//   For RF=3 1 -> 2 -> 4 = Total 6 merges
 			nFanOut := tt.replicationFactor - 1
 			nMerges := nFanOut + (nFanOut * nFanOut)
-			assert.Equal(t, float64(nMerges), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_total"))
+
+			assert.Eventually(t, func() bool {
+				metrics = registries.BuildMetricFamiliesPerUser()
+				return float64(nMerges) == metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_total")
+			}, 5*time.Second, 100*time.Millisecond)
+
 			assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_partial_state_merges_failed_total"))
 		})
 	}
@@ -1359,7 +1382,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				reqCtx := user.InjectOrgID(req.Context(), userID)
 				{
 					w := httptest.NewRecorder()
-					i.ServeHTTP(w, req.WithContext(reqCtx))
+					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
 					body, _ := ioutil.ReadAll(resp.Body)
@@ -1374,7 +1397,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				reqCtx := user.InjectOrgID(req.Context(), userID)
 				{
 					w := httptest.NewRecorder()
-					i.ServeHTTP(w, req.WithContext(reqCtx))
+					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
 					body, _ := ioutil.ReadAll(resp.Body)

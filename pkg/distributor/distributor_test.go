@@ -446,6 +446,155 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushInstanceLimits(t *testing.T) {
+	type testPush struct {
+		samples       int
+		metadata      int
+		expectedError error
+	}
+
+	tests := map[string]struct {
+		preInflight    int
+		preRateSamples int        // initial rate before first push
+		pushes         []testPush // rate is recomputed after each push
+
+		// limits
+		inflightLimit      int
+		ingestionRateLimit float64
+
+		metricNames     []string
+		expectedMetrics string
+	}{
+		"no limits limit": {
+			preInflight:    100,
+			preRateSamples: 1000,
+
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric},
+			expectedMetrics: `
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"below inflight limit": {
+			preInflight:   100,
+			inflightLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_inflight_push_requests"},
+			expectedMetrics: `
+				# HELP cortex_distributor_inflight_push_requests Current number of inflight push requests in distributor.
+				# TYPE cortex_distributor_inflight_push_requests gauge
+				cortex_distributor_inflight_push_requests 100
+
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 101
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"hits inflight limit": {
+			preInflight:   101,
+			inflightLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: errTooManyInflightPushRequests},
+			},
+		},
+		"below ingestion rate limit": {
+			preRateSamples:     500,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 1000, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_ingestion_rate_samples_per_second"},
+			expectedMetrics: `
+				# HELP cortex_distributor_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that distributor is using to limit access.
+				# TYPE cortex_distributor_ingestion_rate_samples_per_second gauge
+				cortex_distributor_ingestion_rate_samples_per_second 600
+
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 1000
+			`,
+		},
+		"hits rate limit on first request, but second request can proceed": {
+			preRateSamples:     1200,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 100, expectedError: errMaxSamplesPushRateLimitReached},
+				{samples: 100, expectedError: nil},
+			},
+		},
+
+		"below rate limit on first request, but hits the rate limit afterwards": {
+			preRateSamples:     500,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 5000, expectedError: nil},                               // after push, rate = 500 + 0.2*(5000-500) = 1400
+				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
+				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
+				{samples: 5000, expectedError: nil},                               // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			// Start all expected distributors
+			distributors, _, r, regs := prepare(t, prepConfig{
+				numIngesters:        3,
+				happyIngesters:      3,
+				numDistributors:     1,
+				shardByAllLabels:    true,
+				limits:              limits,
+				maxInflightRequests: testData.inflightLimit,
+				maxIngestionRate:    testData.ingestionRateLimit,
+			})
+			defer stopAll(distributors, r)
+
+			d := distributors[0]
+			d.inflightPushRequests.Add(int64(testData.preInflight))
+			d.ingestionRate.Add(int64(testData.preRateSamples))
+
+			d.ingestionRate.Tick()
+
+			for _, push := range testData.pushes {
+				request := makeWriteRequest(0, push.samples, push.metadata)
+				_, err := d.Push(ctx, request)
+
+				if push.expectedError == nil {
+					assert.Nil(t, err)
+				} else {
+					assert.Equal(t, push.expectedError, err)
+				}
+
+				d.ingestionRate.Tick()
+
+				if testData.expectedMetrics != "" {
+					assert.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(testData.expectedMetrics), testData.metricNames...))
+				}
+			}
+		})
+	}
+}
+
 func TestDistributor_PushHAInstances(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
@@ -1478,6 +1627,8 @@ type prepConfig struct {
 	limits                       *validation.Limits
 	numDistributors              int
 	skipLabelNameValidation      bool
+	maxInflightRequests          int
+	maxIngestionRate             float64
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring, []*prometheus.Registry) {
@@ -1558,6 +1709,8 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
+		distributorCfg.InstanceLimits.MaxInflightPushRequests = cfg.maxInflightRequests
+		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle

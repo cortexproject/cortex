@@ -233,8 +233,6 @@ func TestAlertmanagerClustering(t *testing.T) {
 }
 
 func TestAlertmanagerSharding(t *testing.T) {
-	t.Skip("Flaky test under investigation")
-
 	tests := map[string]struct {
 		legacyAlertStore bool
 	}{
@@ -305,7 +303,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 			// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
 			// The total number of tenants across all instances is: total alertmanager configs * replication factor.
 			// In this case: 30 * 2
-			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(60), "cortex_alertmanager_tenants_owned"))
+			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(60), []string{"cortex_alertmanager_config_last_reload_successful"}, e2e.SkipMissingMetrics))
 			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(float64(1152)), "cortex_ring_tokens_total"))
 
 			// Now, let's make sure state is replicated across instances.
@@ -322,21 +320,28 @@ func TestAlertmanagerSharding(t *testing.T) {
 				EndsAt:   time.Now().Add(time.Hour),
 			}
 
-			// 2b. For each tenant, with a replication factor of 2 and 3 instances there's a chance the user might not be in the first selected replica.
+			// 2b. For each tenant, with a replication factor of 2 and 3 instances there's a chance the user might not be in one of the replicas.
+			// Therefore, try to create a silence on every instance and expect two silences to exist.
 			c1, err := e2ecortex.NewClient("", "", alertmanager1.HTTPEndpoint(), "", userID)
 			require.NoError(t, err)
 			c2, err := e2ecortex.NewClient("", "", alertmanager2.HTTPEndpoint(), "", userID)
 			require.NoError(t, err)
+			c3, err := e2ecortex.NewClient("", "", alertmanager3.HTTPEndpoint(), "", userID)
+			require.NoError(t, err)
 
-			err = c1.CreateSilence(context.Background(), silence)
-			if err != nil {
-				err := c2.CreateSilence(context.Background(), silence)
-				require.NoError(t, err)
-			} else {
-				require.NoError(t, err)
+			errs := []error{}
+			if err := c1.CreateSilence(context.Background(), silence); err != nil {
+				errs = append(errs, err)
 			}
+			if err := c2.CreateSilence(context.Background(), silence); err != nil {
+				errs = append(errs, err)
+			}
+			if err := c3.CreateSilence(context.Background(), silence); err != nil {
+				errs = append(errs, err)
+			}
+			assert.Equal(t, 1, len(errs), "expected exactly one client to error, got:\n %v", errs)
 
-			assert.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_alertmanager_silences"}), e2e.WaitMissingMetrics)
+			assert.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(4)), []string{"cortex_alertmanager_silences"}), e2e.WaitMissingMetrics)
 		})
 	}
 }

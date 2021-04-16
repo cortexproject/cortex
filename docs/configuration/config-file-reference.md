@@ -575,6 +575,20 @@ ring:
   # Name of network interface to read address from.
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+instance_limits:
+  # Max ingestion rate (samples/sec) that this distributor will accept. This
+  # limit is per-distributor, not per-tenant. Additional push requests will be
+  # rejected. Current ingestion rate is computed as exponentially weighted
+  # moving average, updated every second. 0 = unlimited.
+  # CLI flag: -distributor.instance-limits.max-ingestion-rate
+  [max_ingestion_rate: <float> | default = 0]
+
+  # Max inflight push requests that this distributor can handle. This limit is
+  # per-distributor, not per-tenant. Additional requests will be rejected. 0 =
+  # unlimited.
+  # CLI flag: -distributor.instance-limits.max-inflight-push-requests
+  [max_inflight_push_requests: <int> | default = 0]
 ```
 
 ### `ingester_config`

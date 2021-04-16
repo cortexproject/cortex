@@ -311,17 +311,23 @@ func TestAlertmanagerSharding(t *testing.T) {
 			userID := "user-5"
 
 			// 2. Let's create a silence
-			silence := types.Silence{
-				Matchers: amlabels.Matchers{
-					{Name: "instance", Value: "prometheus-one"},
-				},
-				Comment:  "Created for a test case.",
-				StartsAt: time.Now(),
-				EndsAt:   time.Now().Add(time.Hour),
+			comment := func(i int) string {
+				return fmt.Sprintf("Silence Comment #%d", i)
+			}
+			silence := func(i int) types.Silence {
+				return types.Silence{
+					Matchers: amlabels.Matchers{
+						{Name: "instance", Value: "prometheus-one"},
+					},
+					Comment:  comment(i),
+					StartsAt: time.Now(),
+					EndsAt:   time.Now().Add(time.Hour),
+				}
 			}
 
-			// 2b. For each tenant, with a replication factor of 2 and 3 instances there's a chance the user might not be in one of the replicas.
-			// Therefore, try to create a silence on every instance and expect two silences to exist.
+			// 2b. For each tenant, with a replication factor of 2 and 3 instances,
+			// the user will not be present in one of the instances.
+			// However, the distributor should route us to a correct instance.
 			c1, err := e2ecortex.NewClient("", "", alertmanager1.HTTPEndpoint(), "", userID)
 			require.NoError(t, err)
 			c2, err := e2ecortex.NewClient("", "", alertmanager2.HTTPEndpoint(), "", userID)
@@ -329,19 +335,138 @@ func TestAlertmanagerSharding(t *testing.T) {
 			c3, err := e2ecortex.NewClient("", "", alertmanager3.HTTPEndpoint(), "", userID)
 			require.NoError(t, err)
 
-			errs := []error{}
-			if err := c1.CreateSilence(context.Background(), silence); err != nil {
-				errs = append(errs, err)
-			}
-			if err := c2.CreateSilence(context.Background(), silence); err != nil {
-				errs = append(errs, err)
-			}
-			if err := c3.CreateSilence(context.Background(), silence); err != nil {
-				errs = append(errs, err)
-			}
-			assert.Equal(t, 1, len(errs), "expected exactly one client to error, got:\n %v", errs)
+			clients := []*e2ecortex.Client{c1, c2, c3}
 
-			assert.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(4)), []string{"cortex_alertmanager_silences"}), e2e.WaitMissingMetrics)
+			waitForSilences := func(state string, amount int) error {
+				return alertmanagers.WaitSumMetricsWithOptions(
+					e2e.Equals(float64(amount)),
+					[]string{"cortex_alertmanager_silences"},
+					e2e.WaitMissingMetrics,
+					e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "state", state),
+					),
+				)
+			}
+
+			var id1, id2, id3 string
+
+			// Endpoint: POST /silences
+			{
+				id1, err = c1.CreateSilence(context.Background(), silence(1))
+				assert.NoError(t, err)
+				id2, err = c2.CreateSilence(context.Background(), silence(2))
+				assert.NoError(t, err)
+				id3, err = c3.CreateSilence(context.Background(), silence(3))
+				assert.NoError(t, err)
+
+				// Reading silences do not currently read from all replicas. We have to wait for
+				// the silence to be replicated asynchronously, before we can reliably read them.
+				require.NoError(t, waitForSilences("active", 6))
+			}
+
+			assertSilences := func(list []types.Silence, s1, s2, s3 types.SilenceState) {
+				assert.Equal(t, 3, len(list))
+
+				ids := make(map[string]types.Silence, len(list))
+				for _, s := range list {
+					ids[s.ID] = s
+				}
+
+				require.Contains(t, ids, id1)
+				assert.Equal(t, comment(1), ids[id1].Comment)
+				assert.Equal(t, s1, ids[id1].Status.State)
+				require.Contains(t, ids, id2)
+				assert.Equal(t, comment(2), ids[id2].Comment)
+				assert.Equal(t, s2, ids[id2].Status.State)
+				require.Contains(t, ids, id3)
+				assert.Equal(t, comment(3), ids[id3].Comment)
+				assert.Equal(t, s3, ids[id3].Status.State)
+			}
+
+			// Endpoint: GET /silences
+			{
+				for _, c := range clients {
+					list, err := c.GetSilences(context.Background())
+					require.NoError(t, err)
+					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
+				}
+			}
+
+			// Endpoint: GET /silence/{id}
+			{
+				for _, c := range clients {
+					sil1, err := c.GetSilence(context.Background(), id1)
+					require.NoError(t, err)
+					assert.Equal(t, comment(1), sil1.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil1.Status.State)
+
+					sil2, err := c.GetSilence(context.Background(), id2)
+					require.NoError(t, err)
+					assert.Equal(t, comment(2), sil2.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil2.Status.State)
+
+					sil3, err := c.GetSilence(context.Background(), id3)
+					require.NoError(t, err)
+					assert.Equal(t, comment(3), sil3.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil3.Status.State)
+				}
+			}
+
+			// Endpoint: GET /receivers
+			{
+				for _, c := range clients {
+					list, err := c.GetReceivers(context.Background())
+					assert.NoError(t, err)
+					assert.ElementsMatch(t, list, []string{"dummy"})
+				}
+			}
+
+			// Endpoint: GET /status
+			{
+				for _, c := range clients {
+					_, err := c.GetAlertmanagerConfig(context.Background())
+					assert.NoError(t, err)
+				}
+			}
+
+			// Endpoint: DELETE /silence/{id}
+			{
+				// Delete one silence via each instance. Listing the silences on
+				// all other instances should yield the silence being expired.
+				err = c1.DeleteSilence(context.Background(), id2)
+				assert.NoError(t, err)
+
+				// These waits are required as deletion replication is currently
+				// asynchronous, and silence reading is not consistent. Once
+				// merging is implemented on the read path, this is not needed.
+				require.NoError(t, waitForSilences("expired", 2))
+
+				for _, c := range clients {
+					list, err := c.GetSilences(context.Background())
+					require.NoError(t, err)
+					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateActive)
+				}
+
+				err = c2.DeleteSilence(context.Background(), id3)
+				assert.NoError(t, err)
+				require.NoError(t, waitForSilences("expired", 4))
+
+				for _, c := range clients {
+					list, err := c.GetSilences(context.Background())
+					require.NoError(t, err)
+					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateExpired)
+				}
+
+				err = c3.DeleteSilence(context.Background(), id1)
+				assert.NoError(t, err)
+				require.NoError(t, waitForSilences("expired", 6))
+
+				for _, c := range clients {
+					list, err := c.GetSilences(context.Background())
+					require.NoError(t, err)
+					assertSilences(list, types.SilenceStateExpired, types.SilenceStateExpired, types.SilenceStateExpired)
+				}
+			}
 		})
 	}
 }

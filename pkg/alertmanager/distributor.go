@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
@@ -64,10 +65,30 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 // IsPathSupported returns true if the given route is currently supported by the Distributor.
-func (d *Distributor) IsPathSupported(path string) bool {
+func (d *Distributor) IsPathSupported(p string) bool {
 	// API can be found at https://petstore.swagger.io/?url=https://raw.githubusercontent.com/prometheus/alertmanager/master/api/v2/openapi.yaml.
-	return strings.HasSuffix(path, "/alerts") ||
-		strings.HasSuffix(path, "/alerts/groups")
+	return d.isQuorumWritePath(p) || d.isUnaryWritePath(p) || d.isUnaryDeletePath(p) || d.isUnaryReadPath(p)
+}
+
+func (d *Distributor) isQuorumWritePath(p string) bool {
+	return strings.HasSuffix(p, "/alerts")
+}
+
+func (d *Distributor) isUnaryWritePath(p string) bool {
+	return strings.HasSuffix(p, "/silences")
+}
+
+func (d *Distributor) isUnaryDeletePath(p string) bool {
+	return strings.HasSuffix(path.Dir(p), "/silence")
+}
+
+func (d *Distributor) isUnaryReadPath(p string) bool {
+	return strings.HasSuffix(p, "/alerts") ||
+		strings.HasSuffix(p, "/alerts/groups") ||
+		strings.HasSuffix(p, "/silences") ||
+		strings.HasSuffix(path.Dir(p), "/silence") ||
+		strings.HasSuffix(p, "/status") ||
+		strings.HasSuffix(p, "/receivers")
 }
 
 // DistributeRequest shards the writes and returns as soon as the quorum is satisfied.
@@ -86,11 +107,31 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 
 	logger := util_log.WithContext(r.Context(), d.logger)
 
-	if r.Method == http.MethodGet || r.Method == http.MethodHead {
-		d.doRead(userID, w, r, logger)
-	} else {
-		d.doWrite(userID, w, r, logger)
+	if r.Method == http.MethodPost {
+		if d.isQuorumWritePath(r.URL.Path) {
+			d.doWrite(userID, w, r, logger)
+			return
+		}
+		if d.isUnaryWritePath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
 	}
+	if r.Method == http.MethodDelete {
+		if d.isUnaryDeletePath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if d.isUnaryReadPath(r.URL.Path) {
+			d.doUnary(userID, w, r, logger)
+			return
+		}
+	}
+
+	http.Error(w, "route not supported by distributor", http.StatusNotFound)
+	return
 }
 
 func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
@@ -159,7 +200,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
+func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	key := shardByUser(userID)
 	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
 	if err != nil {
@@ -185,7 +226,7 @@ func (d *Distributor) doRead(userID string, w http.ResponseWriter, r *http.Reque
 		Headers: httpToHttpgrpcHeaders(r.Header),
 	}
 
-	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doRead")
+	sp, ctx := opentracing.StartSpanFromContext(r.Context(), "Distributor.doUnary")
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.

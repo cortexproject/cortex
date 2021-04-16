@@ -51,8 +51,12 @@ Now, some rules of thumb:
  2. Each million series (including churn) consumes 15GB of chunk
  storage and 4GB of index, per day (so multiply by the retention
  period).
- 3. Each 100,000 samples/sec arriving takes 1 CPU in distributors.
- Distributors don't need much RAM.
+ 3. The distributors CPU utilization depends on the specific Cortex cluster
+    setup, while they don't need much RAM. Typically, distributors are capable
+    to process between 20,000 and 100,000 samples/sec with 1 CPU core. It's also
+    highly recommended to configure Prometheus `max_samples_per_send` to 1,000
+    samples, in order to reduce the distributors CPU utilization given the same
+    total samples/sec throughput.
 
 If you turn on compression between distributors and ingesters (for
 example to save on inter-zone bandwidth charges at AWS/GCP) they will use

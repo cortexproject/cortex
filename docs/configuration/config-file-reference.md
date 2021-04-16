@@ -3020,6 +3020,11 @@ cassandra:
   # CLI flag: -cassandra.host-verification
   [host_verification: <boolean> | default = true]
 
+  # Policy for selecting Cassandra host. Supported values are: round-robin,
+  # token-aware.
+  # CLI flag: -cassandra.host-selection-policy
+  [host_selection_policy: <string> | default = "round-robin"]
+
   # Path to certificate file to verify the peer.
   # CLI flag: -cassandra.ca-path
   [CA_path: <string> | default = ""]

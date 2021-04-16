@@ -109,7 +109,7 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 
 	if r.Method == http.MethodPost {
 		if d.isQuorumWritePath(r.URL.Path) {
-			d.doWrite(userID, w, r, logger)
+			d.doQuorumWrite(userID, w, r, logger)
 			return
 		}
 		if d.isUnaryWritePath(r.URL.Path) {
@@ -133,7 +133,7 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 	http.Error(w, "route not supported by distributor", http.StatusNotFound)
 }
 
-func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
+func (d *Distributor) doQuorumWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	var body []byte
 	var err error
 	if r.Body != nil {
@@ -155,7 +155,7 @@ func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Requ
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := user.InjectOrgID(context.Background(), userID)
-		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doWrite")
+		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorumWrite")
 		defer sp.Finish()
 
 		resp, err := d.doRequest(localCtx, am, &httpgrpc.HTTPRequest{

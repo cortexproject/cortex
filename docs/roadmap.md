@@ -5,7 +5,7 @@ weight: 10
 slug: roadmap
 ---
 
-This document highlights some ideas for major features we'd like to implement in the near future. 
+This document highlights some ideas for major features we'd like to implement in the near future.
 To get a more complete overview of planned features and current work, see the [issue tracker](https://github.com/cortexproject/cortex/issues).
 Note that these are not ordered by priority.
 

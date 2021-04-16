@@ -131,7 +131,6 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Error(w, "route not supported by distributor", http.StatusNotFound)
-	return
 }
 
 func (d *Distributor) doWrite(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {

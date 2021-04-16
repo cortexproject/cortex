@@ -1204,7 +1204,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			reqCtx := user.InjectOrgID(req.Context(), userID)
 			{
 				w := httptest.NewRecorder()
-				multitenantAM.ServeHTTP(w, req.WithContext(reqCtx))
+				multitenantAM.serveRequest(w, req.WithContext(reqCtx))
 
 				resp := w.Result()
 				body, _ := ioutil.ReadAll(resp.Body)
@@ -1360,7 +1360,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				reqCtx := user.InjectOrgID(req.Context(), userID)
 				{
 					w := httptest.NewRecorder()
-					i.ServeHTTP(w, req.WithContext(reqCtx))
+					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
 					body, _ := ioutil.ReadAll(resp.Body)
@@ -1375,7 +1375,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				reqCtx := user.InjectOrgID(req.Context(), userID)
 				{
 					w := httptest.NewRecorder()
-					i.ServeHTTP(w, req.WithContext(reqCtx))
+					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
 					body, _ := ioutil.ReadAll(resp.Body)

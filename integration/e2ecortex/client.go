@@ -509,15 +509,128 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	return nil
 }
 
-func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) error {
+// CreateSilence creates a new silence and returns the unique identifier of the silence.
+func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (string, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
 
 	data, err := json.Marshal(silence)
 	if err != nil {
-		return fmt.Errorf("error marshaling the silence: %s", err)
+		return "", fmt.Errorf("error marshaling the silence: %s", err)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("creating the silence failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	type response struct {
+		Status string `json:"status"`
+		Data   struct {
+			SilenceID string `json:"silenceID"`
+		} `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return "", err
+	}
+
+	if decoded.Status != "success" {
+		return "", fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data.SilenceID, nil
+}
+
+func (c *Client) GetSilences(ctx context.Context) ([]types.Silence, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting silences failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	type response struct {
+		Status string          `json:"status"`
+		Data   []types.Silence `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return nil, err
+	}
+
+	if decoded.Status != "success" {
+		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data, nil
+}
+
+func (c *Client) GetSilence(ctx context.Context, id string) (types.Silence, error) {
+	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return types.Silence{}, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return types.Silence{}, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return types.Silence{}, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return types.Silence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	type response struct {
+		Status string        `json:"status"`
+		Data   types.Silence `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return types.Silence{}, err
+	}
+
+	if decoded.Status != "success" {
+		return types.Silence{}, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data, nil
+}
+
+func (c *Client) DeleteSilence(ctx context.Context, id string) error {
+	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
+
+	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)
 	}
@@ -527,11 +640,53 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) error
 		return err
 	}
 
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("creating the silence failed with status %d and error %v", resp.StatusCode, string(body))
+		return fmt.Errorf("deleting silence failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
 	return nil
+}
+
+func (c *Client) GetReceivers(ctx context.Context) ([]string, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v1/receivers", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting receivers failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	type response struct {
+		Status string   `json:"status"`
+		Data   []string `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return nil, err
+	}
+
+	if decoded.Status != "success" {
+		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data, nil
 }
 
 func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {

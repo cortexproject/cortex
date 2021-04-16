@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/go-kit/kit/log/level"
 
@@ -11,13 +12,13 @@ import (
 
 // GetFirstAddressOf returns the first IPv4 address of the supplied interface names.
 func GetFirstAddressOf(names []string) (string, error) {
+	var ipAddr string
 	for _, name := range names {
 		inf, err := net.InterfaceByName(name)
 		if err != nil {
 			level.Warn(util_log.Logger).Log("msg", "error getting interface", "inf", name, "err", err)
 			continue
 		}
-
 		addrs, err := inf.Addrs()
 		if err != nil {
 			level.Warn(util_log.Logger).Log("msg", "error getting addresses for interface", "inf", name, "err", err)
@@ -27,16 +28,33 @@ func GetFirstAddressOf(names []string) (string, error) {
 			level.Warn(util_log.Logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
 			continue
 		}
+		ipAddr = filterIPs(addrs)
+		if strings.HasPrefix(ipAddr, `169.254.`) || ipAddr == "" {
+			continue
+		}
+		return ipAddr, nil
+	}
+	if ipAddr == "" {
+		return "", fmt.Errorf("No address found for %s", names)
+	}
+	if strings.HasPrefix(ipAddr, `169.254.`) {
+		level.Warn(util_log.Logger).Log("msg", "using automatic private ip", "address", ipAddr)
+	}
+	return ipAddr, nil
+}
 
-		for _, addr := range addrs {
-			switch v := addr.(type) {
-			case *net.IPNet:
-				if ip := v.IP.To4(); ip != nil {
-					return v.IP.String(), nil
+// filterIPs attempts to return the first non automatic private IP if possible, using the APIPA as a last resort.
+func filterIPs(addrs []net.Addr) string {
+	var ipAddr string
+	for _, addr := range addrs {
+		if v, ok := addr.(*net.IPNet); ok {
+			if ip := v.IP.To4(); ip != nil {
+				ipAddr = v.IP.String()
+				if !strings.HasPrefix(ipAddr, `169.254.`) {
+					return ipAddr
 				}
 			}
 		}
 	}
-
-	return "", fmt.Errorf("No address found for %s", names)
+	return ipAddr
 }

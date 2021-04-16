@@ -86,25 +86,47 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 }
 
 func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
-	// Default values only.
-	{
-		cfg := &MultitenantAlertmanagerConfig{}
-		flagext.DefaultValues(cfg)
-		assert.NoError(t, cfg.Validate())
+	tests := map[string]struct {
+		setup    func(t *testing.T, cfg *MultitenantAlertmanagerConfig)
+		expected error
+	}{
+		"should pass with default config": {
+			setup:    func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {},
+			expected: nil,
+		},
+		"should fail if persistent interval is 0": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				cfg.Persister.Interval = 0
+			},
+			expected: errInvalidPersistInterval,
+		},
+		"should fail if persistent interval is negative": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				cfg.Persister.Interval = -1
+			},
+			expected: errInvalidPersistInterval,
+		},
+		"should fail if external URL ends with /": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix/"))
+			},
+			expected: errInvalidExternalURL,
+		},
+		"should succeed if external URL does not end with /": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix"))
+			},
+			expected: nil,
+		},
 	}
-	// Invalid persist interval (zero).
-	{
-		cfg := &MultitenantAlertmanagerConfig{}
-		flagext.DefaultValues(cfg)
-		cfg.Persister.Interval = 0
-		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
-	}
-	// Invalid persist interval (negative).
-	{
-		cfg := &MultitenantAlertmanagerConfig{}
-		flagext.DefaultValues(cfg)
-		cfg.Persister.Interval = -1
-		assert.Equal(t, errInvalidPersistInterval, cfg.Validate())
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cfg := &MultitenantAlertmanagerConfig{}
+			flagext.DefaultValues(cfg)
+			testData.setup(t, cfg)
+			assert.Equal(t, testData.expected, cfg.Validate())
+		})
 	}
 }
 

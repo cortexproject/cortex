@@ -856,7 +856,6 @@ func TestRuler_ListAllRules(t *testing.T) {
 	router := mux.NewRouter()
 	router.Path("/ruler/rule_groups").Methods(http.MethodGet).HandlerFunc(r.ListAllRules)
 
-	// Verify namespace1 rules are there.
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/ruler/rule_groups", nil, "")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -868,12 +867,12 @@ func TestRuler_ListAllRules(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
 
-	// Testing the running rules for user1 in the mock store
 	gs := make(map[string]map[string][]rulefmt.RuleGroup) // user:namespace:[]rulefmt.RuleGroup
 	for userID := range mockRules {
 		gs[userID] = mockRules[userID].Formatted()
 	}
-	expectedResponse, _ := yaml.Marshal(gs)
+	expectedResponse, err := yaml.Marshal(gs)
+	require.NoError(t, err)
 	require.YAMLEq(t, string(expectedResponse), string(body))
 }
 

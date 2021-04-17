@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -114,7 +115,8 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 		}
 		tt.value[ts.Name] = &ts
 	}
-	d, _ := yaml.Marshal(tt.value)
+	d, err := yaml.Marshal(tt.value)
+	require.NoError(t, err)
 	tt.expectedOutput = string(d)
 	w := httptest.NewRecorder()
 

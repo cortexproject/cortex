@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -213,7 +212,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 
 	err = concurrency.ForEachUser(r.Context(), userIDs, fetchConcurrency, func(ctx context.Context, userID string) error {
 		cfg, err := am.store.GetAlertConfig(ctx, userID)
-		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
+		if errors.Is(err, alertspb.ErrNotFound) {
 			return nil
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)

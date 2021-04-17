@@ -283,7 +283,9 @@ receivers:
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
-	body, _ := ioutil.ReadAll(resp.Body)
-	old, _ := yaml.Marshal(testCases)
+	body, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	old, err := yaml.Marshal(testCases)
+	require.NoError(t, err)
 	require.YAMLEq(t, string(old), string(body))
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
@@ -866,9 +865,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 
 	err = concurrency.ForEachUser(req.Context(), userIDs, fetchRulesConcurrency, func(ctx context.Context, userID string) error {
 		rg, err := r.store.ListRuleGroupsForUserAndNamespace(ctx, userID, "")
-		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
-			return nil
-		} else if err != nil {
+		if err != nil {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
 		data := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -653,7 +654,12 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := createTemplateFile(am.cfg.DataDir, cfg.User, tmpl.Filename, tmpl.Body)
+		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.cfg.DataDir, "templates", cfg.User), tmpl.Filename)
+		if err != nil {
+			return err
+		}
+
+		hasChanged, err := storeTemplateFile(templateFilepath, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -851,25 +857,68 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func createTemplateFile(dataDir, userID, fn, content string) (bool, error) {
-	if fn != filepath.Base(fn) {
-		return false, fmt.Errorf("template file name '%s' is not not valid", fn)
+// validateTemplateFilename validated the template filename and returns error if it's not valid.
+// The validation done in this function is a first fence to avoid having a tenant submitting
+// a config which may escape the per-tenant data directory on disk.
+func validateTemplateFilename(filename string) error {
+	if filepath.Base(filename) != filename {
+		return fmt.Errorf("invalid template name %q: the template name cannot contain any path", filename)
 	}
 
-	dir := filepath.Join(dataDir, "templates", userID, filepath.Dir(fn))
+	// Further enforce no path in the template name.
+	if filepath.Dir(filepath.Clean(filename)) != "." {
+		return fmt.Errorf("invalid template name %q: the template name cannot contain any path", filename)
+	}
+
+	return nil
+}
+
+// safeTemplateFilepath builds and return the template filepath within the provided dir.
+// This function also performs a security check to make sure the provided templateName
+// doesn't contain a relative path escaping the provided dir.
+func safeTemplateFilepath(dir, templateName string) (string, error) {
+	// We expect all template files to be stored and referenced within the provided directory.
+	containerDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+
+	// Build the actual path of the template.
+	actualPath, err := filepath.Abs(filepath.Join(containerDir, templateName))
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure the actual path of the template is within the expected directory.
+	// This check is a counter-measure to make sure the tenant is not trying to
+	// escape its own directory on disk.
+	if !strings.HasPrefix(actualPath, containerDir) {
+		return "", fmt.Errorf("invalid template name %q: the template filepath is escaping the per-tenant local directory", templateName)
+	}
+
+	return actualPath, nil
+}
+
+// storeTemplateFile stores template file at the given templateFilepath.
+// Returns true, if file content has changed (new or updated file), false if file with the same name
+// and content was already stored locally.
+func storeTemplateFile(templateFilepath, content string) (bool, error) {
+	// Make sure the directory exists.
+	dir := filepath.Dir(templateFilepath)
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
 	}
 
-	file := filepath.Join(dir, fn)
 	// Check if the template file already exists and if it has changed
-	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
+	if tmpl, err := ioutil.ReadFile(templateFilepath); err == nil && string(tmpl) == content {
 		return false, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return false, err
 	}
 
-	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
+	if err := ioutil.WriteFile(templateFilepath, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", templateFilepath, err)
 	}
 
 	return true, nil

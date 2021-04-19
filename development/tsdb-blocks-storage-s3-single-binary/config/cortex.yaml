@@ -60,6 +60,9 @@ blocks_storage:
 storage:
   engine: blocks
 
+encoding:
+  chunk_encoding: big-chunk
+
 ruler:
   enable_api: true
   enable_sharding: true

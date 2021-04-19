@@ -108,7 +108,7 @@ type Config struct {
 	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	TableManager     chunk.TableManagerConfig        `yaml:"table_manager"`
-	Encoding         encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
+	Encoding         encoding.Config                 `yaml:"encoding"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
@@ -353,6 +353,11 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex := &Cortex{
 		Cfg: cfg,
+	}
+
+	// Set default chunk encoding
+	if err := encoding.DefaultEncoding.Set(cfg.Encoding.EncodingName); err != nil {
+		return nil, err
 	}
 
 	cortex.setupThanosTracing()

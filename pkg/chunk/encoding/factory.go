@@ -11,7 +11,9 @@ import (
 type Encoding byte
 
 // Config configures the behaviour of chunk encoding
-type Config struct{}
+type Config struct {
+	EncodingName string `yaml:"chunk_encoding"`
+}
 
 var (
 	// DefaultEncoding exported for use in unit tests elsewhere
@@ -20,8 +22,8 @@ var (
 )
 
 // RegisterFlags registers configuration settings.
-func (Config) RegisterFlags(f *flag.FlagSet) {
-	f.Var(&DefaultEncoding, "ingester.chunk-encoding", "Encoding version to use for chunks.")
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar(&cfg.EncodingName, "encoding.chunk-encoding", "big-chunk", "Encoding version to use for chunks.")
 	f.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
 }
 
@@ -63,25 +65,25 @@ type encoding struct {
 
 var encodings = map[Encoding]encoding{
 	DoubleDelta: {
-		Name: "DoubleDelta",
+		Name: "double-delta",
 		New: func() Chunk {
 			return newDoubleDeltaEncodedChunk(d1, d0, true, ChunkLen)
 		},
 	},
 	Varbit: {
-		Name: "Varbit",
+		Name: "varbit",
 		New: func() Chunk {
 			return newVarbitChunk(varbitZeroEncoding)
 		},
 	},
 	Bigchunk: {
-		Name: "Bigchunk",
+		Name: "big-chunk",
 		New: func() Chunk {
 			return newBigchunk()
 		},
 	},
 	PrometheusXorChunk: {
-		Name: "PrometheusXorChunk",
+		Name: "prometheus-xor-chunk",
 		New: func() Chunk {
 			return newPrometheusXorChunk()
 		},
@@ -90,7 +92,12 @@ var encodings = map[Encoding]encoding{
 
 // Set implements flag.Value.
 func (e *Encoding) Set(s string) error {
-	// First see if the name was given
+	// If nothing is provided, keep the original value
+	if s == "" {
+		return nil
+	}
+
+	// Then see if the name was given
 	for k, v := range encodings {
 		if s == v.Name {
 			*e = k

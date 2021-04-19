@@ -116,6 +116,9 @@ alertmanager_storage:
 storage:
   engine: blocks
 
+encoding:
+  chunk_encoding: big-chunk
+
 compactor:
   compaction_interval: 30s
   data_dir:            /tmp/cortex-compactor

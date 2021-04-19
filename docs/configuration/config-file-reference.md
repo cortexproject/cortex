@@ -130,6 +130,11 @@ api:
 # The table_manager_config configures the Cortex table-manager.
 [table_manager: <table_manager_config>]
 
+encoding:
+  # Encoding version to use for chunks.
+  # CLI flag: -encoding.chunk-encoding
+  [chunk_encoding: <string> | default = "big-chunk"]
+
 # The blocks_storage_config configures the blocks storage.
 [blocks_storage: <blocks_storage_config>]
 

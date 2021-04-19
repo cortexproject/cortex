@@ -296,6 +296,9 @@ func validateReceiverHTTPConfig(cfg commoncfg.HTTPClientConfig) error {
 	if cfg.BasicAuth != nil && cfg.BasicAuth.PasswordFile != "" {
 		return errPasswordFileNotAllowed
 	}
+	if cfg.Authorization != nil && cfg.Authorization.CredentialsFile != "" {
+		return errPasswordFileNotAllowed
+	}
 	if cfg.BearerTokenFile != "" {
 		return errPasswordFileNotAllowed
 	}

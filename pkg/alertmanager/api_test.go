@@ -261,6 +261,22 @@ alertmanager_config: |
 			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if global HTTP credentials_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    http_config:
+      authorization:
+        credentials_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+  receivers:
+    - name: default-receiver
+`,
+			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if receiver's HTTP password_file is set",
 			cfg: `
 alertmanager_config: |
@@ -287,6 +303,23 @@ alertmanager_config: |
         - url: http://localhost
           http_config:
             bearer_token_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if receiver's HTTP credentials_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            authorization:
+              credentials_file: /secrets
 
   route:
     receiver: 'default-receiver'
@@ -480,7 +513,7 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			err := validateAlertmanagerConfig(testData.input)
-			assert.True(t, errors.Is(err, testData.expected))
+			assert.ErrorIs(t, err, testData.expected)
 		})
 	}
 }

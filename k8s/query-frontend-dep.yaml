@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: query-frontend
-        image: quay.io/cortexproject/cortex:v1.7.0
+        image: quay.io/cortexproject/cortex:v1.7.1
         imagePullPolicy: IfNotPresent
         args:
         - -target=query-frontend

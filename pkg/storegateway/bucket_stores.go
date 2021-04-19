@@ -141,7 +141,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocks(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -161,7 +161,7 @@ func (u *BucketStores) SyncBlocks(ctx context.Context) error {
 
 func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := util.NewBackoff(ctx, util.BackoffConfig{
-		MinBackoff: 100 * time.Millisecond,
+		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 3,
 	})

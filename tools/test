@@ -1,17 +1,16 @@
-#!/bin/bash
+#!/bin/bash -x
 
 set -e
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SLOW=
 TAGS=
 PARALLEL=
-RACE="-race -covermode=atomic"
 TIMEOUT=10m
 VERBOSE=
+COUNT=1
+COVERAGE=false
 
 usage() {
-    echo "$0 [-slow] [-in-container foo] [-netgo] [-timeout 1m]"
+    echo "$0 [-coverage] [-in-container foo] [-timeout 1m] [-v]"
 }
 
 while [ $# -gt 0 ]; do
@@ -20,29 +19,21 @@ while [ $# -gt 0 ]; do
             VERBOSE="-v"
             shift 1
             ;;
-        "-slow")
-            SLOW=true
-            shift 1
-            ;;
-        "-no-race")
-            RACE=
-            shift 1
-            ;;
-        "-netgo")
-            TAGS="netgo"
-            shift 1
-            ;;
         "-tags")
             TAGS="$2"
             shift 2
             ;;
-        "-p")
-            PARALLEL=true
-            shift 1
-            ;;
         "-timeout")
             TIMEOUT=$2
             shift 2
+            ;;
+        "-count")
+            COUNT=$2
+            shift 2
+            ;;
+        "-coverage")
+            COVERAGE=true
+            shift 1
             ;;
         *)
             usage
@@ -51,77 +42,50 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-GO_TEST_ARGS=(-tags "${TAGS[@]}" -cpu 4 -timeout $TIMEOUT $VERBOSE)
+TAGS=("${GO_TEST_ARGS[@]}" netgo)
+GO_TEST_ARGS=(-tags "${TAGS[@]}" -cpu 4 -timeout "$TIMEOUT" -count "$COUNT")
 
-if [ -n "$SLOW" ] || [ -n "$CI" ]; then
-    SLOW=true
-fi
 
-if [ -n "$SLOW" ]; then
-    GO_TEST_ARGS=("${GO_TEST_ARGS[@]}" ${RACE})
+if [ "$COVERAGE" = true ]; then
+  # shellcheck disable=SC2153
+  if [ -n "$COVERDIR" ]; then
+      coverdir="$COVERDIR"
+  else
+      coverdir=$(mktemp -d coverage.XXXXXXXXXX)
+  fi
 
-    # shellcheck disable=SC2153
-    if [ -n "$COVERDIR" ]; then
-        coverdir="$COVERDIR"
-    else
-        coverdir=$(mktemp -d coverage.XXXXXXXXXX)
-    fi
-
-    mkdir -p "$coverdir"
+  mkdir -p "$coverdir"
 fi
 
 fail=0
 
-if [ -z "$TESTDIRS" ]; then
-    # NB: Relies on paths being prefixed with './'.
-    TESTDIRS=($(git ls-files -- 'cmd/*_test.go' 'pkg/*_test.go' 'tools/*_test.go' | xargs -n1 dirname | sort -u | sed -e 's|^|./|'))
-else
-    # TESTDIRS on the right side is not really an array variable, it
-    # is just a string with spaces, but it is written like that to
-    # shut up the shellcheck tool.
-    TESTDIRS=($(for d in ${TESTDIRS[*]}; do echo "$d"; done))
-fi
-
-PACKAGE_BASE=$(go list -e ./)
-
 run_test() {
-    local dir=$1
-
     local GO_TEST_ARGS_RUN=("${GO_TEST_ARGS[@]}")
-    if [ -n "$SLOW" ]; then
-        local COVERPKGS
-        COVERPKGS=$( (
-            go list "$dir"
-            go list -f '{{join .Deps "\n"}}' "$dir" | grep -v "vendor" | grep "^$PACKAGE_BASE/"
-        ) | paste -s -d, -)
-        local output
-        output=$(mktemp "$coverdir/unit.XXXXXXXXXX")
-        local GO_TEST_ARGS_RUN=("${GO_TEST_ARGS[@]}" -coverprofile=$output -coverpkg=$COVERPKGS)
+    local output
+    if  [ "$COVERAGE" = true ] && [ -z "$COVERDIR" ]; then
+      output=$(mktemp "$coverdir/unit.XXXXXXXXXX")
+      GO_TEST_ARGS_RUN=("${GO_TEST_ARGS_RUN[@]}" -coverprofile=$output)
     fi
-
+    if [ -n "$VERBOSE" ]; then
+      GO_TEST_ARGS_RUN=("${GO_TEST_ARGS_RUN[@]}" -v)
+    fi
     local START
+    local END
     START=$(date +%s)
-    if ! go test "${GO_TEST_ARGS_RUN[@]}" "$dir"; then
+    if ! go test "${GO_TEST_ARGS_RUN[@]}" ./...; then
         fail=1
     fi
-    local END
     END=$(date +%s)
     local RUNTIME=$((END - START))
 }
 
-for dir in "${TESTDIRS[@]}"; do
-    if [ -n "$PARALLEL" ]; then
-        run_test "$dir" &
-    else
-        run_test "$dir"
-    fi
-done
+run_test
 
 if [ -n "$PARALLEL" ]; then
     wait
 fi
 
-if [ -n "$SLOW" ] && [ -z "$COVERDIR" ]; then
+if [ "$COVERAGE" = true ] && [ -z "$COVERDIR" ]; then
     cover "$coverdir"/* >profile.cov
     rm -rf "$coverdir"
     go tool cover -html=profile.cov -o=coverage.html

@@ -200,7 +200,7 @@ lint:
 	kubeval ./k8s/*
 
 test:
-	./tools/test -netgo
+	./tools/test
 
 shell:
 	bash

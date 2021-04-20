@@ -27,6 +27,7 @@ import (
 
 const simpleAlertmanagerConfig = `route:
   receiver: dummy
+  group_by: [group]
 receivers:
   - name: dummy`
 
@@ -234,10 +235,13 @@ func TestAlertmanagerClustering(t *testing.T) {
 
 func TestAlertmanagerSharding(t *testing.T) {
 	tests := map[string]struct {
-		legacyAlertStore bool
+		legacyAlertStore  bool
+		replicationFactor int
 	}{
-		"legacy alertstore": {legacyAlertStore: true},
-		"bucket alertstore": {legacyAlertStore: false},
+		"legacy alertstore, RF = 2": {legacyAlertStore: true, replicationFactor: 2},
+		"bucket alertstore, RF = 2": {legacyAlertStore: false, replicationFactor: 2},
+		"legacy alertstore, RF = 3": {legacyAlertStore: true, replicationFactor: 3},
+		"bucket alertstore, RF = 3": {legacyAlertStore: false, replicationFactor: 3},
 	}
 
 	for testName, testCfg := range tests {
@@ -278,8 +282,8 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			// 3 instances, 30 configurations and a replication factor of 2.
-			flags = mergeFlags(flags, AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), 2))
+			// 3 instances, 30 configurations and a replication factor of 2 or 3.
+			flags = mergeFlags(flags, AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), testCfg.replicationFactor))
 
 			// Wait for the Alertmanagers to start.
 			alertmanager1 := e2ecortex.NewAlertmanager("alertmanager-1", flags, "")
@@ -302,8 +306,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(90), "cortex_alertmanager_tenants_discovered"))
 			// We know that the ring has settled when every instance has some tenants and the total number of tokens have been assigned.
 			// The total number of tenants across all instances is: total alertmanager configs * replication factor.
-			// In this case: 30 * 2
-			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(60), []string{"cortex_alertmanager_config_last_reload_successful"}, e2e.SkipMissingMetrics))
+			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(e2e.Equals(float64(30*testCfg.replicationFactor)), []string{"cortex_alertmanager_config_last_reload_successful"}, e2e.SkipMissingMetrics))
 			require.NoError(t, alertmanagers.WaitSumMetrics(e2e.Equals(float64(1152)), "cortex_ring_tokens_total"))
 
 			// Now, let's make sure state is replicated across instances.
@@ -361,7 +364,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 				// Reading silences do not currently read from all replicas. We have to wait for
 				// the silence to be replicated asynchronously, before we can reliably read them.
-				require.NoError(t, waitForSilences("active", 6))
+				require.NoError(t, waitForSilences("active", 3*testCfg.replicationFactor))
 			}
 
 			assertSilences := func(list []types.Silence, s1, s2, s3 types.SilenceState) {
@@ -439,7 +442,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				// These waits are required as deletion replication is currently
 				// asynchronous, and silence reading is not consistent. Once
 				// merging is implemented on the read path, this is not needed.
-				require.NoError(t, waitForSilences("expired", 2))
+				require.NoError(t, waitForSilences("expired", 1*testCfg.replicationFactor))
 
 				for _, c := range clients {
 					list, err := c.GetSilences(context.Background())
@@ -449,7 +452,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 				err = c2.DeleteSilence(context.Background(), id3)
 				assert.NoError(t, err)
-				require.NoError(t, waitForSilences("expired", 4))
+				require.NoError(t, waitForSilences("expired", 2*testCfg.replicationFactor))
 
 				for _, c := range clients {
 					list, err := c.GetSilences(context.Background())
@@ -459,12 +462,75 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 				err = c3.DeleteSilence(context.Background(), id1)
 				assert.NoError(t, err)
-				require.NoError(t, waitForSilences("expired", 6))
+				require.NoError(t, waitForSilences("expired", 3*testCfg.replicationFactor))
 
 				for _, c := range clients {
 					list, err := c.GetSilences(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateExpired, types.SilenceStateExpired, types.SilenceStateExpired)
+				}
+			}
+
+			alert := func(i, g int) *model.Alert {
+				return &model.Alert{
+					Labels: model.LabelSet{
+						"name":  model.LabelValue(fmt.Sprintf("alert_%d", i)),
+						"group": model.LabelValue(fmt.Sprintf("group_%d", g)),
+					},
+					StartsAt: time.Now(),
+					EndsAt:   time.Now().Add(time.Hour),
+				}
+			}
+
+			alertNames := func(list []model.Alert) (r []string) {
+				for _, a := range list {
+					r = append(r, string(a.Labels["name"]))
+				}
+				return
+			}
+
+			// Endpoint: POST /alerts
+			{
+				err = c1.SendAlertToAlermanager(context.Background(), alert(1, 1))
+				require.NoError(t, err)
+				err = c2.SendAlertToAlermanager(context.Background(), alert(2, 1))
+				require.NoError(t, err)
+				err = c3.SendAlertToAlermanager(context.Background(), alert(3, 2))
+				require.NoError(t, err)
+
+				// API does not block for the write slowest replica, and reads do not
+				// currently merge results from multiple replicas, so we have to wait.
+				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+					e2e.Equals(float64(3*testCfg.replicationFactor)),
+					[]string{"cortex_alertmanager_alerts_received_total"},
+					e2e.SkipMissingMetrics))
+			}
+
+			// Endpoint: GET /alerts
+			{
+				for _, c := range clients {
+					list, err := c.GetAlerts(context.Background())
+					require.NoError(t, err)
+					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
+				}
+			}
+
+			// Endpoint: GET /alerts/groups
+			{
+				for _, c := range clients {
+					list, err := c.GetAlertGroups(context.Background())
+					require.NoError(t, err)
+
+					assert.Equal(t, 2, len(list))
+					groups := make(map[string][]model.Alert)
+					for _, g := range list {
+						groups[string(g.Labels["group"])] = g.Alerts
+					}
+
+					require.Contains(t, groups, "group_1")
+					assert.ElementsMatch(t, []string{"alert_1", "alert_2"}, alertNames(groups["group_1"]))
+					require.Contains(t, groups, "group_2")
+					assert.ElementsMatch(t, []string{"alert_3"}, alertNames(groups["group_2"]))
 				}
 			}
 		})

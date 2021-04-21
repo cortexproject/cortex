@@ -100,7 +100,7 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = defaultTenantLabel
 	}
 
-	return m.mergeDistinctStringSlice(func(q storage.Querier) ([]string, storage.Warnings, error) {
+	return m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelValues(name, matchers...)
 	})
 }
@@ -109,7 +109,7 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 // queriers. It also adds the defaultTenantLabel and if present in the original
 // results the originalDefaultTenantLabel
 func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	labelNames, warnings, err := m.mergeDistinctStringSlice(func(q storage.Querier) ([]string, storage.Warnings, error) {
+	labelNames, warnings, err := m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelNames()
 	})
 	if err != nil {
@@ -140,45 +140,28 @@ func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return labelNames, warnings, nil
 }
 
-type stringSliceFunc func(storage.Querier) ([]string, storage.Warnings, error)
-
-// mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
-// on a querier. It removes duplicates and sorts the result. It doesn't require
-// the output of the stringSliceFunc to be sorted, as results of LabelValues
-// are not sorted.
-//
+type stringSliceFunc func(context.Context, storage.Querier) ([]string, storage.Warnings, error)
 
 type stringSliceFuncResult struct {
 	Result   []string
 	Warnings storage.Warnings
 }
 
+// mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
+// on per querier in parallel. It removes duplicates and sorts the result. It
+// doesn't require the output of the stringSliceFunc to be sorted, as results
+// of LabelValues are not sorted.
 func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
 
-	g, _ := errgroup.WithContext(m.ctx)
+	g, ctx := errgroup.WithContext(m.ctx)
 
-	var warnings storage.Warnings
-	resultMap := make(map[string]struct{})
-	resultCh := make(chan *stringSliceFuncResult)
-	resultDone := make(chan struct{})
-
-	go func() {
-		defer func() {
-			close(resultDone)
-		}()
-		for result := range resultCh {
-			for _, e := range result.Result {
-				resultMap[e] = struct{}{}
-			}
-			warnings = append(warnings, result.Warnings...)
-		}
-	}()
+	resultCh := make(chan *stringSliceFuncResult, len(m.tenantIDs))
 
 	for pos := range m.tenantIDs {
 		querier := m.queriers[pos]
 		tenantID := m.tenantIDs[pos]
 		g.Go(func() error {
-			result, resultWarnings, err := f(querier)
+			result, resultWarnings, err := f(ctx, querier)
 			if err != nil {
 				return errors.Wrapf(err, `error querying {%s="%s"}`, defaultTenantLabel, tenantID)
 			}
@@ -197,19 +180,23 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 		})
 	}
 
-	// await first error or return of all results
-	err := g.Wait()
-
-	//.stop result channel
-	close(resultCh)
-
-	// return error of slice functions
-	if err != nil {
+	// await finish of all goroutines and return first error if occurred
+	if err := g.Wait(); err != nil {
 		return nil, nil, err
 	}
 
-	// wait for all results
-	<-resultDone
+	// no more results are expected
+	close(resultCh)
+
+	// aggregate warnings and deduplicate string results
+	var warnings storage.Warnings
+	resultMap := make(map[string]struct{})
+	for result := range resultCh {
+		for _, e := range result.Result {
+			resultMap[e] = struct{}{}
+		}
+		warnings = append(warnings, result.Warnings...)
+	}
 
 	var result = make([]string, 0, len(resultMap))
 	for e := range resultMap {

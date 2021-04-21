@@ -5801,4 +5801,5 @@ and development.&lt;/p>
 &lt;li>&lt;code>ingester_stream_chunks_when_using_blocks&lt;/code> (boolean) field in runtime config file&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>Instance limits in ingester and distributor&lt;/li>
 &lt;/ul></description></item></channel></rss>

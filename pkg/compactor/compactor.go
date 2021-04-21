@@ -455,11 +455,12 @@ func (c *Compactor) running(ctx context.Context) error {
 
 func (c *Compactor) compactUsers(ctx context.Context) {
 	succeeded := false
+	compactionErrorCount := 0
 
 	c.compactionRunsStarted.Inc()
 
 	defer func() {
-		if succeeded {
+		if succeeded && compactionErrorCount == 0 {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
 		} else {
@@ -526,6 +527,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		if err = c.compactUserWithRetries(ctx, userID); err != nil {
 			c.compactionRunFailedTenants.Inc()
+			compactionErrorCount++
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
 			continue
 		}

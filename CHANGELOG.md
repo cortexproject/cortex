@@ -56,6 +56,7 @@
 * [BUGFIX] Ruler: Rule group limit enforcement should now allow the same number of rules in a group as the limit. #3615
 * [BUGFIX] Frontend, Query-scheduler: allow querier to notify about shutdown without providing any authentication. #4066
 * [BUGFIX] Querier: fixed race condition causing queries to fail right after querier startup with the "empty ring" error. #4068
+* [BUGFIX] Compactor: Increment `cortex_compactor_runs_failed_total` if compactor failed compact a single tenant. #4094
 
 ## Blocksconvert
 

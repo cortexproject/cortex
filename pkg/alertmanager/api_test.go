@@ -10,11 +10,18 @@ import (
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"gopkg.in/yaml.v2"
+
 	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
 
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -198,4 +205,87 @@ func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 		require.Equal(t, 0, len(storage.Objects()))
 	}
+}
+
+func TestAMConfigListUserConfig(t *testing.T) {
+	testCases := map[string]*UserConfig{
+		"user1": {
+			AlertmanagerConfig: `
+global:
+  resolve_timeout: 5m
+route:
+  receiver: route1
+  group_by:
+  - '...'
+  continue: false
+receivers:
+- name: route1
+  webhook_configs:
+  - send_resolved: true
+    http_config: {}
+    url: http://alertmanager/api/notifications?orgId=1&rrid=7
+    max_alerts: 0
+`,
+		},
+		"user2": {
+			AlertmanagerConfig: `
+global:
+  resolve_timeout: 5m
+route:
+  receiver: route1
+  group_by:
+  - '...'
+  continue: false
+receivers:
+- name: route1
+  webhook_configs:
+  - send_resolved: true
+    http_config: {}
+    url: http://alertmanager/api/notifications?orgId=2&rrid=7
+    max_alerts: 0
+`,
+		},
+	}
+
+	storage := objstore.NewInMemBucket()
+	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
+
+	for u, cfg := range testCases {
+		err := alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
+			User:      u,
+			RawConfig: cfg.AlertmanagerConfig,
+		})
+		require.NoError(t, err)
+	}
+
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
+
+	// Create the Multitenant Alertmanager.
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), am))
+	defer services.StopAndAwaitTerminated(context.Background(), am) //nolint:errcheck
+
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+	require.Len(t, am.alertmanagers, 2)
+
+	router := mux.NewRouter()
+	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListAllConfigs)
+	req := httptest.NewRequest("GET", "https://localhost:8080/multitenant_alertmanager/configs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
+	body, err := ioutil.ReadAll(resp.Body)
+	require.NoError(t, err)
+	old, err := yaml.Marshal(testCases)
+	require.NoError(t, err)
+	require.YAMLEq(t, string(old), string(body))
 }

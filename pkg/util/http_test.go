@@ -5,14 +5,19 @@ import (
 	"context"
 	"html/template"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRenderHTTPResponse(t *testing.T) {
@@ -82,6 +87,53 @@ func TestWriteTextResponse(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 	assert.Equal(t, "hello world", w.Body.String())
 	assert.Equal(t, "text/plain", w.Header().Get("Content-Type"))
+}
+
+func TestStreamWriteYAMLResponse(t *testing.T) {
+	type testStruct struct {
+		Name  string `yaml:"name"`
+		Value int    `yaml:"value"`
+	}
+	tt := struct {
+		name                string
+		headers             map[string]string
+		expectedOutput      string
+		expectedContentType string
+		value               map[string]*testStruct
+	}{
+		name: "Test Stream Render YAML",
+		headers: map[string]string{
+			"Content-Type": "application/yaml",
+		},
+		expectedContentType: "application/yaml",
+		value:               make(map[string]*testStruct),
+	}
+	for i := 0; i < rand.Intn(100); i++ {
+		ts := testStruct{
+			Name:  "testName" + strconv.Itoa(i),
+			Value: i,
+		}
+		tt.value[ts.Name] = &ts
+	}
+	d, err := yaml.Marshal(tt.value)
+	require.NoError(t, err)
+	tt.expectedOutput = string(d)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	iter := make(chan interface{})
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
+		close(done)
+	}()
+	for k, v := range tt.value {
+		iter <- map[string]*testStruct{k: v}
+	}
+	close(iter)
+	<-done
+	assert.Equal(t, tt.expectedContentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, 200, w.Code)
+	assert.YAMLEq(t, tt.expectedOutput, w.Body.String())
 }
 
 func TestParseProtoReader(t *testing.T) {

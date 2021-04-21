@@ -41,6 +41,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier | `GET /api/v1/user_stats` |
 | [Get tenant chunks](#get-tenant-chunks) | Querier | `GET /api/v1/chunks` |
 | [Ruler ring status](#ruler-ring-status) | Ruler | `GET /ruler/ring` |
+| [Ruler rules ](#ruler-rule-groups) | Ruler | `GET /ruler/rule_groups` |
 | [List rules](#list-rules) | Ruler | `GET <prometheus-http-prefix>/api/v1/rules` |
 | [List alerts](#list-alerts) | Ruler | `GET <prometheus-http-prefix>/api/v1/alerts` |
 | [List rule groups](#list-rule-groups) | Ruler | `GET /api/v1/rules` |
@@ -51,6 +52,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
 | [Delete tenant configuration](#delete-tenant-configuration) | Ruler | `POST /ruler/delete_tenant_config` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
+| [Alertmanager configs](#alertmanager-configs) | Alertmanager | `GET /multitenant_alertmanager/configs` |
 | [Alertmanager ring status](#alertmanager-ring-status) | Alertmanager | `GET /multitenant_alertmanager/ring` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
 | [Alertmanager Delete Tenant Configuration](#alertmanager-delete-tenant-configuration) | Alertmanager | `POST /multitenant_alertmanager/delete_tenant_config` |
@@ -435,6 +437,14 @@ GET /ruler_ring
 
 Displays a web page with the ruler hash ring status, including the state, healthy and last heartbeat time of each ruler.
 
+### Ruler rules
+
+```
+GET /ruler/rule_groups
+```
+
+List all tenant rules. This endpoint is not part of ruler-API and is always available regardless of whether ruler-API is enabled or not. It should not be exposed to end users. This endpoint returns a YAML dictionary with all the rule groups for each tenant and `200` status code on success.
+
 ### List rules
 
 ```
@@ -666,6 +676,14 @@ GET /status
 ```
 
 Displays a web page with the current status of the Alertmanager, including the Alertmanager cluster members.
+
+### Alertmanager configs
+
+```
+GET /multitenant_alertmanager/configs
+```
+
+List all Alertmanager configurations. This endpoint is not part of alertmanager-API and is always available regardless of whether alertmanager-API is enabled or not. It should not be exposed to end users. This endpoint returns a YAML dictionary with all the Alertmanager configurations and `200` status code on success.
 
 ### Alertmanager ring status
 

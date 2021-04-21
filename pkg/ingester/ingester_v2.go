@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -751,6 +752,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	var (
 		succeededSamplesCount     = 0
 		failedSamplesCount        = 0
+		succeededExemplarsCount   = 0
+		failedExemplarsCount      = 0
 		startAppend               = time.Now()
 		sampleOutOfBoundsCount    = 0
 		sampleOutOfOrderCount     = 0
@@ -847,6 +850,31 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				return copiedLabels
 			})
 		}
+
+		for _, ex := range ts.Exemplars {
+
+			// app.AppendExemplar currently doesn't create the series, it must
+			// already exist.  If it does not then drop.  TODO(mdisibio) - better way to handle?
+			if ref == 0 {
+				continue
+			}
+
+			e := exemplar.Exemplar{
+				Value:  ex.Value,
+				Ts:     ex.TimestampMs,
+				HasTs:  true,
+				Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
+			}
+
+			if _, err = app.AppendExemplar(ref, nil, e); err == nil {
+				succeededExemplarsCount++
+				continue
+			}
+
+			// Error adding exemplar
+			updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(ex.TimestampMs), ts.Labels) })
+			failedExemplarsCount++
+		}
 	}
 
 	// At this point all samples have been added to the appender, so we can track the time it took.
@@ -868,6 +896,8 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// which will be converted into an HTTP 5xx and the client should/will retry.
 	i.metrics.ingestedSamples.Add(float64(succeededSamplesCount))
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
+	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
+	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
 	if sampleOutOfBoundsCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
@@ -1485,6 +1515,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		WALSegmentSize:            i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:   userDB,
 		BlocksToDelete:            userDB.blocksToDelete,
+		MaxExemplars:              i.cfg.BlocksStorageConfig.TSDB.MaxExemplars,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

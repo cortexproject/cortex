@@ -498,10 +498,22 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		samples = append(samples, s)
 	}
 
+	exemplars := ts.Exemplars
+	if len(ts.Exemplars) > 0 {
+		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))
+		for _, e := range ts.Exemplars {
+			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
+				return emptyPreallocSeries, err
+			}
+			exemplars = append(exemplars, e)
+		}
+	}
+
 	return cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
-				Labels:  ts.Labels,
-				Samples: samples,
+				Labels:    ts.Labels,
+				Samples:   samples,
+				Exemplars: exemplars,
 			},
 		},
 		nil
@@ -553,6 +565,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
+	validatedExemplars := 0
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
@@ -649,6 +662,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
+		validatedExemplars += len(ts.Exemplars)
 	}
 
 	for _, m := range req.Metadata {
@@ -676,7 +690,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
-	totalN := validatedSamples + len(validatedMetadata)
+	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)

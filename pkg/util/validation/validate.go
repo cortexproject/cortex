@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -50,6 +51,10 @@ const (
 
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
+
+	// The combined length of the label names and values of an Exemplar's LabelSet MUST NOT exceed 128 UTF-8 characters
+	// https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#exemplars
+	ExemplarMaxLabelSetLength = 128
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -95,6 +100,33 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
+	}
+
+	return nil
+}
+
+func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
+	if len(e.Labels) <= 0 {
+		return fmt.Errorf(`exemplar missing labels: series: %s`,
+			cortexpb.FromLabelAdaptersToLabels(ls).String())
+	}
+
+	if e.TimestampMs == 0 {
+		return fmt.Errorf(`exemplar missing timestamp: series: %s labels: %s`,
+			cortexpb.FromLabelAdaptersToLabels(ls).String(),
+			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
+	}
+
+	labelSetLen := 0
+	for _, l := range e.Labels {
+		labelSetLen += len(l.Name)
+		labelSetLen += len(l.Value)
+	}
+
+	if labelSetLen > ExemplarMaxLabelSetLength {
+		return fmt.Errorf(`exemplar combined labelset too long: series: %s labels: %s`,
+			cortexpb.FromLabelAdaptersToLabels(ls).String(),
+			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
 	}
 
 	return nil

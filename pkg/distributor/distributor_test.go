@@ -1118,6 +1118,72 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 }
 
+func TestDistributor_Push_ExemplarValidation(t *testing.T) {
+	tests := map[string]struct {
+		input       cortexpb.Exemplar
+		errExpected bool
+		errMessage  string
+	}{
+		"valid exemplar": {
+			input: cortexpb.Exemplar{
+				Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+				TimestampMs: 1000,
+			},
+			errExpected: false,
+		},
+		"rejects exemplar with no labels": {
+			input:       cortexpb.Exemplar{},
+			errExpected: true,
+			errMessage:  `exemplar missing labels: series: {__name__="test"}`,
+		},
+		"rejects exemplar with timestamp": {
+			input: cortexpb.Exemplar{
+				Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}}},
+			errExpected: true,
+			errMessage:  `exemplar missing timestamp: series: {__name__="test"} labels: {foo="bar"}`,
+		},
+		"rejects exemplar with too long labelset": {
+			input: cortexpb.Exemplar{
+				TimestampMs: 1000,
+				Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}}},
+			errExpected: true,
+			errMessage:  fmt.Sprintf(`exemplar combined labelset too long: series: {__name__="test"} labels: {foo="%s"}`, strings.Repeat("0", 126)),
+		},
+	}
+
+	for testName, tc := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ds, _, _, _ := prepare(t, prepConfig{
+				numIngesters:     2,
+				happyIngesters:   2,
+				numDistributors:  1,
+				shuffleShardSize: 1,
+			})
+
+			req := &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					{
+						TimeSeries: &cortexpb.TimeSeries{
+							Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
+							Exemplars: []cortexpb.Exemplar{
+								tc.input,
+							},
+						},
+					},
+				},
+			}
+
+			_, err := ds[0].Push(ctx, req)
+			if tc.errExpected {
+				fromError, _ := status.FromError(err)
+				assert.Equal(t, tc.errMessage, fromError.Message())
+			} else {
+				assert.Nil(t, err)
+			}
+		})
+	}
+}
+
 func BenchmarkDistributor_Push(b *testing.B) {
 	const (
 		numSeriesPerRequest = 1000

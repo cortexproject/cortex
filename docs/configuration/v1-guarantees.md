@@ -73,3 +73,4 @@ Currently experimental features are:
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
   - `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
+- Instance limits in ingester and distributor

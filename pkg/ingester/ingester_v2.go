@@ -851,14 +851,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			})
 		}
 
+		// app.AppendExemplar currently doesn't create the series, it must
+		// already exist.  If it does not then drop.  TODO(mdisibio) - better way to handle?
+		if ref == 0 {
+			continue
+		}
+
 		for _, ex := range ts.Exemplars {
-
-			// app.AppendExemplar currently doesn't create the series, it must
-			// already exist.  If it does not then drop.  TODO(mdisibio) - better way to handle?
-			if ref == 0 {
-				continue
-			}
-
 			e := exemplar.Exemplar{
 				Value:  ex.Value,
 				Ts:     ex.TimestampMs,

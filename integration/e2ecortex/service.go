@@ -18,10 +18,13 @@ func NewCortexService(
 	grpcPort int,
 	otherPorts ...int,
 ) *CortexService {
-	return &CortexService{
+	svc := &CortexService{
 		HTTPService: e2e.NewHTTPService(name, image, command, readiness, httpPort, append(otherPorts, grpcPort)...),
 		grpcPort:    grpcPort,
 	}
+	// run all tests as non-root user
+	svc.SetUser("cortex:cortex")
+	return svc
 }
 
 func (s *CortexService) GRPCEndpoint() string {

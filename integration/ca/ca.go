@@ -79,7 +79,9 @@ func (ca *CA) WriteCertificate(template *x509.Certificate, certPath string, keyP
 		return err
 	}
 
-	if err := writeExclusivePEMFile(keyPath, "PRIVATE KEY", 0600, keyBytes); err != nil {
+	// TODO: private keys should not be worldreadable. This is required when
+	// the container is run as non-root user
+	if err := writeExclusivePEMFile(keyPath, "PRIVATE KEY", 0644, keyBytes); err != nil {
 		return err
 	}
 

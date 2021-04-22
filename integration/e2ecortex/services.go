@@ -384,6 +384,7 @@ func NewRuler(name string, consulAddress string, flags map[string]string, image 
 			// Configure the ingesters ring backend
 			"-ring.store":      "consul",
 			"-consul.hostname": consulAddress,
+			"-ruler.rule-path": "/data/rules",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

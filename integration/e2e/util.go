@@ -167,5 +167,11 @@ func GetTempDirectory() (string, error) {
 		return "", err
 	}
 
+	// change mode of temporary directory to support non-root containers.
+	if err := os.Chmod(absDir, 0777); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		return "", err
+	}
+
 	return absDir, nil
 }

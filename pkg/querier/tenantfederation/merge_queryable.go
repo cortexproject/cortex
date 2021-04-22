@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -170,15 +171,10 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 			return fmt.Errorf("unexpected type %T", jobIntf)
 		}
 
-		result, resultWarnings, err := f(ctx, job.querier)
+		var err error
+		job.result, job.warnings, err = f(ctx, job.querier)
 		if err != nil {
-			return errors.Wrapf(err, `error querying {%s="%s"}`, defaultTenantLabel, job.tenantID)
-		}
-
-		job.result = result
-		job.warnings = make(storage.Warnings, len(resultWarnings))
-		for pos := range resultWarnings {
-			job.warnings[pos] = errors.Wrapf(resultWarnings[pos], `warning querying {%s="%s"}`, defaultTenantLabel, job.tenantID)
+			return errors.Wrapf(err, "error querying %s %s", rewriteLabelName(defaultTenantLabel), job.tenantID)
 		}
 
 		return nil
@@ -201,7 +197,10 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 		for _, e := range job.result {
 			resultMap[e] = struct{}{}
 		}
-		warnings = append(warnings, job.warnings...)
+
+		for _, w := range job.warnings {
+			warnings = append(warnings, errors.Wrapf(w, "warning querying %s %s", rewriteLabelName(defaultTenantLabel), job.tenantID))
+		}
 	}
 
 	var result = make([]string, 0, len(resultMap))
@@ -216,7 +215,7 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 func (m *mergeQuerier) Close() error {
 	errs := tsdb_errors.NewMulti()
 	for pos, tenantID := range m.tenantIDs {
-		errs.Add(errors.Wrapf(m.queriers[pos].Close(), `failed to close querier for {%s="%s"}`, defaultTenantLabel, tenantID))
+		errs.Add(errors.Wrapf(m.queriers[pos].Close(), "failed to close querier for %s %s", rewriteLabelName(defaultTenantLabel), tenantID))
 	}
 	return errs.Err()
 }
@@ -336,7 +335,7 @@ func (m *addLabelsSeriesSet) At() storage.Series {
 // The error that iteration as failed with.
 // When an error occurs, set cannot continue to iterate.
 func (m *addLabelsSeriesSet) Err() error {
-	return errors.Wrapf(m.upstream.Err(), "error querying %s", m.labels.String())
+	return errors.Wrapf(m.upstream.Err(), "error querying %s", labelsToString(m.labels))
 }
 
 // A collection of warnings for the whole set.
@@ -345,9 +344,23 @@ func (m *addLabelsSeriesSet) Warnings() storage.Warnings {
 	upstream := m.upstream.Warnings()
 	warnings := make(storage.Warnings, len(upstream))
 	for pos := range upstream {
-		warnings[pos] = errors.Wrapf(upstream[pos], "warning querying %s", m.labels.String())
+		warnings[pos] = errors.Wrapf(upstream[pos], "warning querying %s", labelsToString(m.labels))
 	}
 	return warnings
+}
+
+// rewrite label name to be better readable in error output
+func rewriteLabelName(s string) string {
+	return strings.TrimRight(strings.TrimLeft(s, "_"), "_")
+}
+
+// this outputs a better readable error format
+func labelsToString(labels labels.Labels) string {
+	parts := make([]string, len(labels))
+	for pos, l := range labels {
+		parts[pos] = rewriteLabelName(l.Name) + " " + l.Value
+	}
+	return strings.Join(parts, ", ")
 }
 
 type addLabelsSeries struct {

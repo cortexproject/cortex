@@ -351,8 +351,8 @@ func TestMergeQueryable(t *testing.T) {
 				"team-c": storage.Warnings([]error{errors.New("out of office")}),
 			},
 			expectedWarnings: []string{
-				`warning querying {__tenant_id__="team-b"}: don't like them`,
-				`warning querying {__tenant_id__="team-c"}: out of office`,
+				`warning querying tenant_id team-b: don't like them`,
+				`warning querying tenant_id team-c: out of office`,
 			},
 		},
 		{
@@ -365,7 +365,7 @@ func TestMergeQueryable(t *testing.T) {
 			queryErrByTenant: map[string]error{
 				"team-b": errors.New("failure xyz"),
 			},
-			expectedQueryErr: errors.New("error querying {__tenant_id__=\"team-b\"}: failure xyz"),
+			expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

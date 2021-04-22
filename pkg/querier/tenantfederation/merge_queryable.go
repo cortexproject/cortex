@@ -2,8 +2,8 @@ package tenantfederation
 
 import (
 	"context"
+	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -11,15 +11,16 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/user"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 const (
 	defaultTenantLabel         = "__tenant_id__"
 	retainExistingPrefix       = "original_"
 	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
+	maxConcurrency             = 16
 )
 
 // NewQueryable returns a queryable that iterates through all the tenant IDs
@@ -142,9 +143,11 @@ func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
 
 type stringSliceFunc func(context.Context, storage.Querier) ([]string, storage.Warnings, error)
 
-type stringSliceFuncResult struct {
-	Result   []string
-	Warnings storage.Warnings
+type stringSliceFuncJob struct {
+	querier  storage.Querier
+	tenantID string
+	result   []string
+	warnings storage.Warnings
 }
 
 // mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
@@ -152,50 +155,53 @@ type stringSliceFuncResult struct {
 // doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
 func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
-
-	g, ctx := errgroup.WithContext(m.ctx)
-
-	resultCh := make(chan *stringSliceFuncResult, len(m.tenantIDs))
+	var jobs = make([]interface{}, len(m.tenantIDs))
 
 	for pos := range m.tenantIDs {
-		querier := m.queriers[pos]
-		tenantID := m.tenantIDs[pos]
-		g.Go(func() error {
-			result, resultWarnings, err := f(ctx, querier)
-			if err != nil {
-				return errors.Wrapf(err, `error querying {%s="%s"}`, defaultTenantLabel, tenantID)
-			}
-
-			var warnings = make(storage.Warnings, len(resultWarnings))
-			for pos := range resultWarnings {
-				warnings[pos] = errors.Wrapf(resultWarnings[pos], `warning querying {%s="%s"}`, defaultTenantLabel, tenantID)
-			}
-
-			resultCh <- &stringSliceFuncResult{
-				Result:   result,
-				Warnings: warnings,
-			}
-
-			return nil
-		})
+		jobs[pos] = &stringSliceFuncJob{
+			querier:  m.queriers[pos],
+			tenantID: m.tenantIDs[pos],
+		}
 	}
 
-	// await finish of all goroutines and return first error if occurred
-	if err := g.Wait(); err != nil {
+	run := func(ctx context.Context, jobIntf interface{}) error {
+		job, ok := jobIntf.(*stringSliceFuncJob)
+		if !ok {
+			return fmt.Errorf("unexpected type %T", jobIntf)
+		}
+
+		result, resultWarnings, err := f(ctx, job.querier)
+		if err != nil {
+			return errors.Wrapf(err, `error querying {%s="%s"}`, defaultTenantLabel, job.tenantID)
+		}
+
+		job.result = result
+		job.warnings = make(storage.Warnings, len(resultWarnings))
+		for pos := range resultWarnings {
+			job.warnings[pos] = errors.Wrapf(resultWarnings[pos], `warning querying {%s="%s"}`, defaultTenantLabel, job.tenantID)
+		}
+
+		return nil
+	}
+
+	err := concurrency.ForEach(m.ctx, jobs, maxConcurrency, run)
+	if err != nil {
 		return nil, nil, err
 	}
-
-	// no more results are expected
-	close(resultCh)
 
 	// aggregate warnings and deduplicate string results
 	var warnings storage.Warnings
 	resultMap := make(map[string]struct{})
-	for result := range resultCh {
-		for _, e := range result.Result {
+	for _, jobIntf := range jobs {
+		job, ok := jobIntf.(*stringSliceFuncJob)
+		if !ok {
+			return nil, nil, fmt.Errorf("unexpected type %T", jobIntf)
+		}
+
+		for _, e := range job.result {
 			resultMap[e] = struct{}{}
 		}
-		warnings = append(warnings, result.Warnings...)
+		warnings = append(warnings, job.warnings...)
 	}
 
 	var result = make([]string, 0, len(resultMap))
@@ -215,35 +221,54 @@ func (m *mergeQuerier) Close() error {
 	return errs.Err()
 }
 
+type selectJob struct {
+	seriesSet *storage.SeriesSet
+	querier   storage.Querier
+	tenantID  string
+}
+
 // Select returns a set of series that matches the given label matchers. If the
 // tenantLabelName is matched on it only considers those queriers matching. The
 // forwarded labelSelector is not containing those that operate on
 // tenantLabelName.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, m.tenantIDs, matchers...)
+	var jobs = make([]interface{}, len(matchedTenants))
 	var seriesSets = make([]storage.SeriesSet, len(matchedTenants))
-	var ssPos int
-	var wg sync.WaitGroup
+	var jobPos int
 	for tenantPos := range m.tenantIDs {
 		if _, matched := matchedTenants[m.tenantIDs[tenantPos]]; !matched {
 			continue
 		}
-		wg.Add(1)
-		go func(ssPos, tenantPos int) {
-			defer wg.Done()
-			seriesSets[ssPos] = &addLabelsSeriesSet{
-				upstream: m.queriers[tenantPos].Select(sortSeries, hints, filteredMatchers...),
-				labels: labels.Labels{
-					{
-						Name:  defaultTenantLabel,
-						Value: m.tenantIDs[tenantPos],
-					},
-				},
-			}
-		}(ssPos, tenantPos)
-		ssPos++
+		jobs[jobPos] = &selectJob{
+			seriesSet: &seriesSets[jobPos],
+			querier:   m.queriers[tenantPos],
+			tenantID:  m.tenantIDs[tenantPos],
+		}
+		jobPos++
 	}
-	wg.Wait()
+
+	run := func(ctx context.Context, jobIntf interface{}) error {
+		job, ok := jobIntf.(*selectJob)
+		if !ok {
+			return fmt.Errorf("unexpected type %T", jobIntf)
+		}
+		*job.seriesSet = &addLabelsSeriesSet{
+			upstream: job.querier.Select(sortSeries, hints, filteredMatchers...),
+			labels: labels.Labels{
+				{
+					Name:  defaultTenantLabel,
+					Value: job.tenantID,
+				},
+			},
+		}
+		return nil
+	}
+
+	err := concurrency.ForEach(m.ctx, jobs, maxConcurrency, run)
+	if err != nil {
+		panic(fmt.Sprintf("this should never happen: %v", err))
+	}
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
 }
 

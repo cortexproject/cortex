@@ -2,15 +2,21 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2021-01-01/storage"
+	"github.com/Azure/azure-sdk-for-go/services/subscription/mgmt/2020-09-01/subscription"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -52,6 +58,9 @@ var (
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
 	Environment        string         `yaml:"environment"`
+	MSIResource        string         `yaml:"msi_resource,omitempty"`
+	ResourceGroupName  string         `yaml:"resource_group_name,omitempty"`
+	SubscriptionID     string         `yaml:"subscription_id,omitempty"`
 	ContainerName      string         `yaml:"container_name"`
 	AccountName        string         `yaml:"account_name"`
 	AccountKey         flagext.Secret `yaml:"account_key"`
@@ -72,6 +81,9 @@ func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Environment, prefix+"azure.environment", azureGlobal, fmt.Sprintf("Azure Cloud environment. Supported values are: %s.", strings.Join(supportedEnvironments, ", ")))
+	f.StringVar(&c.MSIResource, prefix+"azure.msi-resource", "", "Resource management uri")
+	f.StringVar(&c.ResourceGroupName, prefix+"azure.resource-group-name", "", "Name of the resource group which the storage account belongs to")
+	f.StringVar(&c.SubscriptionID, prefix+"azure.subscription-id", "", "The Microsoft Azure subscription id")
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "cortex", "Name of the blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.AccountName, prefix+"azure.account-name", "", "The Microsoft Azure account name to be used")
 	f.Var(&c.AccountKey, prefix+"azure.account-key", "The Microsoft Azure account key to use.")
@@ -100,12 +112,85 @@ func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
 	}
 
 	var err error
+	if cfg.MSIResource != "" {
+		_, err = cfg.tryFetchAccountKeyWithMSI()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	blobStorage.containerURL, err = blobStorage.buildContainerURL()
 	if err != nil {
 		return nil, err
 	}
 
 	return blobStorage, nil
+}
+
+func setAzureEnvironment(cfg *BlobStorageConfig) error {
+	if cfg.Environment != "" {
+		switch cfg.Environment {
+		case azureGlobal:
+			return os.Setenv(auth.EnvironmentName, azure.PublicCloud.Name)
+		case azureChinaCloud:
+			return os.Setenv(auth.EnvironmentName, azure.ChinaCloud.Name)
+		case azureGermanCloud:
+			return os.Setenv(auth.EnvironmentName, azure.GermanCloud.Name)
+		case azureUSGovernment:
+			return os.Setenv(auth.EnvironmentName, azure.USGovernmentCloud.Name)
+		default:
+			return errors.New("unsupported azure environment:" + cfg.Environment)
+		}
+	}
+	return nil
+}
+
+func (c *BlobStorageConfig) tryFetchAccountKeyWithMSI() (*BlobStorageConfig, error) {
+	if c.ResourceGroupName == "" {
+		return nil, errors.New("resource group name should be specified while using msi")
+	}
+	msiConfig := auth.NewMSIConfig()
+	msiConfig.Resource = c.MSIResource
+	err := setAzureEnvironment(c)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := auth.GetSettingsFromEnvironment()
+	if err != nil {
+		return nil, err
+	}
+	msiAuthorizer, err := msiConfig.Authorizer()
+	if err != nil {
+		return nil, err
+	}
+	subscriptionIdFromEnv := settings.GetSubscriptionID()
+	if c.SubscriptionID == "" {
+		if subscriptionIdFromEnv != "" {
+			c.SubscriptionID = subscriptionIdFromEnv
+		} else {
+			// try to get subscription id with msi
+			subscriptionClient := subscription.NewSubscriptionsClientWithBaseURI(c.MSIResource)
+			subscriptionClient.Authorizer = msiAuthorizer
+			listResultPage, err := subscriptionClient.List(context.Background())
+			if err != nil {
+				return nil, err
+			}
+			if len(listResultPage.Values()) <= 0 {
+				return nil, errors.New("no access to any subscription")
+			}
+			// use the first subscription by default
+			c.SubscriptionID = *(listResultPage.Values()[0].SubscriptionID)
+		}
+	}
+	accountClient := storage.NewAccountsClientWithBaseURI(settings.Environment.ResourceManagerEndpoint, c.SubscriptionID)
+	accountClient.Authorizer = msiAuthorizer
+	listResult, err := accountClient.ListKeys(context.Background(), c.ResourceGroupName, c.AccountName, storage.Kerb)
+	if err != nil {
+		return nil, err
+	}
+	// pick the first record of account key, the result should be with two keys
+	c.AccountKey = flagext.Secret{Value: *(*listResult.Keys)[0].Value}
+	return c, nil
 }
 
 // Stop is a no op, as there are no background workers with this driver currently

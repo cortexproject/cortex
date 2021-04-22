@@ -6,7 +6,10 @@ require (
 	cloud.google.com/go/bigtable v1.2.0
 	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.2
+	github.com/Azure/azure-sdk-for-go v52.5.0+incompatible
 	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest/autorest v0.11.18
+	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15

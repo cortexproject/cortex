@@ -1245,6 +1245,18 @@ storage:
     # CLI flag: -ruler.storage.azure.environment
     [environment: <string> | default = "AzureGlobal"]
 
+    # Resource management uri
+    # CLI flag: -ruler.storage.azure.msi-resource
+    [msi_resource: <string> | default = ""]
+
+    # Name of the resource group which the storage account belongs to
+    # CLI flag: -ruler.storage.azure.resource-group-name
+    [resource_group_name: <string> | default = ""]
+
+    # The Microsoft Azure subscription id
+    # CLI flag: -ruler.storage.azure.subscription-id
+    [subscription_id: <string> | default = ""]
+
     # Name of the blob container used to store chunks. This container must be
     # created before running cortex.
     # CLI flag: -ruler.storage.azure.container-name
@@ -1938,6 +1950,18 @@ storage:
     # AzureChinaCloud, AzureGermanCloud, AzureUSGovernment.
     # CLI flag: -alertmanager.storage.azure.environment
     [environment: <string> | default = "AzureGlobal"]
+
+    # Resource management uri
+    # CLI flag: -alertmanager.storage.azure.msi-resource
+    [msi_resource: <string> | default = ""]
+
+    # Name of the resource group which the storage account belongs to
+    # CLI flag: -alertmanager.storage.azure.resource-group-name
+    [resource_group_name: <string> | default = ""]
+
+    # The Microsoft Azure subscription id
+    # CLI flag: -alertmanager.storage.azure.subscription-id
+    [subscription_id: <string> | default = ""]
 
     # Name of the blob container used to store chunks. This container must be
     # created before running cortex.
@@ -2841,6 +2865,18 @@ azure:
   # AzureGermanCloud, AzureUSGovernment.
   # CLI flag: -azure.environment
   [environment: <string> | default = "AzureGlobal"]
+
+  # Resource management uri
+  # CLI flag: -azure.msi-resource
+  [msi_resource: <string> | default = ""]
+
+  # Name of the resource group which the storage account belongs to
+  # CLI flag: -azure.resource-group-name
+  [resource_group_name: <string> | default = ""]
+
+  # The Microsoft Azure subscription id
+  # CLI flag: -azure.subscription-id
+  [subscription_id: <string> | default = ""]
 
   # Name of the blob container used to store chunks. This container must be
   # created before running cortex.

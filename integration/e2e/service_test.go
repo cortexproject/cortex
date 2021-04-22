@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -169,4 +170,21 @@ metric_b 1000
 		MaxRetries: 50,
 	})
 	require.NoError(t, s.WaitSumMetrics(Equals(math.NaN()), "metric_a"))
+}
+
+func TestParseDockerPort(t *testing.T) {
+	_, err := parseDockerIPv4Port("")
+	assert.Error(t, err)
+
+	actual, err := parseDockerIPv4Port("0.0.0.0:36999")
+	assert.NoError(t, err)
+	assert.Equal(t, 36999, actual)
+
+	actual, err = parseDockerIPv4Port("0.0.0.0:49155\n:::49156")
+	assert.NoError(t, err)
+	assert.Equal(t, 49155, actual)
+
+	actual, err = parseDockerIPv4Port(":::49156\n0.0.0.0:49155")
+	assert.NoError(t, err)
+	assert.Equal(t, 49155, actual)
 }

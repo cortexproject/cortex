@@ -186,13 +186,13 @@ func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSe
 
 // LabelValues gets label values
 func (c *Client) LabelValues(label string, start, end time.Time) (model.LabelValues, error) {
-	result, _, err := c.querierClient.LabelValues(context.Background(), label, start, end)
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, nil, start, end)
 	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), start, end)
+	result, _, err := c.querierClient.LabelNames(context.Background(), nil, start, end)
 	return result, err
 }
 

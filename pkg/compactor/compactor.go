@@ -627,7 +627,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return err
 	}
 
-	syncer, err := compact.NewSyncer(
+	syncer, err := compact.NewMetaSyncer(
 		ulogger,
 		reg,
 		bucket,

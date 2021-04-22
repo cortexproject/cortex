@@ -85,4 +85,4 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 
 // Need to upgrade Prometheus and Alertmanager in Thanos too, due to some breaking changes.
 // We use a commit from a branch until https://github.com/thanos-io/thanos/pull/4094 is not merged.
-replace github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17 => github.com/thanos-io/thanos v0.19.1-0.20210422104148-b9144ea1b912
+replace github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17 => github.com/thanos-io/thanos v0.19.1-0.20210422144607-875be09fb4fe

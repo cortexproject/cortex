@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)$`)
-	errMissingMetric  = errors.New("metric not found")
+	dockerIPv4PortPattern = regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+:(\d+)$`)
+	errMissingMetric      = errors.New("metric not found")
 )
 
 // ConcreteService represents microservice with optional ports which will be discoverable from docker
@@ -118,7 +118,6 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	// Get the dynamic local ports mapped to the container.
 	for _, containerPort := range s.networkPorts {
 		var out []byte
-		var localPort int
 
 		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
 		if err != nil {
@@ -129,18 +128,14 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s; output: %q", containerPort, s.name, out)
 		}
 
-		stdout := strings.TrimSpace(string(out))
-		matches := dockerPortPattern.FindStringSubmatch(stdout)
-		if len(matches) != 2 {
-			return fmt.Errorf("unable to get mapping for port %d (output: %s); service: %s", containerPort, stdout, s.name)
+		localPort, err := parseDockerIPv4Port(string(out))
+		if err != nil {
+			return errors.Wrapf(err, "unable to get mapping for port %d (output: %s); service: %s", containerPort, string(out), s.name)
 		}
 
-		localPort, err = strconv.Atoi(matches[1])
-		if err != nil {
-			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, s.name)
-		}
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
+
 	logger.Log("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
@@ -667,4 +662,27 @@ func (s *HTTPService) WaitRemovedMetric(metricName string, opts ...MetricsOption
 	}
 
 	return fmt.Errorf("the metric %s is still exported by %s", metricName, s.name)
+}
+
+// parseDockerIPv4Port parses the input string which is expected to be the output of "docker port"
+// command and returns the first IPv4 port found.
+func parseDockerIPv4Port(out string) (int, error) {
+	// The "docker port" output may be multiple lines if both IPv4 and IPv6 are supported,
+	// so we need to parse each line.
+	for _, line := range strings.Split(out, "\n") {
+		matches := dockerIPv4PortPattern.FindStringSubmatch(strings.TrimSpace(line))
+		if len(matches) != 2 {
+			continue
+		}
+
+		port, err := strconv.Atoi(matches[1])
+		if err != nil {
+			continue
+		}
+
+		return port, nil
+	}
+
+	// We've not been able to parse the output format.
+	return 0, errors.New("unknown output format")
 }

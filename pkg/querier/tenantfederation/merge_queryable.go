@@ -267,8 +267,9 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 
 	err := concurrency.ForEach(m.ctx, jobs, maxConcurrency, run)
 	if err != nil {
-		panic(fmt.Sprintf("this should never happen: %v", err))
+		return storage.ErrSeriesSet(err)
 	}
+
 	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
 }
 

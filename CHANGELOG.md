@@ -46,6 +46,7 @@
 * [ENHANCEMENT] Alertmanager: validate configured `-alertmanager.web.external-url` and fail if ends with `/`. #4081
 * [ENHANCEMENT] Allow configuration of Cassandra's host selection policy. #4069
 * [ENHANCEMENT] Store-gateway: retry synching blocks if a per-tenant sync fails. #3975 #4088
+* [ENHANCEMENT] Add metric `cortex_tcp_connections` exposing the current number of accepted TCP connections. #4099
 * [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959

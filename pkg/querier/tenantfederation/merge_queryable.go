@@ -165,6 +165,11 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 	}
 
 	run := func(ctx context.Context, jobIntf interface{}) error {
+		// end early when context has ended
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		job, ok := jobIntf.(*stringSliceFuncJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
@@ -249,6 +254,11 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 	}
 
 	run := func(ctx context.Context, jobIntf interface{}) error {
+		// end early when context has ended
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		job, ok := jobIntf.(*selectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

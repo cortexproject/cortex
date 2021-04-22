@@ -491,6 +491,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		samples = append(samples, s)
 	}
 
+	// Don't alloc a new empty slice unnecessarily
 	exemplars := ts.Exemplars
 	if len(ts.Exemplars) > 0 {
 		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))

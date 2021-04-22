@@ -222,9 +222,9 @@ func (m *mergeQuerier) Close() error {
 }
 
 type selectJob struct {
-	seriesSet *storage.SeriesSet
-	querier   storage.Querier
-	tenantID  string
+	pos      int
+	querier  storage.Querier
+	tenantID string
 }
 
 // Select returns a set of series that matches the given label matchers. If the
@@ -241,9 +241,9 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 			continue
 		}
 		jobs[jobPos] = &selectJob{
-			seriesSet: &seriesSets[jobPos],
-			querier:   m.queriers[tenantPos],
-			tenantID:  m.tenantIDs[tenantPos],
+			pos:      jobPos,
+			querier:  m.queriers[tenantPos],
+			tenantID: m.tenantIDs[tenantPos],
 		}
 		jobPos++
 	}
@@ -253,7 +253,7 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
 		}
-		*job.seriesSet = &addLabelsSeriesSet{
+		seriesSets[job.pos] = &addLabelsSeriesSet{
 			upstream: job.querier.Select(sortSeries, hints, filteredMatchers...),
 			labels: labels.Labels{
 				{

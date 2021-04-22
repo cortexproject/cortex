@@ -173,10 +173,10 @@ metric_b 1000
 }
 
 func TestParseDockerPort(t *testing.T) {
-	actual, err := parseDockerIPv4Port("")
+	_, err := parseDockerIPv4Port("")
 	assert.Error(t, err)
 
-	actual, err = parseDockerIPv4Port("0.0.0.0:36999")
+	actual, err := parseDockerIPv4Port("0.0.0.0:36999")
 	assert.NoError(t, err)
 	assert.Equal(t, 36999, actual)
 

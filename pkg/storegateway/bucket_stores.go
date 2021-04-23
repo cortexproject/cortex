@@ -476,26 +476,31 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
+	bucketStoreOpts := []store.BucketStoreOption{
+		store.WithLogger(userLogger),
+		store.WithRegistry(bucketStoreReg),
+		store.WithIndexCache(u.indexCache),
+		store.WithQueryGate(u.queryGate),
+		store.WithChunkPool(u.chunksPool),
+	}
+	if u.logLevel.String() == "debug" {
+		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
+	}
+
 	bs, err := store.NewBucketStore(
-		userLogger,
-		bucketStoreReg,
 		userBkt,
 		fetcher,
 		u.syncDirForUser(userID),
-		u.indexCache,
-		u.queryGate,
-		u.chunksPool,
 		newChunksLimiterFactory(u.limits, userID),
 		store.NewSeriesLimiterFactory(0), // No series limiter.
 		u.partitioner,
-		u.logLevel.String() == "debug", // Turn on debug logging, if the log level is set to debug
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		nil,   // Do not limit timerange.
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,
 		u.cfg.BucketStore.IndexHeaderLazyLoadingIdleTimeout,
+		bucketStoreOpts...,
 	)
 	if err != nil {
 		return nil, err

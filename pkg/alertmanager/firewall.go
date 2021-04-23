@@ -21,6 +21,6 @@ type FirewallHostsSpec struct {
 }
 
 func (cfg *FirewallHostsSpec) RegisterFlagsWithPrefix(prefix, action string, f *flag.FlagSet) {
-	f.Var(&cfg.CIDRNetworks, prefix+".cidr_networks", fmt.Sprintf("Comma-separated list of network CIDRs to %s in Alertmanager receiver integrations.", action))
+	f.Var(&cfg.CIDRNetworks, prefix+".cidr-networks", fmt.Sprintf("Comma-separated list of network CIDRs to %s in Alertmanager receiver integrations.", action))
 	f.BoolVar(&cfg.PrivateAddresses, prefix+".private-addresses", false, fmt.Sprintf("True to %s private and local addresses in Alertmanager receiver integrations.", action))
 }

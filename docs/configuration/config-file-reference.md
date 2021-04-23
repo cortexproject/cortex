@@ -1853,8 +1853,8 @@ receivers_firewall:
   block:
     # Comma-separated list of network CIDRs to block in Alertmanager receiver
     # integrations.
-    # CLI flag: -alertmanager.receivers-firewall.block.cidrs
-    [cidrs: <string> | default = ""]
+    # CLI flag: -alertmanager.receivers-firewall.block.cidr-networks
+    [cidr_networks: <string> | default = ""]
 
     # True to block private and local addresses in Alertmanager receiver
     # integrations.

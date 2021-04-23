@@ -114,5 +114,5 @@ If the Alertmanager API is enabled and exposed to Cortex tenants, they can auton
 
 Given hardening the Alertmanager is out of the scope of Cortex, we provide a basic built-in firewall to block connections creates by Alertmanager receiver integrations:
 
-- `-alertmanager.receivers-firewall.block.cidrs`
+- `-alertmanager.receivers-firewall.block.cidr-networks`
 - `-alertmanager.receivers-firewall.block.private-addresses`

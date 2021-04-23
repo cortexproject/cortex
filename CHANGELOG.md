@@ -11,6 +11,15 @@
   * `-alertmanager.cluster.advertise-address` instead of `-cluster.advertise-address`
   * `-alertmanager.cluster.peers` instead of `-cluster.peer`
   * `-alertmanager.cluster.peer-timeout` instead of `-cluster.peer-timeout`
+* [CHANGE] Blocks storage: removed the config option `-blocks-storage.bucket-store.index-cache.postings-compression-enabled`, which was deprecated in Cortex 1.6. Postings compression is always enabled. #4101
+* [CHANGE] Querier: removed the config option `-store.max-look-back-period`, which was deprecated in Cortex 1.6 and was used only by the chunks storage. You should use `-querier.max-query-lookback` instead. #4101
+* [CHANGE] Query Frontend: removed the config option `-querier.compress-http-responses`, which was deprecated in Cortex 1.6. You should use`-api.response-compression-enabled` instead. #4101
+* [FEATURE] The following features have been marked as stable: #4101
+  - Shuffle-sharding
+  - Querier support for querying chunks and blocks store at the same time
+  - Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)
+  - Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)
+  - Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
 * [FEATURE] Memberlist: add TLS configuration options for the memberlist transport layer used by the gossip KV store. #4046
   * New flags added for memberlist communication:
     * `-memberlist.tls-enabled`

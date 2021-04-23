@@ -8,7 +8,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -563,10 +562,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
 	handler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
-	if t.Cfg.Frontend.CompressResponses {
-		handler = gziphandler.GzipHandler(handler)
-	}
-
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {

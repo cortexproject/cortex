@@ -40,16 +40,12 @@ Currently experimental features are:
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Azure blob storage.
 - Zone awareness based replication.
-- Shuffle sharding (both read and write path).
 - Ruler API (to PUT rules).
 - Alertmanager API
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
 - gRPC Store.
-- Querier support for querying chunks and blocks store at the same time.
-- Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)
-- Shuffle-sharding of queriers in the query-frontend (i.e. use of `-frontend.max-queriers-per-tenant` flag with non-zero value).
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools
@@ -57,10 +53,8 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)
-- Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
-- Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index
@@ -72,5 +66,5 @@ Currently experimental features are:
 - HA Tracker: cleanup of old replicas from KV Store.
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
-  - `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
+  - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
 - Instance limits in ingester and distributor

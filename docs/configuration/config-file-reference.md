@@ -1058,11 +1058,6 @@ grpc_client_config:
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# This flag is about to be deprecated. Please use
-# -api.response-compression-enabled instead.
-# CLI flag: -querier.compress-http-responses
-[compress_responses: <boolean> | default = false]
-
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
@@ -3436,11 +3431,6 @@ write_dedupe_cache_config:
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# Deprecated: use -querier.max-query-lookback instead. Limit how long back data
-# can be queried. This setting applies to chunks storage only.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### `ingester_client_config`
@@ -4652,11 +4642,6 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
-
-    # Deprecated: compress postings before storing them to postings cache. This
-    # option is unused and postings compression is always enabled.
-    # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-    [postings_compression_enabled: <boolean> | default = false]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.

@@ -32,10 +32,9 @@ var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceS
 	return s != ring.ACTIVE
 })
 
-// UserOwnedRingOp is the operation used for checking if a user is owned by an alertmanager.
-var UserOwnedRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, func(s ring.InstanceState) bool {
-	// A user is owned by an alertmanager in both ACTIVE and JOINING states.
-	return (s != ring.ACTIVE && s != ring.JOINING)
+// SyncRingOp is the operation used for checking if a user is owned by an alertmanager.
+var SyncRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, func(s ring.InstanceState) bool {
+	return s != ring.ACTIVE
 })
 
 // RingConfig masks the ring lifecycler config which contains

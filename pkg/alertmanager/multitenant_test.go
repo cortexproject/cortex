@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1317,7 +1318,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
 				if tt.withSharding {
-					clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+					clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
 					am.alertmanagerClientsPool = clientPool
 				}
 
@@ -1505,7 +1506,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 
-				clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+				clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
 				am.alertmanagerClientsPool = clientPool
 
 				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
@@ -1688,7 +1689,8 @@ func (am *passthroughAlertmanagerClient) RemoteAddress() string {
 // passthroughAlertmanagerClientPool allows testing the logic of gRPC calls between alertmanager instances
 // by invoking client calls directly to a peer instance in the unit test, without the server running.
 type passthroughAlertmanagerClientPool struct {
-	servers map[string]alertmanagerpb.AlertmanagerServer
+	serversMtx sync.Mutex
+	servers    map[string]alertmanagerpb.AlertmanagerServer
 }
 
 func newPassthroughAlertmanagerClientPool() *passthroughAlertmanagerClientPool {
@@ -1697,7 +1699,15 @@ func newPassthroughAlertmanagerClientPool() *passthroughAlertmanagerClientPool {
 	}
 }
 
+func (f *passthroughAlertmanagerClientPool) setServer(addr string, server alertmanagerpb.AlertmanagerServer) {
+	f.serversMtx.Lock()
+	defer f.serversMtx.Unlock()
+	f.servers[addr] = server
+}
+
 func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, error) {
+	f.serversMtx.Lock()
+	defer f.serversMtx.Unlock()
 	s, ok := f.servers[addr]
 	if !ok {
 		return nil, fmt.Errorf("client not found for address: %v", addr)

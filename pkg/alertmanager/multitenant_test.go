@@ -24,11 +24,13 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -275,6 +277,175 @@ templates:
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+}
+
+func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {
+	tests := map[string]struct {
+		getAlertmanagerConfig func(backendURL string) string
+	}{
+		"webhook": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: webhook
+  group_wait: 0s
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: %s
+`, backendURL)
+			},
+		},
+		"pagerduty": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: pagerduty
+  group_wait: 0s
+
+receivers:
+  - name: pagerduty
+    pagerduty_configs:
+      - url: %s
+        routing_key: secret
+`, backendURL)
+			},
+		},
+		"slack": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: slack
+  group_wait: 0s
+
+receivers:
+  - name: slack
+    slack_configs:
+      - api_url: %s
+        channel: test
+`, backendURL)
+			},
+		},
+		"opsgenie": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: opsgenie
+  group_wait: 0s
+
+receivers:
+  - name: opsgenie
+    opsgenie_configs:
+      - api_url: %s
+        api_key: secret
+`, backendURL)
+			},
+		},
+		"wechat": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: wechat
+  group_wait: 0s
+
+receivers:
+  - name: wechat
+    wechat_configs:
+      - api_url: %s
+        api_secret: secret
+        corp_id: babycorp
+`, backendURL)
+			},
+		},
+	}
+
+	for receiverName, testData := range tests {
+		for _, firewallEnabled := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s firewall: %v", receiverName, firewallEnabled), func(t *testing.T) {
+				ctx := context.Background()
+				userID := "user-1"
+				serverInvoked := atomic.NewBool(false)
+
+				// Create a local HTTP server to test whether the request is received.
+				server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					serverInvoked.Store(true)
+					writer.WriteHeader(http.StatusOK)
+				}))
+				defer server.Close()
+
+				// Create the alertmanager config.
+				alertmanagerCfg := testData.getAlertmanagerConfig(fmt.Sprintf("http://%s", server.Listener.Addr().String()))
+
+				// Store the alertmanager config in the bucket.
+				store := prepareInMemoryAlertStore()
+				require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+					User:      userID,
+					RawConfig: alertmanagerCfg,
+				}))
+
+				// Prepare the alertmanager config.
+				cfg := mockAlertmanagerConfig(t)
+				cfg.ReceiversFirewall.Block.PrivateAddresses = firewallEnabled
+
+				// Start the alertmanager.
+				reg := prometheus.NewPedanticRegistry()
+				am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+				require.NoError(t, err)
+				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+				t.Cleanup(func() {
+					require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+				})
+
+				// Ensure the configs are synced correctly.
+				assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user-1"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
+
+				// Create an alert to push.
+				alerts := types.Alerts(&types.Alert{
+					Alert: model.Alert{
+						Labels:   map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
+						StartsAt: time.Now().Add(-time.Minute),
+						EndsAt:   time.Now().Add(time.Minute),
+					},
+					UpdatedAt: time.Now(),
+					Timeout:   false,
+				})
+
+				alertsPayload, err := json.Marshal(alerts)
+				require.NoError(t, err)
+
+				// Push an alert.
+				req := httptest.NewRequest(http.MethodPost, cfg.ExternalURL.String()+"/api/v1/alerts", bytes.NewReader(alertsPayload))
+				req.Header.Set("content-type", "application/json")
+				reqCtx := user.InjectOrgID(req.Context(), userID)
+				{
+					w := httptest.NewRecorder()
+					am.ServeHTTP(w, req.WithContext(reqCtx))
+
+					resp := w.Result()
+					_, err := ioutil.ReadAll(resp.Body)
+					require.NoError(t, err)
+					assert.Equal(t, http.StatusOK, w.Code)
+				}
+
+				// Ensure the server endpoint has not been called if firewall is enabled. Since the alert is delivered
+				// asynchronously, we should pool it for a short period.
+				deadline := time.Now().Add(time.Second)
+				for {
+					if time.Now().After(deadline) || serverInvoked.Load() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				assert.Equal(t, !firewallEnabled, serverInvoked.Load())
+			})
+		}
+	}
 }
 
 func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {

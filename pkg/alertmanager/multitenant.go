@@ -102,11 +102,12 @@ func init() {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir        string           `yaml:"data_dir"`
-	Retention      time.Duration    `yaml:"retention"`
-	ExternalURL    flagext.URLValue `yaml:"external_url"`
-	PollInterval   time.Duration    `yaml:"poll_interval"`
-	MaxRecvMsgSize int64            `yaml:"max_recv_msg_size"`
+	DataDir           string           `yaml:"data_dir"`
+	Retention         time.Duration    `yaml:"retention"`
+	ExternalURL       flagext.URLValue `yaml:"external_url"`
+	PollInterval      time.Duration    `yaml:"poll_interval"`
+	MaxRecvMsgSize    int64            `yaml:"max_recv_msg_size"`
+	ReceiversFirewall FirewallConfig   `yaml:"receivers_firewall"`
 
 	// Enable sharding for the Alertmanager
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
@@ -158,9 +159,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
-
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
-
+	cfg.ReceiversFirewall.RegisterFlagsWithPrefix("alertmanager.receivers-firewall", f)
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
@@ -873,6 +873,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 		Store:             am.store,
 		PersisterConfig:   am.cfg.Persister,
+		ReceiversFirewall: am.cfg.ReceiversFirewall,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

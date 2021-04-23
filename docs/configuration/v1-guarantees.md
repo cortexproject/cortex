@@ -41,7 +41,10 @@ Currently experimental features are:
 - Azure blob storage.
 - Zone awareness based replication.
 - Ruler API (to PUT rules).
-- Alertmanager API
+- Alertmanager:
+  - API (enabled via `-experimental.alertmanager.enable-api`)
+  - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
+  - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
@@ -61,7 +64,6 @@ Currently experimental features are:
   - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Querier: tenant federation
-- Alertmanager: Sharding of tenants across multiple instances
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:

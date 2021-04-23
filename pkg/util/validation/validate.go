@@ -45,6 +45,11 @@ const (
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
 
+	// Exemplar-specific validation reasons
+	exemplarLabelsMissing    = "exemplar_labels_missing"
+	exemplarLabelsTooLong    = "exemplar_labels_too_long"
+	exemplarTimestampInvalid = "exemplar_timestamp_invalid"
+
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited = "rate_limited"
@@ -66,6 +71,15 @@ var DiscardedSamples = prometheus.NewCounterVec(
 	[]string{discardReasonLabel, "user"},
 )
 
+// DiscardedExemplars is a metric of the number of discarded exemplars, by reason.
+var DiscardedExemplars = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_discarded_exemplars_total",
+		Help: "The total number of exemplars that were discarded.",
+	},
+	[]string{discardReasonLabel, "user"},
+)
+
 // DiscardedMetadata is a metric of the number of discarded metadata, by reason.
 var DiscardedMetadata = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -77,6 +91,7 @@ var DiscardedMetadata = prometheus.NewCounterVec(
 
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
+	prometheus.MustRegister(DiscardedExemplars)
 	prometheus.MustRegister(DiscardedMetadata)
 }
 
@@ -107,11 +122,13 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 
 func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
 	if len(e.Labels) <= 0 {
+		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
 		return fmt.Errorf(`exemplar missing labels: series: %s`,
 			cortexpb.FromLabelAdaptersToLabels(ls).String())
 	}
 
 	if e.TimestampMs == 0 {
+		DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
 		return fmt.Errorf(`exemplar missing timestamp: series: %s labels: %s`,
 			cortexpb.FromLabelAdaptersToLabels(ls).String(),
 			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
@@ -124,6 +141,7 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 	}
 
 	if labelSetLen > ExemplarMaxLabelSetLength {
+		DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
 		return fmt.Errorf(`exemplar combined labelset too long: series: %s labels: %s`,
 			cortexpb.FromLabelAdaptersToLabels(ls).String(),
 			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
@@ -234,6 +252,9 @@ func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 
 	if err := util.DeleteMatchingLabels(DiscardedSamples, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(DiscardedExemplars, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_exemplars_total metric for user", "user", userID, "err", err)
 	}
 	if err := util.DeleteMatchingLabels(DiscardedMetadata, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_metadata_total metric for user", "user", userID, "err", err)

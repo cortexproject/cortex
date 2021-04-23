@@ -4083,16 +4083,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# File name of per-user overrides. [deprecated, use -runtime-config.file
-# instead]
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Period with which to reload the overrides. [deprecated, use
-# -runtime-config.reload-period instead]
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
 ```
 
 ### `redis_config`

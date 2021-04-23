@@ -44,7 +44,7 @@ Currently experimental features are:
 - Alertmanager:
   - API (enabled via `-experimental.alertmanager.enable-api`)
   - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
-  - Receiver integrations firewall (configured via `-alertmanager.receivers-firewal.*`)
+  - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.

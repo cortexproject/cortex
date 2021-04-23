@@ -110,9 +110,9 @@ We also recommend to run a different memcached cluster for each cache type (meta
 
 ### Ensure Alertmanager networking is hardened
 
-If the Alertmanager API is enabled and exposed to Cortex tenants, they can autonomously configure the Alertmanager, including receiver integrations (eg. webhook) that allow to issue network requests to the configured endpoint. If the Alertmanager network is not hardened, Cortex tenants may have the ability to issue network requests to any network endpoint including services running in the local network.
+If the Alertmanager API is enabled, users with access to Cortex can autonomously configure the Alertmanager, including receiver integrations that allow to issue network requests to the configured URL (eg. webhook). If the Alertmanager network is not hardened, Cortex users may have the ability to issue network requests to any network endpoint including services running in the local network accessible by the Alertmanager itself.
 
-Given hardening the Alertmanager is out of the scope of Cortex, we provide a basic built-in firewall to block connections creates by Alertmanager receiver integrations:
+Despite hardening the system is out of the scope of Cortex, Cortex provides a basic built-in firewall to block connections created by Alertmanager receiver integrations:
 
 - `-alertmanager.receivers-firewall.block.cidr-networks`
 - `-alertmanager.receivers-firewall.block.private-addresses`

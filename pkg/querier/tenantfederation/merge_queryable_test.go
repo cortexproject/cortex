@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	maxt, mint = 0, 10
+	maxt, mint                 = 0, 10
+	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
 )
 
 type mockTenantQueryableWithFilter struct {

@@ -273,9 +273,11 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 	metrics := []string{
 		"cortex_distributor_received_samples_total",
+		"cortex_distributor_received_exemplars_total",
 		"cortex_distributor_received_metadata_total",
 		"cortex_distributor_deduped_samples_total",
 		"cortex_distributor_samples_in_total",
+		"cortex_distributor_exemplars_in_total",
 		"cortex_distributor_metadata_in_total",
 		"cortex_distributor_non_ha_samples_received_total",
 		"cortex_distributor_latest_seen_sample_timestamp_seconds",
@@ -283,9 +285,12 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 	d.receivedSamples.WithLabelValues("userA").Add(5)
 	d.receivedSamples.WithLabelValues("userB").Add(10)
+	d.receivedExemplars.WithLabelValues("userA").Add(5)
+	d.receivedExemplars.WithLabelValues("userB").Add(10)
 	d.receivedMetadata.WithLabelValues("userA").Add(5)
 	d.receivedMetadata.WithLabelValues("userB").Add(10)
 	d.incomingSamples.WithLabelValues("userA").Add(5)
+	d.incomingExemplars.WithLabelValues("userA").Add(5)
 	d.incomingMetadata.WithLabelValues("userA").Add(5)
 	d.nonHASamples.WithLabelValues("userA").Add(5)
 	d.dedupedSamples.WithLabelValues("userA", "cluster1").Inc() // We cannot clean this metric
@@ -318,10 +323,19 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_received_samples_total{user="userA"} 5
 		cortex_distributor_received_samples_total{user="userB"} 10
 
+		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
+		# TYPE cortex_distributor_received_exemplars_total counter
+		cortex_distributor_received_exemplars_total{user="userA"} 5
+		cortex_distributor_received_exemplars_total{user="userB"} 10
+
 		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
 		# TYPE cortex_distributor_samples_in_total counter
 		cortex_distributor_samples_in_total{user="userA"} 5
-`), metrics...))
+
+		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
+		# TYPE cortex_distributor_exemplars_in_total counter
+		cortex_distributor_exemplars_in_total{user="userA"} 5
+		`), metrics...))
 
 	d.cleanupInactiveUser("userA")
 
@@ -346,9 +360,16 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{user="userB"} 10
 
+		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
+		# TYPE cortex_distributor_received_exemplars_total counter
+		cortex_distributor_received_exemplars_total{user="userB"} 10
+
 		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
 		# TYPE cortex_distributor_samples_in_total counter
-`), metrics...))
+
+		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
+		# TYPE cortex_distributor_exemplars_in_total counter
+		`), metrics...))
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {

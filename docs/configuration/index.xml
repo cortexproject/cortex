@@ -1779,6 +1779,20 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.max-recv-msg-size&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_recv_msg_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">16777216&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">receivers_firewall&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">block&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Comma-separated list of network CIDRs to block in Alertmanager receiver&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># integrations.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.receivers-firewall.block.cidr-networks&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[cidr_networks&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># True to block private and local addresses in Alertmanager receiver&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># integrations. It blocks private addresses defined by RFC 1918 (IPv4&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># unicast and local multicast addresses.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.receivers-firewall.block.private-addresses&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[private_addresses&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Shard tenants across multiple alertmanager instances.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.sharding-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[sharding_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5738,7 +5752,13 @@ and development.&lt;/p>
 &lt;li>Azure blob storage.&lt;/li>
 &lt;li>Zone awareness based replication.&lt;/li>
 &lt;li>Ruler API (to PUT rules).&lt;/li>
-&lt;li>Alertmanager API&lt;/li>
+&lt;li>Alertmanager:
+&lt;ul>
+&lt;li>API (enabled via &lt;code>-experimental.alertmanager.enable-api&lt;/code>)&lt;/li>
+&lt;li>Sharding of tenants across multiple instances (enabled via &lt;code>-alertmanager.sharding-enabled&lt;/code>)&lt;/li>
+&lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>Memcached client DNS-based service discovery.&lt;/li>
 &lt;li>Delete series APIs.&lt;/li>
 &lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
@@ -5761,7 +5781,6 @@ and development.&lt;/p>
 &lt;/ul>
 &lt;/li>
 &lt;li>Querier: tenant federation&lt;/li>
-&lt;li>Alertmanager: Sharding of tenants across multiple instances&lt;/li>
 &lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
 &lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
 &lt;li>Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:

@@ -386,7 +386,7 @@ receivers:
 
 				// Prepare the alertmanager config.
 				cfg := mockAlertmanagerConfig(t)
-				cfg.ReceiversFirewall.Block.Private = firewallEnabled
+				cfg.ReceiversFirewall.Block.PrivateAddresses = firewallEnabled
 
 				// Start the alertmanager.
 				reg := prometheus.NewPedanticRegistry()

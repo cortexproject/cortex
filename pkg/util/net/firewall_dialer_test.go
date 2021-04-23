@@ -38,7 +38,7 @@ func TestFirewallDialer(t *testing.T) {
 		},
 		"should support blocking private addresses": {
 			cfg: FirewallDialerConfig{
-				BlockPrivate: true,
+				BlockPrivateAddresses: true,
 			},
 			cases: []testCase{
 				{"localhost", true},
@@ -56,7 +56,7 @@ func TestFirewallDialer(t *testing.T) {
 		},
 		"should support blocking custom CIDRs": {
 			cfg: FirewallDialerConfig{
-				BlockCIDRs: []flagext.CIDR{blockedCIDR},
+				BlockCIDRNetworks: []flagext.CIDR{blockedCIDR},
 			},
 			cases: []testCase{
 				{"localhost", false},

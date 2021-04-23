@@ -14,8 +14,8 @@ var errBlockedAddress = errors.New("blocked address")
 var errInvalidAddress = errors.New("invalid address")
 
 type FirewallDialerConfig struct {
-	BlockCIDRs   []flagext.CIDR
-	BlockPrivate bool
+	BlockCIDRNetworks     []flagext.CIDR
+	BlockPrivateAddresses bool
 }
 
 // FirewallDialer is a net dialer which integrates a firewall to block specific addresses.
@@ -35,6 +35,11 @@ func (d *FirewallDialer) DialContext(ctx context.Context, network, address strin
 }
 
 func (d *FirewallDialer) control(_, address string, _ syscall.RawConn) error {
+	// Skip any control if no firewall has been configured.
+	if !d.cfg.BlockPrivateAddresses && len(d.cfg.BlockCIDRNetworks) == 0 {
+		return nil
+	}
+
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return errInvalidAddress
@@ -46,11 +51,11 @@ func (d *FirewallDialer) control(_, address string, _ syscall.RawConn) error {
 		return errBlockedAddress
 	}
 
-	if d.cfg.BlockPrivate && (isPrivate(ip) || isLocal(ip)) {
+	if d.cfg.BlockPrivateAddresses && (isPrivate(ip) || isLocal(ip)) {
 		return errBlockedAddress
 	}
 
-	for _, cidr := range d.cfg.BlockCIDRs {
+	for _, cidr := range d.cfg.BlockCIDRNetworks {
 		if cidr.Value.Contains(ip) {
 			return errBlockedAddress
 		}

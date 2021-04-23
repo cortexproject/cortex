@@ -41,6 +41,8 @@ var (
 	})
 )
 
+const sep = "\xff"
+
 type cachingIndexClient struct {
 	chunk.IndexClient
 	cache    cache.Cache
@@ -69,8 +71,14 @@ func (s *cachingIndexClient) Stop() {
 }
 
 func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.IndexQuery, callback func(chunk.IndexQuery, chunk.ReadBatch) (shouldContinue bool)) error {
-	// We cache the entire row, so filter client side.
-	callback = chunk_util.QueryFilter(callback)
+	if len(queries) == 0 {
+		return nil
+	}
+
+	if isChunksQuery(queries[0]) {
+		// We cache all the entries for queries looking for Chunk IDs, so filter client side.
+		callback = chunk_util.QueryFilter(callback)
+	}
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -115,12 +123,17 @@ func (s *cachingIndexClient) QueryPages(ctx context.Context, queries []chunk.Ind
 	)
 
 	for _, key := range misses {
-		// Only need to consider one of the queries as they have the same table & hash.
 		queries := queriesByKey[key]
-		cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
-			TableName: queries[0].TableName,
-			HashValue: queries[0].HashValue,
-		})
+		if isChunksQuery(queries[0]) {
+			// Only need to consider one of the queries as they are the same.
+			cacheableMissed = append(cacheableMissed, chunk.IndexQuery{
+				TableName: queries[0].TableName,
+				HashValue: queries[0].HashValue,
+			})
+		} else {
+			// We would always get distinct queries, if not then something is wrong and consider just one of it.
+			cacheableMissed = append(cacheableMissed, queries[0])
+		}
 
 		rb := ReadBatch{
 			Key:    key,
@@ -213,8 +226,31 @@ func (b *readBatchIterator) Value() []byte {
 }
 
 func queryKey(q chunk.IndexQuery) string {
-	const sep = "\xff"
-	return q.TableName + sep + q.HashValue
+	ret := q.TableName + sep + q.HashValue
+
+	// cache all index entries from the bucket when doing queries for Chunk IDs otherwise cache only specific index entries.
+	if isChunksQuery(q) {
+		return ret
+	}
+
+	if len(q.RangeValuePrefix) != 0 {
+		ret += sep + yoloString(q.RangeValuePrefix)
+	}
+
+	if len(q.RangeValueStart) != 0 {
+		ret += sep + yoloString(q.RangeValueStart)
+	}
+
+	if len(q.ValueEqual) != 0 {
+		ret += sep + yoloString(q.ValueEqual)
+	}
+
+	return ret
+}
+
+func isChunksQuery(q chunk.IndexQuery) bool {
+	// RangeValueStart would only be set for chunks query.
+	return len(q.RangeValueStart) != 0
 }
 
 func (s *cachingIndexClient) cacheStore(ctx context.Context, keys []string, batches []ReadBatch) {

@@ -1857,7 +1857,9 @@ receivers_firewall:
     [cidr_networks: <string> | default = ""]
 
     # True to block private and local addresses in Alertmanager receiver
-    # integrations.
+    # integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+    # addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local
+    # unicast and local multicast addresses.
     # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
     [private_addresses: <boolean> | default = false]
 

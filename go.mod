@@ -52,7 +52,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.7.0
-	github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17
+	github.com/thanos-io/thanos v0.19.1-0.20210423085824-268cc30e2dd8
 	github.com/uber/jaeger-client-go v2.25.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
@@ -82,7 +82,3 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
-
-// Need to upgrade Prometheus and Alertmanager in Thanos too, due to some breaking changes.
-// We use a commit from a branch until https://github.com/thanos-io/thanos/pull/4094 is not merged.
-replace github.com/thanos-io/thanos v0.13.1-0.20210401085038-d7dff0c84d17 => github.com/thanos-io/thanos v0.19.1-0.20210422144607-875be09fb4fe

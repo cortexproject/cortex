@@ -24,15 +24,10 @@ const (
 	maxt, mint = 0, 10
 )
 
-type contextKey int
-
-const (
-	contextKeyQueryErrByTenant contextKey = iota
-	contextKeyWarningsByTenant
-)
-
 type mockTenantQueryableWithFilter struct {
-	extraLabels []string
+	extraLabels      []string
+	warningsByTenant map[string]storage.Warnings
+	queryErrByTenant map[string]error
 }
 
 func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64) (storage.Querier, error) {
@@ -44,22 +39,16 @@ func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64)
 	q := mockTenantQuerier{tenant: tenantIDs[0], extraLabels: m.extraLabels}
 
 	// set warning if exists
-	if intf := ctx.Value(contextKeyWarningsByTenant); intf != nil {
-		warningMap, ok := intf.(map[string]storage.Warnings)
-		if ok {
-			if w, ok := warningMap[q.tenant]; ok {
-				q.warnings = append([]error(nil), w...)
-			}
+	if m.warningsByTenant != nil {
+		if w, ok := m.warningsByTenant[q.tenant]; ok {
+			q.warnings = append([]error(nil), w...)
 		}
 	}
 
 	// set queryErr if exists
-	if intf := ctx.Value(contextKeyQueryErrByTenant); intf != nil {
-		errorMap, ok := intf.(map[string]error)
-		if ok {
-			if err, ok := errorMap[q.tenant]; ok {
-				q.queryErr = err
-			}
+	if m.queryErrByTenant != nil {
+		if err, ok := m.queryErrByTenant[q.tenant]; ok {
+			q.queryErr = err
 		}
 	}
 
@@ -233,23 +222,20 @@ type mergeQueryableTestCase struct {
 	name                string
 	tenants             []string
 	expectedQuerierErr  error
-	extraLabels         []string
 	labelNames          []string
 	expectedLabelValues map[string][]string
 	selectorCases       []selectorTestCase
 
 	// storage.Warnings expected when querying
 	expectedWarnings []string
-	warningsByTenant map[string]storage.Warnings
 
 	// error expected when querying
 	expectedQueryErr error
-	queryErrByTenant map[string]error
+
+	queryable mockTenantQueryableWithFilter
 }
 
 func TestMergeQueryable(t *testing.T) {
-	upstreamQueryable := &mockTenantQueryableWithFilter{}
-
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
@@ -296,10 +282,12 @@ func TestMergeQueryable(t *testing.T) {
 			},
 		},
 		{
-			name:        "three tenants and a __tenant_id__ label set",
-			tenants:     []string{"team-a", "team-b", "team-c"},
-			labelNames:  []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
-			extraLabels: []string{"__tenant_id__", "original-value"},
+			name:       "three tenants and a __tenant_id__ label set",
+			tenants:    []string{"team-a", "team-b", "team-c"},
+			labelNames: []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+			queryable: mockTenantQueryableWithFilter{
+				extraLabels: []string{"__tenant_id__", "original-value"},
+			},
 			expectedLabelValues: map[string][]string{
 				"instance":                 {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 				defaultTenantLabel:         {"team-a", "team-b", "team-c"},
@@ -346,9 +334,11 @@ func TestMergeQueryable(t *testing.T) {
 			expectedLabelValues: map[string][]string{
 				"instance": {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 			},
-			warningsByTenant: map[string]storage.Warnings{
-				"team-b": storage.Warnings([]error{errors.New("don't like them")}),
-				"team-c": storage.Warnings([]error{errors.New("out of office")}),
+			queryable: mockTenantQueryableWithFilter{
+				warningsByTenant: map[string]storage.Warnings{
+					"team-b": storage.Warnings([]error{errors.New("don't like them")}),
+					"team-c": storage.Warnings([]error{errors.New("out of office")}),
+				},
 			},
 			expectedWarnings: []string{
 				`warning querying tenant_id team-b: don't like them`,
@@ -362,30 +352,22 @@ func TestMergeQueryable(t *testing.T) {
 			expectedLabelValues: map[string][]string{
 				"instance": {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 			},
-			queryErrByTenant: map[string]error{
-				"team-b": errors.New("failure xyz"),
+			queryable: mockTenantQueryableWithFilter{
+				queryErrByTenant: map[string]error{
+					"team-b": errors.New("failure xyz"),
+				},
 			},
 			expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			upstreamQueryable.extraLabels = tc.extraLabels
-
 			// initialize with default tenant label
-			q := mergeQueryable{
-				upstream: upstreamQueryable,
-			}
+			q := NewQueryable(&tc.queryable)
 
 			// inject context if set
 			ctx := context.Background()
 			if len(tc.tenants) > 0 {
 				ctx = user.InjectOrgID(ctx, strings.Join(tc.tenants, "|"))
-			}
-			if tc.warningsByTenant != nil {
-				ctx = context.WithValue(ctx, contextKeyWarningsByTenant, tc.warningsByTenant)
-			}
-			if tc.queryErrByTenant != nil {
-				ctx = context.WithValue(ctx, contextKeyQueryErrByTenant, tc.queryErrByTenant)
 			}
 
 			// retrieve querier if set

@@ -31,6 +31,8 @@ The **[store-gateway](./store-gateway.md)** is responsible to query blocks and i
 
 The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. It also keeps the [bucket index](./bucket-index.md) updated and, for this reason, it's a required component.
 
+`alertmanager` and `ruler` can also use block storage to store its configurations and rules.  In that case a separate bucket should be created to store configurations and rules and should not be included on the same bucket use for metrics as it will create issue with the **[compactor](./compactor.md)**
+
 Finally, the [**table-manager**](../chunks-storage/table-manager.md) and the [**schema config**](../chunks-storage/schema-config.md) are **not used** by the blocks storage.
 
 ### The write path

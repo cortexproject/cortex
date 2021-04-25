@@ -43,9 +43,9 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	setup(t, s)
 
 	// Start Cortex components.
-	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester1))
 
 	// Wait until both the distributor and querier have updated the ring.
@@ -73,7 +73,7 @@ func runIngesterHandOverTest(t *testing.T, flags map[string]string, setup func(t
 	require.NoError(t, ingester1.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_chunks_created_total"))
 
 	// Start ingester-2.
-	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+	ingester2 := e2ecortex.NewIngester("ingester-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.join-after": "10s",
 	}), "")
 	require.NoError(t, s.Start(ingester2))

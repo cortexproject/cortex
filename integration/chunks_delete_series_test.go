@@ -75,14 +75,14 @@ func TestDeleteSeriesAllIndexBackends(t *testing.T) {
 	// Start rest of the Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs))))
 
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-ingester.retain-period": "0s", // we want to make ingester not retain any chunks in memory after they are flushed so that queries get data only from the store
 		"-log.level":              "warn",
 	}), "")
 	ingester.HTTPService.SetEnvVars(bigtableFlag)
 
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	querier.HTTPService.SetEnvVars(bigtableFlag)
 
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))

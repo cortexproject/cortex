@@ -89,14 +89,98 @@ func TestChunksStorageAllIndexBackends(t *testing.T) {
 	// Start rest of the Cortex components.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(storeConfigs))))
 
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(storageFlags, map[string]string{
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(storageFlags, map[string]string{
 		"-ingester.retain-period": "0s", // we want to make ingester not retain any chunks in memory after they are flushed so that queries get data only from the store
 	}), "")
 	ingester.HTTPService.SetEnvVars(bigtableFlag)
 
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), storageFlags, "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), storageFlags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), storageFlags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), storageFlags, "")
 	querier.HTTPService.SetEnvVars(bigtableFlag)
+
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
+
+	// Wait until both the distributor and querier have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push and Query some series from Cortex for each day starting from oldest start time from configs until now so that we test all the Index Stores
+	for ts := oldestStoreStartTime; ts.Before(now); ts = ts.Add(24 * time.Hour) {
+		series, expectedVector := generateSeries("series_1", ts)
+
+		res, err := client.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		// lets make ingester flush the chunks immediately to the store
+		res, err = e2e.GetRequest("http://" + ingester.HTTPEndpoint() + "/flush")
+		require.NoError(t, err)
+		require.Equal(t, 204, res.StatusCode)
+
+		// Let's wait until all chunks are flushed.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_queue_length"))
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(0), "cortex_ingester_flush_series_in_progress"))
+
+		// lets verify that chunk store chunk metrics are updated.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunks_total"))
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_stored_chunk_bytes_total"))
+
+		// Query back the series.
+		result, err := client.Query("series_1", ts)
+		require.NoError(t, err)
+		require.Equal(t, model.ValVector, result.Type())
+		assert.Equal(t, expectedVector, result.(model.Vector))
+
+		// check we've queried them from the chunk store.
+		require.NoError(t, querier.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_fetched_chunks_total"))
+		require.NoError(t, querier.WaitSumMetrics(e2e.Greater(0), "cortex_chunk_store_fetched_chunk_bytes_total"))
+	}
+
+	// Ensure no service-specific metrics prefix is used by the wrong service.
+	assertServiceMetricsPrefixes(t, Distributor, distributor)
+	assertServiceMetricsPrefixes(t, Ingester, ingester)
+	assertServiceMetricsPrefixes(t, Querier, querier)
+}
+
+func TestChunksStorageWithEtcd(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	now := time.Now()
+	oldestStoreStartTime := now.Add(time.Duration(-14 * 24 * time.Hour))
+
+	// Start dependencies.
+	dynamo := e2edb.NewDynamoDB()
+	etcd := e2edb.NewETCD()
+	require.NoError(t, s.StartAndWaitReady(dynamo, etcd))
+
+	config := make([]storeConfig, 1)
+	config[0] = storeConfig{From: oldestStoreStartTime.Format("2006-01-02"), IndexStore: "aws-dynamo"}
+
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(config))))
+
+	tableManager := e2ecortex.NewTableManager("table-manager", mergeFlags(ChunksStorageFlags(), map[string]string{
+		"-table-manager.retention-period": "2520h", // setting retention high enough
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(tableManager))
+
+	// Wait until the first table-manager sync has completed, so that we're
+	// sure the tables have been created.
+	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+	require.NoError(t, s.Stop(tableManager))
+
+	// Start rest of the Cortex components.
+	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(buildSchemaConfigWith(config))))
+
+	ingesterFlags := mergeFlags(ChunksStorageFlags(), map[string]string{"-ingester.retain-period": "0s"})
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreEtcd, etcd.NetworkHTTPEndpoint(), ingesterFlags, "")
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreEtcd, etcd.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreEtcd, etcd.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 

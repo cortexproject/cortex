@@ -110,8 +110,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
 
 			// Start Cortex components.
-			distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-			ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+			distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+			ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 			storeGateway1 := e2ecortex.NewStoreGateway("store-gateway-1", consul.NetworkHTTPEndpoint(), flags, "")
 			storeGateway2 := e2ecortex.NewStoreGateway("store-gateway-2", consul.NetworkHTTPEndpoint(), flags, "")
 			storeGateways := e2ecortex.NewCompositeCortexService(storeGateway1, storeGateway2)
@@ -123,7 +123,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-querier.store-gateway-addresses": strings.Join([]string{storeGateway1.NetworkGRPCEndpoint(), storeGateway2.NetworkGRPCEndpoint()}, ","),
 				})
 			}
-			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+			querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 			require.NoError(t, s.StartAndWaitReady(querier))
 
 			// Wait until both the distributor and querier have updated the ring. The querier will also watch
@@ -657,8 +657,8 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components for the write path.
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	// Wait until the distributor has updated the ring.
@@ -692,7 +692,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "1m",
 	}), "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "1m",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
@@ -747,8 +747,8 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
 	// Start Cortex components for the write path.
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	// Wait until the distributor has updated the ring.
@@ -778,7 +778,7 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 		"-store.max-query-length":                      "240h",
 	})
 
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), querierFlags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), querierFlags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the querier has updated the ring.
@@ -864,8 +864,8 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
 
 	// Start Cortex components for the write path.
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	// Wait until the distributor has updated the ring.
@@ -917,7 +917,7 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the querier has updated the ring.

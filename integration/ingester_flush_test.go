@@ -33,11 +33,11 @@ func TestIngesterFlushWithChunksStorage(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 
 	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), map[string]string{
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), map[string]string{
 		"-ingester.max-transfer-retries": "0",
 	}), "")
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
+	distributor := e2ecortex.NewDistributor("distributor", "consul", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(distributor, querier, ingester, tableManager))
 
 	// Wait until the first table-manager sync has completed, so that we're

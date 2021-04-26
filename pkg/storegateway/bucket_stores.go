@@ -623,7 +623,7 @@ func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &chunkLimiter{
-			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQuery(userID)), failedCounter),
+			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
 		}
 	}
 }

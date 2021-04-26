@@ -50,6 +50,7 @@ import (
 const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
+	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
@@ -852,8 +853,13 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		}
 
 		// app.AppendExemplar currently doesn't create the series, it must
-		// already exist.  If it does not then drop.  TODO(mdisibio) - better way to handle?
-		if ref == 0 {
+		// already exist.  If it does not then drop.
+		if ref == 0 && len(ts.Exemplars) > 0 {
+			updateFirstPartial(func() error {
+				return wrappedTSDBIngestExemplarErr(errors.New("exemplars not ingested because series not already present"),
+					model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
+			})
+			failedExemplarsCount += len(ts.Exemplars)
 			continue
 		}
 
@@ -871,7 +877,9 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			}
 
 			// Error adding exemplar
-			updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(ex.TimestampMs), ts.Labels) })
+			updateFirstPartial(func() error {
+				return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
+			})
 			failedExemplarsCount++
 		}
 	}
@@ -2151,6 +2159,17 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	}
 
 	return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
+}
+
+func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {
+	if ingestErr == nil {
+		return nil
+	}
+
+	return fmt.Errorf(errTSDBIngestExemplar, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano),
+		cortexpb.FromLabelAdaptersToLabels(seriesLabels).String(),
+		cortexpb.FromLabelAdaptersToLabels(exemplarLabels).String(),
+	)
 }
 
 func (i *Ingester) getInstanceLimits() *InstanceLimits {

@@ -63,6 +63,8 @@ func TestCortex(t *testing.T) {
 				},
 			},
 			BucketStore: tsdb.BucketStoreConfig{
+				ChunkPoolMinBucketSizeBytes: tsdb.ChunkPoolDefaultMinBucketSize,
+				ChunkPoolMaxBucketSizeBytes: tsdb.ChunkPoolDefaultMaxBucketSize,
 				IndexCache: tsdb.IndexCacheConfig{
 					Backend: tsdb.IndexCacheBackendInMemory,
 				},

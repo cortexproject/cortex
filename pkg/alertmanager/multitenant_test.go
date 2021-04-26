@@ -363,7 +363,13 @@ receivers:
 
 	for receiverName, testData := range tests {
 		for _, firewallEnabled := range []bool{true, false} {
-			t.Run(fmt.Sprintf("%s firewall: %v", receiverName, firewallEnabled), func(t *testing.T) {
+			receiverName := receiverName
+			testData := testData
+			firewallEnabled := firewallEnabled
+
+			t.Run(fmt.Sprintf("receiver=%s firewall enabled=%v", receiverName, firewallEnabled), func(t *testing.T) {
+				t.Parallel()
+
 				ctx := context.Background()
 				userID := "user-1"
 				serverInvoked := atomic.NewBool(false)
@@ -435,7 +441,7 @@ receivers:
 
 				// Ensure the server endpoint has not been called if firewall is enabled. Since the alert is delivered
 				// asynchronously, we should pool it for a short period.
-				deadline := time.Now().Add(time.Second)
+				deadline := time.Now().Add(3 * time.Second)
 				for {
 					if time.Now().After(deadline) || serverInvoked.Load() {
 						break

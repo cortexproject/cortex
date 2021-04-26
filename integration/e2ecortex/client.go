@@ -509,7 +509,7 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	return nil
 }
 
-func (c *Client) GetAlerts(ctx context.Context) ([]model.Alert, error) {
+func (c *Client) GetAlertsV1(ctx context.Context) ([]model.Alert, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v1/alerts", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -545,6 +545,35 @@ func (c *Client) GetAlerts(ctx context.Context) ([]model.Alert, error) {
 	}
 
 	return decoded.Data, nil
+}
+
+func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v2/alerts", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting alerts failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := []model.Alert{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, err
+	}
+
+	return decoded, nil
 }
 
 type AlertGroup struct {

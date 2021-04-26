@@ -88,13 +88,17 @@ func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
 	if strings.HasSuffix(p, "/v1/alerts") {
 		return true, merger.V1Alerts{}
 	}
+	if strings.HasSuffix(p, "/v2/alerts") {
+		return true, merger.V2Alerts{}
+	}
+	if strings.HasSuffix(p, "/v2/alerts/groups") {
+		return true, merger.V2AlertGroups{}
+	}
 	return false, nil
 }
 
 func (d *Distributor) isUnaryReadPath(p string) bool {
-	return strings.HasSuffix(p, "/v2/alerts") ||
-		strings.HasSuffix(p, "/alerts/groups") ||
-		strings.HasSuffix(p, "/silences") ||
+	return strings.HasSuffix(p, "/silences") ||
 		strings.HasSuffix(path.Dir(p), "/silence") ||
 		strings.HasSuffix(p, "/status") ||
 		strings.HasSuffix(p, "/receivers")

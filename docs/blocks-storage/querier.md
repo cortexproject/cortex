@@ -435,11 +435,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 15m]
 
-    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-    # The pool is shared across all tenants. 0 to disable the limit.
-    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-    [max_chunk_pool_bytes: <int> | default = 2147483648]
-
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -716,6 +711,11 @@ blocks_storage:
       # the querier (at query time).
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
+
+    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+    # The pool is shared across all tenants. 0 to disable the limit.
+    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+    [max_chunk_pool_bytes: <int> | default = 2147483648]
 
     # If enabled, store-gateway will lazy load an index-header only once
     # required by a query.

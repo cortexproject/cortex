@@ -3,8 +3,10 @@
 package integration
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/pkg/errors"
@@ -24,6 +26,12 @@ var (
 func getCortexProjectDir() string {
 	if dir := os.Getenv("CORTEX_CHECKOUT_DIR"); dir != "" {
 		return dir
+	}
+
+	// use the git path if available
+	dir, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err == nil {
+		return string(bytes.TrimSpace(dir))
 	}
 
 	return os.Getenv("GOPATH") + "/src/github.com/cortexproject/cortex"

@@ -349,12 +349,12 @@ func (m *addLabelsSeriesSet) Warnings() storage.Warnings {
 	return warnings
 }
 
-// rewrite label name to be better readable in error output
+// rewrite label name to be more readable in error output
 func rewriteLabelName(s string) string {
 	return strings.TrimRight(strings.TrimLeft(s, "_"), "_")
 }
 
-// this outputs a better readable error format
+// this outputs a more readable error format
 func labelsToString(labels labels.Labels) string {
 	parts := make([]string, len(labels))
 	for pos, l := range labels {

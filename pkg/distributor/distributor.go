@@ -504,15 +504,19 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		return emptyPreallocSeries, err
 	}
 
-	samples := make([]cortexpb.Sample, 0, len(ts.Samples))
-	for _, s := range ts.Samples {
-		if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
-			return emptyPreallocSeries, err
+	// Don't alloc a new slice unnecessarily when input is empty
+	samples := ts.Samples
+	if len(ts.Samples) > 0 {
+		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
+		for _, s := range ts.Samples {
+			if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
+				return emptyPreallocSeries, err
+			}
+			samples = append(samples, s)
 		}
-		samples = append(samples, s)
 	}
 
-	// Don't alloc a new empty slice unnecessarily
+	// Don't alloc a new slice unnecessarily when input is empty
 	exemplars := ts.Exemplars
 	if len(ts.Exemplars) > 0 {
 		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))

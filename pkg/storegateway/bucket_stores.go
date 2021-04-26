@@ -126,7 +126,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 	}
 
 	// Init the chunks bytes pool.
-	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
+	if u.chunksPool, err = newChunkBytesPool(cfg.BucketStore.ChunkPoolMinBucketSizeBytes, cfg.BucketStore.ChunkPoolMaxBucketSizeBytes, cfg.BucketStore.MaxChunkPoolBytes, reg); err != nil {
 		return nil, errors.Wrap(err, "create chunks bytes pool")
 	}
 

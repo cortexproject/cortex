@@ -58,6 +58,8 @@ type alertmanagerMetrics struct {
 	initialSyncDuration     *prometheus.Desc
 	persistTotal            *prometheus.Desc
 	persistFailed           *prometheus.Desc
+
+	notificationRateLimited *prometheus.Desc
 }
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
@@ -203,6 +205,10 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_state_persist_failed_total",
 			"Number of times we have failed to persist the running state to storage.",
 			nil, nil),
+		notificationRateLimited: prometheus.NewDesc(
+			"cortex_alertmanager_notification_rate_limited_total",
+			"Total number of rate-limited notifications per integration.",
+			[]string{"user", "integration"}, nil),
 	}
 }
 
@@ -252,6 +258,7 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.initialSyncDuration
 	out <- m.persistTotal
 	out <- m.persistFailed
+	out <- m.notificationRateLimited
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
@@ -297,4 +304,6 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.initialSyncDuration, "alertmanager_state_initial_sync_duration_seconds")
 	data.SendSumOfCounters(out, m.persistTotal, "alertmanager_state_persist_total")
 	data.SendSumOfCounters(out, m.persistFailed, "alertmanager_state_persist_failed_total")
+
+	data.SendSumOfCountersPerUserWithLabels(out, m.notificationRateLimited, "alertmanager_notification_rate_limited_total", "integration")
 }

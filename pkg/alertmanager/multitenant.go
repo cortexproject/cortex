@@ -222,6 +222,9 @@ type Limits interface {
 	// AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
 	// in the Alertmanager receivers for the given user.
 	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
+
+	EmailNotificationRateLimit(tenant string) float64 // 0 = no notifications are allowed, Inf = all notifications are allowed.
+	EmailNotificationBurst(tenant string) int         // 0 = no notifications are allowed, except when limit = Inf.
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

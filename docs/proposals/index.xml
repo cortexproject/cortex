@@ -237,7 +237,7 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/pstibrany">Peter Stibrany&lt;/a>&lt;/li>
 &lt;li>Date: November 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
 &lt;/ul>
 &lt;h2 id="deletion-of-tenant-data">Deletion of tenant data&lt;/h2>
 &lt;h2 id="problem">Problem&lt;/h2>
@@ -654,7 +654,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/gotjosh">Josh Abreu&lt;/a>&lt;/li>
 &lt;li>Date: December 2020&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
 &lt;/ul>
 &lt;h2 id="context-and-background">Context and Background&lt;/h2>
 &lt;p>The Cortex Alertmanager at its current state supports high-availability by using the same technique as the upstream Prometheus Alertmanager: we gossip silences and notifications between replicas to achieve eventual consistency. This allows us to tolerate machine failure without interruption of service. The caveat here is traffic between the ruler and Alertmanagers must not be load balanced as alerts themselves are not gossiped.&lt;/p>
@@ -856,7 +856,7 @@ N/A
 &lt;li>Author: @pracucci, @tomwilkie, @pstibrany&lt;/li>
 &lt;li>Reviewers:&lt;/li>
 &lt;li>Date: August 2020&lt;/li>
-&lt;li>Status: Proposed, implemented in &lt;a href="https://github.com/cortexproject/cortex/pull/3090">PR #3090&lt;/a>&lt;/li>
+&lt;li>Status: Accepted, implemented in &lt;a href="https://github.com/cortexproject/cortex/pull/3090">PR #3090&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h2 id="shuffle-sharding-and-zone-awareness">Shuffle sharding and zone awareness&lt;/h2>
 &lt;h3 id="background">Background&lt;/h3>

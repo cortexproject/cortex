@@ -25,7 +25,9 @@ const (
 )
 
 type mockTenantQueryableWithFilter struct {
-	extraLabels []string
+	extraLabels      []string
+	warningsByTenant map[string]storage.Warnings
+	queryErrByTenant map[string]error
 }
 
 func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64) (storage.Querier, error) {
@@ -33,7 +35,24 @@ func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64)
 	if err != nil {
 		return nil, err
 	}
-	return mockTenantQuerier{tenant: tenantIDs[0], extraLabels: m.extraLabels}, nil
+
+	q := mockTenantQuerier{tenant: tenantIDs[0], extraLabels: m.extraLabels}
+
+	// set warning if exists
+	if m.warningsByTenant != nil {
+		if w, ok := m.warningsByTenant[q.tenant]; ok {
+			q.warnings = append([]error(nil), w...)
+		}
+	}
+
+	// set queryErr if exists
+	if m.queryErrByTenant != nil {
+		if err, ok := m.queryErrByTenant[q.tenant]; ok {
+			q.queryErr = err
+		}
+	}
+
+	return q, nil
 }
 
 func (m *mockTenantQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
@@ -43,6 +62,9 @@ func (m *mockTenantQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bo
 type mockTenantQuerier struct {
 	tenant      string
 	extraLabels []string
+
+	warnings storage.Warnings
+	queryErr error
 }
 
 func (m mockTenantQuerier) matrix() model.Matrix {
@@ -84,6 +106,33 @@ func metricMatches(m model.Metric, selector labels.Selector) bool {
 	return selector.Matches(labels.FromStrings(labelStrings...))
 }
 
+type mockSeriesSet struct {
+	upstream storage.SeriesSet
+	warnings storage.Warnings
+	queryErr error
+}
+
+func (m *mockSeriesSet) Next() bool {
+	return m.upstream.Next()
+}
+
+// At returns full series. Returned series should be iterable even after Next is called.
+func (m *mockSeriesSet) At() storage.Series {
+	return m.upstream.At()
+}
+
+// The error that iteration as failed with.
+// When an error occurs, set cannot continue to iterate.
+func (m *mockSeriesSet) Err() error {
+	return m.queryErr
+}
+
+// A collection of warnings for the whole set.
+// Warnings could be returned even if iteration has not failed with error.
+func (m *mockSeriesSet) Warnings() storage.Warnings {
+	return m.warnings
+}
+
 func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	var matrix model.Matrix
 
@@ -93,12 +142,20 @@ func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 		}
 	}
 
-	return series.MatrixToSeriesSet(matrix)
+	return &mockSeriesSet{
+		upstream: series.MatrixToSeriesSet(matrix),
+		warnings: m.warnings,
+		queryErr: m.queryErr,
+	}
 }
 
 func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if len(matchers) > 0 {
 		return nil, nil, errors.New("matchers are not implemented yet")
+	}
+
+	if m.queryErr != nil {
+		return nil, nil, m.queryErr
 	}
 
 	labelValues := make(map[string]struct{})
@@ -114,10 +171,15 @@ func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher)
 		results = append(results, k)
 	}
 	sort.Strings(results)
-	return results, nil, nil
+
+	return results, m.warnings, nil
 }
 
 func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	if m.queryErr != nil {
+		return nil, nil, m.queryErr
+	}
+
 	labelValues := make(map[string]struct{})
 	for _, s := range m.matrix() {
 		for k := range s.Metric {
@@ -129,7 +191,7 @@ func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
 		results = append(results, k)
 	}
 	sort.Strings(results)
-	return results, nil, nil
+	return results, m.warnings, nil
 }
 
 func (mockTenantQuerier) Close() error {
@@ -159,23 +221,28 @@ func (c selectorTestCase) test(querier storage.Querier) func(*testing.T) {
 type mergeQueryableTestCase struct {
 	name                string
 	tenants             []string
-	expectedErr         error
-	extraLabels         []string
+	expectedQuerierErr  error
 	labelNames          []string
 	expectedLabelValues map[string][]string
 	selectorCases       []selectorTestCase
+
+	// storage.Warnings expected when querying
+	expectedWarnings []string
+
+	// error expected when querying
+	expectedQueryErr error
+
+	queryable mockTenantQueryableWithFilter
 }
 
 func TestMergeQueryable(t *testing.T) {
-	upstreamQueryable := &mockTenantQueryableWithFilter{}
-
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
 	for _, tc := range []mergeQueryableTestCase{
 		{
-			name:        "no tenant",
-			expectedErr: user.ErrNoOrgID,
+			name:               "no tenant",
+			expectedQuerierErr: user.ErrNoOrgID,
 		},
 		{
 			name:       "single tenant",
@@ -215,10 +282,12 @@ func TestMergeQueryable(t *testing.T) {
 			},
 		},
 		{
-			name:        "three tenants and a __tenant_id__ label set",
-			tenants:     []string{"team-a", "team-b", "team-c"},
-			labelNames:  []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
-			extraLabels: []string{"__tenant_id__", "original-value"},
+			name:       "three tenants and a __tenant_id__ label set",
+			tenants:    []string{"team-a", "team-b", "team-c"},
+			labelNames: []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+			queryable: mockTenantQueryableWithFilter{
+				extraLabels: []string{"__tenant_id__", "original-value"},
+			},
 			expectedLabelValues: map[string][]string{
 				"instance":                 {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 				defaultTenantLabel:         {"team-a", "team-b", "team-c"},
@@ -258,14 +327,42 @@ func TestMergeQueryable(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:       "three tenants with some return storage warnings",
+			tenants:    []string{"team-a", "team-b", "team-c"},
+			labelNames: []string{defaultTenantLabel, "instance", "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+			expectedLabelValues: map[string][]string{
+				"instance": {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+			},
+			queryable: mockTenantQueryableWithFilter{
+				warningsByTenant: map[string]storage.Warnings{
+					"team-b": storage.Warnings([]error{errors.New("don't like them")}),
+					"team-c": storage.Warnings([]error{errors.New("out of office")}),
+				},
+			},
+			expectedWarnings: []string{
+				`warning querying tenant_id team-b: don't like them`,
+				`warning querying tenant_id team-c: out of office`,
+			},
+		},
+		{
+			name:       "three tenants with one error",
+			tenants:    []string{"team-a", "team-b", "team-c"},
+			labelNames: []string{defaultTenantLabel, "instance", "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+			expectedLabelValues: map[string][]string{
+				"instance": {"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+			},
+			queryable: mockTenantQueryableWithFilter{
+				queryErrByTenant: map[string]error{
+					"team-b": errors.New("failure xyz"),
+				},
+			},
+			expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			upstreamQueryable.extraLabels = tc.extraLabels
-
 			// initialize with default tenant label
-			q := mergeQueryable{
-				upstream: upstreamQueryable,
-			}
+			q := NewQueryable(&tc.queryable)
 
 			// inject context if set
 			ctx := context.Background()
@@ -275,33 +372,60 @@ func TestMergeQueryable(t *testing.T) {
 
 			// retrieve querier if set
 			querier, err := q.Querier(ctx, mint, maxt)
-			if tc.expectedErr != nil {
-				require.EqualError(t, err, tc.expectedErr.Error())
+			if tc.expectedQuerierErr != nil {
+				require.EqualError(t, err, tc.expectedQuerierErr.Error())
 				return
 			}
 			require.NoError(t, err)
 
 			// select all series and don't expect an error
 			seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
-			require.NoError(t, seriesSet.Err())
+			if tc.expectedQueryErr != nil {
+				require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
+			} else {
+				require.NoError(t, seriesSet.Err())
+				assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
 
-			// test individual matchers
-			for _, sc := range tc.selectorCases {
-				t.Run(sc.name, sc.test(querier))
+				// test individual matchers
+				for _, sc := range tc.selectorCases {
+					t.Run(sc.name, sc.test(querier))
+				}
 			}
 
-			labelNames, _, err := querier.LabelNames()
-			require.NoError(t, err)
-			assert.Equal(t, tc.labelNames, labelNames)
-
-			// check label values
-			for labelName, expectedLabelValues := range tc.expectedLabelValues {
-				actLabelValues, _, err := querier.LabelValues(labelName)
+			// check label names
+			labelNames, warnings, err := querier.LabelNames()
+			if tc.expectedQueryErr != nil {
+				require.EqualError(t, err, tc.expectedQueryErr.Error())
+			} else {
 				require.NoError(t, err)
-				assert.Equal(t, expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", labelName))
+				assert.Equal(t, tc.labelNames, labelNames)
+				assertEqualWarnings(t, tc.expectedWarnings, warnings)
+			}
+
+			// check label values method
+			for labelName, expectedLabelValues := range tc.expectedLabelValues {
+				actLabelValues, warnings, err := querier.LabelValues(labelName)
+				if tc.expectedQueryErr != nil {
+					require.EqualError(t, err, tc.expectedQueryErr.Error())
+				} else {
+					require.NoError(t, err)
+					assert.Equal(t, expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", labelName))
+					assertEqualWarnings(t, tc.expectedWarnings, warnings)
+				}
 			}
 		})
 	}
+}
+
+func assertEqualWarnings(t *testing.T, exp []string, act storage.Warnings) {
+	if len(exp) == 0 && len(act) == 0 {
+		return
+	}
+	var actStrings = make([]string, len(act))
+	for pos := range act {
+		actStrings[pos] = act[pos].Error()
+	}
+	assert.ElementsMatch(t, exp, actStrings)
 }
 
 func TestSetLabelsRetainExisting(t *testing.T) {

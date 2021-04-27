@@ -14,6 +14,7 @@
   * `cortex_alertmanager_state_initial_sync_duration_seconds`
   * `cortex_alertmanager_state_persist_total`
   * `cortex_alertmanager_state_persist_failed_total`
+* [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 
 ## 1.9.0 in progress
 

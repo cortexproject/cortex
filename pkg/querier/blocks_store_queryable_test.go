@@ -576,7 +576,6 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		expectedLabelValues []string // For __name__
 		expectedErr         string
 		expectedMetrics     string
-		labelValuesMatchers []*labels.Matcher
 	}{
 		"no block in the storage matching the query time range": {
 			finderResult: nil,
@@ -620,32 +619,6 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			},
 			expectedLabelNames:  namesFromSeries(series1, series2),
 			expectedLabelValues: valuesFromSeries(labels.MetricName, series1, series2),
-		},
-		"a single store-gateway instance holds the required blocks, matchers": {
-			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-			},
-			storeSetResponses: []interface{}{
-				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{
-						remoteAddr: "1.1.1.1",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series1, series2),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block1, block2),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series1, series2),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block1, block2),
-						},
-					}: {block1, block2},
-				},
-			},
-			expectedLabelNames:  namesFromSeries(series1, series2),
-			labelValuesMatchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "series2", "1")},
-			expectedLabelValues: valuesFromSeries(labels.MetricName, series2),
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series": {
 			finderResult: bucketindex.Blocks{
@@ -721,45 +694,6 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				},
 			},
 			expectedLabelNames:  namesFromSeries(series1),
-			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
-		},
-		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series), with matchers": {
-			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-			},
-			storeSetResponses: []interface{}{
-				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{
-						remoteAddr: "1.1.1.1",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series1),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block1),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series1),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block1),
-						},
-					}: {block1},
-					&storeGatewayClientMock{
-						remoteAddr: "2.2.2.2",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series1),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block2),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series1),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block2),
-						},
-					}: {block2},
-				},
-			},
-			expectedLabelNames:  namesFromSeries(series1),
-			labelValuesMatchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchNotEqual, "series1", "")},
 			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
@@ -842,61 +776,6 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_sum 0
 				cortex_querier_storegateway_refetches_per_query_count 1
 			`,
-		},
-		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series), with matchers": {
-			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-			},
-			// Block1 has series1 and series2
-			// Block2 has only series1
-			// Block3 has only series2
-			storeSetResponses: []interface{}{
-				map[BlocksStoreClient][]ulid.ULID{
-					&storeGatewayClientMock{
-						remoteAddr: "1.1.1.1",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series1, series2),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block1),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series1, series2),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block1),
-						},
-					}: {block1},
-					&storeGatewayClientMock{
-						remoteAddr: "2.2.2.2",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series1),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block2),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series1),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block2),
-						},
-					}: {block2},
-					&storeGatewayClientMock{
-						remoteAddr: "3.3.3.3",
-						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
-							Names:    namesFromSeries(series2),
-							Warnings: []string{},
-							Hints:    mockNamesHints(block3),
-						},
-						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
-							Values:   valuesFromSeries(labels.MetricName, series2),
-							Warnings: []string{},
-							Hints:    mockValuesHints(block3),
-						},
-					}: {block3},
-				},
-			},
-			expectedLabelNames:  namesFromSeries(series1, series2),
-			labelValuesMatchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "series1", "1")},
-			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
@@ -1115,7 +994,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				}
 
 				if testFunc == "LabelValues" {
-					values, warnings, err := q.LabelValues(labels.MetricName, testData.labelValuesMatchers...)
+					values, warnings, err := q.LabelValues(labels.MetricName)
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue

@@ -396,6 +396,25 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errVictorOpsAPIKeyFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "should return error if template is wrong",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+  templates:
+    - "*.tmpl"
+template_files:
+  "test.tmpl": "{{ invalid Go template }}"
+`,
+			err: fmt.Errorf(`error validating Alertmanager config: template: test.tmpl:1: function "invalid" not defined`),
+		},
 	}
 
 	am := &MultitenantAlertmanager{

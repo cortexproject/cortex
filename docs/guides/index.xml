@@ -1,169 +1,4 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/guides/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-chunks-storage-in-production/</guid><description>
-&lt;p>This document builds on the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and specifies the steps needed to get Cortex &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> into production.
-Ensure you have completed all the steps in the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and read about &lt;a href="/docs/architecture/">the Cortex architecture&lt;/a> before you start this one.&lt;/p>
-&lt;h2 id="1-pick-a-storage-backend">1. Pick a storage backend&lt;/h2>
-&lt;p>The getting started guide uses local chunk storage.
-Local chunk storage is experimental and shouldn’t be used in production.&lt;/p>
-&lt;p>Cortex requires a scalable storage back-end for production systems.
-It is recommended you use chunk storage with one of the following back-ends:&lt;/p>
-&lt;ul>
-&lt;li>DynamoDB/S3 (see &lt;a href="/docs/chunks-storage/aws-tips/">AWS tips&lt;/a>)&lt;/li>
-&lt;li>BigTable/GCS&lt;/li>
-&lt;li>Cassandra (see &lt;a href="/docs/guides/running-chunks-storage-with-cassandra/">Running chunks storage on Cassandra&lt;/a>)&lt;/li>
-&lt;/ul>
-&lt;p>Commercial cloud options are DynamoDB/S3 and Bigtable/GCS: the advantage is you don&amp;rsquo;t have to know how to manage them, but the downside is they have specific costs.&lt;/p>
-&lt;p>Alternatively you can choose Apache Cassandra, which you will have to install and manage.
-Cassandra support can also be used with commecial Cassandra-compatible services such as Azure Cosmos DB.&lt;/p>
-&lt;p>Cortex has an alternative to chunks storage: &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>. Blocks storage is ready for production use and does not require a separate index store.&lt;/p>
-&lt;h2 id="2-deploy-query-frontend">2. Deploy Query Frontend&lt;/h2>
-&lt;p>The &lt;strong>Query Frontend&lt;/strong> is the Cortex component which parallelizes the execution of and caches the results of queries.
-The &lt;strong>Query Frontend&lt;/strong> is also responsible for retries and multi-tenant QoS.&lt;/p>
-&lt;p>For the multi-tenant QoS algorithms to work, you should not run more than two &lt;strong>Query Frontends&lt;/strong>.
-The &lt;strong>Query Frontend&lt;/strong> should be deployed behind a load balancer, and should only be sent queries &amp;ndash; writes should go straight to the Distributor component, or to the single-process Cortex.&lt;/p>
-&lt;p>The &lt;strong>Querier&lt;/strong> component (or single-process Cortex) “pulls” queries from the queues in the &lt;strong>Query Frontend&lt;/strong>.
-&lt;strong>Queriers&lt;/strong> discover the &lt;strong>Query Frontend&lt;/strong> via DNS.
-The &lt;strong>Queriers&lt;/strong> should not use the load balancer to access the &lt;strong>Query Frontend&lt;/strong>.
-In Kubernetes, you should use a separate headless service.&lt;/p>
-&lt;p>To configure the &lt;strong>Queries&lt;/strong> to use the &lt;strong>Query Frontend&lt;/strong>, set the following flag:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh"> -querier.frontend-address string
-Address of query frontend service.
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>There are other flag you can use to control the behaviour of the frontend - concurrency, retries, etc.
-See &lt;a href="/docs/configuration/arguments/#query-frontend">Query Frontend configuration&lt;/a> for more information.&lt;/p>
-&lt;p>The &lt;strong>Query Frontend&lt;/strong> can run using an in-process cache, but should be configured with an external Memcached for production workloads.
-The next section has more details.&lt;/p>
-&lt;h2 id="3-setup-caching">3. Setup Caching&lt;/h2>
-&lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
-Cortex has many opportunities for using caching to accelerate queries and reduce cost.&lt;/p>
-&lt;p>For more information, see the &lt;a href="/docs/chunks-storage/caching/">Caching in Cortex documentation.&lt;/a>&lt;/p>
-&lt;h2 id="4-monitoring-and-alerting">4. Monitoring and Alerting&lt;/h2>
-&lt;p>Cortex exports metrics in the Prometheus format.
-We recommend you install and configure Prometheus server to monitor your Cortex cluster.&lt;/p>
-&lt;p>We publish a set of Prometheus alerts and Grafana dashboards as the &lt;a href="https://github.com/grafana/cortex-jsonnet">cortex-mixin&lt;/a>.
-We recommend you use these for any production Cortex cluster.&lt;/p>
-&lt;h2 id="5-authentication--multitenancy">5. Authentication &amp;amp; Multitenancy&lt;/h2>
-&lt;p>If you want to run Cortex as a multi-tenant system, you need to give each
-tenant a unique ID - this can be any string.
-Managing tenants and allocating IDs must be done outside of Cortex.
-See &lt;a href="/docs/guides/auth/">Authentication and Authorisation&lt;/a> for more information.&lt;/p>
-&lt;h2 id="6-handling-ha-prometheus-pairs">6. Handling HA Prometheus Pairs&lt;/h2>
-&lt;p>You should use a pair of Prometheus servers to monitor your targets and send metrics to Cortex.
-This allows your monitoring system to survive the failure of one of these Prometheus instances.
-Cortex support deduping the samples on ingestion.
-For more information on how to configure Cortex and Prometheus to HA pairs, see &lt;a href="/docs/guides/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>.&lt;/p></description></item><item><title>Docs: Running Cortex chunks storage with Cassandra</title><link>/docs/guides/running-chunks-storage-with-cassandra/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-chunks-storage-with-cassandra/</guid><description>
-&lt;p>This guide covers how to run a single local Cortex instance - with the &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> engine - storing time series chunks and index in Cassandra.&lt;/p>
-&lt;p>In this guide we&amp;rsquo;re going to:&lt;/p>
-&lt;ol>
-&lt;li>Setup a locally running Cassandra&lt;/li>
-&lt;li>Configure Cortex to store chunks and index on Cassandra&lt;/li>
-&lt;li>Configure Prometheus to send series to Cortex&lt;/li>
-&lt;li>Configure Grafana to visualise metrics&lt;/li>
-&lt;/ol>
-&lt;h2 id="setup-a-locally-running-cassandra">Setup a locally running Cassandra&lt;/h2>
-&lt;p>Run Cassandra with the following command:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
-&lt;/code>&lt;/pre>&lt;p>Use Docker to execute the Cassandra Query Language (CQL) shell in the container:&lt;/p>
-&lt;pre>&lt;code>docker exec -it &amp;lt;container_id&amp;gt; cqlsh
-&lt;/code>&lt;/pre>&lt;p>Create a new Cassandra keyspace for Cortex metrics:&lt;/p>
-&lt;p>A keyspace is an object that is used to hold column families, user defined types. A keyspace is like RDBMS database which contains column families, indexes, user defined types.&lt;/p>
-&lt;pre>&lt;code>CREATE KEYSPACE cortex WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
-&lt;/code>&lt;/pre>&lt;h2 id="configure-cortex-to-store-chunks-and-index-on-cassandra">Configure Cortex to store chunks and index on Cassandra&lt;/h2>
-&lt;p>Now, we have to configure Cortex to store the chunks and index in Cassandra. Create a config file called &lt;code>single-process-config.yaml&lt;/code>, then add the content below. Make sure to replace the following placeholders:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>LOCALHOST&lt;/code>: Addresses of your Cassandra instance. This can accept multiple addresses by passing them as comma separated values.&lt;/li>
-&lt;li>&lt;code>KEYSPACE&lt;/code>: The name of the Cassandra keyspace used to store the metrics.&lt;/li>
-&lt;/ul>
-&lt;p>&lt;code>single-process-config.yaml&lt;/code>&lt;/p>
-&lt;pre>&lt;code># Configuration for running Cortex in single-process mode.
-# This should not be used in production. It is only for getting started
-# and development.
-# Disable the requirement that every request to Cortex has a
-# X-Scope-OrgID header. `fake` will be substituted in instead.
-auth_enabled: false
-server:
-http_listen_port: 9009
-# Configure the server to allow messages up to 100MB.
-grpc_server_max_recv_msg_size: 104857600
-grpc_server_max_send_msg_size: 104857600
-grpc_server_max_concurrent_streams: 1000
-distributor:
-shard_by_all_labels: true
-pool:
-health_check_ingesters: true
-ingester_client:
-grpc_client_config:
-# Configure the client to allow messages up to 100MB.
-max_recv_msg_size: 104857600
-max_send_msg_size: 104857600
-grpc_compression: gzip
-ingester:
-lifecycler:
-# The address to advertise for this ingester. Will be autodiscovered by
-# looking up address on eth0 or en0; can be specified if this fails.
-address: 127.0.0.1
-# We want to start immediately and flush on shutdown.
-join_after: 0
-final_sleep: 0s
-num_tokens: 512
-# Use an in memory ring store, so we don't need to launch a Consul.
-ring:
-kvstore:
-store: inmemory
-replication_factor: 1
-# Use cassandra as storage -for both index store and chunks store.
-schema:
-configs:
-- from: 2019-07-29
-store: cassandra
-object_store: cassandra
-schema: v10
-index:
-prefix: index_
-period: 168h
-chunks:
-prefix: chunk_
-period: 168h
-storage:
-cassandra:
-addresses: LOCALHOST # configure cassandra addresses here.
-keyspace: KEYSPACE # configure desired keyspace here.
-&lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.8.1&lt;/code>).&lt;/p>
-&lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.8.1 -config.file=/etc/single-process-config.yaml
-&lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/getting-started/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
-&lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
-&lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
-If you want to configure the table options, use the &lt;code>storage.cassandra.table_options&lt;/code> property or &lt;code>cassandra.table-options&lt;/code> flag.
-This configuration property is just &lt;code>string&lt;/code> type and this value used as plain text on &lt;code>WITH&lt;/code> option of table creation query.
-It is recommended to enclose the value of &lt;code>table_options&lt;/code> in double-quotes because you should enclose strings of table options in quotes on Cassandra.&lt;/p>
-&lt;p>For example, suppose the name of index(or chunk) table is &amp;lsquo;test_table&amp;rsquo;.
-Details about column definitions of the table are omitted.
-If no table options configured, then Cortex will generate the query to create a table without a &lt;code>WITH&lt;/code> clause to use default table options:&lt;/p>
-&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...)
-&lt;/code>&lt;/pre>&lt;p>If table options configured with &lt;code>table_options&lt;/code> as below:&lt;/p>
-&lt;pre>&lt;code>storage:
-cassandra:
-addresses: 127.0.0.1
-keyspace: cortex
-table_options: &amp;quot;gc_grace_seocnds = 86400
-AND comments = 'this is a test table'
-AND COMPACT STORAGE
-AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }&amp;quot;
-&lt;/code>&lt;/pre>&lt;p>Then Cortex will generate the query to create a table with a &lt;code>WITH&lt;/code> clause as below:&lt;/p>
-&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = 'this is a test table' AND COMPACT STORAGE AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }
-&lt;/code>&lt;/pre>&lt;p>Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
-For details about table options, see the official document of storage you are using.&lt;/p>
-&lt;p>&lt;strong>WARNING&lt;/strong>: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by &lt;a href="/docs/chunks-storage/table-manager/">table-manager&lt;/a> at runtime and seriously affect your Cortex.&lt;/p>
-&lt;h2 id="configure-prometheus-to-send-series-to-cortex">Configure Prometheus to send series to Cortex&lt;/h2>
-&lt;p>Now that Cortex is up, it should be running on &lt;code>http://localhost:9009&lt;/code>.&lt;/p>
-&lt;p>Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.&lt;/p>
-&lt;pre>&lt;code>remote_write:
-- url: http://localhost:9009/api/prom/push
-&lt;/code>&lt;/pre>&lt;h2 id="configure-grafana-to-visualise-metrics">Configure Grafana to visualise metrics&lt;/h2>
-&lt;p>Run grafana to visualise metrics from Cortex:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
-&lt;/code>&lt;/pre>&lt;p>Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code>http://localhost:9009/api/prom&lt;/code>.&lt;/p>
-&lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. If you&amp;rsquo;re looking for ready to use dashboards, you can take a look at Grafana&amp;rsquo;s &lt;a href="https://github.com/grafana/cortex-jsonnet/">Cortex dashboards and alerts&lt;/a> (Jsonnet) or Weaveworks&amp;rsquo;s &lt;a href="https://github.com/weaveworks/cortex-dashboards">Cortex dashboards&lt;/a> (Python).&lt;/p></description></item><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/running-cortex-on-kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-cortex-on-kubernetes/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Guides</title><link>/docs/guides/</link><description>Recent content in Guides on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/guides/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Running Cortex on Kubernetes</title><link>/docs/guides/running-cortex-on-kubernetes/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/running-cortex-on-kubernetes/</guid><description>
 &lt;p>Because Cortex is designed to run multiple instances of each component
 (ingester, querier, etc.), you probably want to automate the placement
 and shepherding of these instances. Most users choose Kubernetes to do
@@ -220,7 +55,99 @@ httpGet:
 path: /ready
 port: 80
 &lt;/code>&lt;/pre>&lt;p>We do not recommend configuring a liveness probe on ingesters -
-killing them is a last resort and should not be left to a machine.&lt;/p></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
+killing them is a last resort and should not be left to a machine.&lt;/p></description></item><item><title>Docs: Getting started with gossiped ring</title><link>/docs/guides/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/getting-started-with-gossiped-ring/</guid><description>
+&lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
+but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
+&lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.
+To reduce number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
+Storage engine and external storage configuration are not dependant on the ring configuration.&lt;/p>
+&lt;h2 id="single-binary-two-cortex-instances">Single-binary, two Cortex instances&lt;/h2>
+&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a two instances of Cortex on local computer.
+We will use prepared configuration files (&lt;a href="../../configuration/single-process-config-blocks-gossip-1.yaml">file 1&lt;/a>, &lt;a href="../../configuration/single-process-config-blocks-gossip-2.yaml">file 2&lt;/a>), with no external
+dependencies.&lt;/p>
+&lt;p>Build Cortex first:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ go build ./cmd/cortex
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>Run two instances of Cortex, each one with its own dedicated config file:&lt;/p>
+&lt;pre>&lt;code>$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1.yaml
+$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
+&lt;/code>&lt;/pre>&lt;p>Download Prometheus and configure it to use our first Cortex instance for remote writes.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9109&lt;/span>/api/v1/push&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+distribute incoming samples between the two instances.&lt;/p>
+&lt;p>To query that data, you can configure your Grafana instance to use http://localhost:9109/prometheus (first Cortex) as a Prometheus data source.&lt;/p>
+&lt;h2 id="how-it-works">How it works&lt;/h2>
+&lt;p>The two instances we started earlier should be able to find each other via memberlist configuration (already present in the config files):&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">memberlist&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># defaults to hostname&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">node_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;Ingester 1&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bind_port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7946&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">join_members&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7947&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">abort_if_cluster_join_fails&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
+Port numbers are reversed in the second configuration file.
+We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because default to hostname,
+but we are running both Cortex instances on the same host.&lt;/p>
+&lt;p>To make sure that both ingesters generate unique tokens, we configure &lt;code>join_after&lt;/code> and &lt;code>observe_period&lt;/code> to 10 seconds.
+First option tells Cortex to wait 10 seconds before joining the ring. This option is normally used to tell Cortex ingester
+how long to wait for a potential tokens and data transfer from leaving ingester, but we also use it here to increase
+the chance of finding other gossip peers. When Cortex joins the ring, it generates tokens and writes them to the ring.
+If multiple Cortex instances do this at the same time, they can generate conflicting tokens. This can be a problem
+when using gossiped ring (instances may simply not see each other yet), so we use &lt;code>observe_period&lt;/code> to watch the ring for token conflicts.
+If conflict is detected, new tokens are generated instead of conflicting tokens, and observe period is restarted.
+If no conflict is detected within the observe period, ingester switches to ACTIVE state.&lt;/p>
+&lt;p>We are able to observe ring state on &lt;a href="http://localhost:9109/ring">http://localhost:9109/ring&lt;/a> and &lt;a href="http://localhost:9209/ring">http://localhost:9209/ring&lt;/a>.
+The two instances may see slightly different views (eg. different timestamps), but should converge to a common state soon, with both instances
+being ACTIVE and ready to receive samples.&lt;/p>
+&lt;h2 id="how-to-add-another-instance">How to add another instance?&lt;/h2>
+&lt;p>To add another Cortex to the small cluster, copy &lt;code>docs/configuration/single-process-config-blocks-gossip-1.yaml&lt;/code> to a new file,
+and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
+is annotated diff:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-diff" data-lang="diff">...
+server:
+&lt;span style="color:#00a000">+ # These ports need to be unique.
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>&lt;span style="color:#a40000">- http_listen_port: 9109
+&lt;/span>&lt;span style="color:#a40000">- grpc_listen_port: 9195
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ http_listen_port: 9309
+&lt;/span>&lt;span style="color:#00a000">+ grpc_listen_port: 9395
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+ingester:
+lifecycler:
+# Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
+&lt;span style="color:#a40000">- id: &amp;#34;Ingester 1&amp;#34;
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ id: &amp;#34;Ingester 3&amp;#34;
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+memberlist:
+# defaults to hostname
+&lt;span style="color:#a40000">- node_name: &amp;#34;Ingester 1&amp;#34;
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ node_name: &amp;#34;Ingester 3&amp;#34;
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+# bind_port needs to be unique
+&lt;span style="color:#a40000">- bind_port: 7946
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ bind_port: 7948
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+&lt;span style="color:#00a000">+# Directory names in the `blocks_storage` &amp;gt; `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
+&lt;/span>&lt;span style="color:#00a000">+# writing in-progress data to the same directories.
+&lt;/span>&lt;span style="color:#00a000">&lt;/span> blocks_storage:
+tsdb:
+&lt;span style="color:#a40000">- dir: /tmp/cortex/tsdb-ing1
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ dir: /tmp/cortex/tsdb-ing3
+&lt;/span>&lt;span style="color:#00a000">&lt;/span> bucket_store:
+&lt;span style="color:#a40000">- sync_dir: /tmp/cortex/tsdb-sync-querier1
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ sync_dir: /tmp/cortex/tsdb-sync-querier3
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
+will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
+that want to be part of gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
+&lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
+&amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
+&lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
+and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p>All Cortex components take the tenant ID from a header &lt;code>X-Scope-OrgID&lt;/code>
 on each request. A tenant (also called &amp;ldquo;user&amp;rdquo; or &amp;ldquo;org&amp;rdquo;) is the owner of
 a set of series written to and queried from Cortex. All Cortex components
@@ -287,12 +214,22 @@ high values:&lt;/p>
 of series in ingesters is number of active series times the
 replication factor. This is with the default of 12-hour chunks - RAM
 required will reduce if you set &lt;code>-ingester.max-chunk-age&lt;/code> lower
-(trading off more back-end database IO)&lt;/li>
+(trading off more back-end database IO).
+There are some additional considerations for planning for ingester memory usage.
+&lt;ol>
+&lt;li>Memory increases during write ahead log (WAL) replay, &lt;a href="https://github.com/prometheus/prometheus/issues/6934#issuecomment-726039115">See Prometheus issue #6934&lt;/a>. If you do not have enough memory for WAL replay, the ingester will not be able to restart successfully without intervention.&lt;/li>
+&lt;li>Memory temporarily increases during resharding since timeseries are temporarily on both the new and old ingesters. This means you should scale up the number of ingesters before memory utilization is too high, otherwise you will not have the headroom to account for the temporary increase.&lt;/li>
+&lt;/ol>
+&lt;/li>
 &lt;li>Each million series (including churn) consumes 15GB of chunk
 storage and 4GB of index, per day (so multiply by the retention
 period).&lt;/li>
-&lt;li>Each 100,000 samples/sec arriving takes 1 CPU in distributors.
-Distributors don&amp;rsquo;t need much RAM.&lt;/li>
+&lt;li>The distributors CPU utilization depends on the specific Cortex cluster
+setup, while they don&amp;rsquo;t need much RAM. Typically, distributors are capable
+to process between 20,000 and 100,000 samples/sec with 1 CPU core. It&amp;rsquo;s also
+highly recommended to configure Prometheus &lt;code>max_samples_per_send&lt;/code> to 1,000
+samples, in order to reduce the distributors CPU utilization given the same
+total samples/sec throughput.&lt;/li>
 &lt;/ol>
 &lt;p>If you turn on compression between distributors and ingesters (for
 example to save on inter-zone bandwidth charges at AWS/GCP) they will use
@@ -309,10 +246,10 @@ for ingester).&lt;/p></description></item><item><title>Docs: Config for horizont
 &lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p>
 &lt;h2 id="ruler-storage">Ruler Storage&lt;/h2>
 &lt;p>The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local). Most kinds of storage work with the sharded ruler configuration in an obvious way. i.e. configure all rulers to use the same backend.&lt;/p>
-&lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through &lt;a href="https://cortexmetrics.io/docs/apis/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
+&lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through &lt;a href="/docs/api/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
 &lt;p>A typical local config may look something like:&lt;/p>
-&lt;pre>&lt;code> -ruler.storage.type=local
--ruler.storage.local.directory=/tmp/cortex/rules
+&lt;pre>&lt;code> -ruler-storage.backend=local
+-ruler-storage.local.directory=/tmp/cortex/rules
 &lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
 &lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
@@ -532,8 +469,14 @@ Number of chunks received by joining ingester.&lt;/li>
 &lt;p>This guide explains how to scale up and down ingesters.&lt;/p>
 &lt;p>&lt;em>If you&amp;rsquo;re looking how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
 &lt;h2 id="scaling-up">Scaling up&lt;/h2>
-&lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.&lt;/p>
-&lt;p>No special care is required to take when scaling up ingesters.&lt;/p>
+&lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.
+Ingesters that were previously receiving those series will see data stop arriving and will consider those series &amp;ldquo;idle&amp;rdquo;.&lt;/p>
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries.
+For chunks storage, this will start after &lt;code>-ingester.max-chunk-idle&lt;/code> time (default 5 minutes), and will finish when the flush queue is clear - how long depends on how fast your back-end store can accept writes.
+For blocks storage, this will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
+If you have set &lt;code>-querier.query-store-after&lt;/code> then that is also a minimum time you have to wait before adding a second ingester.&lt;/p>
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>,
+no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;h2 id="scaling-down">Scaling down&lt;/h2>
 &lt;p>A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
 &lt;p>The procedure to adopt when scaling down ingesters depends on your Cortex setup:&lt;/p>
@@ -789,6 +732,13 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> by setting &lt;code>-frontend.max-queriers-per-tenant&lt;/code> (or its respective YAML config option) to a value higher than 0 and lower than the number of available queriers, only specified number of queriers will execute queries for single tenant.&lt;/p>
 &lt;p>Note that this distribution happens in query-frontend, or query-scheduler if used. When using query-scheduler, &lt;code>-frontend.max-queriers-per-tenant&lt;/code> option must be set for query-scheduler component. When not using query-frontend (with or without scheduler), this option is not available.&lt;/p>
 &lt;p>&lt;em>The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration.&lt;/em>&lt;/p>
+&lt;h4 id="the-impact-of-query-of-death">The impact of &amp;ldquo;query of death&amp;rdquo;&lt;/h4>
+&lt;p>In the event a tenant is repeatedly sending a &amp;ldquo;query of death&amp;rdquo; which leads the querier to crash or getting killed because of out-of-memory, the crashed querier will get disconnected from the query-frontend or query-scheduler and a new querier will be immediately assigned to the tenant&amp;rsquo;s shard. This practically invalidates the assumption that shuffle-sharding can be used to contain the blast radius in case of a query of death.&lt;/p>
+&lt;p>To mitigate it, Cortex allows to configure a delay between when a querier disconnects because of a crash and when the crashed querier is actually removed from the tenant&amp;rsquo;s shard (and another healthy querier is added as replacement). A delay of 1 minute may be a reasonable trade-off:&lt;/p>
+&lt;ul>
+&lt;li>Query-frontend: &lt;code>-query-frontend.querier-forget-delay=1m&lt;/code>&lt;/li>
+&lt;li>Query-scheduler: &lt;code>-query-scheduler.querier-forget-delay=1m&lt;/code>&lt;/li>
+&lt;/ul>
 &lt;h3 id="store-gateway-shuffle-sharding">Store-gateway shuffle sharding&lt;/h3>
 &lt;p>The Cortex store-gateway &amp;ndash; used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> &amp;ndash; by default spreads each tenant&amp;rsquo;s blocks across all running store-gateways.&lt;/p>
 &lt;p>When shuffle sharding is &lt;strong>enabled&lt;/strong> via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> (or its respective YAML config option), each tenant blocks will be sharded across a subset of &lt;code>-store-gateway.tenant-shard-size&lt;/code> store-gateway instances. This configuration needs to be set to &lt;strong>store-gateway&lt;/strong>, &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong>.&lt;/p>

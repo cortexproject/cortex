@@ -505,21 +505,23 @@ func TestAlertmanagerSharding(t *testing.T) {
 				// Therefore, the alerts we posted should always be visible.
 
 				for _, c := range clients {
-					list, err := c.GetAlerts(context.Background())
+					list, err := c.GetAlertsV1(context.Background())
 					require.NoError(t, err)
 					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
 				}
 			}
 
-			// Endpoint: GET /alerts/groups
+			// Endpoint: GET /v2/alerts
 			{
-				// Writes do not block for the write slowest replica, and reads do not
-				// currently merge results from multiple replicas, so we have to wait.
-				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
-					e2e.Equals(float64(3*testCfg.replicationFactor)),
-					[]string{"cortex_alertmanager_alerts_received_total"},
-					e2e.SkipMissingMetrics))
+				for _, c := range clients {
+					list, err := c.GetAlertsV2(context.Background())
+					require.NoError(t, err)
+					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
+				}
+			}
 
+			// Endpoint: GET /v2/alerts/groups
+			{
 				for _, c := range clients {
 					list, err := c.GetAlertGroups(context.Background())
 					require.NoError(t, err)
@@ -535,7 +537,15 @@ func TestAlertmanagerSharding(t *testing.T) {
 					require.Contains(t, groups, "group_2")
 					assert.ElementsMatch(t, []string{"alert_3"}, alertNames(groups["group_2"]))
 				}
+
+				// Note: /v1/alerts/groups does not exist.
 			}
+
+			// Check the alerts were eventually written to every replica.
+			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+				e2e.Equals(float64(3*testCfg.replicationFactor)),
+				[]string{"cortex_alertmanager_alerts_received_total"},
+				e2e.SkipMissingMetrics))
 		})
 	}
 }

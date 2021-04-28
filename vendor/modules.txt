@@ -40,10 +40,11 @@ github.com/alecthomas/template/parse
 github.com/alecthomas/units
 # github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a
 github.com/alicebob/gopher-json
-# github.com/alicebob/miniredis v2.5.0+incompatible
+# github.com/alicebob/miniredis/v2 v2.14.3
 ## explicit
-github.com/alicebob/miniredis
-github.com/alicebob/miniredis/server
+github.com/alicebob/miniredis/v2
+github.com/alicebob/miniredis/v2/geohash
+github.com/alicebob/miniredis/v2/server
 # github.com/armon/go-metrics v0.3.6
 ## explicit
 github.com/armon/go-metrics
@@ -244,9 +245,6 @@ github.com/golang/protobuf/ptypes/wrappers
 # github.com/golang/snappy v0.0.3
 ## explicit
 github.com/golang/snappy
-# github.com/gomodule/redigo v2.0.0+incompatible
-github.com/gomodule/redigo/internal
-github.com/gomodule/redigo/redis
 # github.com/google/btree v1.0.0
 github.com/google/btree
 # github.com/google/go-cmp v0.5.5

@@ -187,8 +187,8 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 // queryIngesterStream queries the ingesters using the new streaming API.
 func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		maxChunksLimit = d.limits.MaxChunksPerQueryFromIngesters(userID)
-		totChunksCount = atomic.Int32{}
+		chunksLimit = d.limits.MaxChunksPerQueryFromIngesters(userID)
+		chunksCount = atomic.Int32{}
 	)
 
 	// Fetch samples from multiple ingesters
@@ -221,13 +221,13 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 			}
 
 			// Enforce the max chunks limits.
-			if maxChunksLimit > 0 {
-				if totChunks := int(totChunksCount.Add(int32(resp.ChunksCount()))); totChunks > maxChunksLimit {
+			if chunksLimit > 0 {
+				if count := int(chunksCount.Add(int32(resp.ChunksCount()))); count > chunksLimit {
 					// We expect to be always able to convert the label matchers back to Prometheus ones.
 					// In case we fail (unexpected) the error will not include the matchers, but the core
 					// logic doesn't break.
 					matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
-					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
+					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
 				}
 			}
 

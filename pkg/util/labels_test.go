@@ -26,6 +26,12 @@ func TestLabelMatchersToString(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchNotEqual, "who", "boh"),
 			},
 			expected: `{foo="bar",who!="boh"}`,
+		}, {
+			input: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "metric"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "who", "boh"),
+			},
+			expected: `{__name__="metric",who!="boh"}`,
 		},
 	}
 

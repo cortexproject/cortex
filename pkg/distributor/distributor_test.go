@@ -870,6 +870,60 @@ func TestDistributor_PushQuery(t *testing.T) {
 	}
 }
 
+func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReached(t *testing.T) {
+	const maxChunksLimit = 30 // Chunks are duplicated due to replication factor.
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.MaxChunksPerQuery = maxChunksLimit
+
+	// Prepare distributors.
+	ds, _, r, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+	defer stopAll(ds, r)
+
+	// Push a number of series below the max chunks limit. Each series has 1 sample,
+	// so expect 1 chunk per series when querying back.
+	initialSeries := maxChunksLimit / 3
+	writeReq := makeWriteRequest(0, initialSeries, 0)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	allSeriesMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
+	}
+
+	// Since the number of series (and thus chunks) is equal to the limit (but doesn't
+	// exceed it), we expect a query running on all series to succeed.
+	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+	assert.Len(t, queryRes.Chunkseries, initialSeries)
+
+	// Push more series to exceed the limit once we'll query back all series.
+	writeReq = &cortexpb.WriteRequest{}
+	for i := 0; i < maxChunksLimit; i++ {
+		writeReq.Timeseries = append(writeReq.Timeseries,
+			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0),
+		)
+	}
+
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of series (and thus chunks) is exceeding to the limit, we expect
+	// a query running on all series to fail.
+	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the query hit the max number of chunks limit")
+}
+
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
@@ -1754,22 +1808,12 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
 	for i := 0; i < samples; i++ {
-		ts := cortexpb.PreallocTimeseries{
-			TimeSeries: &cortexpb.TimeSeries{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "bar", Value: "baz"},
-					{Name: "sample", Value: fmt.Sprintf("%d", i)},
-				},
-			},
-		}
-		ts.Samples = []cortexpb.Sample{
-			{
-				Value:       float64(i),
-				TimestampMs: startTimestampMs + int64(i),
-			},
-		}
-		request.Timeseries = append(request.Timeseries, ts)
+		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
+			[]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: fmt.Sprintf("%d", i)},
+			}, startTimestampMs+int64(i), float64(i)))
 	}
 
 	for i := 0; i < metadata; i++ {
@@ -1782,6 +1826,20 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *cortex
 	}
 
 	return request
+}
+
+func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts int64, value float64) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels: labels,
+			Samples: []cortexpb.Sample{
+				{
+					Value:       value,
+					TimestampMs: ts,
+				},
+			},
+		},
+	}
 }
 
 func makeWriteRequestHA(samples int, replica, cluster string) *cortexpb.WriteRequest {

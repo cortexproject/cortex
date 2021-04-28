@@ -101,6 +101,9 @@ type Alertmanager struct {
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
 
+	// Pipeline created during last ApplyConfig call. Used for testing only.
+	lastPipeline notify.Stage
+
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
@@ -363,6 +366,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.nflog,
 		am.state,
 	)
+	am.lastPipeline = pipeline
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),

@@ -120,7 +120,11 @@ func (c *RedisClient) MGet(ctx context.Context, keys []string) ([][]byte, error)
 	if isCluster {
 		for i, key := range keys {
 			cmd := c.rdb.Get(ctx, key)
-			if err := cmd.Err(); err != nil {
+			err := cmd.Err()
+			if err == redis.Nil {
+				// if key not found, response nil
+				continue
+			} else if err != nil {
 				return nil, err
 			}
 			ret[i] = StringToBytes(cmd.Val())

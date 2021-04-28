@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,11 +25,13 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -275,6 +278,181 @@ templates:
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+}
+
+func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {
+	tests := map[string]struct {
+		getAlertmanagerConfig func(backendURL string) string
+	}{
+		"webhook": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: webhook
+  group_wait: 0s
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: %s
+`, backendURL)
+			},
+		},
+		"pagerduty": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: pagerduty
+  group_wait: 0s
+
+receivers:
+  - name: pagerduty
+    pagerduty_configs:
+      - url: %s
+        routing_key: secret
+`, backendURL)
+			},
+		},
+		"slack": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: slack
+  group_wait: 0s
+
+receivers:
+  - name: slack
+    slack_configs:
+      - api_url: %s
+        channel: test
+`, backendURL)
+			},
+		},
+		"opsgenie": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: opsgenie
+  group_wait: 0s
+
+receivers:
+  - name: opsgenie
+    opsgenie_configs:
+      - api_url: %s
+        api_key: secret
+`, backendURL)
+			},
+		},
+		"wechat": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: wechat
+  group_wait: 0s
+
+receivers:
+  - name: wechat
+    wechat_configs:
+      - api_url: %s
+        api_secret: secret
+        corp_id: babycorp
+`, backendURL)
+			},
+		},
+	}
+
+	for receiverName, testData := range tests {
+		for _, firewallEnabled := range []bool{true, false} {
+			receiverName := receiverName
+			testData := testData
+			firewallEnabled := firewallEnabled
+
+			t.Run(fmt.Sprintf("receiver=%s firewall enabled=%v", receiverName, firewallEnabled), func(t *testing.T) {
+				t.Parallel()
+
+				ctx := context.Background()
+				userID := "user-1"
+				serverInvoked := atomic.NewBool(false)
+
+				// Create a local HTTP server to test whether the request is received.
+				server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					serverInvoked.Store(true)
+					writer.WriteHeader(http.StatusOK)
+				}))
+				defer server.Close()
+
+				// Create the alertmanager config.
+				alertmanagerCfg := testData.getAlertmanagerConfig(fmt.Sprintf("http://%s", server.Listener.Addr().String()))
+
+				// Store the alertmanager config in the bucket.
+				store := prepareInMemoryAlertStore()
+				require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+					User:      userID,
+					RawConfig: alertmanagerCfg,
+				}))
+
+				// Prepare the alertmanager config.
+				cfg := mockAlertmanagerConfig(t)
+				cfg.ReceiversFirewall.Block.PrivateAddresses = firewallEnabled
+
+				// Start the alertmanager.
+				reg := prometheus.NewPedanticRegistry()
+				am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+				require.NoError(t, err)
+				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+				t.Cleanup(func() {
+					require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+				})
+
+				// Ensure the configs are synced correctly.
+				assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_alertmanager_config_last_reload_successful Boolean set to 1 whenever the last configuration reload attempt was successful.
+		# TYPE cortex_alertmanager_config_last_reload_successful gauge
+		cortex_alertmanager_config_last_reload_successful{user="user-1"} 1
+	`), "cortex_alertmanager_config_last_reload_successful"))
+
+				// Create an alert to push.
+				alerts := types.Alerts(&types.Alert{
+					Alert: model.Alert{
+						Labels:   map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
+						StartsAt: time.Now().Add(-time.Minute),
+						EndsAt:   time.Now().Add(time.Minute),
+					},
+					UpdatedAt: time.Now(),
+					Timeout:   false,
+				})
+
+				alertsPayload, err := json.Marshal(alerts)
+				require.NoError(t, err)
+
+				// Push an alert.
+				req := httptest.NewRequest(http.MethodPost, cfg.ExternalURL.String()+"/api/v1/alerts", bytes.NewReader(alertsPayload))
+				req.Header.Set("content-type", "application/json")
+				reqCtx := user.InjectOrgID(req.Context(), userID)
+				{
+					w := httptest.NewRecorder()
+					am.ServeHTTP(w, req.WithContext(reqCtx))
+
+					resp := w.Result()
+					_, err := ioutil.ReadAll(resp.Body)
+					require.NoError(t, err)
+					assert.Equal(t, http.StatusOK, w.Code)
+				}
+
+				// Ensure the server endpoint has not been called if firewall is enabled. Since the alert is delivered
+				// asynchronously, we should pool it for a short period.
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					if time.Now().After(deadline) || serverInvoked.Load() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				assert.Equal(t, !firewallEnabled, serverInvoked.Load())
+			})
+		}
+	}
 }
 
 func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {
@@ -1146,7 +1324,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
 				if tt.withSharding {
-					clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+					clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
 					am.alertmanagerClientsPool = clientPool
 				}
 
@@ -1334,7 +1512,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 				am, err := createMultitenantAlertmanager(amConfig, nil, nil, mockStore, ringStore, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 
-				clientPool.servers[amConfig.ShardingRing.InstanceAddr+":0"] = am
+				clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
 				am.alertmanagerClientsPool = clientPool
 
 				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
@@ -1459,6 +1637,34 @@ func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
 }
 
+func TestSafeTemplateFilepath(t *testing.T) {
+	tests := map[string]struct {
+		dir          string
+		template     string
+		expectedPath string
+		expectedErr  error
+	}{
+		"should succeed if the provided template is a filename": {
+			dir:          "/data/tenant",
+			template:     "test.tmpl",
+			expectedPath: "/data/tenant/test.tmpl",
+		},
+		"should fail if the provided template is escaping the dir": {
+			dir:         "/data/tenant",
+			template:    "../test.tmpl",
+			expectedErr: errors.New(`invalid template name "../test.tmpl": the template filepath is escaping the per-tenant local directory`),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actualPath, actualErr := safeTemplateFilepath(testData.dir, testData.template)
+			assert.Equal(t, testData.expectedErr, actualErr)
+			assert.Equal(t, testData.expectedPath, actualPath)
+		})
+	}
+}
+
 func TestStoreTemplateFile(t *testing.T) {
 	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
 	require.NoError(t, err)
@@ -1469,29 +1675,17 @@ func TestStoreTemplateFile(t *testing.T) {
 
 	testTemplateDir := filepath.Join(tempDir, templatesDir)
 
-	changed, err := storeTemplateFile(testTemplateDir, "some-template", "content")
+	changed, err := storeTemplateFile(filepath.Join(testTemplateDir, "some-template"), "content")
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	changed, err = storeTemplateFile(testTemplateDir, "some-template", "new content")
+	changed, err = storeTemplateFile(filepath.Join(testTemplateDir, "some-template"), "new content")
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	changed, err = storeTemplateFile(testTemplateDir, "some-template", "new content") // reusing previous content
+	changed, err = storeTemplateFile(filepath.Join(testTemplateDir, "some-template"), "new content") // reusing previous content
 	require.NoError(t, err)
 	require.False(t, changed)
-
-	_, err = storeTemplateFile(testTemplateDir, ".", "content")
-	require.Error(t, err)
-
-	_, err = storeTemplateFile(testTemplateDir, "..", "content")
-	require.Error(t, err)
-
-	_, err = storeTemplateFile(testTemplateDir, "./test", "content")
-	require.Error(t, err)
-
-	_, err = storeTemplateFile(testTemplateDir, "../test", "content")
-	require.Error(t, err)
 }
 
 type passthroughAlertmanagerClient struct {
@@ -1517,7 +1711,8 @@ func (am *passthroughAlertmanagerClient) RemoteAddress() string {
 // passthroughAlertmanagerClientPool allows testing the logic of gRPC calls between alertmanager instances
 // by invoking client calls directly to a peer instance in the unit test, without the server running.
 type passthroughAlertmanagerClientPool struct {
-	servers map[string]alertmanagerpb.AlertmanagerServer
+	serversMtx sync.Mutex
+	servers    map[string]alertmanagerpb.AlertmanagerServer
 }
 
 func newPassthroughAlertmanagerClientPool() *passthroughAlertmanagerClientPool {
@@ -1526,7 +1721,15 @@ func newPassthroughAlertmanagerClientPool() *passthroughAlertmanagerClientPool {
 	}
 }
 
+func (f *passthroughAlertmanagerClientPool) setServer(addr string, server alertmanagerpb.AlertmanagerServer) {
+	f.serversMtx.Lock()
+	defer f.serversMtx.Unlock()
+	f.servers[addr] = server
+}
+
 func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, error) {
+	f.serversMtx.Lock()
+	defer f.serversMtx.Unlock()
 	s, ok := f.servers[addr]
 	if !ok {
 		return nil, fmt.Errorf("client not found for address: %v", addr)

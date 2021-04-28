@@ -1063,11 +1063,6 @@ grpc_client_config:
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# This flag is about to be deprecated. Please use
-# -api.response-compression-enabled instead.
-# CLI flag: -querier.compress-http-responses
-[compress_responses: <boolean> | default = false]
-
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
 [downstream_url: <string> | default = ""]
@@ -1858,6 +1853,20 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # Maximum size (bytes) of an accepted HTTP request body.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
+
+receivers_firewall:
+  block:
+    # Comma-separated list of network CIDRs to block in Alertmanager receiver
+    # integrations.
+    # CLI flag: -alertmanager.receivers-firewall.block.cidr-networks
+    [cidr_networks: <string> | default = ""]
+
+    # True to block private and local addresses in Alertmanager receiver
+    # integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+    # addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local
+    # unicast and local multicast addresses.
+    # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
+    [private_addresses: <boolean> | default = false]
 
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
@@ -3441,11 +3450,6 @@ write_dedupe_cache_config:
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# Deprecated: use -querier.max-query-lookback instead. Limit how long back data
-# can be queried. This setting applies to chunks storage only.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### `ingester_client_config`
@@ -4008,13 +4012,24 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage. When running the
-# Cortex chunks storage, this limit is enforced in the querier, while when
-# running the Cortex blocks storage this limit is both enforced in the querier
-# and store-gateway. 0 to disable.
+# Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
+# respective YAML config option instead. Maximum number of chunks that can be
+# fetched in a single query. This limit is enforced when fetching chunks from
+# the long-term storage only. When running the Cortex chunks storage, this limit
+# is enforced in the querier and ruler, while when running the Cortex blocks
+# storage this limit is enforced in the querier, ruler and store-gateway. 0 to
+# disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
+
+# Maximum number of chunks that can be fetched in a single query from ingesters
+# and long-term storage: the total number of actual fetched chunks could be 2x
+# the limit, being independently applied when querying ingesters and long-term
+# storage. This limit is enforced in the ingester (if chunks streaming is
+# enabled), querier, ruler and store-gateway. Takes precedence over the
+# deprecated -store.query-chunk-limit. 0 to disable.
+# CLI flag: -querier.max-fetched-chunks-per-query
+[max_fetched_chunks_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4098,16 +4113,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# File name of per-user overrides. [deprecated, use -runtime-config.file
-# instead]
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Period with which to reload the overrides. [deprecated, use
-# -runtime-config.reload-period instead]
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
 ```
 
 ### `redis_config`
@@ -4576,11 +4581,6 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 15m]
 
-  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-  # The pool is shared across all tenants. 0 to disable the limit.
-  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-  [max_chunk_pool_bytes: <int> | default = 2147483648]
-
   # Max number of concurrent queries to execute against the long-term storage.
   # The limit is shared across all tenants.
   # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -4657,11 +4657,6 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
-
-    # Deprecated: compress postings before storing them to postings cache. This
-    # option is unused and postings compression is always enabled.
-    # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-    [postings_compression_enabled: <boolean> | default = false]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -4861,6 +4856,11 @@ bucket_store:
     # querier (at query time).
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
+
+  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+  # The pool is shared across all tenants. 0 to disable the limit.
+  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
 
   # If enabled, store-gateway will lazy load an index-header only once required
   # by a query.

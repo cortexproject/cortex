@@ -185,14 +185,14 @@ func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSe
 }
 
 // LabelValues gets label values
-func (c *Client) LabelValues(label string, start, end time.Time) (model.LabelValues, error) {
-	result, _, err := c.querierClient.LabelValues(context.Background(), label, start, end)
+func (c *Client) LabelValues(label string, start, end time.Time, matches []string) (model.LabelValues, error) {
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, matches, start, end)
 	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), start, end)
+	result, _, err := c.querierClient.LabelNames(context.Background(), nil, start, end)
 	return result, err
 }
 
@@ -507,6 +507,106 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	}
 
 	return nil
+}
+
+func (c *Client) GetAlertsV1(ctx context.Context) ([]model.Alert, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v1/alerts", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting alerts failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	type response struct {
+		Status string        `json:"status"`
+		Data   []model.Alert `json:"data"`
+	}
+
+	decoded := &response{}
+	if err := json.Unmarshal(body, decoded); err != nil {
+		return nil, err
+	}
+
+	if decoded.Status != "success" {
+		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	}
+
+	return decoded.Data, nil
+}
+
+func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v2/alerts", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting alerts failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := []model.Alert{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, err
+	}
+
+	return decoded, nil
+}
+
+type AlertGroup struct {
+	Labels model.LabelSet `json:"labels"`
+	Alerts []model.Alert  `json:"alerts"`
+}
+
+func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v2/alerts/groups", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting alert groups failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := []AlertGroup{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 // CreateSilence creates a new silence and returns the unique identifier of the silence.

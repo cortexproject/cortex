@@ -2,7 +2,9 @@ package storegateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -24,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -113,6 +116,68 @@ func TestBucketStores_InitialSync(t *testing.T) {
 		"cortex_bucket_store_block_load_failures_total",
 		"cortex_bucket_stores_gate_queries_concurrent_max",
 		"cortex_bucket_stores_gate_queries_in_flight",
+	))
+
+	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
+}
+
+func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
+	ctx := context.Background()
+	cfg, cleanup := prepareStorageConfig(t)
+	defer cleanup()
+
+	storageDir, err := ioutil.TempDir(os.TempDir(), "storage-*")
+	require.NoError(t, err)
+
+	// Generate a block for the user in the storage.
+	generateStorageBlock(t, storageDir, "user-1", "series_1", 10, 100, 15)
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	// Wrap the bucket to fail the 1st Get() request.
+	bucket = &failFirstGetBucket{Bucket: bucket}
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Initial sync should succeed even if a transient error occurs.
+	require.NoError(t, stores.InitialSync(ctx))
+
+	// Query series after the initial sync.
+	seriesSet, warnings, err := querySeries(stores, "user-1", "series_1", 20, 40)
+	require.NoError(t, err)
+	assert.Empty(t, warnings)
+	require.Len(t, seriesSet, 1)
+	assert.Equal(t, []labelpb.ZLabel{{Name: labels.MetricName, Value: "series_1"}}, seriesSet[0].Labels)
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
+			# TYPE cortex_blocks_meta_syncs_total counter
+			cortex_blocks_meta_syncs_total 2
+
+			# HELP cortex_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+			# TYPE cortex_blocks_meta_sync_failures_total counter
+			cortex_blocks_meta_sync_failures_total 1
+
+			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+			# TYPE cortex_bucket_store_blocks_loaded gauge
+			cortex_bucket_store_blocks_loaded 1
+
+			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+			# TYPE cortex_bucket_store_block_loads_total counter
+			cortex_bucket_store_block_loads_total 1
+
+			# HELP cortex_bucket_store_block_load_failures_total Total number of failed remote block loading attempts.
+			# TYPE cortex_bucket_store_block_load_failures_total counter
+			cortex_bucket_store_block_load_failures_total 0
+	`),
+		"cortex_blocks_meta_syncs_total",
+		"cortex_blocks_meta_sync_failures_total",
+		"cortex_bucket_store_block_loads_total",
+		"cortex_bucket_store_block_load_failures_total",
+		"cortex_bucket_store_blocks_loaded",
 	))
 
 	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
@@ -533,4 +598,19 @@ func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 		delete(metas, k)
 	}
 	return nil
+}
+
+// failFirstGetBucket is an objstore.Bucket wrapper which fails the first Get() request with a mocked error.
+type failFirstGetBucket struct {
+	objstore.Bucket
+
+	firstGet atomic.Bool
+}
+
+func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if f.firstGet.CAS(false, true) {
+		return nil, errors.New("Get() request mocked error")
+	}
+
+	return f.Bucket.Get(ctx, name)
 }

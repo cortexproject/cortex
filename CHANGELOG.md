@@ -32,7 +32,6 @@
     * `-memberlist.tls-insecure-skip-verify`
 * [CHANGE] Cortex now fast fails on startup if unable to connect to the ring backend. #4068
 * [FEATURE] Ruler: added `local` backend support to the ruler storage configuration under the `-ruler-storage.` flag prefix. #3932
-* [FEATURE] Label Values API call now supports `match[]` parameter. #4133
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.13`. #4042
 * [ENHANCEMENT] Blocks storage: reduce ingester memory by eliminating series reference cache. #3951
 * [ENHANCEMENT] Ruler: optimized `<prefix>/api/v1/rules` and `<prefix>/api/v1/alerts` when ruler sharding is enabled. #3916
@@ -61,6 +60,7 @@
 * [ENHANCEMENT] Store-gateway: retry synching blocks if a per-tenant sync fails. #3975 #4088
 * [ENHANCEMENT] Add metric `cortex_tcp_connections` exposing the current number of accepted TCP connections. #4099
 * [ENHANCEMENT] Querier: Allow federated queries to run concurrently. #4065
+* [ENHANCEMENT] Label Values API call now supports `match[]` parameter. #4133
 * [BUGFIX] Ruler-API: fix bug where `/api/v1/rules/<namespace>/<group_name>` endpoint return `400` instead of `404`. #4013
 * [BUGFIX] Distributor: reverted changes done to rate limiting in #3825. #3948
 * [BUGFIX] Ingester: Fix race condition when opening and closing tsdb concurrently. #3959

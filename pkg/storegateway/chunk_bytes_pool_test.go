@@ -10,11 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store"
+
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestChunkBytesPool_Get(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	p, err := newChunkBytesPool(0, reg)
+	p, err := newChunkBytesPool(cortex_tsdb.ChunkPoolDefaultMinBucketSize, cortex_tsdb.ChunkPoolDefaultMaxBucketSize, 0, reg)
 	require.NoError(t, err)
 
 	_, err = p.Get(store.EstimatedMaxChunkSize - 1)

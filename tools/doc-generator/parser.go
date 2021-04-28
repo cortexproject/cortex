@@ -253,6 +253,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "flagext.StringSliceCSV":
 		return "string", nil
+	case "flagext.CIDRSliceCSV":
+		return "string", nil
 	case "[]*relabel.Config":
 		return "relabel_config...", nil
 	}

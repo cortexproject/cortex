@@ -21,7 +21,7 @@ The Cortex maintainers commit to ensuring future version of Cortex can read data
 
 ## API Compatibility
 
-Cortex strives to be 100% API compatible with Prometheus (under `/api/prom/*`); any deviation from this is considered a bug, except:
+Cortex strives to be 100% API compatible with Prometheus (under `/prometheus/*` and `/api/prom/*`); any deviation from this is considered a bug, except:
 
 - Requiring the `__name__` label on queries when querying the [chunks storage](../chunks-storage/_index.md) (queries to ingesters or clusters running the blocks storage are not affected).
 - For queries to the `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` endpoints, query's time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
@@ -40,16 +40,15 @@ Currently experimental features are:
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Azure blob storage.
 - Zone awareness based replication.
-- Shuffle sharding (both read and write path).
 - Ruler API (to PUT rules).
-- Alertmanager API
+- Alertmanager:
+  - API (enabled via `-experimental.alertmanager.enable-api`)
+  - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
+  - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - Memcached client DNS-based service discovery.
 - Delete series APIs.
 - In-memory (FIFO) and Redis cache.
 - gRPC Store.
-- Querier support for querying chunks and blocks store at the same time.
-- Tracking of active series and exporting them as metrics (`-ingester.active-series-metrics-enabled` and related flags)
-- Shuffle-sharding of queriers in the query-frontend (i.e. use of `-frontend.max-queriers-per-tenant` flag with non-zero value).
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools
@@ -57,20 +56,17 @@ Currently experimental features are:
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)
-- Blocks storage: lazy mmap of block indexes in the store-gateway (`-blocks-storage.bucket-store.index-header-lazy-loading-enabled`)
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor: do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
-- Ingester: close idle TSDB and remove them from local disk (`-blocks-storage.tsdb.close-idle-tsdb-timeout`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index
   - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Querier: tenant federation
-- Alertmanager: Sharding of tenants across multiple instances
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Alertmanager storage: backend client configuration options using a config fields similar to the blocks storage backend clients.
 - Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
-  - `ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
+  - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
+- Instance limits in ingester and distributor

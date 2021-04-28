@@ -180,6 +180,15 @@ type Appender interface {
 	ExemplarAppender
 }
 
+// GetRef is an extra interface on Appenders used by downstream projects
+// (e.g. Cortex) to avoid maintaining a parallel set of references.
+type GetRef interface {
+	// Returns reference number that can be used to pass to Appender.Append(),
+	// and a set of labels that will not cause another copy when passed to Appender.Append().
+	// 0 means the appender does not have a reference to this series.
+	GetRef(lset labels.Labels) (uint64, labels.Labels)
+}
+
 // ExemplarAppender provides an interface for adding samples to exemplar storage, which
 // within Prometheus is in-memory only.
 type ExemplarAppender interface {
@@ -200,7 +209,7 @@ type ExemplarAppender interface {
 // SeriesSet contains a set of series.
 type SeriesSet interface {
 	Next() bool
-	// At returns full series. Returned series should be iteratable even after Next is called.
+	// At returns full series. Returned series should be iterable even after Next is called.
 	At() Series
 	// The error that iteration as failed with.
 	// When an error occurs, set cannot continue to iterate.
@@ -255,13 +264,13 @@ func ErrChunkSeriesSet(err error) ChunkSeriesSet {
 // Series exposes a single time series and allows iterating over samples.
 type Series interface {
 	Labels
-	SampleIteratable
+	SampleIterable
 }
 
 // ChunkSeriesSet contains a set of chunked series.
 type ChunkSeriesSet interface {
 	Next() bool
-	// At returns full chunk series. Returned series should be iteratable even after Next is called.
+	// At returns full chunk series. Returned series should be iterable even after Next is called.
 	At() ChunkSeries
 	// The error that iteration has failed with.
 	// When an error occurs, set cannot continue to iterate.
@@ -274,7 +283,7 @@ type ChunkSeriesSet interface {
 // ChunkSeries exposes a single time series and allows iterating over chunks.
 type ChunkSeries interface {
 	Labels
-	ChunkIteratable
+	ChunkIterable
 }
 
 // Labels represents an item that has labels e.g. time series.
@@ -283,12 +292,12 @@ type Labels interface {
 	Labels() labels.Labels
 }
 
-type SampleIteratable interface {
+type SampleIterable interface {
 	// Iterator returns a new, independent iterator of the data of the series.
 	Iterator() chunkenc.Iterator
 }
 
-type ChunkIteratable interface {
+type ChunkIterable interface {
 	// Iterator returns a new, independent iterator that iterates over potentially overlapping
 	// chunks of the series, sorted by min time.
 	Iterator() chunks.Iterator

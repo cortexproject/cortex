@@ -446,6 +446,155 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushInstanceLimits(t *testing.T) {
+	type testPush struct {
+		samples       int
+		metadata      int
+		expectedError error
+	}
+
+	tests := map[string]struct {
+		preInflight    int
+		preRateSamples int        // initial rate before first push
+		pushes         []testPush // rate is recomputed after each push
+
+		// limits
+		inflightLimit      int
+		ingestionRateLimit float64
+
+		metricNames     []string
+		expectedMetrics string
+	}{
+		"no limits limit": {
+			preInflight:    100,
+			preRateSamples: 1000,
+
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric},
+			expectedMetrics: `
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"below inflight limit": {
+			preInflight:   100,
+			inflightLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_inflight_push_requests"},
+			expectedMetrics: `
+				# HELP cortex_distributor_inflight_push_requests Current number of inflight push requests in distributor.
+				# TYPE cortex_distributor_inflight_push_requests gauge
+				cortex_distributor_inflight_push_requests 100
+
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 101
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 0
+			`,
+		},
+		"hits inflight limit": {
+			preInflight:   101,
+			inflightLimit: 101,
+			pushes: []testPush{
+				{samples: 100, expectedError: errTooManyInflightPushRequests},
+			},
+		},
+		"below ingestion rate limit": {
+			preRateSamples:     500,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 1000, expectedError: nil},
+			},
+
+			metricNames: []string{instanceLimitsMetric, "cortex_distributor_ingestion_rate_samples_per_second"},
+			expectedMetrics: `
+				# HELP cortex_distributor_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that distributor is using to limit access.
+				# TYPE cortex_distributor_ingestion_rate_samples_per_second gauge
+				cortex_distributor_ingestion_rate_samples_per_second 600
+
+				# HELP cortex_distributor_instance_limits Instance limits used by this distributor.
+				# TYPE cortex_distributor_instance_limits gauge
+				cortex_distributor_instance_limits{limit="max_inflight_push_requests"} 0
+				cortex_distributor_instance_limits{limit="max_ingestion_rate"} 1000
+			`,
+		},
+		"hits rate limit on first request, but second request can proceed": {
+			preRateSamples:     1200,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 100, expectedError: errMaxSamplesPushRateLimitReached},
+				{samples: 100, expectedError: nil},
+			},
+		},
+
+		"below rate limit on first request, but hits the rate limit afterwards": {
+			preRateSamples:     500,
+			ingestionRateLimit: 1000,
+
+			pushes: []testPush{
+				{samples: 5000, expectedError: nil},                               // after push, rate = 500 + 0.2*(5000-500) = 1400
+				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1400 + 0.2*(0 - 1400) = 1120
+				{samples: 5000, expectedError: errMaxSamplesPushRateLimitReached}, // after push, rate = 1120 + 0.2*(0 - 1120) = 896
+				{samples: 5000, expectedError: nil},                               // 896 is below 1000, so this push succeeds, new rate = 896 + 0.2*(5000-896) = 1716.8
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			// Start all expected distributors
+			distributors, _, r, regs := prepare(t, prepConfig{
+				numIngesters:        3,
+				happyIngesters:      3,
+				numDistributors:     1,
+				shardByAllLabels:    true,
+				limits:              limits,
+				maxInflightRequests: testData.inflightLimit,
+				maxIngestionRate:    testData.ingestionRateLimit,
+			})
+			defer stopAll(distributors, r)
+
+			d := distributors[0]
+			d.inflightPushRequests.Add(int64(testData.preInflight))
+			d.ingestionRate.Add(int64(testData.preRateSamples))
+
+			d.ingestionRate.Tick()
+
+			for _, push := range testData.pushes {
+				request := makeWriteRequest(0, push.samples, push.metadata)
+				_, err := d.Push(ctx, request)
+
+				if push.expectedError == nil {
+					assert.Nil(t, err)
+				} else {
+					assert.Equal(t, push.expectedError, err)
+				}
+
+				d.ingestionRate.Tick()
+
+				if testData.expectedMetrics != "" {
+					assert.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(testData.expectedMetrics), testData.metricNames...))
+				}
+			}
+		})
+	}
+}
+
 func TestDistributor_PushHAInstances(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
@@ -721,6 +870,60 @@ func TestDistributor_PushQuery(t *testing.T) {
 	}
 }
 
+func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReached(t *testing.T) {
+	const maxChunksLimit = 30 // Chunks are duplicated due to replication factor.
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.MaxChunksPerQuery = maxChunksLimit
+
+	// Prepare distributors.
+	ds, _, r, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+	defer stopAll(ds, r)
+
+	// Push a number of series below the max chunks limit. Each series has 1 sample,
+	// so expect 1 chunk per series when querying back.
+	initialSeries := maxChunksLimit / 3
+	writeReq := makeWriteRequest(0, initialSeries, 0)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	allSeriesMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
+	}
+
+	// Since the number of series (and thus chunks) is equal to the limit (but doesn't
+	// exceed it), we expect a query running on all series to succeed.
+	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+	assert.Len(t, queryRes.Chunkseries, initialSeries)
+
+	// Push more series to exceed the limit once we'll query back all series.
+	writeReq = &cortexpb.WriteRequest{}
+	for i := 0; i < maxChunksLimit; i++ {
+		writeReq.Timeseries = append(writeReq.Timeseries,
+			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0),
+		)
+	}
+
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of series (and thus chunks) is exceeding to the limit, we expect
+	// a query running on all series to fail.
+	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "the query hit the max number of chunks limit")
+}
+
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "user")
 
@@ -969,6 +1172,274 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 }
 
+func BenchmarkDistributor_Push(b *testing.B) {
+	const (
+		numSeriesPerRequest = 1000
+	)
+
+	tests := map[string]struct {
+		prepareConfig func(limits *validation.Limits)
+		prepareSeries func() ([]labels.Labels, []cortexpb.Sample)
+		expectedErr   string
+	}{
+		"all samples successfully pushed": {
+			prepareConfig: func(limits *validation.Limits) {},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "",
+		},
+		"ingestion rate limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.IngestionRate = 1
+				limits.IngestionBurstSize = 1
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "ingestion rate limit",
+		},
+		"too many labels limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelNamesPerSeries = 30
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 1; i < 31; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "series has too many labels",
+		},
+		"max label name length limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelNameLength = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long name.
+					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "label name too long",
+		},
+		"max label value length limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelValueLength = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long value.
+					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "label value too long",
+		},
+		"timestamp too old": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.RejectOldSamples = true
+				limits.RejectOldSamplesMaxAge = model.Duration(time.Hour)
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "timestamp too old",
+		},
+		"timestamp too new": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.CreationGracePeriod = model.Duration(time.Minute)
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "timestamp too new",
+		},
+	}
+
+	for testName, testData := range tests {
+		b.Run(testName, func(b *testing.B) {
+			// Create an in-memory KV store for the ring with 1 ingester registered.
+			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
+				func(_ interface{}) (interface{}, bool, error) {
+					d := &ring.Desc{}
+					d.AddIngester("ingester-1", "127.0.0.1", "", ring.GenerateTokens(128, nil), ring.ACTIVE, time.Now())
+					return d, true, nil
+				},
+			)
+			require.NoError(b, err)
+
+			ingestersRing, err := ring.New(ring.Config{
+				KVStore:           kv.Config{Mock: kvStore},
+				HeartbeatTimeout:  60 * time.Minute,
+				ReplicationFactor: 1,
+			}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
+			require.NoError(b, err)
+			require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingestersRing))
+			b.Cleanup(func() {
+				require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ingestersRing))
+			})
+
+			test.Poll(b, time.Second, 1, func() interface{} {
+				return ingestersRing.InstancesCount()
+			})
+
+			// Prepare the distributor configuration.
+			var distributorCfg Config
+			var clientConfig client.Config
+			limits := validation.Limits{}
+			flagext.DefaultValues(&distributorCfg, &clientConfig, &limits)
+
+			limits.IngestionRate = 0 // Unlimited.
+			testData.prepareConfig(&limits)
+
+			distributorCfg.ShardByAllLabels = true
+			distributorCfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
+				return &noopIngester{}, nil
+			}
+
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(b, err)
+
+			// Start the distributor.
+			distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+			require.NoError(b, err)
+			require.NoError(b, services.StartAndAwaitRunning(context.Background(), distributor))
+
+			b.Cleanup(func() {
+				require.NoError(b, services.StopAndAwaitTerminated(context.Background(), distributor))
+			})
+
+			// Prepare the series to remote write before starting the benchmark.
+			metrics, samples := testData.prepareSeries()
+
+			// Run the benchmark.
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+
+				if testData.expectedErr == "" && err != nil {
+					b.Fatalf("no error expected but got %v", err)
+				}
+				if testData.expectedErr != "" && (err == nil || !strings.Contains(err.Error(), testData.expectedErr)) {
+					b.Fatalf("expected %v error but got %v", testData.expectedErr, err)
+				}
+			}
+		})
+	}
+}
+
 func TestSlowQueries(t *testing.T) {
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
@@ -1210,6 +1681,8 @@ type prepConfig struct {
 	limits                       *validation.Limits
 	numDistributors              int
 	skipLabelNameValidation      bool
+	maxInflightRequests          int
+	maxIngestionRate             float64
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring, []*prometheus.Registry) {
@@ -1290,6 +1763,8 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		distributorCfg.DistributorRing.KVStore.Mock = kvStore
 		distributorCfg.DistributorRing.InstanceAddr = "127.0.0.1"
 		distributorCfg.SkipLabelNameValidation = cfg.skipLabelNameValidation
+		distributorCfg.InstanceLimits.MaxInflightPushRequests = cfg.maxInflightRequests
+		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -1333,22 +1808,12 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
 	for i := 0; i < samples; i++ {
-		ts := cortexpb.PreallocTimeseries{
-			TimeSeries: &cortexpb.TimeSeries{
-				Labels: []cortexpb.LabelAdapter{
-					{Name: model.MetricNameLabel, Value: "foo"},
-					{Name: "bar", Value: "baz"},
-					{Name: "sample", Value: fmt.Sprintf("%d", i)},
-				},
-			},
-		}
-		ts.Samples = []cortexpb.Sample{
-			{
-				Value:       float64(i),
-				TimestampMs: startTimestampMs + int64(i),
-			},
-		}
-		request.Timeseries = append(request.Timeseries, ts)
+		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
+			[]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: fmt.Sprintf("%d", i)},
+			}, startTimestampMs+int64(i), float64(i)))
 	}
 
 	for i := 0; i < metadata; i++ {
@@ -1361,6 +1826,20 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int) *cortex
 	}
 
 	return request
+}
+
+func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts int64, value float64) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels: labels,
+			Samples: []cortexpb.Sample{
+				{
+					Value:       value,
+					TimestampMs: ts,
+				},
+			},
+		},
+	}
 }
 
 func makeWriteRequestHA(samples int, replica, cluster string) *cortexpb.WriteRequest {
@@ -1661,6 +2140,20 @@ func (i *mockIngester) countCalls(name string) int {
 	return i.calls[name]
 }
 
+// noopIngester is a mocked ingester which does nothing.
+type noopIngester struct {
+	client.IngesterClient
+	grpc_health_v1.HealthClient
+}
+
+func (i *noopIngester) Close() error {
+	return nil
+}
+
+func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
 type stream struct {
 	grpc.ClientStream
 	i       int
@@ -1773,9 +2266,9 @@ func TestDistributorValidation(t *testing.T) {
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)
 
-			limits.CreationGracePeriod = 2 * time.Hour
+			limits.CreationGracePeriod = model.Duration(2 * time.Hour)
 			limits.RejectOldSamples = true
-			limits.RejectOldSamplesMaxAge = 24 * time.Hour
+			limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 			limits.MaxLabelNamesPerSeries = 2
 
 			ds, _, r, _ := prepare(t, prepConfig{

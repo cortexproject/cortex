@@ -40,9 +40,12 @@ import (
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -58,12 +61,13 @@ const (
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID      string
-	Logger      log.Logger
-	Peer        *cluster.Peer
-	PeerTimeout time.Duration
-	Retention   time.Duration
-	ExternalURL *url.URL
+	UserID            string
+	Logger            log.Logger
+	Peer              *cluster.Peer
+	PeerTimeout       time.Duration
+	Retention         time.Duration
+	ExternalURL       *url.URL
+	ReceiversFirewall FirewallConfig
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -71,6 +75,8 @@ type Config struct {
 	ShardingEnabled   bool
 	ReplicationFactor int
 	Replicator        Replicator
+	Store             alertstore.AlertStore
+	PersisterConfig   PersisterConfig
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -79,6 +85,7 @@ type Alertmanager struct {
 	api             *api.API
 	logger          log.Logger
 	state           State
+	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
 	marker          types.Marker
@@ -90,6 +97,7 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
+	firewallDialer  *util_net.FirewallDialer
 
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
@@ -129,6 +137,8 @@ type Replicator interface {
 	// The alertmanager replication protocol relies on a position related to other replicas.
 	// This position is then used to identify who should notify about the alert first.
 	GetPositionForUser(userID string) int
+	// ReadFullStateForUser obtains the full state from other replicas in the cluster.
+	ReadFullStateForUser(context.Context, string) ([]*clusterpb.FullState, error)
 }
 
 // New creates a new Alertmanager.
@@ -141,6 +151,10 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
+		firewallDialer: util_net.NewFirewallDialer(util_net.FirewallDialerConfig{
+			BlockCIDRNetworks:     cfg.ReceiversFirewall.Block.CIDRNetworks,
+			BlockPrivateAddresses: cfg.ReceiversFirewall.Block.PrivateAddresses,
+		}),
 		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
@@ -159,13 +173,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = cfg.Peer
 	} else if cfg.ShardingEnabled {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
-		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, am.logger, am.registry)
-
-		if err := state.Service.StartAsync(context.Background()); err != nil {
-			return nil, errors.Wrap(err, "failed to start ring-based replication service")
-		}
-
+		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
 		am.state = state
+		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -202,6 +212,19 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 	am.silences.SetBroadcast(c.Broadcast)
+
+	// State replication needs to be started after the state keys are defined.
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start ring-based replication service")
+		}
+	}
+
+	if am.persister != nil {
+		if err := am.persister.StartAsync(context.Background()); err != nil {
+			return nil, errors.Wrap(err, "failed to start state persister service")
+		}
+	}
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
 
@@ -265,10 +288,13 @@ func clusterWait(position func() int, timeout time.Duration) func() time.Duratio
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
 	templateFiles := make([]string, len(conf.Templates))
-	if len(conf.Templates) > 0 {
-		for i, t := range conf.Templates {
-			templateFiles[i] = filepath.Join(am.cfg.TenantDataDir, templatesDir, t)
+	for i, t := range conf.Templates {
+		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.cfg.TenantDataDir, templatesDir), t)
+		if err != nil {
+			return err
 		}
+
+		templateFiles[i] = templateFilepath
 	}
 
 	tmpl, err := template.FromGlobs(templateFiles...)
@@ -300,7 +326,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return d + waitFunc()
 	}
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.logger)
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.firewallDialer, am.logger)
 	if err != nil {
 		return nil
 	}
@@ -346,6 +372,10 @@ func (am *Alertmanager) Stop() {
 		am.dispatcher.Stop()
 	}
 
+	if am.persister != nil {
+		am.persister.StopAsync()
+	}
+
 	if service, ok := am.state.(services.Service); ok {
 		service.StopAsync()
 	}
@@ -356,6 +386,12 @@ func (am *Alertmanager) Stop() {
 
 func (am *Alertmanager) StopAndWait() {
 	am.Stop()
+
+	if am.persister != nil {
+		if err := am.persister.AwaitTerminated(context.Background()); err != nil {
+			level.Warn(am.logger).Log("msg", "error while stopping state persister service", "err", err)
+		}
+	}
 
 	if service, ok := am.state.(services.Service); ok {
 		if err := service.AwaitTerminated(context.Background()); err != nil {
@@ -373,12 +409,19 @@ func (am *Alertmanager) mergePartialExternalState(part *clusterpb.Part) error {
 	return errors.New("ring-based sharding not enabled")
 }
 
+func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
+	if state, ok := am.state.(*state); ok {
+		return state.GetFullState()
+	}
+	return nil, errors.New("ring-based sharding not enabled")
+}
+
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
-		integrations, err := buildReceiverIntegrations(rcv, tmpl, logger)
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -390,7 +433,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration
@@ -404,29 +447,34 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		}
 	)
 
+	// Inject the firewall to any receiver integration supporting it.
+	httpOps := []commoncfg.HTTPClientOption{
+		commoncfg.WithDialContextFunc(firewallDialer.DialContext),
+	}
+
 	for i, c := range nc.WebhookConfigs {
-		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l) })
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.EmailConfigs {
 		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
 	}
 	for i, c := range nc.PagerdutyConfigs {
-		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l) })
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.OpsGenieConfigs {
-		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l) })
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.WechatConfigs {
-		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l) })
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.SlackConfigs {
-		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l) })
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.VictorOpsConfigs {
-		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l) })
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.PushoverConfigs {
-		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l) })
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
 	}
 	if errs.Len() > 0 {
 		return nil, &errs

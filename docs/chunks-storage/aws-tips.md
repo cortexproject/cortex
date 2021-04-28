@@ -46,7 +46,7 @@ example set of command-line parameters from a fairly modest install:
 
 ```
    -target=table-manager
-   -metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
+   -metrics.url=http://prometheus.monitoring.svc.cluster.local./prometheus/
    -metrics.target-queue-length=100000
    -dynamodb.url=dynamodb://us-east-1/
    -schema-config-file=/etc/schema.yaml

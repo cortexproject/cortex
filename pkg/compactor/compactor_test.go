@@ -129,8 +129,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	// No user blocks stored in the bucket.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
-
-	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
+	cfg := prepareConfig()
+	c, _, _, logs, registry := prepare(t, cfg, bucketClient)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -139,6 +139,8 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.Equal(t, prom_testutil.ToFloat64(c.compactionRunInterval), cfg.CompactionInterval.Seconds())
 
 	assert.Equal(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -409,6 +411,50 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_block_cleanup_failed_total",
+	))
+}
+
+func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(t *testing.T) {
+	t.Parallel()
+
+	userID := "test-user"
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{userID}, nil)
+	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D"}, nil)
+	bucketClient.MockIter(userID+"/markers/", nil, nil)
+	bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
+	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
+
+	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient)
+	tsdbPlannerMock.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, errors.New("Failed to plan"))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	// Wait until all retry attempts have completed.
+	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactionRunsFailed)
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_started_total counter
+		# HELP cortex_compactor_runs_started_total Total number of compaction runs started.
+		cortex_compactor_runs_started_total 1
+
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 0
+
+		# TYPE cortex_compactor_runs_failed_total counter
+		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
+		cortex_compactor_runs_failed_total 1
+	`),
+		"cortex_compactor_runs_started_total",
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_failed_total",
 	))
 }
 
@@ -1148,48 +1194,6 @@ func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	}
 
 	return string(content)
-}
-
-func TestAllowedUser(t *testing.T) {
-	testCases := map[string]struct {
-		enabled, disabled map[string]struct{}
-		user              string
-		expected          bool
-	}{
-		"no enabled or disabled": {
-			user:     "test",
-			expected: true,
-		},
-
-		"only enabled, enabled": {
-			enabled:  map[string]struct{}{"user": {}},
-			user:     "user",
-			expected: true,
-		},
-
-		"only enabled, disabled": {
-			enabled:  map[string]struct{}{"user": {}},
-			user:     "not user",
-			expected: false,
-		},
-
-		"only disabled, disabled": {
-			disabled: map[string]struct{}{"user": {}},
-			user:     "user",
-			expected: false,
-		},
-
-		"only disabled, enabled": {
-			disabled: map[string]struct{}{"user": {}},
-			user:     "not user",
-			expected: true,
-		},
-	}
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, tc.expected, isAllowedUser(tc.enabled, tc.disabled, tc.user))
-		})
-	}
 }
 
 func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {

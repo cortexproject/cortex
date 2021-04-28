@@ -370,7 +370,7 @@ func NewAlertmanagerWithTLS(name string, flags map[string]string, image string) 
 	)
 }
 
-func NewRuler(name string, flags map[string]string, image string) *CortexService {
+func NewRuler(name string, consulAddress string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -381,6 +381,9 @@ func NewRuler(name string, flags map[string]string, image string) *CortexService
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
 			"-log.level": "warn",
+			// Configure the ingesters ring backend
+			"-ring.store":      "consul",
+			"-consul.hostname": consulAddress,
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

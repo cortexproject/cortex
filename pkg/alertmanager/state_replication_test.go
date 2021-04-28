@@ -2,6 +2,8 @@ package alertmanager
 
 import (
 	"context"
+	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -16,21 +18,35 @@ import (
 
 	"github.com/go-kit/kit/log"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type fakeState struct{}
-
-func (s fakeState) MarshalBinary() ([]byte, error) {
-	return []byte{}, nil
+type fakeState struct {
+	binary []byte
+	merges [][]byte
 }
-func (s fakeState) Merge(_ []byte) error {
+
+func (s *fakeState) MarshalBinary() ([]byte, error) {
+	return s.binary, nil
+}
+
+func (s *fakeState) Merge(data []byte) error {
+	s.merges = append(s.merges, data)
 	return nil
+}
+
+type readStateResult struct {
+	res      []*clusterpb.FullState
+	err      error
+	blocking bool
 }
 
 type fakeReplicator struct {
 	mtx     sync.Mutex
 	results map[string]*clusterpb.Part
+	read    readStateResult
 }
 
 func newFakeReplicator() *fakeReplicator {
@@ -48,6 +64,37 @@ func (f *fakeReplicator) ReplicateStateForUser(ctx context.Context, userID strin
 
 func (f *fakeReplicator) GetPositionForUser(_ string) int {
 	return 0
+}
+
+func (f *fakeReplicator) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
+	if userID != "user-1" {
+		return nil, errors.New("Unexpected userID")
+	}
+
+	if f.read.blocking {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return f.read.res, f.read.err
+}
+
+type fakeAlertStore struct {
+	alertstore.AlertStore
+
+	states map[string]alertspb.FullStateDesc
+}
+
+func newFakeAlertStore() *fakeAlertStore {
+	return &fakeAlertStore{
+		states: make(map[string]alertspb.FullStateDesc),
+	}
+}
+
+func (f *fakeAlertStore) GetFullState(ctx context.Context, user string) (alertspb.FullStateDesc, error) {
+	if result, ok := f.states[user]; ok {
+		return result, nil
+	}
+	return alertspb.FullStateDesc{}, alertspb.ErrNotFound
 }
 
 func TestStateReplication(t *testing.T) {
@@ -75,7 +122,9 @@ func TestStateReplication(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			replicator := newFakeReplicator()
-			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, log.NewNopLogger(), reg)
+			replicator.read = readStateResult{res: nil, err: nil}
+			store := newFakeAlertStore()
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, store, log.NewNopLogger(), reg)
 
 			require.False(t, s.Ready())
 			{
@@ -126,6 +175,209 @@ alertmanager_state_replication_total{key="nflog"} 1
 	`)))
 
 			}
+		})
+	}
+}
+
+func TestStateReplication_Settle(t *testing.T) {
+
+	tc := []struct {
+		name              string
+		replicationFactor int
+		read              readStateResult
+		storeStates       map[string]alertspb.FullStateDesc
+		results           map[string][][]byte
+	}{
+		{
+			name:              "with a replication factor of <= 1, no state can be read from peers.",
+			replicationFactor: 1,
+			read:              readStateResult{},
+			results: map[string][][]byte{
+				"key1": nil,
+				"key2": nil,
+			},
+		},
+		{
+			name:              "with a replication factor of > 1, state is read from all peers.",
+			replicationFactor: 3,
+			read: readStateResult{
+				res: []*clusterpb.FullState{
+					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}, {Key: "key2", Data: []byte("Datum2")}}},
+					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum3")}, {Key: "key2", Data: []byte("Datum4")}}},
+				},
+			},
+			results: map[string][][]byte{
+				"key1": {[]byte("Datum1"), []byte("Datum3")},
+				"key2": {[]byte("Datum2"), []byte("Datum4")},
+			},
+		},
+		{
+			name:              "with full state having no parts, nothing is merged.",
+			replicationFactor: 3,
+			read: readStateResult{
+				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{}}},
+			},
+			results: map[string][][]byte{
+				"key1": nil,
+				"key2": nil,
+			},
+		},
+		{
+			name:              "with an unknown key, parts in the same state are merged.",
+			replicationFactor: 3,
+			read: readStateResult{
+				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{
+					{Key: "unknown", Data: []byte("Wow")},
+					{Key: "key1", Data: []byte("Datum1")},
+				}}},
+			},
+			results: map[string][][]byte{
+				"key1": {[]byte("Datum1")},
+				"key2": nil,
+			},
+		},
+		{
+			name:              "with an unknown key, parts in other states are merged.",
+			replicationFactor: 3,
+			read: readStateResult{
+				res: []*clusterpb.FullState{
+					{Parts: []clusterpb.Part{{Key: "unknown", Data: []byte("Wow")}}},
+					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}}},
+				},
+			},
+			results: map[string][][]byte{
+				"key1": {[]byte("Datum1")},
+				"key2": nil,
+			},
+		},
+		{
+			name:              "when reading from replicas fails, state is read from storage.",
+			replicationFactor: 3,
+			read:              readStateResult{err: errors.New("Read Error 1")},
+			storeStates: map[string]alertspb.FullStateDesc{
+				"user-1": {
+					State: &clusterpb.FullState{
+						Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}},
+					},
+				},
+			},
+			results: map[string][][]byte{
+				"key1": {[]byte("Datum1")},
+				"key2": nil,
+			},
+		},
+		{
+			name:              "when reading from replicas and from storage fails, still become ready.",
+			replicationFactor: 3,
+			read:              readStateResult{err: errors.New("Read Error 1")},
+			storeStates:       map[string]alertspb.FullStateDesc{},
+			results: map[string][][]byte{
+				"key1": nil,
+				"key2": nil,
+			},
+		},
+		{
+			name:              "when reading the full state takes too long, hit timeout but become ready.",
+			replicationFactor: 3,
+			read:              readStateResult{blocking: true},
+			results: map[string][][]byte{
+				"key1": nil,
+				"key2": nil,
+			},
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+
+			replicator := newFakeReplicator()
+			replicator.read = tt.read
+			store := newFakeAlertStore()
+			store.states = tt.storeStates
+			s := newReplicatedStates("user-1", tt.replicationFactor, replicator, store, log.NewNopLogger(), reg)
+
+			key1State := &fakeState{}
+			key2State := &fakeState{}
+
+			s.AddState("key1", key1State, reg)
+			s.AddState("key2", key2State, reg)
+
+			s.settleReadTimeout = 1 * time.Second
+
+			assert.False(t, s.Ready())
+
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), s))
+			t.Cleanup(func() {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), s))
+			})
+
+			assert.True(t, s.Ready())
+
+			// Note: We don't actually test beyond Merge() here, just that all data is forwarded.
+			assert.Equal(t, tt.results["key1"], key1State.merges)
+			assert.Equal(t, tt.results["key2"], key2State.merges)
+		})
+	}
+}
+
+func TestStateReplication_GetFullState(t *testing.T) {
+
+	tc := []struct {
+		name   string
+		data   map[string][]byte
+		result *clusterpb.FullState
+	}{
+		{
+			name: "no keys",
+			data: map[string][]byte{},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{},
+			},
+		},
+		{
+			name: "zero length data",
+			data: map[string][]byte{
+				"key1": {},
+			},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{
+					{Key: "key1", Data: []byte{}},
+				},
+			},
+		},
+		{
+			name: "keys with data",
+			data: map[string][]byte{
+				"key1": []byte("Datum1"),
+				"key2": []byte("Datum2"),
+			},
+			result: &clusterpb.FullState{
+				Parts: []clusterpb.Part{
+					{Key: "key1", Data: []byte("Datum1")},
+					{Key: "key2", Data: []byte("Datum2")},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+			s := newReplicatedStates("user-1", 1, nil, nil, log.NewNopLogger(), reg)
+
+			for key, datum := range tt.data {
+				state := &fakeState{binary: datum}
+				s.AddState(key, state, reg)
+			}
+
+			result, err := s.GetFullState()
+			require.NoError(t, err)
+
+			// Key ordering is undefined for the code under test.
+			sort.Slice(result.Parts, func(i, j int) bool { return result.Parts[i].Key < result.Parts[j].Key })
+
+			assert.Equal(t, tt.result, result)
 		})
 	}
 }

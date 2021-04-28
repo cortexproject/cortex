@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -557,14 +556,7 @@ type tenantRateLimits struct {
 }
 
 func (t *tenantRateLimits) RateLimit() rate.Limit {
-	l := t.limits.EmailNotificationRateLimit(t.tenant)
-	if math.IsInf(l, 1) {
-		return rate.Inf
-	}
-	if l < 0 {
-		return 0
-	}
-	return rate.Limit(l)
+	return t.limits.EmailNotificationRateLimit(t.tenant)
 }
 
 func (t *tenantRateLimits) Burst() int {

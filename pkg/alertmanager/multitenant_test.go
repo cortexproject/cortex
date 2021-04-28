@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -19,7 +20,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/pkg/labels"
@@ -33,6 +33,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -1814,14 +1815,22 @@ func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, e
 }
 
 type mockAlertManagerLimits struct {
-	emailNotificationRateLimit float64
+	emailNotificationRateLimit rate.Limit
 	emailNotificationBurst     int
 }
 
-func (m mockAlertManagerLimits) EmailNotificationRateLimit(tenant string) float64 {
+func (m mockAlertManagerLimits) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
+	panic("implement me")
+}
+
+func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
+	panic("implement me")
+}
+
+func (m mockAlertManagerLimits) EmailNotificationRateLimit(_ string) rate.Limit {
 	return m.emailNotificationRateLimit
 }
 
-func (m mockAlertManagerLimits) EmailNotificationBurst(tenant string) int {
+func (m mockAlertManagerLimits) EmailNotificationBurst(_ string) int {
 	return m.emailNotificationBurst
 }

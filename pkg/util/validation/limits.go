@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"math"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -164,8 +164,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
 	f.BoolVar(&l.AlertmanagerReceiversBlockPrivateAddresses, "alertmanager.receivers-firewall-block-private-addresses", false, "True to block private and local addresses in Alertmanager receiver integrations. It blocks private addresses defined by  RFC 1918 (IPv4 addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast and local multicast addresses.")
-	f.Float64Var(&l.EmailNotificationRateLimit, "alertmanager.email-notification-rate-limit", math.Inf(1), "Per-user rate limit for sending email notifications from Alertmanager. +Inf = no limit. 0 = no emails are allowed.")
-	f.IntVar(&l.EmailNotificationBurstSize, "alertmanager.email-notification-burst-size", 1, "Per-user burst size for email notifications. If set to 0, no email notifications will be sent, unless rate-limit is set to +Inf, in which case all notifications are allowed.")
+	f.Float64Var(&l.EmailNotificationRateLimit, "alertmanager.email-notification-rate-limit", 0, "Per-user rate limit for sending email notifications from Alertmanager in emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.")
+	f.IntVar(&l.EmailNotificationBurstSize, "alertmanager.email-notification-burst-size", 1, "Per-user burst size for email notifications. If set to 0, no email notifications will be sent, unless rate-limit is disabled, in which case all email notifications are allowed.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -507,8 +507,16 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
-func (o *Overrides) EmailNotificationRateLimit(user string) float64 {
-	return o.getOverridesForUser(user).EmailNotificationRateLimit
+func (o *Overrides) EmailNotificationRateLimit(user string) rate.Limit {
+	l := o.getOverridesForUser(user).EmailNotificationRateLimit
+	if l == 0 {
+		return rate.Inf // No rate limit.
+	}
+
+	if l < 0 {
+		l = 0 // No emails will be sent.
+	}
+	return rate.Limit(l)
 }
 
 func (o *Overrides) EmailNotificationBurst(user string) int {

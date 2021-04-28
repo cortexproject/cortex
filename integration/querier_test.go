@@ -483,8 +483,9 @@ func testMetadataQueriesWithBlocksStorage(
 		resp   []prompb.Label
 	}
 	type labelValuesTest struct {
-		label string
-		resp  []string
+		label   string
+		matches []string
+		resp    []string
 	}
 
 	testCases := map[string]struct {
@@ -520,6 +521,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{lastSeriesInStorageName},
+				},
 			},
 			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
 		},
@@ -545,6 +556,17 @@ func testMetadataQueriesWithBlocksStorage(
 				{
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInIngesterBlocksName},
+				},
+
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{firstSeriesInIngesterHeadName},
 				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
@@ -574,6 +596,21 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 		},
@@ -601,6 +638,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 		},
@@ -620,7 +667,7 @@ func testMetadataQueriesWithBlocksStorage(
 			}
 
 			for _, lvt := range tc.labelValuesTests {
-				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to)
+				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to, lvt.matches)
 				require.NoError(t, err)
 				exp := model.LabelValues{}
 				for _, val := range lvt.resp {

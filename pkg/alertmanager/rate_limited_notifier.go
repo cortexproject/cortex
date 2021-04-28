@@ -57,7 +57,8 @@ func (r *rateLimitedNotifier) Notify(ctx context.Context, alerts ...*types.Alert
 	// This counts as single notification, no matter how many alerts there are in it.
 	if !r.limiter.AllowN(now, 1) {
 		r.counter.Inc()
-		return true, errRateLimited
+		// Don't retry this notification later.
+		return false, errRateLimited
 	}
 
 	return r.upstream.Notify(ctx, alerts...)

@@ -51,7 +51,7 @@ func runNotifications(t *testing.T, rateLimitedNotifier *rateLimitedNotifier, co
 			success++
 		} else if err == errRateLimited {
 			rateLimited++
-			assert.True(t, retry)
+			assert.False(t, retry)
 		} else {
 			assert.NotNil(t, err)
 		}

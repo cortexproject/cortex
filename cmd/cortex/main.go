@@ -153,10 +153,10 @@ func main() {
 		}
 
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
-		if trace, err := tracing.NewFromEnv(name); err != nil {
+		// Do NOT call trace.Close() because of an known issue which could cause the process to block indefinitely
+		// on shutdown. See: https://github.com/jaegertracing/jaeger-client-go/issues/577
+		if _, err := tracing.NewFromEnv(name); err != nil {
 			level.Error(util_log.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
-		} else {
-			defer trace.Close()
 		}
 	}
 

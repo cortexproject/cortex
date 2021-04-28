@@ -497,17 +497,13 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, err)
 				err = c3.SendAlertToAlermanager(context.Background(), alert(3, 2))
 				require.NoError(t, err)
-
-				// API does not block for the write slowest replica, and reads do not
-				// currently merge results from multiple replicas, so we have to wait.
-				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
-					e2e.Equals(float64(3*testCfg.replicationFactor)),
-					[]string{"cortex_alertmanager_alerts_received_total"},
-					e2e.SkipMissingMetrics))
 			}
 
-			// Endpoint: GET /alerts
+			// Endpoint: GET /v1/alerts
 			{
+				// Reads will query at least two replicas and merge the results.
+				// Therefore, the alerts we posted should always be visible.
+
 				for _, c := range clients {
 					list, err := c.GetAlerts(context.Background())
 					require.NoError(t, err)
@@ -517,6 +513,13 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 			// Endpoint: GET /alerts/groups
 			{
+				// Writes do not block for the write slowest replica, and reads do not
+				// currently merge results from multiple replicas, so we have to wait.
+				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+					e2e.Equals(float64(3*testCfg.replicationFactor)),
+					[]string{"cortex_alertmanager_alerts_received_total"},
+					e2e.SkipMissingMetrics))
+
 				for _, c := range clients {
 					list, err := c.GetAlertGroups(context.Background())
 					require.NoError(t, err)

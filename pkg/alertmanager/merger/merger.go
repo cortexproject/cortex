@@ -11,5 +11,8 @@ type Merger interface {
 type Noop struct{}
 
 func (Noop) MergeResponses(in [][]byte) ([]byte, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
 	return in[0], nil
 }

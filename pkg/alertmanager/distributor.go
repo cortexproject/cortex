@@ -313,7 +313,7 @@ func respondFromMultipleHTTPGRPCResponses(w http.ResponseWriter, logger log.Logg
 	}
 
 	// It is assumed by using this function, the caller knows that the responses it receives
-	// have already need checked for success or failure, and that the headers will always
+	// have already been checked for success or failure, and that the headers will always
 	// match due to the nature of the request. If this is not the case, a different merge
 	// function should be implemented to cope with the differing responses.
 	response := &httpgrpc.HTTPResponse{

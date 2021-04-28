@@ -45,12 +45,7 @@ func (V1Alerts) MergeResponses(in [][]byte) ([]byte, error) {
 		Data:   merged,
 	}
 
-	result, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return json.Marshal(body)
 }
 
 func mergeV1Alerts(in []*v1.Alert) ([]*v1.Alert, error) {

@@ -499,7 +499,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			// Endpoint: GET /alerts
+			// Endpoint: GET /v1/alerts
 			{
 				// Reads will query at least two replicas and merge the results.
 				// Therefore, the alerts we posted should always be visible.

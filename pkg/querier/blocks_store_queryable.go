@@ -875,11 +875,11 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID) (*storepb.L
 }
 
 func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.ULID, matchers ...*labels.Matcher) (*storepb.LabelValuesRequest, error) {
-	// TODO(replay): add matchers to LabelValuesRequest once it has that property
 	req := &storepb.LabelValuesRequest{
-		Start: minT,
-		End:   maxT,
-		Label: label,
+		Start:    minT,
+		End:      maxT,
+		Label:    label,
+		Matchers: convertMatchersToLabelMatcher(matchers),
 	}
 
 	// Selectively query only specific blocks.

@@ -185,8 +185,8 @@ func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSe
 }
 
 // LabelValues gets label values
-func (c *Client) LabelValues(label string, start, end time.Time) (model.LabelValues, error) {
-	result, _, err := c.querierClient.LabelValues(context.Background(), label, nil, start, end)
+func (c *Client) LabelValues(label string, start, end time.Time, matches []string) (model.LabelValues, error) {
+	result, _, err := c.querierClient.LabelValues(context.Background(), label, matches, start, end)
 	return result, err
 }
 

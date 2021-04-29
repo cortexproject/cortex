@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"math"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -102,8 +103,8 @@ type Limits struct {
 	AlertmanagerReceiversBlockPrivateAddresses bool                 `yaml:"alertmanager_receivers_firewall_block_private_addresses" json:"alertmanager_receivers_firewall_block_private_addresses"`
 
 	// Alertmanager limits
-	EmailNotificationRateLimit float64 `yaml:"email_notification_rate_limit" json:"email_notification_rate_limit"`
-	EmailNotificationBurstSize int     `yaml:"email_notification_burst_size" json:"email_notification_burst_size"`
+	EmailNotificationRateLimit float64 `yaml:"alertmanager_email_notification_rate_limit" json:"alertmanager_email_notification_rate_limit"`
+	EmailNotificationBurstSize int     `yaml:"alertmanager_email_notification_burst_size" json:"alertmanager_email_notification_burst_size"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -509,7 +510,7 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 
 func (o *Overrides) EmailNotificationRateLimit(user string) rate.Limit {
 	l := o.getOverridesForUser(user).EmailNotificationRateLimit
-	if l == 0 {
+	if l == 0 || math.IsInf(l, 1) {
 		return rate.Inf // No rate limit.
 	}
 
@@ -520,7 +521,11 @@ func (o *Overrides) EmailNotificationRateLimit(user string) rate.Limit {
 }
 
 func (o *Overrides) EmailNotificationBurst(user string) int {
-	return o.getOverridesForUser(user).EmailNotificationBurstSize
+	b := o.getOverridesForUser(user).EmailNotificationBurstSize
+	if b < 0 {
+		b = 0
+	}
+	return b
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

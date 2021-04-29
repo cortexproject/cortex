@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -337,5 +338,61 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: time.Hour},
 	} {
 		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroDurationPerTenant(tc.tenantIDs, ov.MaxQueryLength))
+	}
+}
+
+func TestAlertmanagerEmailNotificationLimits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		inputYAML         string
+		expectedRateLimit rate.Limit
+		expectedBurstSize int
+	}{
+		"zero limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: 0
+alertmanager_email_notification_burst_size: 0
+`,
+			expectedRateLimit: rate.Inf,
+			expectedBurstSize: 0,
+		},
+
+		"negative limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: -10
+alertmanager_email_notification_burst_size: 5
+`,
+			expectedRateLimit: 0,
+			expectedBurstSize: 5,
+		},
+
+		"positive limit, negative burst": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: 222
+alertmanager_email_notification_burst_size: -1
+`,
+			expectedRateLimit: 222,
+			expectedBurstSize: 0,
+		},
+
+		"infinte limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: .inf
+alertmanager_email_notification_burst_size: 50
+`,
+			expectedRateLimit: rate.Inf,
+			expectedBurstSize: 50,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			limitsYAML := Limits{}
+			err := yaml.Unmarshal([]byte(tc.inputYAML), &limitsYAML)
+			require.NoError(t, err, "expected to be able to unmarshal from YAML")
+
+			ov, err := NewOverrides(limitsYAML, nil)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedRateLimit, ov.EmailNotificationRateLimit("user"))
+			require.Equal(t, tc.expectedBurstSize, ov.EmailNotificationBurst("user"))
+		})
 	}
 }

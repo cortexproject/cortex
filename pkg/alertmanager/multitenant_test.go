@@ -42,6 +42,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -397,7 +398,9 @@ receivers:
 
 				// Start the alertmanager.
 				reg := prometheus.NewPedanticRegistry()
-				am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, log.NewNopLogger(), reg)
+				logs := &concurrency.SyncBuffer{}
+				logger := log.NewLogfmtLogger(logs)
+				am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, logger, reg)
 				require.NoError(t, err)
 				require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 				t.Cleanup(func() {
@@ -450,6 +453,9 @@ receivers:
 				}
 
 				assert.Equal(t, !firewallEnabled, serverInvoked.Load())
+
+				// Print all alertmanager logs to have more information if this test fails in CI.
+				t.Logf("Alertmanager logs:\n%s", logs.String())
 			})
 		}
 	}

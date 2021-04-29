@@ -714,7 +714,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 		return
 	}
 
-	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return
 	}

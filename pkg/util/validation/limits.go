@@ -95,6 +95,10 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+
+	// Alertmanager.
+	AlertmanagerReceiversBlockCIDRNetworks     flagext.CIDRSliceCSV `yaml:"alertmanager_receivers_firewall_block_cidr_networks" json:"alertmanager_receivers_firewall_block_cidr_networks"`
+	AlertmanagerReceiversBlockPrivateAddresses bool                 `yaml:"alertmanager_receivers_firewall_block_private_addresses" json:"alertmanager_receivers_firewall_block_private_addresses"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -151,6 +155,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	// Store-gateway.
 	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+
+	// Alertmanager.
+	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
+	f.BoolVar(&l.AlertmanagerReceiversBlockPrivateAddresses, "alertmanager.receivers-firewall-block-private-addresses", false, "True to block private and local addresses in Alertmanager receiver integrations. It blocks private addresses defined by  RFC 1918 (IPv4 addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast and local multicast addresses.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -478,6 +486,18 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+}
+
+// AlertmanagerReceiversBlockCIDRNetworks returns the list of network CIDRs that should be blocked
+// in the Alertmanager receivers for the given user.
+func (o *Overrides) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
+	return o.getOverridesForUser(user).AlertmanagerReceiversBlockCIDRNetworks
+}
+
+// AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
+// in the Alertmanager receivers for the given user.
+func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
+	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

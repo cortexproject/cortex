@@ -5,10 +5,13 @@ import (
 	"flag"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -53,10 +56,13 @@ type statePersister struct {
 	logger log.Logger
 
 	timeout time.Duration
+
+	persistTotal  prometheus.Counter
+	persistFailed prometheus.Counter
 }
 
 // newStatePersister creates a new state persister.
-func newStatePersister(cfg PersisterConfig, userID string, state PersistableState, store alertstore.AlertStore, l log.Logger) *statePersister {
+func newStatePersister(cfg PersisterConfig, userID string, state PersistableState, store alertstore.AlertStore, l log.Logger, r prometheus.Registerer) *statePersister {
 
 	s := &statePersister{
 		state:   state,
@@ -64,6 +70,14 @@ func newStatePersister(cfg PersisterConfig, userID string, state PersistableStat
 		userID:  userID,
 		logger:  l,
 		timeout: defaultPersistTimeout,
+		persistTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_state_persist_total",
+			Help: "Number of times we have tried to persist the running state to storage.",
+		}),
+		persistFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_state_persist_failed_total",
+			Help: "Number of times we have failed to persist the running state to storage.",
+		}),
 	}
 
 	s.Service = services.NewTimerService(cfg.Interval, s.starting, s.iteration, nil)
@@ -85,6 +99,8 @@ func (s *statePersister) iteration(ctx context.Context) error {
 }
 
 func (s *statePersister) persist(ctx context.Context) error {
+	s.persistTotal.Inc()
+
 	// Only the replica at position zero should write the state.
 	if s.state.Position() != 0 {
 		return nil
@@ -94,6 +110,7 @@ func (s *statePersister) persist(ctx context.Context) error {
 
 	fs, err := s.state.GetFullState()
 	if err != nil {
+		s.persistFailed.Inc()
 		return err
 	}
 
@@ -102,6 +119,7 @@ func (s *statePersister) persist(ctx context.Context) error {
 
 	desc := alertspb.FullStateDesc{State: fs}
 	if err := s.store.SetFullState(ctx, s.userID, desc); err != nil {
+		s.persistFailed.Inc()
 		return err
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -82,12 +83,13 @@ func makeTestFullState() *clusterpb.FullState {
 }
 
 func makeTestStatePersister(t *testing.T, position int, userID string) (*fakePersistableState, *fakeStore, *statePersister) {
+	reg := prometheus.NewPedanticRegistry()
 	state := newFakePersistableState()
 	state.position = position
 	store := &fakeStore{}
 	cfg := PersisterConfig{Interval: 1 * time.Second}
 
-	s := newStatePersister(cfg, userID, state, store, log.NewNopLogger())
+	s := newStatePersister(cfg, userID, state, store, log.NewNopLogger(), reg)
 
 	require.NoError(t, s.StartAsync(context.Background()))
 	t.Cleanup(func() {

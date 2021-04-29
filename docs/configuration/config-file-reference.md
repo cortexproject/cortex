@@ -4110,13 +4110,13 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Per-user rate limit for sending email notifications from Alertmanager in
 # emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
 # CLI flag: -alertmanager.email-notification-rate-limit
-[email_notification_rate_limit: <float> | default = 0]
+[alertmanager_email_notification_rate_limit: <float> | default = 0]
 
 # Per-user burst size for email notifications. If set to 0, no email
 # notifications will be sent, unless rate-limit is disabled, in which case all
 # email notifications are allowed.
 # CLI flag: -alertmanager.email-notification-burst-size
-[email_notification_burst_size: <int> | default = 1]
+[alertmanager_email_notification_burst_size: <int> | default = 1]
 ```
 
 ### `redis_config`

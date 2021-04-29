@@ -26,20 +26,24 @@ const (
 // NewQueryable returns a queryable that iterates through all the tenant IDs
 // that are part of the request and aggregates the results from each tenant's
 // Querier by sending of subsequent requests.
+// By setting byPassWithSingleQuerier to true the mergeQuerier gets by-passed
+// and results for request with a single querier will not contain the
+// "__tenant_id__" label. This allows a smoother transition, when enabling
+// tenant federation in a cluster.
 // The result contains a label "__tenant_id__" to identify the tenant ID that
 // it originally resulted from.
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable) storage.Queryable {
-	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream))
+func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool) storage.Queryable {
+	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier)
 }
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
-	return func(ctx context.Context, mint int64, maxt int64) ([]string, []storage.Querier, bool, error) {
+	return func(ctx context.Context, mint int64, maxt int64) ([]string, []storage.Querier, error) {
 		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, err
 		}
 
 		var queriers = make([]storage.Querier, len(tenantIDs))
@@ -50,58 +54,55 @@ func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
 				maxt,
 			)
 			if err != nil {
-				return nil, nil, false, err
+				return nil, nil, err
 			}
 			queriers[pos] = q
 		}
 
-		// ensure to byPass a single querier and avoid adding a tenant label to
-		// ensure backward compatabiltiy when enabling multi-tenant query
-		// federation.
-		byPassWithSingleQuerier := true
-
-		return tenantIDs, queriers, byPassWithSingleQuerier, nil
+		return tenantIDs, queriers, nil
 	}
 }
 
 // MergeQuerierCallback returns the underlying queriers and their IDs relevant
 // for the query.
-// If the callback returns exactly a single querier,
-// byPassWithSingleQuerierUsing determines if it should still be using the
-// mergeQuerier (and adding a `idLabelName` label) or if just the underlying
-// querier should be returned.
-type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids []string, queriers []storage.Querier, byPassWithSingleQuerier bool, err error)
+type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids []string, queriers []storage.Querier, err error)
 
 // NewMergeQueryable returns a queryable that merges results from multiple
 // underlying Queryables. The underlying queryables and its label values to be
 // considered are returned by a MergeQuerierCallback.
+// By setting byPassWithSingleQuerier to true the mergeQuerier gets by-passed
+// and results for request with a single querier will not contain the id label.
+// This allows a smoother transition, when enabling tenant federation in a
+// cluster.
 // Results contain a label `idLabelName` to identify the underlying queryable
 // that it originally resulted from.
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback) storage.Queryable {
+func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool) storage.Queryable {
 	return &mergeQueryable{
-		idLabelName: idLabelName,
-		callback:    callback,
+		idLabelName:             idLabelName,
+		callback:                callback,
+		byPassWithSingleQuerier: byPassWithSingleQuerier,
 	}
 }
 
 type mergeQueryable struct {
-	idLabelName string
-	callback    MergeQuerierCallback
+	idLabelName             string
+	byPassWithSingleQuerier bool
+	callback                MergeQuerierCallback
 }
 
 // Querier returns a new mergeQuerier, which aggregates results from multiple
 // underlying queriers into a single result.
 func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
-	ids, queriers, byPassWithSingleQuerier, err := m.callback(ctx, mint, maxt)
+	ids, queriers, err := m.callback(ctx, mint, maxt)
 	if err != nil {
 		return nil, err
 	}
 
 	// by pass when only single querier is returned
-	if byPassWithSingleQuerier && len(queriers) == 1 {
+	if m.byPassWithSingleQuerier && len(queriers) == 1 {
 		return queriers[0], nil
 	}
 

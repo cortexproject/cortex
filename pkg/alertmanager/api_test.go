@@ -284,6 +284,24 @@ alertmanager_config: |
 			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if global OAuth2 client_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    http_config:
+      oauth2:
+        client_id: test
+        token_url: http://example.com
+        client_secret_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+  receivers:
+    - name: default-receiver
+`,
+			err: errors.Wrap(errOAuth2SecretFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if receiver's HTTP password_file is set",
 			cfg: `
 alertmanager_config: |
@@ -332,6 +350,25 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if receiver's OAuth2 client_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            oauth2:
+              client_id: test
+              token_url: http://example.com
+              client_secret_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errOAuth2SecretFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if receiver's HTTP proxy_url is set",

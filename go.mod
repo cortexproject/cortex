@@ -48,7 +48,7 @@ require (
 	github.com/prometheus/alertmanager v0.21.1-0.20210422101724-8176f78a70e1
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.21.0
+	github.com/prometheus/common v0.23.0
 	github.com/prometheus/prometheus v1.8.2-0.20210421143221-52df5ef7a3be
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1

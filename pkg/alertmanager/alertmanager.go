@@ -45,6 +45,7 @@ import (
 	"github.com/prometheus/common/route"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -61,13 +62,13 @@ const (
 
 // Config configures an Alertmanager.
 type Config struct {
-	UserID            string
-	Logger            log.Logger
-	Peer              *cluster.Peer
-	PeerTimeout       time.Duration
-	Retention         time.Duration
-	ExternalURL       *url.URL
-	ReceiversFirewall FirewallConfig
+	UserID      string
+	Logger      log.Logger
+	Peer        *cluster.Peer
+	PeerTimeout time.Duration
+	Retention   time.Duration
+	ExternalURL *url.URL
+	Limits      Limits
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -97,7 +98,6 @@ type Alertmanager struct {
 	wg              sync.WaitGroup
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
-	firewallDialer  *util_net.FirewallDialer
 
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
@@ -151,10 +151,6 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		cfg:    cfg,
 		logger: log.With(cfg.Logger, "user", cfg.UserID),
 		stop:   make(chan struct{}),
-		firewallDialer: util_net.NewFirewallDialer(util_net.FirewallDialerConfig{
-			BlockCIDRNetworks:     cfg.ReceiversFirewall.Block.CIDRNetworks,
-			BlockPrivateAddresses: cfg.ReceiversFirewall.Block.PrivateAddresses,
-		}),
 		configHashMetric: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
@@ -326,7 +322,10 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return d + waitFunc()
 	}
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.firewallDialer, am.logger)
+	// Create a firewall binded to the per-tenant config.
+	firewallDialer := util_net.NewFirewallDialer(newFirewallDialerConfigProvider(userID, am.cfg.Limits))
+
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger)
 	if err != nil {
 		return nil
 	}
@@ -507,3 +506,23 @@ func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster
 type NilChannel struct{}
 
 func (c *NilChannel) Broadcast([]byte) {}
+
+type firewallDialerConfigProvider struct {
+	userID string
+	limits Limits
+}
+
+func newFirewallDialerConfigProvider(userID string, limits Limits) firewallDialerConfigProvider {
+	return firewallDialerConfigProvider{
+		userID: userID,
+		limits: limits,
+	}
+}
+
+func (p firewallDialerConfigProvider) BlockCIDRNetworks() []flagext.CIDR {
+	return p.limits.AlertmanagerReceiversBlockCIDRNetworks(p.userID)
+}
+
+func (p firewallDialerConfigProvider) BlockPrivateAddresses() bool {
+	return p.limits.AlertmanagerReceiversBlockPrivateAddresses(p.userID)
+}

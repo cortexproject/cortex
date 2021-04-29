@@ -1849,20 +1849,6 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
-receivers_firewall:
-  block:
-    # Comma-separated list of network CIDRs to block in Alertmanager receiver
-    # integrations.
-    # CLI flag: -alertmanager.receivers-firewall.block.cidr-networks
-    [cidr_networks: <string> | default = ""]
-
-    # True to block private and local addresses in Alertmanager receiver
-    # integrations. It blocks private addresses defined by  RFC 1918 (IPv4
-    # addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local
-    # unicast and local multicast addresses.
-    # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
-    [private_addresses: <boolean> | default = false]
-
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
@@ -4108,6 +4094,18 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Comma-separated list of network CIDRs to block in Alertmanager receiver
+# integrations.
+# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
+[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
+
+# True to block private and local addresses in Alertmanager receiver
+# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
+# and local multicast addresses.
+# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
+[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
 ```
 
 ### `redis_config`

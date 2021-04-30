@@ -200,7 +200,7 @@ lint:
 	kubeval ./k8s/*
 
 test:
-	go test -tags netgo -timeout 30m -race -count 1 ./...
+	go test -tags netgo -timeout 30m -race -covermode=atomic -count 1 ./...
 
 cover:
 	$(eval COVERDIR := $(shell mktemp -d coverage.XXXXXXXXXX))

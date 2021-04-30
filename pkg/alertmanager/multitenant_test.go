@@ -292,6 +292,7 @@ func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnable
 route:
   receiver: webhook
   group_wait: 0s
+  group_interval: 1s
 
 receivers:
   - name: webhook
@@ -306,6 +307,7 @@ receivers:
 route:
   receiver: pagerduty
   group_wait: 0s
+  group_interval: 1s
 
 receivers:
   - name: pagerduty
@@ -321,6 +323,7 @@ receivers:
 route:
   receiver: slack
   group_wait: 0s
+  group_interval: 1s
 
 receivers:
   - name: slack
@@ -336,6 +339,7 @@ receivers:
 route:
   receiver: opsgenie
   group_wait: 0s
+  group_interval: 1s
 
 receivers:
   - name: opsgenie
@@ -351,6 +355,7 @@ receivers:
 route:
   receiver: wechat
   group_wait: 0s
+  group_interval: 1s
 
 receivers:
   - name: wechat

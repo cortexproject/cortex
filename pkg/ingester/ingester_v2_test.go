@@ -183,11 +183,11 @@ func TestIngester_v2Push(t *testing.T) {
 			},
 			expectedMetadataIngested: nil,
 			additionalMetrics: []string{
-				"cortex_ingester_tsdb_exemplars_appended_total",
-				"cortex_ingester_tsdb_exemplars_in_storage",
-				"cortex_ingester_tsdb_exemplar_series_in_storage",
-				"cortex_ingester_tsdb_exemplar_last_timestamp_seconds",
-				"cortex_ingester_tsdb_exemplar_out_of_order_total",
+				"cortex_ingester_tsdb_exemplar_exemplars_appended_total",
+				"cortex_ingester_tsdb_exemplar_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
+				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
 			},
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
@@ -212,25 +212,25 @@ func TestIngester_v2Push(t *testing.T) {
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
 
-				# HELP cortex_ingester_tsdb_exemplars_appended_total Total number of TSDB exemplars appended.
-            	# TYPE cortex_ingester_tsdb_exemplars_appended_total counter
-            	cortex_ingester_tsdb_exemplars_appended_total{user="test"} 2
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
+            	# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+            	cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="test"} 2
 
-				# HELP cortex_ingester_tsdb_exemplars_in_storage Number of TSDB exemplars currently in storage.
-            	# TYPE cortex_ingester_tsdb_exemplars_in_storage gauge
-            	cortex_ingester_tsdb_exemplars_in_storage{user="test"} 2
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
+            	# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+            	cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="test"} 2
 
-				# HELP cortex_ingester_tsdb_exemplar_series_in_storage Number of TSDB series with exemplars currently in storage.
-            	# TYPE cortex_ingester_tsdb_exemplar_series_in_storage gauge
-            	cortex_ingester_tsdb_exemplar_series_in_storage{user="test"} 1
+				# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
+            	# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
+            	cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="test"} 1
 
-				# HELP cortex_ingester_tsdb_exemplar_last_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
-            	# TYPE cortex_ingester_tsdb_exemplar_last_timestamp_seconds gauge
-            	cortex_ingester_tsdb_exemplar_last_timestamp_seconds{user="test"} 1000
+				# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+            	# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+            	cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1000
 
-				# HELP cortex_ingester_tsdb_exemplar_out_of_order_total Total number of out of order exemplar ingestion failed attempts
-            	# TYPE cortex_ingester_tsdb_exemplar_out_of_order_total counter
-            	cortex_ingester_tsdb_exemplar_out_of_order_total{user="test"} 0
+				# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
+            	# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+            	cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="test"} 0
 			`,
 		},
 		"successful push, active series disabled": {

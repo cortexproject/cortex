@@ -196,25 +196,25 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
 
-			# HELP cortex_ingester_tsdb_exemplar_last_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
-			# TYPE cortex_ingester_tsdb_exemplar_last_timestamp_seconds gauge
-			cortex_ingester_tsdb_exemplar_last_timestamp_seconds 1234
+			# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+			# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds 1234
 
-			# HELP cortex_ingester_tsdb_exemplar_out_of_order_total Total number of out of order exemplar ingestion failed attempts.
-			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_total counter
-			cortex_ingester_tsdb_exemplar_out_of_order_total 3
+			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
+			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 3
 			
-			# HELP cortex_ingester_tsdb_exemplar_series_in_storage Number of TSDB series with exemplars currently in storage.
-			# TYPE cortex_ingester_tsdb_exemplar_series_in_storage counter
-			cortex_ingester_tsdb_exemplar_series_in_storage 1
+			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage counter
+			cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage 1
 
-			# HELP cortex_ingester_tsdb_exemplars_appended_total Total number of TSDB exemplars appended.
-			# TYPE cortex_ingester_tsdb_exemplars_appended_total counter
-			cortex_ingester_tsdb_exemplars_appended_total 100
+			# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
+			# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+			cortex_ingester_tsdb_exemplar_exemplars_appended_total 100
 
-			# HELP cortex_ingester_tsdb_exemplars_in_storage Number of TSDB exemplars currently in storage.
-			# TYPE cortex_ingester_tsdb_exemplars_in_storage gauge
-			cortex_ingester_tsdb_exemplars_in_storage 10
+			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+			cortex_ingester_tsdb_exemplar_exemplars_in_storage 10
 	`))
 	require.NoError(t, err)
 }
@@ -400,25 +400,25 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
 
-			# HELP cortex_ingester_tsdb_exemplar_last_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
-			# TYPE cortex_ingester_tsdb_exemplar_last_timestamp_seconds gauge
-			cortex_ingester_tsdb_exemplar_last_timestamp_seconds 1234
+			# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+			# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds 1234
 
-			# HELP cortex_ingester_tsdb_exemplar_out_of_order_total Total number of out of order exemplar ingestion failed attempts.
-			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_total counter
-			cortex_ingester_tsdb_exemplar_out_of_order_total 3
+			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
+			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 3
 			
-			# HELP cortex_ingester_tsdb_exemplar_series_in_storage Number of TSDB series with exemplars currently in storage.
-			# TYPE cortex_ingester_tsdb_exemplar_series_in_storage counter
-			cortex_ingester_tsdb_exemplar_series_in_storage 1
+			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage counter
+			cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage 1
 
-			# HELP cortex_ingester_tsdb_exemplars_appended_total Total number of TSDB exemplars appended.
-			# TYPE cortex_ingester_tsdb_exemplars_appended_total counter
-			cortex_ingester_tsdb_exemplars_appended_total 100
+			# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
+			# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+			cortex_ingester_tsdb_exemplar_exemplars_appended_total 100
 
-			# HELP cortex_ingester_tsdb_exemplars_in_storage Number of TSDB exemplars currently in storage.
-			# TYPE cortex_ingester_tsdb_exemplars_in_storage gauge
-			cortex_ingester_tsdb_exemplars_in_storage 10
+			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+			cortex_ingester_tsdb_exemplar_exemplars_in_storage 10
 	`))
 	require.NoError(t, err)
 }

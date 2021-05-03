@@ -122,14 +122,14 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
 	if len(e.Labels) <= 0 {
 		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
-		return newExemplarEmtpyLabelsError(cortexpb.FromLabelAdaptersToLabels(ls).String(), "{}", e.TimestampMs)
+		return newExemplarEmtpyLabelsError(ls, []cortexpb.LabelAdapter{}, e.TimestampMs)
 	}
 
 	if e.TimestampMs == 0 {
 		DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
 		return newExemplarMissingTimestampError(
-			cortexpb.FromLabelAdaptersToLabels(ls).String(),
-			cortexpb.FromLabelAdaptersToLabels(e.Labels).String(),
+			ls,
+			e.Labels,
 			e.TimestampMs,
 		)
 	}
@@ -145,8 +145,8 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 	if labelSetLen > ExemplarMaxLabelSetLength {
 		DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
 		return newExemplarLabelLengthError(
-			cortexpb.FromLabelAdaptersToLabels(ls).String(),
-			cortexpb.FromLabelAdaptersToLabels(e.Labels).String(),
+			ls,
+			e.Labels,
 			e.TimestampMs,
 		)
 	}

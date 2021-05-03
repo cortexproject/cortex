@@ -148,16 +148,16 @@ func newSampleTimestampTooNewError(metricName string, timestamp int64) Validatio
 // exemplarValidationError is a ValidationError implementation suitable for exemplar validation errors.
 type exemplarValidationError struct {
 	message        string
-	seriesLabels   string
-	exemplarLabels string
+	seriesLabels   []cortexpb.LabelAdapter
+	exemplarLabels []cortexpb.LabelAdapter
 	timestamp      int64
 }
 
 func (e *exemplarValidationError) Error() string {
-	return fmt.Sprintf(e.message, e.timestamp, e.seriesLabels, e.exemplarLabels)
+	return fmt.Sprintf(e.message, e.timestamp, cortexpb.FromLabelAdaptersToLabels(e.seriesLabels).String(), cortexpb.FromLabelAdaptersToLabels(e.exemplarLabels).String())
 }
 
-func newExemplarEmtpyLabelsError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        "exemplar missing labels:, timestamp %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,
@@ -166,7 +166,7 @@ func newExemplarEmtpyLabelsError(seriesLabels string, exemplarLabels string, tim
 	}
 }
 
-func newExemplarMissingTimestampError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        "exemplar missing timestamp: timestamp: %s series: %s labels: %s",
 		seriesLabels:   seriesLabels,
@@ -175,7 +175,7 @@ func newExemplarMissingTimestampError(seriesLabels string, exemplarLabels string
 	}
 }
 
-func newExemplarLabelLengthError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
 		message:        "exemplar combined labelset too long, timestamp: %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,

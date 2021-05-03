@@ -1095,7 +1095,13 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 			return nil, ctx.Err()
 		}
 
-		seriesSet := q.Select(true, nil, matchers...)
+		hints := &storage.SelectHints{
+			Start: mint,
+			End:   maxt,
+			Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+		}
+
+		seriesSet := q.Select(true, hints, matchers...)
 		sets = append(sets, seriesSet)
 	}
 

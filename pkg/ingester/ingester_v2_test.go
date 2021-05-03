@@ -1416,7 +1416,7 @@ func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
 	)
 
 	now := util.TimeToMillis(time.Now())
-	i := createIngesterWithSeries(t, userID, numSeries, now)
+	i := createIngesterWithSeries(t, userID, numSeries, 1, now, 1)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	req := &client.MetricsForLabelMatchersRequest{
@@ -1439,21 +1439,28 @@ func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
 }
 
 func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
-	const (
-		userID    = "test"
-		numSeries = 100000
+	var (
+		userID              = "test"
+		numSeries           = 10000
+		numSamplesPerSeries = 60 * 6 // 6h on 1 sample per minute
+		startTimestamp      = util.TimeToMillis(time.Now())
+		step                = int64(60000) // 1 sample per minute
 	)
 
-	now := util.TimeToMillis(time.Now())
-	i := createIngesterWithSeries(b, userID, numSeries, now)
+	i := createIngesterWithSeries(b, userID, numSeries, numSamplesPerSeries, startTimestamp, step)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
+	// Flush the ingester to ensure blocks have been compacted, so we'll test
+	// fetching labels from blocks.
+	i.Flush()
+
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
 		req := &client.MetricsForLabelMatchersRequest{
-			StartTimestampMs: now,
-			EndTimestampMs:   now,
+			StartTimestampMs: math.MinInt64,
+			EndTimestampMs:   math.MaxInt64,
 			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
 				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
 			}}},
@@ -1465,9 +1472,8 @@ func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
 	}
 }
 
-// createIngesterWithSeries creates an ingester and push numSeries with 1 sample
-// per series.
-func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timestamp int64) *Ingester {
+// createIngesterWithSeries creates an ingester and push numSeries with numSamplesPerSeries each.
+func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamplesPerSeries int, startTimestamp, step int64) *Ingester {
 	const maxBatchSize = 1000
 
 	// Create ingester.
@@ -1486,28 +1492,30 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timest
 	// Push fixtures.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	for o := 0; o < numSeries; o += maxBatchSize {
-		batchSize := util_math.Min(maxBatchSize, numSeries-o)
+	for ts := startTimestamp; ts < startTimestamp+(step*int64(numSamplesPerSeries)); ts += step {
+		for o := 0; o < numSeries; o += maxBatchSize {
+			batchSize := util_math.Min(maxBatchSize, numSeries-o)
 
-		// Generate metrics and samples (1 for each series).
-		metrics := make([]labels.Labels, 0, batchSize)
-		samples := make([]cortexpb.Sample, 0, batchSize)
+			// Generate metrics and samples (1 for each series).
+			metrics := make([]labels.Labels, 0, batchSize)
+			samples := make([]cortexpb.Sample, 0, batchSize)
 
-		for s := 0; s < batchSize; s++ {
-			metrics = append(metrics, labels.Labels{
-				{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
-			})
+			for s := 0; s < batchSize; s++ {
+				metrics = append(metrics, labels.Labels{
+					{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
+				})
 
-			samples = append(samples, cortexpb.Sample{
-				TimestampMs: timestamp,
-				Value:       1,
-			})
+				samples = append(samples, cortexpb.Sample{
+					TimestampMs: ts,
+					Value:       1,
+				})
+			}
+
+			// Send metrics to the ingester.
+			req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
+			_, err := i.v2Push(ctx, req)
+			require.NoError(t, err)
 		}
-
-		// Send metrics to the ingester.
-		req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
-		_, err := i.v2Push(ctx, req)
-		require.NoError(t, err)
 	}
 
 	return i

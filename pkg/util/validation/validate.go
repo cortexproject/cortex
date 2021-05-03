@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -123,15 +122,16 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
 	if len(e.Labels) <= 0 {
 		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
-		return fmt.Errorf(`exemplar missing labels: series: %s`,
-			cortexpb.FromLabelAdaptersToLabels(ls).String())
+		return newExemplarEmtpyLabelsError(cortexpb.FromLabelAdaptersToLabels(ls).String(), "{}", e.TimestampMs)
 	}
 
 	if e.TimestampMs == 0 {
 		DiscardedExemplars.WithLabelValues(exemplarTimestampInvalid, userID).Inc()
-		return fmt.Errorf(`exemplar missing timestamp: series: %s labels: %s`,
+		return newExemplarMissingTimestampError(
 			cortexpb.FromLabelAdaptersToLabels(ls).String(),
-			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
+			cortexpb.FromLabelAdaptersToLabels(e.Labels).String(),
+			e.TimestampMs,
+		)
 	}
 
 	// Exemplar label length does not include chars involved in
@@ -144,9 +144,11 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 
 	if labelSetLen > ExemplarMaxLabelSetLength {
 		DiscardedExemplars.WithLabelValues(exemplarLabelsTooLong, userID).Inc()
-		return fmt.Errorf(`exemplar combined labelset too long: series: %s labels: %s`,
+		return newExemplarLabelLengthError(
 			cortexpb.FromLabelAdaptersToLabels(ls).String(),
-			cortexpb.FromLabelAdaptersToLabels(e.Labels).String())
+			cortexpb.FromLabelAdaptersToLabels(e.Labels).String(),
+			e.TimestampMs,
+		)
 	}
 
 	return nil

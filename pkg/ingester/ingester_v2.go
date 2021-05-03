@@ -58,6 +58,10 @@ const (
 	instanceIngestionRateTickInterval = time.Second
 )
 
+var (
+	errExemplarRef = errors.New("exemplars not ingested because series not already present")
+)
+
 // Shipper interface is used to have an easy way to mock it in tests.
 type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
@@ -856,31 +860,30 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 		// already exist.  If it does not then drop.
 		if ref == 0 && len(ts.Exemplars) > 0 {
 			updateFirstPartial(func() error {
-				return wrappedTSDBIngestExemplarErr(errors.New("exemplars not ingested because series not already present"),
+				return wrappedTSDBIngestExemplarErr(errExemplarRef,
 					model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
 			})
 			failedExemplarsCount += len(ts.Exemplars)
-			continue
-		}
+		} else { // Note that else is explicit, rather than a continue in the above if, in case of additional logic post exemplar processing.
+			for _, ex := range ts.Exemplars {
+				e := exemplar.Exemplar{
+					Value:  ex.Value,
+					Ts:     ex.TimestampMs,
+					HasTs:  true,
+					Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
+				}
 
-		for _, ex := range ts.Exemplars {
-			e := exemplar.Exemplar{
-				Value:  ex.Value,
-				Ts:     ex.TimestampMs,
-				HasTs:  true,
-				Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
+				if _, err = app.AppendExemplar(ref, nil, e); err == nil {
+					succeededExemplarsCount++
+					continue
+				}
+
+				// Error adding exemplar
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
+				})
+				failedExemplarsCount++
 			}
-
-			if _, err = app.AppendExemplar(ref, nil, e); err == nil {
-				succeededExemplarsCount++
-				continue
-			}
-
-			// Error adding exemplar
-			updateFirstPartial(func() error {
-				return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
-			})
-			failedExemplarsCount++
 		}
 	}
 

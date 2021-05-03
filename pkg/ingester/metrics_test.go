@@ -195,6 +195,26 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
+
+			# HELP cortex_ingester_tsdb_exemplar_last_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+			# TYPE cortex_ingester_tsdb_exemplar_last_timestamp_seconds gauge
+			cortex_ingester_tsdb_exemplar_last_timestamp_seconds 1234
+
+			# HELP cortex_ingester_tsdb_exemplar_out_of_order_total Total number of out of order exemplar ingestion failed attempts.
+			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_total counter
+			cortex_ingester_tsdb_exemplar_out_of_order_total 3
+			
+			# HELP cortex_ingester_tsdb_exemplar_series_in_storage Number of TSDB series with exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_series_in_storage counter
+			cortex_ingester_tsdb_exemplar_series_in_storage 1
+
+			# HELP cortex_ingester_tsdb_exemplars_appended_total Total number of TSDB exemplars appended.
+			# TYPE cortex_ingester_tsdb_exemplars_appended_total counter
+			cortex_ingester_tsdb_exemplars_appended_total 100
+
+			# HELP cortex_ingester_tsdb_exemplars_in_storage Number of TSDB exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplars_in_storage gauge
+			cortex_ingester_tsdb_exemplars_in_storage 10
 	`))
 	require.NoError(t, err)
 }
@@ -379,6 +399,26 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_time_retentions_total The number of times that blocks were deleted because the maximum time limit was exceeded.
 			# TYPE cortex_ingester_tsdb_time_retentions_total counter
 			cortex_ingester_tsdb_time_retentions_total 33
+
+			# HELP cortex_ingester_tsdb_exemplar_last_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+			# TYPE cortex_ingester_tsdb_exemplar_last_timestamp_seconds gauge
+			cortex_ingester_tsdb_exemplar_last_timestamp_seconds 1234
+
+			# HELP cortex_ingester_tsdb_exemplar_out_of_order_total Total number of out of order exemplar ingestion failed attempts.
+			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_total counter
+			cortex_ingester_tsdb_exemplar_out_of_order_total 3
+			
+			# HELP cortex_ingester_tsdb_exemplar_series_in_storage Number of TSDB series with exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplar_series_in_storage counter
+			cortex_ingester_tsdb_exemplar_series_in_storage 1
+
+			# HELP cortex_ingester_tsdb_exemplars_appended_total Total number of TSDB exemplars appended.
+			# TYPE cortex_ingester_tsdb_exemplars_appended_total counter
+			cortex_ingester_tsdb_exemplars_appended_total 100
+
+			# HELP cortex_ingester_tsdb_exemplars_in_storage Number of TSDB exemplars currently in storage.
+			# TYPE cortex_ingester_tsdb_exemplars_in_storage gauge
+			cortex_ingester_tsdb_exemplars_in_storage 10
 	`))
 	require.NoError(t, err)
 }
@@ -597,5 +637,38 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "The number of times that blocks were deleted because the maximum time limit was exceeded.",
 	})
 	retentionsTotal.Add(11)
+
+	exemplarsAppendedTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_exemplar_exemplars_appended_total",
+		Help: "Total number of appended exemplars.",
+	})
+	exemplarsAppendedTotal.Add(100)
+
+	exemplarsStored := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_exemplar_exemplars_in_storage",
+		Help: "Number of exemplars currently in circular storage.",
+	})
+	exemplarsStored.Set(10)
+
+	exemplarsSeriesStored := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_exemplar_series_with_exemplars_in_storage",
+		Help: "Number of series with exemplars currently in circular storage.",
+	})
+	exemplarsSeriesStored.Set(1)
+
+	exemplarsLastTs := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_exemplar_last_exemplars_timestamp_seconds",
+		Help: "The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time" +
+			"range the current exemplar buffer limit allows. This usually means the last timestamp" +
+			"for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.",
+	})
+	exemplarsLastTs.Set(1234)
+
+	exemplarsOutOfOrderTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_exemplar_out_of_order_exemplars_total",
+		Help: "Total number of out of order exemplar ingestion failed attempts.",
+	})
+	exemplarsOutOfOrderTotal.Add(3)
+
 	return r
 }

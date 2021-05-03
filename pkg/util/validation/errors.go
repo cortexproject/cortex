@@ -145,6 +145,45 @@ func newSampleTimestampTooNewError(metricName string, timestamp int64) Validatio
 	}
 }
 
+// exemplarValidationError is a ValidationError implementation suitable for exemplar validation errors.
+type exemplarValidationError struct {
+	message        string
+	seriesLabels   string
+	exemplarLabels string
+	timestamp      int64
+}
+
+func (e *exemplarValidationError) Error() string {
+	return fmt.Sprintf(e.message, e.timestamp, e.seriesLabels, e.exemplarLabels)
+}
+
+func newExemplarEmtpyLabelsError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        "exemplar missing labels:, timestamp %d series: %s labels: %s",
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
+	}
+}
+
+func newExemplarMissingTimestampError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        "exemplar missing timestamp: timestamp: %s series: %s labels: %s",
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
+	}
+}
+
+func newExemplarLabelLengthError(seriesLabels string, exemplarLabels string, timestamp int64) ValidationError {
+	return &exemplarValidationError{
+		message:        "exemplar combined labelset too long, timestamp: %d series: %s labels: %s",
+		seriesLabels:   seriesLabels,
+		exemplarLabels: exemplarLabels,
+		timestamp:      timestamp,
+	}
+}
+
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.

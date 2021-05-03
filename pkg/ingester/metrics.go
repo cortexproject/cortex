@@ -532,7 +532,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			[]string{"user"}, nil),
 		tsdbExemplarsOutOfOrder: prometheus.NewDesc(
 			"cortex_ingester_tsdb_exemplar_out_of_order_total",
-			"Total number of out of order exemplar ingestion failed attempts",
+			"Total number of out of order exemplar ingestion failed attempts.",
 			[]string{"user"}, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),

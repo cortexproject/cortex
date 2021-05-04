@@ -7,8 +7,8 @@
   - `-alertmanager.receivers-firewall.block.cidr-networks` renamed to `-alertmanager.receivers-firewall-block-cidr-networks`
   - `-alertmanager.receivers-firewall.block.private-addresses` renamed to `-alertmanager.receivers-firewall-block-private-addresses`
 * [ENHANCEMENT] Alertmanager: introduced new metrics to monitor operation when using `-alertmanager.sharding-enabled`: #4149
-  * `cortex_alertmanager_fetch_replica_state_total`
-  * `cortex_alertmanager_fetch_replica_state_failed_total`
+  * `cortex_alertmanager_state_fetch_replica_state_total`
+  * `cortex_alertmanager_state_fetch_replica_state_failed_total`
   * `cortex_alertmanager_state_initial_sync_total`
   * `cortex_alertmanager_state_initial_sync_completed_total`
   * `cortex_alertmanager_state_initial_sync_duration_seconds`

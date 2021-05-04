@@ -1209,20 +1209,20 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 		"rejects exemplar with no labels": {
 			input:       cortexpb.Exemplar{},
 			errExpected: true,
-			errMessage:  `exemplar missing labels: series: {__name__="test"}`,
+			errMessage:  `exemplar missing labels, timestamp: 0 series: {__name__="test"} labels: {}`,
 		},
 		"rejects exemplar with timestamp": {
 			input: cortexpb.Exemplar{
 				Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}}},
 			errExpected: true,
-			errMessage:  `exemplar missing timestamp: series: {__name__="test"} labels: {foo="bar"}`,
+			errMessage:  `exemplar missing timestamp, timestamp: 0 series: {__name__="test"} labels: {foo="bar"}`,
 		},
 		"rejects exemplar with too long labelset": {
 			input: cortexpb.Exemplar{
 				TimestampMs: 1000,
 				Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}}},
 			errExpected: true,
-			errMessage:  fmt.Sprintf(`exemplar combined labelset too long: series: {__name__="test"} labels: {foo="%s"}`, strings.Repeat("0", 126)),
+			errMessage:  fmt.Sprintf(`exemplar combined labelset exceeds 128 characters, timestamp: 1000 series: {__name__="test"} labels: {foo="%s"}`, strings.Repeat("0", 126)),
 		},
 	}
 

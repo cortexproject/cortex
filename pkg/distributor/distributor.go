@@ -504,9 +504,9 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		return emptyPreallocSeries, err
 	}
 
-	// Don't alloc a new slice unnecessarily when input is empty
-	samples := ts.Samples
+	var samples []cortexpb.Sample
 	if len(ts.Samples) > 0 {
+		// Only alloc when data present
 		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
 			if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
@@ -516,12 +516,16 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		}
 	}
 
-	// Don't alloc a new slice unnecessarily when input is empty
-	exemplars := ts.Exemplars
+	var exemplars []cortexpb.Exemplar
 	if len(ts.Exemplars) > 0 {
+		// Only alloc when data present
 		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))
 		for _, e := range ts.Exemplars {
 			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
+				// An exemplar validation error prevents ingesting samples
+				// in the same series object. However because the current Prometheus
+				// remote write implementation only populates one or the other,
+				// there never will be any.
 				return emptyPreallocSeries, err
 			}
 			exemplars = append(exemplars, e)

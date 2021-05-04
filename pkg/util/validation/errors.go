@@ -159,7 +159,7 @@ func (e *exemplarValidationError) Error() string {
 
 func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
-		message:        "exemplar missing labels:, timestamp %d series: %s labels: %s",
+		message:        "exemplar missing labels, timestamp: %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,
 		exemplarLabels: exemplarLabels,
 		timestamp:      timestamp,
@@ -168,16 +168,18 @@ func newExemplarEmtpyLabelsError(seriesLabels []cortexpb.LabelAdapter, exemplarL
 
 func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
-		message:        "exemplar missing timestamp: timestamp: %s series: %s labels: %s",
+		message:        "exemplar missing timestamp, timestamp: %d series: %s labels: %s",
 		seriesLabels:   seriesLabels,
 		exemplarLabels: exemplarLabels,
 		timestamp:      timestamp,
 	}
 }
 
+var labelLenMsg = fmt.Sprintf("exemplar combined labelset exceeds %d characters, timestamp: %%d series: %%s labels: %%s", ExemplarMaxLabelSetLength)
+
 func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{
-		message:        "exemplar combined labelset too long, timestamp: %d series: %s labels: %s",
+		message:        labelLenMsg,
 		seriesLabels:   seriesLabels,
 		exemplarLabels: exemplarLabels,
 		timestamp:      timestamp,

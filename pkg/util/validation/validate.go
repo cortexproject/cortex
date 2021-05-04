@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -119,6 +120,8 @@ func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.Lab
 	return nil
 }
 
+// ValidateExemplar returns an error if the exemplar is invalid.
+// The returned error may retain the provided series labels.
 func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exemplar) ValidationError {
 	if len(e.Labels) <= 0 {
 		DiscardedExemplars.WithLabelValues(exemplarLabelsMissing, userID).Inc()
@@ -138,8 +141,8 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 	// text rendering such as "=,  See spec and const definition.
 	labelSetLen := 0
 	for _, l := range e.Labels {
-		labelSetLen += len(l.Name)
-		labelSetLen += len(l.Value)
+		labelSetLen += utf8.RuneCountInString(l.Name)
+		labelSetLen += utf8.RuneCountInString(l.Value)
 	}
 
 	if labelSetLen > ExemplarMaxLabelSetLength {

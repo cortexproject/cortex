@@ -161,7 +161,7 @@ func TestValidateExemplars(t *testing.T) {
 			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
 		},
 		{
-			// Combined lableset too long
+			// Combined labelset too long
 			Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}},
 			TimestampMs: 1000,
 		},

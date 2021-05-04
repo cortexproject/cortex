@@ -192,5 +192,5 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 }
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
-	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
+	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider).WithExpectedErrs(s.amBucket.IsObjNotFoundErr)
 }

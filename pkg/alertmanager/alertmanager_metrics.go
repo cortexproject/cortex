@@ -176,11 +176,11 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"Number of times we have failed to replicate a state to other alertmanagers",
 			[]string{"user"}, nil),
 		fetchReplicaStateTotal: prometheus.NewDesc(
-			"cortex_alertmanager_fetch_replica_state_total",
+			"cortex_alertmanager_state_fetch_replica_state_total",
 			"Number of times we have tried to read and merge the full state from another replica.",
 			[]string{"user"}, nil),
 		fetchReplicaStateFailed: prometheus.NewDesc(
-			"cortex_alertmanager_fetch_replica_state_failed_total",
+			"cortex_alertmanager_state_fetch_replica_state_failed_total",
 			"Number of times we have failed to read and merge the full state from another replica.",
 			[]string{"user"}, nil),
 		initialSyncTotal: prometheus.NewDesc(
@@ -290,8 +290,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total")
 	data.SendSumOfCountersPerUser(out, m.replicationTotal, "alertmanager_state_replication_total")
 	data.SendSumOfCountersPerUser(out, m.replicationFailed, "alertmanager_state_replication_failed_total")
-	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateTotal, "alertmanager_fetch_replica_state_total")
-	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateFailed, "alertmanager_fetch_replica_state_failed_total")
+	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateTotal, "alertmanager_state_fetch_replica_state_total")
+	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateFailed, "alertmanager_state_fetch_replica_state_failed_total")
 	data.SendSumOfCountersPerUser(out, m.initialSyncTotal, "alertmanager_state_initial_sync_total")
 	data.SendSumOfCountersPerUserWithLabels(out, m.initialSyncCompleted, "alertmanager_state_replication_total", "outcome")
 	data.SendSumOfHistograms(out, m.initialSyncDuration, "alertmanager_state_initial_sync_duration_seconds")

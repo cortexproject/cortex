@@ -93,16 +93,16 @@ func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.Ale
 			Help: "Number of times we have failed to replicate a state to other alertmanagers.",
 		}, []string{"key"}),
 		fetchReplicaStateTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "alertmanager_fetch_replica_state_total",
+			Name: "alertmanager_state_fetch_replica_state_total",
 			Help: "Number of times we have tried to read and merge the full state from another replica.",
 		}),
 		fetchReplicaStateFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "alertmanager_fetch_replica_state_failed_total",
+			Name: "alertmanager_state_fetch_replica_state_failed_total",
 			Help: "Number of times we have failed to read and merge the full state from another replica.",
 		}),
 		initialSyncTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "alertmanager_state_initial_sync_total",
-			Help: "Number of times we have tried to sync initial state from peers or storage.",
+			Help: "Number of times we have tried to sync initial state from peers or remote storage.",
 		}),
 		initialSyncCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_state_initial_sync_completed_total",
@@ -110,7 +110,7 @@ func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.Ale
 		}, []string{"outcome"}),
 		initialSyncDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "alertmanager_state_initial_sync_duration_seconds",
-			Help:    "Time spent syncing initial state from peers or storage.",
+			Help:    "Time spent syncing initial state from peers or remote storage.",
 			Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
 		}),
 	}

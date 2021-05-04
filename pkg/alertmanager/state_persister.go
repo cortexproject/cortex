@@ -72,11 +72,11 @@ func newStatePersister(cfg PersisterConfig, userID string, state PersistableStat
 		timeout: defaultPersistTimeout,
 		persistTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "alertmanager_state_persist_total",
-			Help: "Number of times we have tried to persist the running state to storage.",
+			Help: "Number of times we have tried to persist the running state to remote storage.",
 		}),
 		persistFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "alertmanager_state_persist_failed_total",
-			Help: "Number of times we have failed to persist the running state to storage.",
+			Help: "Number of times we have failed to persist the running state to remote storage.",
 		}),
 	}
 

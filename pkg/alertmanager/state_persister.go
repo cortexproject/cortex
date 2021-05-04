@@ -98,19 +98,24 @@ func (s *statePersister) iteration(ctx context.Context) error {
 	return nil
 }
 
-func (s *statePersister) persist(ctx context.Context) error {
-	s.persistTotal.Inc()
-
+func (s *statePersister) persist(ctx context.Context) (err error) {
 	// Only the replica at position zero should write the state.
 	if s.state.Position() != 0 {
 		return nil
 	}
 
+	s.persistTotal.Inc()
+	defer func() {
+		if err != nil {
+			s.persistFailed.Inc()
+		}
+	}()
+
 	level.Debug(s.logger).Log("msg", "persisting state", "user", s.userID)
 
-	fs, err := s.state.GetFullState()
+	var fs *clusterpb.FullState
+	fs, err = s.state.GetFullState()
 	if err != nil {
-		s.persistFailed.Inc()
 		return err
 	}
 
@@ -118,8 +123,7 @@ func (s *statePersister) persist(ctx context.Context) error {
 	defer cancel()
 
 	desc := alertspb.FullStateDesc{State: fs}
-	if err := s.store.SetFullState(ctx, s.userID, desc); err != nil {
-		s.persistFailed.Inc()
+	if err = s.store.SetFullState(ctx, s.userID, desc); err != nil {
 		return err
 	}
 

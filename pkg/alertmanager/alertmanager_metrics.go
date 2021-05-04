@@ -178,19 +178,19 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		fetchReplicaStateTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_fetch_replica_state_total",
 			"Number of times we have tried to read and merge the full state from another replica.",
-			[]string{"user"}, nil),
+			nil, nil),
 		fetchReplicaStateFailed: prometheus.NewDesc(
 			"cortex_alertmanager_state_fetch_replica_state_failed_total",
 			"Number of times we have failed to read and merge the full state from another replica.",
-			[]string{"user"}, nil),
+			nil, nil),
 		initialSyncTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_initial_sync_total",
 			"Number of times we have tried to sync initial state from peers or storage.",
-			[]string{"user"}, nil),
+			nil, nil),
 		initialSyncCompleted: prometheus.NewDesc(
 			"cortex_alertmanager_state_initial_sync_completed_total",
 			"Number of times we have completed syncing initial state for each possible outcome.",
-			[]string{"user", "outcome"}, nil),
+			[]string{"outcome"}, nil),
 		initialSyncDuration: prometheus.NewDesc(
 			"cortex_alertmanager_state_initial_sync_duration_seconds",
 			"Time spent syncing initial state from peers or storage.",
@@ -198,11 +198,11 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		persistTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_persist_total",
 			"Number of times we have tried to persist the running state to storage.",
-			[]string{"user"}, nil),
+			nil, nil),
 		persistFailed: prometheus.NewDesc(
 			"cortex_alertmanager_state_persist_failed_total",
 			"Number of times we have failed to persist the running state to storage.",
-			[]string{"user"}, nil),
+			nil, nil),
 	}
 }
 
@@ -290,11 +290,11 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total")
 	data.SendSumOfCountersPerUser(out, m.replicationTotal, "alertmanager_state_replication_total")
 	data.SendSumOfCountersPerUser(out, m.replicationFailed, "alertmanager_state_replication_failed_total")
-	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateTotal, "alertmanager_state_fetch_replica_state_total")
-	data.SendSumOfCountersPerUser(out, m.fetchReplicaStateFailed, "alertmanager_state_fetch_replica_state_failed_total")
-	data.SendSumOfCountersPerUser(out, m.initialSyncTotal, "alertmanager_state_initial_sync_total")
-	data.SendSumOfCountersPerUserWithLabels(out, m.initialSyncCompleted, "alertmanager_state_replication_total", "outcome")
+	data.SendSumOfCounters(out, m.fetchReplicaStateTotal, "alertmanager_state_fetch_replica_state_total")
+	data.SendSumOfCounters(out, m.fetchReplicaStateFailed, "alertmanager_state_fetch_replica_state_failed_total")
+	data.SendSumOfCounters(out, m.initialSyncTotal, "alertmanager_state_initial_sync_total")
+	data.SendSumOfCountersWithLabels(out, m.initialSyncCompleted, "alertmanager_state_initial_sync_completed_total", "outcome")
 	data.SendSumOfHistograms(out, m.initialSyncDuration, "alertmanager_state_initial_sync_duration_seconds")
-	data.SendSumOfCountersPerUser(out, m.persistTotal, "alertmanager_state_persist_total")
-	data.SendSumOfCountersPerUser(out, m.persistFailed, "alertmanager_state_persist_failed_total")
+	data.SendSumOfCounters(out, m.persistTotal, "alertmanager_state_persist_total")
+	data.SendSumOfCounters(out, m.persistFailed, "alertmanager_state_persist_failed_total")
 }

@@ -204,9 +204,7 @@ func TestTSDBMetrics(t *testing.T) {
 
 			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
 			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
-			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="user1"} 3
-			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="user2"} 3
-			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="user3"} 3
+			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 9
 			
 			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
@@ -216,15 +214,11 @@ func TestTSDBMetrics(t *testing.T) {
 
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
-			cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="user1"} 100
-			cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="user2"} 100
-			cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="user3"} 100
+			cortex_ingester_tsdb_exemplar_exemplars_appended_total 300
 
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
-			cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="user1"} 10
-			cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="user2"} 10
-			cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="user3"} 10
+			cortex_ingester_tsdb_exemplar_exemplars_in_storage 30
 	`))
 	require.NoError(t, err)
 }
@@ -417,8 +411,7 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 
 			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
 			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
-			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="user1"} 3
-			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="user2"} 3
+			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 9
 			
 			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
@@ -427,13 +420,11 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
-			cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="user1"} 100
-			cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="user2"} 100
+			cortex_ingester_tsdb_exemplar_exemplars_appended_total 300
 
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
-			cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="user1"} 10
-			cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="user2"} 10
+			cortex_ingester_tsdb_exemplar_exemplars_in_storage 20
 	`))
 	require.NoError(t, err)
 }

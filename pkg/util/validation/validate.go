@@ -137,8 +137,8 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 		)
 	}
 
-	// Exemplar label length does not include chars involved in
-	// text rendering such as "=,  See spec and const definition.
+	// Exemplar label length does not include chars involved in text
+	// rendering such as quotes, commas, etc.  See spec and const definition.
 	labelSetLen := 0
 	for _, l := range e.Labels {
 		labelSetLen += utf8.RuneCountInString(l.Name)

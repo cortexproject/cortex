@@ -512,14 +512,16 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"Total number of TSDB checkpoint creations attempted.",
 			nil, nil),
 
+		// The most useful exemplar metrics are per-user. The rest
+		// are global to reduce metrics overhead.
 		tsdbExemplarsTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_exemplar_exemplars_appended_total",
 			"Total number of TSDB exemplars appended.",
-			[]string{"user"}, nil),
+			nil, nil), // see distributor_exemplars_in for per-user rate
 		tsdbExemplarsInStorage: prometheus.NewDesc(
 			"cortex_ingester_tsdb_exemplar_exemplars_in_storage",
 			"Number of TSDB exemplars currently in storage.",
-			[]string{"user"}, nil),
+			nil, nil),
 		tsdbExemplarSeriesInStorage: prometheus.NewDesc(
 			"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
 			"Number of TSDB series with exemplars currently in storage.",
@@ -533,7 +535,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbExemplarsOutOfOrder: prometheus.NewDesc(
 			"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
 			"Total number of out of order exemplar ingestion failed attempts.",
-			[]string{"user"}, nil),
+			nil, nil),
 
 		memSeriesCreatedTotal: prometheus.NewDesc(memSeriesCreatedTotalName, memSeriesCreatedTotalHelp, []string{"user"}, nil),
 		memSeriesRemovedTotal: prometheus.NewDesc(memSeriesRemovedTotalName, memSeriesRemovedTotalHelp, []string{"user"}, nil),
@@ -629,11 +631,11 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationTotal, "prometheus_tsdb_checkpoint_creations_total")
-	data.SendSumOfCountersPerUser(out, sm.tsdbExemplarsTotal, "prometheus_tsdb_exemplar_exemplars_appended_total")
-	data.SendSumOfGaugesPerUser(out, sm.tsdbExemplarsInStorage, "prometheus_tsdb_exemplar_exemplars_in_storage")
+	data.SendSumOfCounters(out, sm.tsdbExemplarsTotal, "prometheus_tsdb_exemplar_exemplars_appended_total")
+	data.SendSumOfGauges(out, sm.tsdbExemplarsInStorage, "prometheus_tsdb_exemplar_exemplars_in_storage")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbExemplarSeriesInStorage, "prometheus_tsdb_exemplar_series_with_exemplars_in_storage")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbExemplarLastTs, "prometheus_tsdb_exemplar_last_exemplars_timestamp_seconds")
-	data.SendSumOfCountersPerUser(out, sm.tsdbExemplarsOutOfOrder, "prometheus_tsdb_exemplar_out_of_order_exemplars_total")
+	data.SendSumOfCounters(out, sm.tsdbExemplarsOutOfOrder, "prometheus_tsdb_exemplar_out_of_order_exemplars_total")
 
 	data.SendSumOfCountersPerUser(out, sm.memSeriesCreatedTotal, "prometheus_tsdb_head_series_created_total")
 	data.SendSumOfCountersPerUser(out, sm.memSeriesRemovedTotal, "prometheus_tsdb_head_series_removed_total")

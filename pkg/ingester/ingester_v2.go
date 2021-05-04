@@ -856,33 +856,35 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			})
 		}
 
-		// app.AppendExemplar currently doesn't create the series, it must
-		// already exist.  If it does not then drop.
-		if ref == 0 && len(ts.Exemplars) > 0 {
-			updateFirstPartial(func() error {
-				return wrappedTSDBIngestExemplarErr(errExemplarRef,
-					model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
-			})
-			failedExemplarsCount += len(ts.Exemplars)
-		} else { // Note that else is explicit, rather than a continue in the above if, in case of additional logic post exemplar processing.
-			for _, ex := range ts.Exemplars {
-				e := exemplar.Exemplar{
-					Value:  ex.Value,
-					Ts:     ex.TimestampMs,
-					HasTs:  true,
-					Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
-				}
-
-				if _, err = app.AppendExemplar(ref, nil, e); err == nil {
-					succeededExemplarsCount++
-					continue
-				}
-
-				// Error adding exemplar
+		if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+			// app.AppendExemplar currently doesn't create the series, it must
+			// already exist.  If it does not then drop.
+			if ref == 0 && len(ts.Exemplars) > 0 {
 				updateFirstPartial(func() error {
-					return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
+					return wrappedTSDBIngestExemplarErr(errExemplarRef,
+						model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
 				})
-				failedExemplarsCount++
+				failedExemplarsCount += len(ts.Exemplars)
+			} else { // Note that else is explicit, rather than a continue in the above if, in case of additional logic post exemplar processing.
+				for _, ex := range ts.Exemplars {
+					e := exemplar.Exemplar{
+						Value:  ex.Value,
+						Ts:     ex.TimestampMs,
+						HasTs:  true,
+						Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
+					}
+
+					if _, err = app.AppendExemplar(ref, nil, e); err == nil {
+						succeededExemplarsCount++
+						continue
+					}
+
+					// Error adding exemplar
+					updateFirstPartial(func() error {
+						return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
+					})
+					failedExemplarsCount++
+				}
 			}
 		}
 	}

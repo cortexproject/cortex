@@ -213,24 +213,24 @@ func TestIngester_v2Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 
 				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
-            	# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
-            	cortex_ingester_tsdb_exemplar_exemplars_appended_total{user="test"} 2
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+				cortex_ingester_tsdb_exemplar_exemplars_appended_total 2
 
 				# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
-            	# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
-            	cortex_ingester_tsdb_exemplar_exemplars_in_storage{user="test"} 2
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_exemplars_in_storage 2
 
 				# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
-            	# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
-            	cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="test"} 1
+				# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="test"} 1
 
 				# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
-            	# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
-            	cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1000
+				# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+				cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1000
 
 				# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
-            	# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
-            	cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total{user="test"} 0
+				# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+				cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 0
 			`,
 		},
 		"successful push, active series disabled": {

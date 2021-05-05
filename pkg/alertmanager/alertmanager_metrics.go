@@ -47,10 +47,17 @@ type alertmanagerMetrics struct {
 	// The alertmanager config hash.
 	configHashValue *prometheus.Desc
 
-	partialMerges       *prometheus.Desc
-	partialMergesFailed *prometheus.Desc
-	replicationTotal    *prometheus.Desc
-	replicationFailed   *prometheus.Desc
+	partialMerges           *prometheus.Desc
+	partialMergesFailed     *prometheus.Desc
+	replicationTotal        *prometheus.Desc
+	replicationFailed       *prometheus.Desc
+	fetchReplicaStateTotal  *prometheus.Desc
+	fetchReplicaStateFailed *prometheus.Desc
+	initialSyncTotal        *prometheus.Desc
+	initialSyncCompleted    *prometheus.Desc
+	initialSyncDuration     *prometheus.Desc
+	persistTotal            *prometheus.Desc
+	persistFailed           *prometheus.Desc
 }
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
@@ -168,6 +175,34 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_state_replication_failed_total",
 			"Number of times we have failed to replicate a state to other alertmanagers",
 			[]string{"user"}, nil),
+		fetchReplicaStateTotal: prometheus.NewDesc(
+			"cortex_alertmanager_state_fetch_replica_state_total",
+			"Number of times we have tried to read and merge the full state from another replica.",
+			nil, nil),
+		fetchReplicaStateFailed: prometheus.NewDesc(
+			"cortex_alertmanager_state_fetch_replica_state_failed_total",
+			"Number of times we have failed to read and merge the full state from another replica.",
+			nil, nil),
+		initialSyncTotal: prometheus.NewDesc(
+			"cortex_alertmanager_state_initial_sync_total",
+			"Number of times we have tried to sync initial state from peers or storage.",
+			nil, nil),
+		initialSyncCompleted: prometheus.NewDesc(
+			"cortex_alertmanager_state_initial_sync_completed_total",
+			"Number of times we have completed syncing initial state for each possible outcome.",
+			[]string{"outcome"}, nil),
+		initialSyncDuration: prometheus.NewDesc(
+			"cortex_alertmanager_state_initial_sync_duration_seconds",
+			"Time spent syncing initial state from peers or storage.",
+			nil, nil),
+		persistTotal: prometheus.NewDesc(
+			"cortex_alertmanager_state_persist_total",
+			"Number of times we have tried to persist the running state to storage.",
+			nil, nil),
+		persistFailed: prometheus.NewDesc(
+			"cortex_alertmanager_state_persist_failed_total",
+			"Number of times we have failed to persist the running state to storage.",
+			nil, nil),
 	}
 }
 
@@ -210,6 +245,13 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.partialMergesFailed
 	out <- m.replicationTotal
 	out <- m.replicationFailed
+	out <- m.fetchReplicaStateTotal
+	out <- m.fetchReplicaStateFailed
+	out <- m.initialSyncTotal
+	out <- m.initialSyncCompleted
+	out <- m.initialSyncDuration
+	out <- m.persistTotal
+	out <- m.persistFailed
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
@@ -248,4 +290,11 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total")
 	data.SendSumOfCountersPerUser(out, m.replicationTotal, "alertmanager_state_replication_total")
 	data.SendSumOfCountersPerUser(out, m.replicationFailed, "alertmanager_state_replication_failed_total")
+	data.SendSumOfCounters(out, m.fetchReplicaStateTotal, "alertmanager_state_fetch_replica_state_total")
+	data.SendSumOfCounters(out, m.fetchReplicaStateFailed, "alertmanager_state_fetch_replica_state_failed_total")
+	data.SendSumOfCounters(out, m.initialSyncTotal, "alertmanager_state_initial_sync_total")
+	data.SendSumOfCountersWithLabels(out, m.initialSyncCompleted, "alertmanager_state_initial_sync_completed_total", "outcome")
+	data.SendSumOfHistograms(out, m.initialSyncDuration, "alertmanager_state_initial_sync_duration_seconds")
+	data.SendSumOfCounters(out, m.persistTotal, "alertmanager_state_persist_total")
+	data.SendSumOfCounters(out, m.persistFailed, "alertmanager_state_persist_failed_total")
 }

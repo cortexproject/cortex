@@ -233,7 +233,11 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 // Enable merge querier if multi tenant query federation is enabled
 func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 	if t.Cfg.TenantFederation.Enabled {
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable))
+		// Make sure the mergeQuerier is only used for request with more than a
+		// single tenant. This allows for a less impactful enabling of tenant
+		// federation.
+		byPassForSingleQuerier := true
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, byPassForSingleQuerier))
 	}
 	return nil, nil
 }

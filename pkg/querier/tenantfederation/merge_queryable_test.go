@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	maxt, mint = 0, 10
+	maxt, mint                 = 0, 10
+	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
 )
 
 type mockTenantQueryableWithFilter struct {
@@ -226,6 +227,9 @@ type mergeQueryableTestCase struct {
 	expectedLabelValues map[string][]string
 	selectorCases       []selectorTestCase
 
+	// do not bypass in the case of single queriers
+	doNotByPassSingleQuerier bool
+
 	// storage.Warnings expected when querying
 	expectedWarnings []string
 
@@ -251,6 +255,15 @@ func TestMergeQueryable(t *testing.T) {
 			expectedLabelValues: map[string][]string{
 				"instance": {"host1", "host2.team-a"},
 			},
+		},
+		{
+			name:       "single tenant without bypass",
+			tenants:    []string{"team-a"},
+			labelNames: []string{"__tenant_id__", "instance", "tenant-team-a"},
+			expectedLabelValues: map[string][]string{
+				"instance": {"host1", "host2.team-a"},
+			},
+			doNotByPassSingleQuerier: true,
 		},
 		{
 			name:       "three tenants",
@@ -362,7 +375,7 @@ func TestMergeQueryable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// initialize with default tenant label
-			q := NewQueryable(&tc.queryable)
+			q := NewQueryable(&tc.queryable, !tc.doNotByPassSingleQuerier)
 
 			// inject context if set
 			ctx := context.Background()

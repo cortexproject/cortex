@@ -175,7 +175,7 @@ func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exem
 	}
 }
 
-var labelLenMsg = fmt.Sprintf("exemplar combined labelset exceeds %d characters, timestamp: %%d series: %%s labels: %%s", ExemplarMaxLabelSetLength)
+var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels %s"
 
 func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{

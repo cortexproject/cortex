@@ -19,7 +19,6 @@ To obtain the full help of how to use `cortextool` for all commands and flags, u
 `cortextool --help-long`.
 
 The following example shows the steps to upload the configuration to Cortex `Alertmanager` using `cortextool`. 
-
 #### 1. Create the Alertmanager configuration `yml` file.  
 
 The following is `amconfig.yml`, an example of a configuration for Cortex `Alertmanager` to send notification via email:

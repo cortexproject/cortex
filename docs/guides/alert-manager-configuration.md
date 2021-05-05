@@ -5,13 +5,13 @@ weight: 10
 slug: alertmanager-configuration
 ---
 
-### Context
+## Context
 
 Cortex Alertmanager notification setup follow mostly the syntax of Prometheus Alertmanager since it is based on the same codebase.  The following is a description on how to load the configuration setup so that Alertmanager can use for notification when an alert event happened.
 
-#### Cortex Alertmanager configuration
+### Cortex Alertmanager configuration
 
-Cortex Alertmanager can be uploaded via [Cortex Set Alertmanager API](../api/_index.md#set-alertmanager-configuration) or using Grafana Labs [Cortex Tools](https://github.com/grafana/cortex-tools).
+Cortex Alertmanager can be uploaded via Cortex [Set Alertmanager  configuration API](../api/_index.md#set-alertmanager-configuration) or using Grafana Labs [Cortex Tools](https://github.com/grafana/cortex-tools).
 
 Follow the instruction at the `cortextool` link above to download or update to the latest version of the tool.
 
@@ -20,7 +20,7 @@ To obtain the full help of how to use `cortextool` for all commands and flags, u
 
 The following example shows the steps to upload the configuration to Cortex `Alertmanager` using `cortextool`. 
 
-1. Create `.yaml` file to specify the configuration for Alertmanager notification characteristic.  
+#### 1. Create the Alertmanager configuration `yml` file.  
 
 The following is `amconfig.yml`, an example of a configuration for Cortex `Alertmanager` to send notification via email:
 
@@ -44,7 +44,7 @@ receivers:
 
 [Example on how to setup Slack](https://grafana.com/blog/2020/02/25/step-by-step-guide-to-setting-up-prometheus-alertmanager-with-slack-pagerduty-and-gmail/#:~:text=To%20set%20up%20alerting%20in,to%20receive%20notifications%20from%20Alertmanager.) to support receiving Alertmanager notification.
 
-2. With your Cortex ID,  URL and API key,  you are ready to upload the configuration Alertmanager.
+#### 2. Upload the Alertmanager configuration
 
 In this example,  Cortex `Alertmanager` is set to be available via localhost on port 8095 with only one user/org = 0.
 
@@ -56,9 +56,11 @@ cortextool alertmanager load ./amconfig.yml \
 --id=0
 --key=<yourKey>
 ```
-If there is no error reported,  the upload is successful.
+If there is no error reported, the upload is successful.
 
-3. To confirm that the configuration is uploaded correctly:
+To upload the configuration for Cortex `Alertmanager` using Cortex API and curl - see Cortex [Set Alertmanager configuration API](https://cortexmetrics.io/docs/api/#set-alertmanager-configuration).
+
+#### 3. Ensure the configuration has been uploaded sucessfully
 
 ```
 cortextool alertmanager get \
@@ -66,5 +68,3 @@ cortextool alertmanager get \
 --id=0
 --key=<yourKey>
 ```
-
-To upload the configuration for Cortex `Alertmanager` using Cortex API and curl - see [Cortex Set Alertmanager API](https://cortexmetrics.io/docs/api/#set-alertmanager-configuration).

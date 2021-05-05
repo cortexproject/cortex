@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -175,7 +176,7 @@ func newExemplarMissingTimestampError(seriesLabels []cortexpb.LabelAdapter, exem
 	}
 }
 
-var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels %s"
+var labelLenMsg = "exemplar combined labelset exceeds " + strconv.Itoa(ExemplarMaxLabelSetLength) + " characters, timestamp: %d series: %s labels: %s"
 
 func newExemplarLabelLengthError(seriesLabels []cortexpb.LabelAdapter, exemplarLabels []cortexpb.LabelAdapter, timestamp int64) ValidationError {
 	return &exemplarValidationError{

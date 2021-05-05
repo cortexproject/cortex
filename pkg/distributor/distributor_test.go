@@ -1194,35 +1194,42 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 }
 
 func TestDistributor_Push_ExemplarValidation(t *testing.T) {
+
+	manyLabels := []string{model.MetricNameLabel, "test"}
+	for i := 1; i < 31; i++ {
+		manyLabels = append(manyLabels, fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+	}
+
 	tests := map[string]struct {
-		input       cortexpb.Exemplar
-		errExpected bool
-		errMessage  string
+		req    *cortexpb.WriteRequest
+		errMsg string
 	}{
 		"valid exemplar": {
-			input: cortexpb.Exemplar{
-				Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
-				TimestampMs: 1000,
-			},
-			errExpected: false,
+			req: makeWriteRequestExemplar([]string{model.MetricNameLabel, "test"}, 1000, []string{"foo", "bar"}),
 		},
 		"rejects exemplar with no labels": {
-			input:       cortexpb.Exemplar{},
-			errExpected: true,
-			errMessage:  `exemplar missing labels, timestamp: 0 series: {__name__="test"} labels: {}`,
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test"}, 1000, []string{}),
+			errMsg: `exemplar missing labels, timestamp: 1000 series: {__name__="test"} labels: {}`,
 		},
-		"rejects exemplar with timestamp": {
-			input: cortexpb.Exemplar{
-				Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}}},
-			errExpected: true,
-			errMessage:  `exemplar missing timestamp, timestamp: 0 series: {__name__="test"} labels: {foo="bar"}`,
+		"rejects exemplar with no timestamp": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test"}, 0, []string{"foo", "bar"}),
+			errMsg: `exemplar missing timestamp, timestamp: 0 series: {__name__="test"} labels: {foo="bar"}`,
 		},
 		"rejects exemplar with too long labelset": {
-			input: cortexpb.Exemplar{
-				TimestampMs: 1000,
-				Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}}},
-			errExpected: true,
-			errMessage:  fmt.Sprintf(`exemplar combined labelset exceeds 128 characters, timestamp: 1000 series: {__name__="test"} labels: {foo="%s"}`, strings.Repeat("0", 126)),
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test"}, 1000, []string{"foo", strings.Repeat("0", 126)}),
+			errMsg: fmt.Sprintf(`exemplar combined labelset exceeds 128 characters, timestamp: 1000 series: {__name__="test"} labels: {foo="%s"}`, strings.Repeat("0", 126)),
+		},
+		"rejects exemplar with too many series labels": {
+			req:    makeWriteRequestExemplar(manyLabels, 0, nil),
+			errMsg: "series has too many labels",
+		},
+		"rejects exemplar with duplicate series labels": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test", "foo", "bar", "foo", "bar"}, 0, nil),
+			errMsg: "duplicate label name",
+		},
+		"rejects exemplar with empty series label name": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test", "", "bar"}, 0, nil),
+			errMsg: "invalid label",
 		},
 	}
 
@@ -1235,23 +1242,10 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 				shuffleShardSize: 1,
 			})
 
-			req := &cortexpb.WriteRequest{
-				Timeseries: []cortexpb.PreallocTimeseries{
-					{
-						TimeSeries: &cortexpb.TimeSeries{
-							Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
-							Exemplars: []cortexpb.Exemplar{
-								tc.input,
-							},
-						},
-					},
-				},
-			}
-
-			_, err := ds[0].Push(ctx, req)
-			if tc.errExpected {
+			_, err := ds[0].Push(ctx, tc.req)
+			if tc.errMsg != "" {
 				fromError, _ := status.FromError(err)
-				assert.Equal(t, tc.errMessage, fromError.Message())
+				assert.Contains(t, fromError.Message(), tc.errMsg)
 			} else {
 				assert.Nil(t, err)
 			}
@@ -1952,6 +1946,25 @@ func makeWriteRequestHA(samples int, replica, cluster string) *cortexpb.WriteReq
 		request.Timeseries = append(request.Timeseries, ts)
 	}
 	return request
+}
+
+func makeWriteRequestExemplar(seriesLabels []string, timestamp int64, exemplarLabels []string) *cortexpb.WriteRequest {
+	return &cortexpb.WriteRequest{
+		Timeseries: []cortexpb.PreallocTimeseries{
+			{
+				TimeSeries: &cortexpb.TimeSeries{
+					//Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
+					Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...)),
+					Exemplars: []cortexpb.Exemplar{
+						{
+							Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(exemplarLabels...)),
+							TimestampMs: timestamp,
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func expectedResponse(start, end int) model.Matrix {

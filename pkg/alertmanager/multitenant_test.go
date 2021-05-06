@@ -1857,10 +1857,16 @@ func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user 
 	panic("implement me")
 }
 
-func (m mockAlertManagerLimits) EmailNotificationRateLimit(_ string) rate.Limit {
-	return m.emailNotificationRateLimit
+func (m mockAlertManagerLimits) NotificationRateLimit(_ string, integration string) rate.Limit {
+	if integration == emailIntegration {
+		return m.emailNotificationRateLimit
+	}
+	return 0
 }
 
-func (m mockAlertManagerLimits) EmailNotificationBurst(_ string) int {
-	return m.emailNotificationBurst
+func (m mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
+	if integration == emailIntegration {
+		return m.emailNotificationBurst
+	}
+	return 0
 }

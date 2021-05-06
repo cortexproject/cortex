@@ -26,6 +26,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
 * `<relabel_config>`: a [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
 * `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), and RFC 3339 formats: `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)
+* `<limits_map>`: Map with integration names as keys, mapped to object with two fields: `rate_limit` and `burst_size`. If either of them is specified, this per-integration limit will take precedence over shared notification limit, even if other field is not specified (in which case, it defaults to 0!).
 
 ### Use environment variables in the configuration
 
@@ -4107,16 +4108,28 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -alertmanager.receivers-firewall-block-private-addresses
 [alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
 
-# Per-user rate limit for sending email notifications from Alertmanager in
-# emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
-# CLI flag: -alertmanager.email-notification-rate-limit
-[alertmanager_email_notification_rate_limit: <float> | default = 0]
+alertmanager_notification_limits:
+  # Per-user rate limit for sending notifications from Alertmanager in
+  # notifications/sec. 0 = rate limit disabled. Negative value = no
+  # notifications are allowed.
+  # CLI flag: -alertmanager.notification-limits.rate-limit
+  [rate_limit: <float> | default = 0]
 
-# Per-user burst size for email notifications. If set to 0, no email
-# notifications will be sent, unless rate-limit is disabled, in which case all
-# email notifications are allowed.
-# CLI flag: -alertmanager.email-notification-burst-size
-[alertmanager_email_notification_burst_size: <int> | default = 1]
+  # Per-user burst size for notifications. If set to 0, no notifications will be
+  # sent, unless rate-limit is disabled, in which case all notifications are
+  # allowed.
+  # CLI flag: -alertmanager.notification-limits.burst-size
+  [burst_size: <int> | default = 1]
+
+# Per-integration notification limits. Value is a map, where each key is
+# integration name and value is an object with rate_limit and burst_size fields.
+# On command line, this map is given in JSON format. Rate limit and burst size
+# have the same meaning as -alertmanager.notification-limits.rate-limit and
+# -alertmanager.notification-limits.burst-size, but only apply for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover
+# CLI flag: -alertmanager.notification-limits.per-integration
+[alertmanager_notification_limits_per_integration: <limits_map> | default = {}]
 ```
 
 ### `redis_config`

@@ -43,6 +43,7 @@ import (
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -99,6 +100,9 @@ type Alertmanager struct {
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
 
+	// Pipeline created during last ApplyConfig call. Used for testing only.
+	lastPipeline notify.Stage
+
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
@@ -107,6 +111,8 @@ type Alertmanager struct {
 	// Further, in upstream AM, this metric is handled using the config coordinator which we don't use
 	// hence we need to generate the metric ourselves.
 	configHashMetric prometheus.Gauge
+
+	rateLimitedNotifications *prometheus.CounterVec
 }
 
 var (
@@ -155,6 +161,11 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
 		}),
+
+		rateLimitedNotifications: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_notification_rate_limited_total",
+			Help: "Number of rate-limited notifications per integration.",
+		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
 	}
 
 	am.registry = reg
@@ -325,7 +336,17 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	// Create a firewall binded to the per-tenant config.
 	firewallDialer := util_net.NewFirewallDialer(newFirewallDialerConfigProvider(userID, am.cfg.Limits))
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger)
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger, func(integrationName string, notifier notify.Notifier) notify.Notifier {
+		if integrationName == "email" && am.cfg.Limits != nil {
+			rl := &tenantRateLimits{
+				tenant: userID,
+				limits: am.cfg.Limits,
+			}
+
+			return newRateLimitedNotifier(notifier, rl, 10*time.Second, am.rateLimitedNotifications.WithLabelValues(integrationName))
+		}
+		return notifier
+	})
 	if err != nil {
 		return nil
 	}
@@ -344,6 +365,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.nflog,
 		am.state,
 	)
+	am.lastPipeline = pipeline
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
@@ -417,10 +439,10 @@ func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, notifierWrapper func(string, notify.Notifier) notify.Notifier) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
-		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger)
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger, notifierWrapper)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +454,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewa
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration
@@ -442,6 +464,7 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, fir
 				errs.Add(err)
 				return
 			}
+			n = wrapper(name, n)
 			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
 		}
 	)
@@ -525,4 +548,17 @@ func (p firewallDialerConfigProvider) BlockCIDRNetworks() []flagext.CIDR {
 
 func (p firewallDialerConfigProvider) BlockPrivateAddresses() bool {
 	return p.limits.AlertmanagerReceiversBlockPrivateAddresses(p.userID)
+}
+
+type tenantRateLimits struct {
+	tenant string
+	limits Limits
+}
+
+func (t *tenantRateLimits) RateLimit() rate.Limit {
+	return t.limits.EmailNotificationRateLimit(t.tenant)
+}
+
+func (t *tenantRateLimits) Burst() int {
+	return t.limits.EmailNotificationBurst(t.tenant)
 }

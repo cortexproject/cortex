@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
+	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +33,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
@@ -1707,6 +1709,62 @@ func TestStoreTemplateFile(t *testing.T) {
 	require.False(t, changed)
 }
 
+func TestMultitenantAlertmanager_verifyRateLimitedEmailConfig(t *testing.T) {
+	ctx := context.Background()
+
+	config := `global:
+  resolve_timeout: 1m
+  smtp_require_tls: false
+
+route:
+  receiver: 'email'
+
+receivers:
+- name: 'email'
+  email_configs:
+  - to: test@example.com
+    from: test@example.com
+    smarthost: smtp:2525
+`
+
+	// Run this test using a real storage client.
+	store := prepareInMemoryAlertStore()
+	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+		User:      "user",
+		RawConfig: config,
+		Templates: []*alertspb.TemplateDesc{},
+	}))
+
+	limits := mockAlertManagerLimits{
+		emailNotificationRateLimit: 0,
+		emailNotificationBurst:     0,
+	}
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, limits, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+	require.Len(t, am.alertmanagers, 1)
+
+	am.alertmanagersMtx.Lock()
+	uam := am.alertmanagers["user"]
+	am.alertmanagersMtx.Unlock()
+
+	require.NotNil(t, uam)
+
+	ctx = notify.WithReceiverName(ctx, "email")
+	ctx = notify.WithGroupKey(ctx, "key")
+	ctx = notify.WithRepeatInterval(ctx, time.Minute)
+
+	// Verify that rate-limiter is in place for email notifier.
+	_, _, err = uam.lastPipeline.Exec(ctx, log.NewNopLogger(), &types.Alert{})
+	require.NotNil(t, err)
+	require.Contains(t, err.Error(), errRateLimited.Error())
+}
+
 type passthroughAlertmanagerClient struct {
 	server alertmanagerpb.AlertmanagerServer
 }
@@ -1754,4 +1812,25 @@ func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, e
 		return nil, fmt.Errorf("client not found for address: %v", addr)
 	}
 	return Client(&passthroughAlertmanagerClient{s}), nil
+}
+
+type mockAlertManagerLimits struct {
+	emailNotificationRateLimit rate.Limit
+	emailNotificationBurst     int
+}
+
+func (m mockAlertManagerLimits) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
+	panic("implement me")
+}
+
+func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
+	panic("implement me")
+}
+
+func (m mockAlertManagerLimits) EmailNotificationRateLimit(_ string) rate.Limit {
+	return m.emailNotificationRateLimit
+}
+
+func (m mockAlertManagerLimits) EmailNotificationBurst(_ string) int {
+	return m.emailNotificationBurst
 }

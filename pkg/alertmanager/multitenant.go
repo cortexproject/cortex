@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -222,6 +223,17 @@ type Limits interface {
 	// AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
 	// in the Alertmanager receivers for the given user.
 	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
+
+	// EmailNotificationRateLimit returns limit used by rate-limiter. If set to 0, no emails are allowed.
+	// rate.Inf = all emails are allowed.
+	//
+	// Note that when  negative or zero values specified by user are translated to rate.Limit by Overrides,
+	// and may have different meaning there.
+	EmailNotificationRateLimit(tenant string) rate.Limit
+
+	// EmailNotificationBurst returns burst-size for rate limiter. If 0, no notifications are allowed except
+	// when limit == rate.Inf.
+	EmailNotificationBurst(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

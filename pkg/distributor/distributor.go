@@ -1041,7 +1041,7 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if d.distributorsRing != nil {
 		d.distributorsRing.ServeHTTP(w, req)
 	} else {
-		var unshardedPage = `
+		var ringNotEnabledPage = `
 			<!DOCTYPE html>
 			<html>
 				<head>
@@ -1050,13 +1050,9 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				</head>
 				<body>
 					<h1>Cortex Distributor Status</h1>
-					<p>Distributor is not running with global limits disabled</p>
+					<p>Distributor is not running with global limits enabled</p>
 				</body>
 			</html>`
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(unshardedPage))
-		if err != nil {
-			level.Error(d.log).Log("msg", "unable to serve status page", "err", err)
-		}
+		util.WriteHTMLResponse(w, ringNotEnabledPage)
 	}
 }

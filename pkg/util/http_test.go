@@ -153,6 +153,7 @@ func TestParseProtoReader(t *testing.T) {
 							{Value: 20, TimestampMs: 2},
 							{Value: 30, TimestampMs: 3},
 						},
+						Exemplars: []cortexpb.Exemplar{},
 					},
 				},
 			},

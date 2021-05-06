@@ -148,6 +148,51 @@ func TestValidateLabels(t *testing.T) {
 	`), "cortex_discarded_samples_total"))
 }
 
+func TestValidateExemplars(t *testing.T) {
+	userID := "testUser"
+
+	invalidExemplars := []cortexpb.Exemplar{
+		{
+			// Missing labels
+			Labels: nil,
+		},
+		{
+			// Invalid timestamp
+			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+		},
+		{
+			// Combined labelset too long
+			Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}},
+			TimestampMs: 1000,
+		},
+	}
+
+	for _, ie := range invalidExemplars {
+		err := ValidateExemplar(userID, []cortexpb.LabelAdapter{}, ie)
+		assert.NotNil(t, err)
+	}
+
+	DiscardedExemplars.WithLabelValues("random reason", "different user").Inc()
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
+			# TYPE cortex_discarded_exemplars_total counter
+			cortex_discarded_exemplars_total{reason="exemplar_labels_missing",user="testUser"} 1
+			cortex_discarded_exemplars_total{reason="exemplar_labels_too_long",user="testUser"} 1
+			cortex_discarded_exemplars_total{reason="exemplar_timestamp_invalid",user="testUser"} 1
+
+			cortex_discarded_exemplars_total{reason="random reason",user="different user"} 1
+		`), "cortex_discarded_exemplars_total"))
+
+	// Delete test user and verify only different remaining
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
+			# TYPE cortex_discarded_exemplars_total counter
+			cortex_discarded_exemplars_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_exemplars_total"))
+}
+
 func TestValidateMetadata(t *testing.T) {
 	userID := "testUser"
 	var cfg validateMetadataCfg

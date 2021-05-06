@@ -214,7 +214,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			return nil, err
 		}
 
-		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, prometheus.DefaultRegisterer)
+		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, reg)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize distributors' ring")
 		}

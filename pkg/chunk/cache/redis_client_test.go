@@ -21,33 +21,46 @@ func TestRedisClient(t *testing.T) {
 
 	ctx := context.Background()
 
-	clients := []*RedisClient{single, cluster}
-	for i, c := range clients {
-		meg := []string{"run on single redis client", "run on cluster redis client"}[i]
+	tests := []struct {
+		name   string
+		client *RedisClient
+	}{
+		{
+			name:   "single redis client",
+			client: single,
+		},
+		{
+			name:   "cluster redis client",
+			client: cluster,
+		},
+	}
 
-		keys := []string{"key1", "key2", "key3"}
-		bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
-		miss := []string{"miss1", "miss2"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			keys := []string{"key1", "key2", "key3"}
+			bufs := [][]byte{[]byte("data1"), []byte("data2"), []byte("data3")}
+			miss := []string{"miss1", "miss2"}
 
-		// set values
-		err := c.MSet(ctx, keys, bufs)
-		require.Nil(t, err, meg)
+			// set values
+			err := tt.client.MSet(ctx, keys, bufs)
+			require.Nil(t, err)
 
-		// get keys
-		values, err := c.MGet(ctx, keys)
-		require.Nil(t, err, meg)
-		require.Len(t, values, len(keys), meg)
-		for i, value := range values {
-			require.Equal(t, values[i], value, meg)
-		}
+			// get keys
+			values, err := tt.client.MGet(ctx, keys)
+			require.Nil(t, err)
+			require.Len(t, values, len(keys))
+			for i, value := range values {
+				require.Equal(t, values[i], value)
+			}
 
-		// get missing keys
-		values, err = c.MGet(ctx, miss)
-		require.Nil(t, err, meg)
-		require.Len(t, values, len(miss), meg)
-		for _, value := range values {
-			require.Nil(t, value, meg)
-		}
+			// get missing keys
+			values, err = tt.client.MGet(ctx, miss)
+			require.Nil(t, err)
+			require.Len(t, values, len(miss))
+			for _, value := range values {
+				require.Nil(t, value)
+			}
+		})
 	}
 }
 

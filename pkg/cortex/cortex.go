@@ -236,11 +236,11 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Compactor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
-	if err := c.Alertmanager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid alertmanager config")
-	}
 	if err := c.AlertmanagerStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid alertmanager storage config")
+	}
+	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
+		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
 	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {

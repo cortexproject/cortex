@@ -70,3 +70,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
+
+// IsFullStateSupported returns if the given configuration supports access to FullState objects.
+func (cfg *Config) IsFullStateSupported() bool {
+	switch cfg.Backend {
+	case configdb.Name, local.Name:
+		return false
+	default:
+		return true
+	}
+}

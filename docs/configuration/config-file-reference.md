@@ -4943,6 +4943,11 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
 ```
 
 ### `compactor_config`

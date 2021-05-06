@@ -94,8 +94,10 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
+	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec
+	incomingExemplars                *prometheus.CounterVec
 	incomingMetadata                 *prometheus.CounterVec
 	nonHASamples                     *prometheus.CounterVec
 	dedupedSamples                   *prometheus.CounterVec
@@ -248,6 +250,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples, excluding rejected and deduped samples.",
 		}, []string{"user"}),
+		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_received_exemplars_total",
+			Help:      "The total number of received exemplars, excluding rejected and deduped exemplars.",
+		}, []string{"user"}),
 		receivedMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_received_metadata_total",
@@ -257,6 +264,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_samples_in_total",
 			Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
+		}, []string{"user"}),
+		incomingExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_exemplars_in_total",
+			Help:      "The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.",
 		}, []string{"user"}),
 		incomingMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -382,8 +394,10 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.HATracker.cleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)
+	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID)
+	d.incomingExemplars.DeleteLabelValues(userID)
 	d.incomingMetadata.DeleteLabelValues(userID)
 	d.nonHASamples.DeleteLabelValues(userID)
 	d.latestSeenSampleTimestampPerUser.DeleteLabelValues(userID)
@@ -490,18 +504,39 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		return emptyPreallocSeries, err
 	}
 
-	samples := make([]cortexpb.Sample, 0, len(ts.Samples))
-	for _, s := range ts.Samples {
-		if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
-			return emptyPreallocSeries, err
+	var samples []cortexpb.Sample
+	if len(ts.Samples) > 0 {
+		// Only alloc when data present
+		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
+		for _, s := range ts.Samples {
+			if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
+				return emptyPreallocSeries, err
+			}
+			samples = append(samples, s)
 		}
-		samples = append(samples, s)
+	}
+
+	var exemplars []cortexpb.Exemplar
+	if len(ts.Exemplars) > 0 {
+		// Only alloc when data present
+		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))
+		for _, e := range ts.Exemplars {
+			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
+				// An exemplar validation error prevents ingesting samples
+				// in the same series object. However because the current Prometheus
+				// remote write implementation only populates one or the other,
+				// there never will be any.
+				return emptyPreallocSeries, err
+			}
+			exemplars = append(exemplars, e)
+		}
 	}
 
 	return cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
-				Labels:  ts.Labels,
-				Samples: samples,
+				Labels:    ts.Labels,
+				Samples:   samples,
+				Exemplars: exemplars,
 			},
 		},
 		nil
@@ -537,11 +572,14 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	removeReplica := false
 
 	numSamples := 0
+	numExemplars := 0
 	for _, ts := range req.Timeseries {
 		numSamples += len(ts.Samples)
+		numExemplars += len(ts.Exemplars)
 	}
 	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
 	d.incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
@@ -553,6 +591,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 	seriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedSamples := 0
+	validatedExemplars := 0
 
 	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
 		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
@@ -649,6 +688,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
 		validatedSamples += len(ts.Samples)
+		validatedExemplars += len(ts.Exemplars)
 	}
 
 	for _, m := range req.Metadata {
@@ -667,6 +707,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
+	d.receivedExemplars.WithLabelValues(userID).Add((float64(validatedExemplars)))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
@@ -676,7 +717,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
-	totalN := validatedSamples + len(validatedMetadata)
+	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
@@ -684,6 +725,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Return a 4xx here to have the client discard the data and not retry. If a client
 		// is sending too much data consistently we will unlikely ever catch up otherwise.
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		validation.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
 	}

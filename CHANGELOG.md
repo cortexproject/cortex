@@ -15,6 +15,7 @@
   * `cortex_alertmanager_state_initial_sync_duration_seconds`
   * `cortex_alertmanager_state_persist_total`
   * `cortex_alertmanager_state_persist_failed_total`
+* [ENHANCEMENT] Blocks storage: support ingesting exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 
 ## 1.9.0 in progress

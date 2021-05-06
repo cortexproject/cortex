@@ -213,6 +213,14 @@ _For more information, please check out Prometheus [Remote storage integrations]
 
 _Requires [authentication](#authentication)._
 
+### Distributor ring status
+
+```
+GET /distributor/ring
+```
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
+
 ### Tenants stats
 
 ```

@@ -73,7 +73,8 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances
-	distributorsRing *ring.Lifecycler
+	distributorsLifeCycler *ring.Lifecycler
+	distributorsRing       *ring.Ring
 
 	// For handling HA replicas.
 	HATracker *haTracker
@@ -202,33 +203,39 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	// it's an internal dependency and can't join the distributors ring, we skip rate
 	// limiting.
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsRing *ring.Lifecycler
+	var distributorsLifeCycler *ring.Lifecycler
+	var distributorsRing *ring.Ring
 
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsRing, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
+		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ring.DistributorRingKey, true, reg)
 		if err != nil {
 			return nil, err
 		}
 
-		subservices = append(subservices, distributorsRing)
+		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, reg)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to initialize distributors' ring client")
+		}
+		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsRing)
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(limits, distributorsLifeCycler)
 	} else {
 		ingestionRateStrategy = newLocalIngestionRateStrategy(limits)
 	}
 
 	d := &Distributor{
-		cfg:                  cfg,
-		log:                  log,
-		ingestersRing:        ingestersRing,
-		ingesterPool:         NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
-		distributorsRing:     distributorsRing,
-		limits:               limits,
-		ingestionRateLimiter: limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		HATracker:            haTracker,
-		ingestionRate:        util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
+		cfg:                    cfg,
+		log:                    log,
+		ingestersRing:          ingestersRing,
+		ingesterPool:           NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
+		distributorsLifeCycler: distributorsLifeCycler,
+		distributorsRing:       distributorsRing,
+		limits:                 limits,
+		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
+		HATracker:              haTracker,
+		ingestionRate:          util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -1028,4 +1035,24 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 	}
 
 	return response, nil
+}
+
+func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if d.distributorsRing != nil {
+		d.distributorsRing.ServeHTTP(w, req)
+	} else {
+		var ringNotEnabledPage = `
+			<!DOCTYPE html>
+			<html>
+				<head>
+					<meta charset="UTF-8">
+					<title>Cortex Distributor Status</title>
+				</head>
+				<body>
+					<h1>Cortex Distributor Status</h1>
+					<p>Distributor is not running with global limits enabled</p>
+				</body>
+			</html>`
+		util.WriteHTMLResponse(w, ringNotEnabledPage)
+	}
 }

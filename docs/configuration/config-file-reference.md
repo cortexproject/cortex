@@ -4127,7 +4127,7 @@ alertmanager_notification_limits:
 # have the same meaning as -alertmanager.notification-limits.rate-limit and
 # -alertmanager.notification-limits.burst-size, but only apply for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover
+# wechat, slack, victorops, pushover.
 # CLI flag: -alertmanager.notification-limits.per-integration
 [alertmanager_notification_limits_per_integration: <limits_map> | default = {}]
 ```

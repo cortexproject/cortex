@@ -178,7 +178,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	if l.NotificationIntegrationLimits == nil {
 		l.NotificationIntegrationLimits = NotificationLimitsMap{}
 	}
-	f.Var(&l.NotificationIntegrationLimits, "alertmanager.notification-limits.per-integration", "Per-integration notification limits. Value is a map, where each key is integration name and value is an object with rate_limit and burst_size fields. On command line, this map is given in JSON format. Rate limit and burst size have the same meaning as -alertmanager.notification-limits.rate-limit and -alertmanager.notification-limits.burst-size, but only apply for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", "))
+	f.Var(&l.NotificationIntegrationLimits, "alertmanager.notification-limits.per-integration", "Per-integration notification limits. Value is a map, where each key is integration name and value is an object with rate_limit and burst_size fields. On command line, this map is given in JSON format. Rate limit and burst size have the same meaning as -alertmanager.notification-limits.rate-limit and -alertmanager.notification-limits.burst-size, but only apply for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", ")+".")
 }
 
 // Validate the limits config and returns an error if the validation

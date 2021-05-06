@@ -216,7 +216,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 		distributorsRing, err = ring.New(cfg.DistributorRing.ToRingConfig(), "distributor", ring.DistributorRingKey, reg)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to initialize distributors' ring")
+			return nil, errors.Wrap(err, "failed to initialize distributors' ring client")
 		}
 		subservices = append(subservices, distributorsLifeCycler, distributorsRing)
 

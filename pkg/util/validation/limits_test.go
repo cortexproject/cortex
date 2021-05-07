@@ -533,8 +533,8 @@ testuser:
     email:
       rate_limit: 500
 `,
-			expectedRateLimit: 500, // overriden
-			expectedBurstSize: 0,   // also overriden, but not visible
+			expectedRateLimit: 500, // overridden
+			expectedBurstSize: 0,   // also overridden, but not visible
 		},
 
 		"different user override, pushover": {

@@ -2,7 +2,7 @@
 # WARNING: do not commit to a repository!
 -include Makefile.local
 
-.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc
+.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image
 .DEFAULT_GOAL := all
 
 # Version number
@@ -39,8 +39,13 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 %/$(UPTODATE): %/Dockerfile
 	@echo
 	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
-	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
+	@echo
+	@echo Please use push-multiarch-build-image to build and push build image for all supported architectures.
 	touch $@
+
+push-multiarch-build-image:
+	@echo
+	$(SUDO) docker buildx build -o type=registry --platform linux/amd64,linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) build-image/
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.

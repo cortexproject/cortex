@@ -1858,15 +1858,9 @@ func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user 
 }
 
 func (m mockAlertManagerLimits) NotificationRateLimit(_ string, integration string) rate.Limit {
-	if integration == emailIntegration {
-		return m.emailNotificationRateLimit
-	}
-	return 0
+	return m.emailNotificationRateLimit
 }
 
 func (m mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
-	if integration == emailIntegration {
-		return m.emailNotificationBurst
-	}
-	return 0
+	return m.emailNotificationBurst
 }

@@ -20,6 +20,7 @@ RUN GOARCH=$(go env GOARCH) && echo $GOARCH && \
 	echo Downloading ${URL} && \
 	curl -s -L -o hugo.tar.gz "${URL}" && \
 	tar xzvf hugo.tar.gz -C /usr/bin && \
+	rm hugo.tar.gz && \
 	chmod +x /usr/bin/hugo
 
 ENV SHFMT_VERSION=3.2.4

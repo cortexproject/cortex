@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/notifier"
@@ -28,6 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -277,6 +279,8 @@ func TestSharding(t *testing.T) {
 		shardingStrategy string
 		shuffleShardSize int
 		setupRing        func(*ring.Desc)
+		enabledUsers     []string
+		disabledUsers    []string
 
 		expectedRules expectedRulesMap
 	}
@@ -304,6 +308,23 @@ func TestSharding(t *testing.T) {
 			expectedRules: expectedRulesMap{ruler1: allRules},
 		},
 
+		"no sharding, single user allowed": {
+			sharding:     false,
+			enabledUsers: []string{user1},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user1: {user1Group1, user1Group2},
+			}},
+		},
+
+		"no sharding, single user disabled": {
+			sharding:      false,
+			disabledUsers: []string{user1},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user2: {user2Group1},
+				user3: {user3Group1},
+			}},
+		},
+
 		"default sharding, single ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
@@ -311,6 +332,31 @@ func TestSharding(t *testing.T) {
 				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
 			},
 			expectedRules: expectedRulesMap{ruler1: allRules},
+		},
+
+		"default sharding, single ruler, single enabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			enabledUsers:     []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+			},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user1: {user1Group1, user1Group2},
+			}},
+		},
+
+		"default sharding, single ruler, single disabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			disabledUsers:    []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+			},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user2: {user2Group1},
+				user3: {user3Group1},
+			}},
 		},
 
 		"default sharding, multiple ACTIVE rulers": {
@@ -329,6 +375,46 @@ func TestSharding(t *testing.T) {
 
 				ruler2: map[string]rulespb.RuleGroupList{
 					user1: {user1Group2},
+					user3: {user3Group1},
+				},
+			},
+		},
+
+		"default sharding, multiple ACTIVE rulers, single enabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			enabledUsers:     []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {user1Group2},
+				},
+			},
+		},
+
+		"default sharding, multiple ACTIVE rulers, single disabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			disabledUsers:    []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user2: {user2Group1},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
 					user3: {user3Group1},
 				},
 			},
@@ -503,6 +589,51 @@ func TestSharding(t *testing.T) {
 				},
 			},
 		},
+
+		"shuffle sharding, three rulers, shard size 2, single enabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shuffleShardSize: 2,
+			enabledUsers:     []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1},
+				},
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {user1Group2},
+				},
+				ruler3: map[string]rulespb.RuleGroupList{},
+			},
+		},
+
+		"shuffle sharding, three rulers, shard size 2, single disabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shuffleShardSize: 2,
+			disabledUsers:    []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{},
+				ruler2: map[string]rulespb.RuleGroupList{},
+				ruler3: map[string]rulespb.RuleGroupList{
+					user2: {user2Group1},
+					user3: {user3Group1},
+				},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -524,6 +655,8 @@ func TestSharding(t *testing.T) {
 						HeartbeatTimeout: 1 * time.Minute,
 					},
 					FlushCheckPeriod: 0,
+					EnabledTenants:   tc.enabledUsers,
+					DisabledTenants:  tc.disabledUsers,
 				}
 
 				r, cleanup := newRuler(t, cfg)
@@ -710,6 +843,37 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*chunk.MockS
 
 type ruleGroupKey struct {
 	user, namespace, group string
+}
+
+func TestRuler_ListAllRules(t *testing.T) {
+	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	defer cleanup()
+
+	r, rcleanup := newTestRuler(t, cfg)
+	defer rcleanup()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	router := mux.NewRouter()
+	router.Path("/ruler/rule_groups").Methods(http.MethodGet).HandlerFunc(r.ListAllRules)
+
+	req := requestFor(t, http.MethodGet, "https://localhost:8080/ruler/rule_groups", nil, "")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Check status code and header
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
+
+	gs := make(map[string]map[string][]rulefmt.RuleGroup) // user:namespace:[]rulefmt.RuleGroup
+	for userID := range mockRules {
+		gs[userID] = mockRules[userID].Formatted()
+	}
+	expectedResponse, err := yaml.Marshal(gs)
+	require.NoError(t, err)
+	require.YAMLEq(t, string(expectedResponse), string(body))
 }
 
 type senderFunc func(alerts ...*notifier.Alert)

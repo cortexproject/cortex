@@ -1,4 +1,4 @@
-FROM       alpine:3.12
+FROM       alpine:3.13
 RUN        apk add --no-cache ca-certificates
 COPY       test-exporter /
 ENTRYPOINT ["/test-exporter"]

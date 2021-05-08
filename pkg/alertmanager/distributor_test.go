@@ -36,47 +36,198 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 		numAM, numHappyAM   int
 		replicationFactor   int
 		isRead              bool
+		isDelete            bool
 		expStatusCode       int
 		expectedTotalCalls  int
 		headersNotPreserved bool
+		route               string
+		// Paths where responses are merged, we need to supply a valid response body.
+		// Note that the actual merging logic is tested elsewhere (merger_test.go).
+		responseBody []byte
 	}{
 		{
-			name:               "Simple AM request, all AM healthy",
+			name:               "Write /alerts, Simple AM request, all AM healthy",
 			numAM:              4,
 			numHappyAM:         4,
 			replicationFactor:  3,
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 3,
+			route:              "/alerts",
 		}, {
-			name:                "Less than quorum AM available",
+			name:                "Write /alerts, Less than quorum AM available",
 			numAM:               1,
 			numHappyAM:          1,
 			replicationFactor:   3,
 			expStatusCode:       http.StatusInternalServerError,
 			expectedTotalCalls:  0,
 			headersNotPreserved: true, // There is nothing to preserve since it does not hit any AM.
+			route:               "/alerts",
 		}, {
-			name:               "Less than quorum AM succeed",
+			name:               "Write /alerts, Less than quorum AM succeed",
 			numAM:              5,
 			numHappyAM:         3, // Though we have 3 happy, it will hit >1 unhappy AM.
 			replicationFactor:  3,
 			expStatusCode:      http.StatusInternalServerError,
 			expectedTotalCalls: 3,
+			route:              "/alerts",
 		}, {
-			name:               "Read is sent to only 1 AM",
+			name:               "Read /v1/alerts is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v1/alerts",
+			responseBody:       []byte(`{"status":"success","data":[]}`),
+		}, {
+			name:               "Read /v2/alerts is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v2/alerts",
+			responseBody:       []byte(`[]`),
+		}, {
+			name:               "Read /v2/alerts/groups is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v2/alerts/groups",
+			responseBody:       []byte(`[]`),
+		}, {
+			name:                "Read /v1/alerts/groups not supported",
+			numAM:               5,
+			numHappyAM:          5,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusNotFound,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true,
+			route:               "/v1/alerts/groups",
+		}, {
+			name:                "Write /alerts/groups not supported",
+			numAM:               5,
+			numHappyAM:          5,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusNotFound,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true,
+			route:               "/alerts/groups",
+		}, {
+			name:               "Read /v1/silences is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v1/silences",
+			responseBody:       []byte(`{"status":"success","data":[]}`),
+		}, {
+			name:               "Read /v2/silences is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v2/silences",
+			responseBody:       []byte(`[]`),
+		}, {
+			name:               "Write /silences is sent to only 1 AM",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 1,
+			route:              "/silences",
+		}, {
+			name:               "Read /v1/silence/id is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v1/silence/id",
+			responseBody:       []byte(`{"status":"success","data":{"id":"aaa","updatedAt":"2020-01-01T00:00:00Z"}}`),
+		}, {
+			name:               "Read /v2/silence/id is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v2/silence/id",
+			responseBody:       []byte(`{"id":"aaa","updatedAt":"2020-01-01T00:00:00Z"}`),
+		},
+		{
+			name:                "Write /silence/id not supported",
+			numAM:               5,
+			numHappyAM:          5,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusNotFound,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true,
+			route:               "/silence/id",
+		}, {
+			name:               "Delete /silence/id is sent to only 1 AM",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isDelete:           true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 1,
+			route:              "/silence/id",
+		}, {
+			name:               "Read /status is sent to only 1 AM",
 			numAM:              5,
 			numHappyAM:         5,
 			replicationFactor:  3,
 			isRead:             true,
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 1,
+			route:              "/status",
+		}, {
+			name:                "Write /status not supported",
+			numAM:               5,
+			numHappyAM:          5,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusNotFound,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true,
+			route:               "/status",
+		}, {
+			name:               "Read /receivers is sent to only 1 AM",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 1,
+			route:              "/receivers",
+		}, {
+			name:                "Write /receivers not supported",
+			numAM:               5,
+			numHappyAM:          5,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusNotFound,
+			expectedTotalCalls:  0,
+			headersNotPreserved: true,
+			route:               "/receivers",
 		},
 	}
 
-	route := "/alertmanager/api/v1/alerts"
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d, ams, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor)
+			route := "/alertmanager/api/v1" + c.route
+			d, ams, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor, c.responseBody)
 			t.Cleanup(cleanup)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
@@ -86,13 +237,14 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			require.NoError(t, err)
 			if c.isRead {
 				req.Method = http.MethodGet
+			} else if c.isDelete {
+				req.Method = http.MethodDelete
 			}
 			req.RequestURI = url
 
 			w := httptest.NewRecorder()
 			d.DistributeRequest(w, req)
 			resp := w.Result()
-
 			require.Equal(t, c.expStatusCode, resp.StatusCode)
 
 			if !c.headersNotPreserved {
@@ -126,13 +278,46 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 
 }
 
-func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int) (*Distributor, []*mockAlertmanager, func()) {
+func TestDistributor_IsPathSupported(t *testing.T) {
+	supported := map[string]bool{
+		"/alertmanager/api/v1/alerts":           true,
+		"/alertmanager/api/v1/alerts/groups":    false,
+		"/alertmanager/api/v1/silences":         true,
+		"/alertmanager/api/v1/silence/id":       true,
+		"/alertmanager/api/v1/silence/anything": true,
+		"/alertmanager/api/v1/silence/really":   true,
+		"/alertmanager/api/v1/status":           true,
+		"/alertmanager/api/v1/receivers":        true,
+		"/alertmanager/api/v1/other":            false,
+		"/alertmanager/api/v2/alerts":           true,
+		"/alertmanager/api/v2/alerts/groups":    true,
+		"/alertmanager/api/v2/silences":         true,
+		"/alertmanager/api/v2/silence/id":       true,
+		"/alertmanager/api/v2/silence/anything": true,
+		"/alertmanager/api/v2/silence/really":   true,
+		"/alertmanager/api/v2/status":           true,
+		"/alertmanager/api/v2/receivers":        true,
+		"/alertmanager/api/v2/other":            false,
+		"/alertmanager/other":                   false,
+		"/other":                                false,
+	}
+
+	for path, isSupported := range supported {
+		t.Run(path, func(t *testing.T) {
+			d, _, cleanup := prepare(t, 1, 1, 1, []byte{})
+			t.Cleanup(cleanup)
+			require.Equal(t, isSupported, d.IsPathSupported(path))
+		})
+	}
+}
+
+func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
 	for i := 0; i < numHappyAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, true))
+		ams = append(ams, newMockAlertmanager(i, true, responseBody))
 	}
 	for i := numHappyAM; i < numAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, false))
+		ams = append(ams, newMockAlertmanager(i, false, responseBody))
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
@@ -193,13 +378,15 @@ type mockAlertmanager struct {
 	mtx              sync.Mutex
 	myAddr           string
 	happy            bool
+	responseBody     []byte
 }
 
-func newMockAlertmanager(idx int, happy bool) *mockAlertmanager {
+func newMockAlertmanager(idx int, happy bool, responseBody []byte) *mockAlertmanager {
 	return &mockAlertmanager{
 		receivedRequests: make(map[string]map[int]int),
 		myAddr:           fmt.Sprintf("127.0.0.1:%05d", 10000+idx),
 		happy:            happy,
+		responseBody:     responseBody,
 	}
 }
 
@@ -231,6 +418,7 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *httpgrpc.HTTPRe
 					Values: []string{"ok-option-1", "ok-option-2"},
 				},
 			},
+			Body: am.responseBody,
 		}, nil
 	}
 

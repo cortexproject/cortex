@@ -575,6 +575,20 @@ ring:
   # Name of network interface to read address from.
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+instance_limits:
+  # Max ingestion rate (samples/sec) that this distributor will accept. This
+  # limit is per-distributor, not per-tenant. Additional push requests will be
+  # rejected. Current ingestion rate is computed as exponentially weighted
+  # moving average, updated every second. 0 = unlimited.
+  # CLI flag: -distributor.instance-limits.max-ingestion-rate
+  [max_ingestion_rate: <float> | default = 0]
+
+  # Max inflight push requests that this distributor can handle. This limit is
+  # per-distributor, not per-tenant. Additional requests will be rejected. 0 =
+  # unlimited.
+  # CLI flag: -distributor.instance-limits.max-inflight-push-requests
+  [max_inflight_push_requests: <int> | default = 0]
 ```
 
 ### `ingester_config`
@@ -771,6 +785,31 @@ lifecycler:
 # After what time a series is considered to be inactive.
 # CLI flag: -ingester.active-series-metrics-idle-timeout
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
+
+instance_limits:
+  # Max ingestion rate (samples/sec) that ingester will accept. This limit is
+  # per-ingester, not per-tenant. Additional push requests will be rejected.
+  # Current ingestion rate is computed as exponentially weighted moving average,
+  # updated every second. This limit only works when using blocks engine. 0 =
+  # unlimited.
+  # CLI flag: -ingester.instance-limits.max-ingestion-rate
+  [max_ingestion_rate: <float> | default = 0]
+
+  # Max users that this ingester can hold. Requests from additional users will
+  # be rejected. This limit only works when using blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-tenants
+  [max_tenants: <int> | default = 0]
+
+  # Max series that this ingester can hold (across all tenants). Requests to
+  # create additional series will be rejected. This limit only works when using
+  # blocks engine. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-series
+  [max_series: <int> | default = 0]
+
+  # Max inflight push requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
+  # CLI flag: -ingester.instance-limits.max-inflight-push-requests
+  [max_inflight_push_requests: <int> | default = 0]
 ```
 
 ### `querier_config`
@@ -1018,11 +1057,6 @@ grpc_client_config:
 # query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of string> | default = [eth0 en0]]
-
-# This flag is about to be deprecated. Please use
-# -api.response-compression-enabled instead.
-# CLI flag: -querier.compress-http-responses
-[compress_responses: <boolean> | default = false]
 
 # URL of downstream Prometheus.
 # CLI flag: -frontend.downstream-url
@@ -1559,6 +1593,18 @@ ring:
 # Enable the ruler api
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
+
+# Comma separated list of tenants whose rules this ruler can evaluate. If
+# specified, only these tenants will be handled by ruler, otherwise this ruler
+# can process rules from all tenants. Subject to sharding.
+# CLI flag: -ruler.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose rules this ruler cannot evaluate. If
+# specified, a ruler that would normally pick the specified tenant(s) for
+# processing will ignore them instead. Subject to sharding.
+# CLI flag: -ruler.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 ```
 
 ### `ruler_storage_config`
@@ -2081,6 +2127,14 @@ alertmanager_client:
   # Skip validating server certificate.
   # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+# The interval between persisting the current alertmanager state (notification
+# log and silences) to object storage. This is only used when sharding is
+# enabled. This state is read when all replicas for a shard can not be
+# contacted. In this scenario, having persisted the state more frequently will
+# result in potentially fewer lost silences, and fewer duplicate notifications.
+# CLI flag: -alertmanager.persist-interval
+[persist_interval: <duration> | default = 15m]
 ```
 
 ### `alertmanager_storage_config`
@@ -2961,6 +3015,11 @@ cassandra:
   # CLI flag: -cassandra.host-verification
   [host_verification: <boolean> | default = true]
 
+  # Policy for selecting Cassandra host. Supported values are: round-robin,
+  # token-aware.
+  # CLI flag: -cassandra.host-selection-policy
+  [host_selection_policy: <string> | default = "round-robin"]
+
   # Path to certificate file to verify the peer.
   # CLI flag: -cassandra.ca-path
   [CA_path: <string> | default = ""]
@@ -3372,11 +3431,6 @@ write_dedupe_cache_config:
 # Cache index entries older than this period. 0 to disable.
 # CLI flag: -store.cache-lookups-older-than
 [cache_lookups_older_than: <duration> | default = 0s]
-
-# Deprecated: use -querier.max-query-lookback instead. Limit how long back data
-# can be queried. This setting applies to chunks storage only.
-# CLI flag: -store.max-look-back-period
-[max_look_back_period: <duration> | default = 0s]
 ```
 
 ### `ingester_client_config`
@@ -3761,6 +3815,33 @@ The `memberlist_config` configures the Gossip memberlist.
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Enable TLS on the memberlist transport layer.
+# CLI flag: -memberlist.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -memberlist.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -memberlist.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -memberlist.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -memberlist.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -memberlist.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
 ### `limits_config`
@@ -3829,7 +3910,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum accepted sample age before rejecting.
 # CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 336h]
+[reject_old_samples_max_age: <duration> | default = 2w]
 
 # Duration which table will be created/deleted before/after it's needed; we
 # won't accept sample from before this time.
@@ -3912,13 +3993,24 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage. When running the
-# Cortex chunks storage, this limit is enforced in the querier, while when
-# running the Cortex blocks storage this limit is both enforced in the querier
-# and store-gateway. 0 to disable.
+# Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
+# respective YAML config option instead. Maximum number of chunks that can be
+# fetched in a single query. This limit is enforced when fetching chunks from
+# the long-term storage only. When running the Cortex chunks storage, this limit
+# is enforced in the querier and ruler, while when running the Cortex blocks
+# storage this limit is enforced in the querier, ruler and store-gateway. 0 to
+# disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
+
+# Maximum number of chunks that can be fetched in a single query from ingesters
+# and long-term storage: the total number of actual fetched chunks could be 2x
+# the limit, being independently applied when querying ingesters and long-term
+# storage. This limit is enforced in the ingester (if chunks streaming is
+# enabled), querier, ruler and store-gateway. Takes precedence over the
+# deprecated -store.query-chunk-limit. 0 to disable.
+# CLI flag: -querier.max-fetched-chunks-per-query
+[max_fetched_chunks_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4003,15 +4095,28 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
 
-# File name of per-user overrides. [deprecated, use -runtime-config.file
-# instead]
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
+# Comma-separated list of network CIDRs to block in Alertmanager receiver
+# integrations.
+# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
+[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
 
-# Period with which to reload the overrides. [deprecated, use
-# -runtime-config.reload-period instead]
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
+# True to block private and local addresses in Alertmanager receiver
+# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
+# and local multicast addresses.
+# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
+[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
+
+# Per-user rate limit for sending email notifications from Alertmanager in
+# emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
+# CLI flag: -alertmanager.email-notification-rate-limit
+[alertmanager_email_notification_rate_limit: <float> | default = 0]
+
+# Per-user burst size for email notifications. If set to 0, no email
+# notifications will be sent, unless rate-limit is disabled, in which case all
+# email notifications are allowed.
+# CLI flag: -alertmanager.email-notification-burst-size
+[alertmanager_email_notification_burst_size: <int> | default = 1]
 ```
 
 ### `redis_config`
@@ -4480,11 +4585,6 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 15m]
 
-  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-  # The pool is shared across all tenants. 0 to disable the limit.
-  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-  [max_chunk_pool_bytes: <int> | default = 2147483648]
-
   # Max number of concurrent queries to execute against the long-term storage.
   # The limit is shared across all tenants.
   # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -4561,11 +4661,6 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
-
-    # Deprecated: compress postings before storing them to postings cache. This
-    # option is unused and postings compression is always enabled.
-    # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-    [postings_compression_enabled: <boolean> | default = false]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -4766,6 +4861,11 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
 
+  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+  # The pool is shared across all tenants. 0 to disable the limit.
+  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
+
   # If enabled, store-gateway will lazy load an index-header only once required
   # by a query.
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
@@ -4854,6 +4954,11 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
 ```
 
 ### `compactor_config`

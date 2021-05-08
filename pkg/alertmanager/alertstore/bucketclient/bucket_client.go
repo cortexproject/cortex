@@ -175,12 +175,12 @@ func (s *BucketAlertStore) get(ctx context.Context, bkt objstore.Bucket, name st
 
 	buf, err := ioutil.ReadAll(readCloser)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to read alertmanager config for user %s", name)
 	}
 
 	err = proto.Unmarshal(buf, msg)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to deserialize alertmanager config for user %s", name)
 	}
 
 	return nil
@@ -192,5 +192,5 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 }
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
-	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
+	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider).WithExpectedErrs(s.amBucket.IsObjNotFoundErr)
 }

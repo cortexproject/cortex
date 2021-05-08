@@ -1300,7 +1300,7 @@ type blocksStoreLimitsMock struct {
 	storeGatewayTenantShardSize int
 }
 
-func (m *blocksStoreLimitsMock) MaxChunksPerQuery(_ string) int {
+func (m *blocksStoreLimitsMock) MaxChunksPerQueryFromStore(_ string) int {
 	return m.maxChunksPerQuery
 }
 

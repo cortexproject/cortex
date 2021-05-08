@@ -673,6 +673,7 @@ func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMat
 		}
 		lbs := s.Labels().Copy()
 		lbs = append(lbs, labels.Label{Name: "__cortex_shard__", Value: fmt.Sprintf("%d_of_%d", shardIndex, shardTotal)})
+		sort.Sort(lbs)
 		res.series = append(res.series, promql.NewStorageSeries(promql.Series{
 			Metric: lbs,
 			Points: points,

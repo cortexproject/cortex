@@ -45,7 +45,7 @@ func TestGettingStartedSingleProcessConfigWithChunksStorage(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
-	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{})
+	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{}, nil)
 	require.NoError(t, err)
 	require.Equal(t, model.LabelValues{"bar"}, labelValues)
 
@@ -100,7 +100,7 @@ func TestGettingStartedSingleProcessConfigWithBlocksStorage(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
 
-	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{})
+	labelValues, err := c.LabelValues("foo", time.Time{}, time.Time{}, nil)
 	require.NoError(t, err)
 	require.Equal(t, model.LabelValues{"bar"}, labelValues)
 

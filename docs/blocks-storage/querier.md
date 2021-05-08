@@ -435,11 +435,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 15m]
 
-    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-    # The pool is shared across all tenants. 0 to disable the limit.
-    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-    [max_chunk_pool_bytes: <int> | default = 2147483648]
-
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -516,11 +511,6 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
-
-      # Deprecated: compress postings before storing them to postings cache.
-      # This option is unused and postings compression is always enabled.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-      [postings_compression_enabled: <boolean> | default = false]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -722,6 +712,11 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
 
+    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+    # The pool is shared across all tenants. 0 to disable the limit.
+    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+    [max_chunk_pool_bytes: <int> | default = 2147483648]
+
     # If enabled, store-gateway will lazy load an index-header only once
     # required by a query.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
@@ -811,4 +806,9 @@ blocks_storage:
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+    # Enables support for exemplars in TSDB and sets the maximum number that
+    # will be stored. 0 or less means disabled.
+    # CLI flag: -blocks-storage.tsdb.max-exemplars
+    [max_exemplars: <int> | default = 0]
 ```

@@ -254,6 +254,26 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		# HELP cortex_alertmanager_silences_snapshot_size_bytes Size of the last silence snapshot in bytes.
 		# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 		cortex_alertmanager_silences_snapshot_size_bytes 111
+		# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
+		# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
+		cortex_alertmanager_state_fetch_replica_state_failed_total 0
+		# HELP cortex_alertmanager_state_fetch_replica_state_total Number of times we have tried to read and merge the full state from another replica.
+		# TYPE cortex_alertmanager_state_fetch_replica_state_total counter
+		cortex_alertmanager_state_fetch_replica_state_total 0
+		# HELP cortex_alertmanager_state_initial_sync_duration_seconds Time spent syncing initial state from peers or storage.
+		# TYPE cortex_alertmanager_state_initial_sync_duration_seconds histogram
+		cortex_alertmanager_state_initial_sync_duration_seconds_bucket{le="+Inf"} 0
+		cortex_alertmanager_state_initial_sync_duration_seconds_sum 0
+		cortex_alertmanager_state_initial_sync_duration_seconds_count 0
+		# HELP cortex_alertmanager_state_initial_sync_total Number of times we have tried to sync initial state from peers or storage.
+		# TYPE cortex_alertmanager_state_initial_sync_total counter
+		cortex_alertmanager_state_initial_sync_total 0
+		# HELP cortex_alertmanager_state_persist_failed_total Number of times we have failed to persist the running state to storage.
+		# TYPE cortex_alertmanager_state_persist_failed_total counter
+		cortex_alertmanager_state_persist_failed_total 0
+		# HELP cortex_alertmanager_state_persist_total Number of times we have tried to persist the running state to storage.
+		# TYPE cortex_alertmanager_state_persist_total counter
+		cortex_alertmanager_state_persist_total 0
 `))
 	require.NoError(t, err)
 }
@@ -517,6 +537,26 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 						# HELP cortex_alertmanager_silences_snapshot_size_bytes Size of the last silence snapshot in bytes.
 						# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 						cortex_alertmanager_silences_snapshot_size_bytes 111
+						# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
+						# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
+						cortex_alertmanager_state_fetch_replica_state_failed_total 0
+						# HELP cortex_alertmanager_state_fetch_replica_state_total Number of times we have tried to read and merge the full state from another replica.
+						# TYPE cortex_alertmanager_state_fetch_replica_state_total counter
+						cortex_alertmanager_state_fetch_replica_state_total 0
+						# HELP cortex_alertmanager_state_initial_sync_duration_seconds Time spent syncing initial state from peers or storage.
+						# TYPE cortex_alertmanager_state_initial_sync_duration_seconds histogram
+						cortex_alertmanager_state_initial_sync_duration_seconds_bucket{le="+Inf"} 0
+						cortex_alertmanager_state_initial_sync_duration_seconds_sum 0
+						cortex_alertmanager_state_initial_sync_duration_seconds_count 0
+						# HELP cortex_alertmanager_state_initial_sync_total Number of times we have tried to sync initial state from peers or storage.
+						# TYPE cortex_alertmanager_state_initial_sync_total counter
+						cortex_alertmanager_state_initial_sync_total 0
+						# HELP cortex_alertmanager_state_persist_failed_total Number of times we have failed to persist the running state to storage.
+						# TYPE cortex_alertmanager_state_persist_failed_total counter
+						cortex_alertmanager_state_persist_failed_total 0
+						# HELP cortex_alertmanager_state_persist_total Number of times we have tried to persist the running state to storage.
+						# TYPE cortex_alertmanager_state_persist_total counter
+						cortex_alertmanager_state_persist_total 0
 `))
 	require.NoError(t, err)
 
@@ -727,6 +767,27 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 			# HELP cortex_alertmanager_silences_snapshot_size_bytes Size of the last silence snapshot in bytes.
 			# TYPE cortex_alertmanager_silences_snapshot_size_bytes gauge
 			cortex_alertmanager_silences_snapshot_size_bytes 11
+
+			# HELP cortex_alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
+			# TYPE cortex_alertmanager_state_fetch_replica_state_failed_total counter
+			cortex_alertmanager_state_fetch_replica_state_failed_total 0
+			# HELP cortex_alertmanager_state_fetch_replica_state_total Number of times we have tried to read and merge the full state from another replica.
+			# TYPE cortex_alertmanager_state_fetch_replica_state_total counter
+			cortex_alertmanager_state_fetch_replica_state_total 0
+			# HELP cortex_alertmanager_state_initial_sync_duration_seconds Time spent syncing initial state from peers or storage.
+			# TYPE cortex_alertmanager_state_initial_sync_duration_seconds histogram
+			cortex_alertmanager_state_initial_sync_duration_seconds_bucket{le="+Inf"} 0
+			cortex_alertmanager_state_initial_sync_duration_seconds_sum 0
+			cortex_alertmanager_state_initial_sync_duration_seconds_count 0
+			# HELP cortex_alertmanager_state_initial_sync_total Number of times we have tried to sync initial state from peers or storage.
+			# TYPE cortex_alertmanager_state_initial_sync_total counter
+			cortex_alertmanager_state_initial_sync_total 0
+			# HELP cortex_alertmanager_state_persist_failed_total Number of times we have failed to persist the running state to storage.
+			# TYPE cortex_alertmanager_state_persist_failed_total counter
+			cortex_alertmanager_state_persist_failed_total 0
+			# HELP cortex_alertmanager_state_persist_total Number of times we have tried to persist the running state to storage.
+			# TYPE cortex_alertmanager_state_persist_total counter
+			cortex_alertmanager_state_persist_total 0
 `))
 	require.NoError(t, err)
 }

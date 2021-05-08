@@ -15,11 +15,20 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
 	defaultSettleReadTimeout = 15 * time.Second
+	defaultStoreReadTimeout  = 15 * time.Second
+
+	// Initial sync outcome label values.
+	syncFromReplica  = "from-replica"
+	syncFromStorage  = "from-storage"
+	syncUserNotFound = "user-not-found"
+	syncFailed       = "failed"
 )
 
 // state represents the Alertmanager silences and notification log internal state.
@@ -31,33 +40,42 @@ type state struct {
 	reg    prometheus.Registerer
 
 	settleReadTimeout time.Duration
+	storeReadTimeout  time.Duration
 
 	mtx    sync.Mutex
 	states map[string]cluster.State
 
 	replicationFactor int
 	replicator        Replicator
+	store             alertstore.AlertStore
 
 	partialStateMergesTotal  *prometheus.CounterVec
 	partialStateMergesFailed *prometheus.CounterVec
 	stateReplicationTotal    *prometheus.CounterVec
 	stateReplicationFailed   *prometheus.CounterVec
+	fetchReplicaStateTotal   prometheus.Counter
+	fetchReplicaStateFailed  prometheus.Counter
+	initialSyncTotal         prometheus.Counter
+	initialSyncCompleted     *prometheus.CounterVec
+	initialSyncDuration      prometheus.Histogram
 
 	msgc chan *clusterpb.Part
 }
 
 // newReplicatedStates creates a new state struct, which manages state to be replicated between alertmanagers.
-func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r prometheus.Registerer) *state {
+func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.AlertStore, l log.Logger, r prometheus.Registerer) *state {
 
 	s := &state{
 		logger:            l,
 		userID:            userID,
 		replicationFactor: rf,
 		replicator:        re,
+		store:             st,
 		states:            make(map[string]cluster.State, 2), // we use two, one for the notifications and one for silences.
 		msgc:              make(chan *clusterpb.Part),
 		reg:               r,
 		settleReadTimeout: defaultSettleReadTimeout,
+		storeReadTimeout:  defaultStoreReadTimeout,
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
@@ -74,7 +92,32 @@ func newReplicatedStates(userID string, rf int, re Replicator, l log.Logger, r p
 			Name: "alertmanager_state_replication_failed_total",
 			Help: "Number of times we have failed to replicate a state to other alertmanagers.",
 		}, []string{"key"}),
+		fetchReplicaStateTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_state_fetch_replica_state_total",
+			Help: "Number of times we have tried to read and merge the full state from another replica.",
+		}),
+		fetchReplicaStateFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_state_fetch_replica_state_failed_total",
+			Help: "Number of times we have failed to read and merge the full state from another replica.",
+		}),
+		initialSyncTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_state_initial_sync_total",
+			Help: "Number of times we have tried to sync initial state from peers or remote storage.",
+		}),
+		initialSyncCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_state_initial_sync_completed_total",
+			Help: "Number of times we have completed syncing initial state for each possible outcome.",
+		}, []string{"outcome"}),
+		initialSyncDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "alertmanager_state_initial_sync_duration_seconds",
+			Help:    "Time spent syncing initial state from peers or remote storage.",
+			Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
+		}),
 	}
+	s.initialSyncCompleted.WithLabelValues(syncFromReplica)
+	s.initialSyncCompleted.WithLabelValues(syncFromStorage)
+	s.initialSyncCompleted.WithLabelValues(syncUserNotFound)
+	s.initialSyncCompleted.WithLabelValues(syncFailed)
 
 	s.Service = services.NewBasicService(s.starting, s.running, nil)
 
@@ -147,6 +190,10 @@ func (s *state) GetFullState() (*clusterpb.FullState, error) {
 // starting waits until the alertmanagers are ready (and sets the appropriate internal state when it is).
 // The idea is that we don't want to start working" before we get a chance to know most of the notifications and/or silences.
 func (s *state) starting(ctx context.Context) error {
+	s.initialSyncTotal.Inc()
+	timer := prometheus.NewTimer(s.initialSyncDuration)
+	defer timer.ObserveDuration()
+
 	level.Info(s.logger).Log("msg", "Waiting for notification and silences to settle...")
 
 	// If the replication factor is <= 1, there is nowhere to obtain the state from.
@@ -159,15 +206,40 @@ func (s *state) starting(ctx context.Context) error {
 	readCtx, cancel := context.WithTimeout(ctx, s.settleReadTimeout)
 	defer cancel()
 
+	s.fetchReplicaStateTotal.Inc()
 	fullStates, err := s.replicator.ReadFullStateForUser(readCtx, s.userID)
 	if err == nil {
 		if err = s.mergeFullStates(fullStates); err == nil {
 			level.Info(s.logger).Log("msg", "state settled; proceeding")
+			s.initialSyncCompleted.WithLabelValues(syncFromReplica).Inc()
+			return nil
+		}
+	}
+	s.fetchReplicaStateFailed.Inc()
+
+	level.Info(s.logger).Log("msg", "state not settled; trying to read from storage", "err", err)
+
+	// Attempt to read the state from persistent storage instead.
+	storeReadCtx, cancel := context.WithTimeout(ctx, s.storeReadTimeout)
+	defer cancel()
+
+	fullState, err := s.store.GetFullState(storeReadCtx, s.userID)
+	if errors.Is(err, alertspb.ErrNotFound) {
+		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
+		s.initialSyncCompleted.WithLabelValues(syncUserNotFound).Inc()
+		return nil
+	}
+	if err == nil {
+		if err = s.mergeFullStates([]*clusterpb.FullState{fullState.State}); err == nil {
+			level.Info(s.logger).Log("msg", "state read from storage; proceeding")
+			s.initialSyncCompleted.WithLabelValues(syncFromStorage).Inc()
 			return nil
 		}
 	}
 
-	level.Info(s.logger).Log("msg", "state not settled but continuing anyway", "err", err)
+	level.Warn(s.logger).Log("msg", "failed to read state from storage; continuing anyway", "err", err)
+	s.initialSyncCompleted.WithLabelValues(syncFailed).Inc()
+
 	return nil
 }
 

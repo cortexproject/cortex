@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Ingester/Query-Frontend: Avoid using automatic private IPs (APIPA) upon assignment. APIPA still used as last resort with logging indicating usage. #4032
 * [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
 * [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. Support for this migration will be removed in Cortex 1.11. #3910
 * [CHANGE] Ruler: deprecated `-ruler.storage.*` CLI flags (and their respective YAML config options) in favour of `-ruler-storage.*`. The deprecated config will be removed in Cortex 1.11. #3945

@@ -62,7 +62,7 @@ storage:
   engine: blocks
 
 encoding:
-  chunk_encoding: big-chunk
+  chunk_encoding: BigChunk
 
 ruler:
   enable_api: true

@@ -117,7 +117,7 @@ storage:
   engine: blocks
 
 encoding:
-  chunk_encoding: big-chunk
+  chunk_encoding: BigChunk
 
 compactor:
   compaction_interval: 30s

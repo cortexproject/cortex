@@ -133,7 +133,7 @@ api:
 encoding:
   # Encoding version to use for chunks.
   # CLI flag: -encoding.chunk-encoding
-  [chunk_encoding: <string> | default = "big-chunk"]
+  [chunk_encoding: <string> | default = "BigChunk"]
 
 # The blocks_storage_config configures the blocks storage.
 [blocks_storage: <blocks_storage_config>]

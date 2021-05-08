@@ -23,7 +23,7 @@ var (
 
 // RegisterFlags registers configuration settings.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.EncodingName, "encoding.chunk-encoding", "big-chunk", "Encoding version to use for chunks.")
+	f.StringVar(&cfg.EncodingName, "encoding.chunk-encoding", "BigChunk", "Encoding version to use for chunks.")
 	f.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
 }
 
@@ -65,25 +65,25 @@ type encoding struct {
 
 var encodings = map[Encoding]encoding{
 	DoubleDelta: {
-		Name: "double-delta",
+		Name: "DoubleDelta",
 		New: func() Chunk {
 			return newDoubleDeltaEncodedChunk(d1, d0, true, ChunkLen)
 		},
 	},
 	Varbit: {
-		Name: "varbit",
+		Name: "Varbit",
 		New: func() Chunk {
 			return newVarbitChunk(varbitZeroEncoding)
 		},
 	},
 	Bigchunk: {
-		Name: "big-chunk",
+		Name: "BigChunk",
 		New: func() Chunk {
 			return newBigchunk()
 		},
 	},
 	PrometheusXorChunk: {
-		Name: "prometheus-xor-chunk",
+		Name: "PrometheusXorChunk",
 		New: func() Chunk {
 			return newPrometheusXorChunk()
 		},

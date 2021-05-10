@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -202,7 +203,7 @@ func (s *Scanner) running(ctx context.Context) error {
 			continue
 		}
 
-		var reader IndexReader
+		var reader chunk.IndexReader
 		switch c.IndexType {
 		case "gcp", "gcp-columnkey", "bigtable", "bigtable-hashed":
 			bigTable := s.storageCfg.GCPStorageConfig
@@ -213,6 +214,19 @@ func (s *Scanner) running(ctx context.Context) error {
 			}
 
 			reader = newBigtableIndexReader(bigTable.Project, bigTable.Instance, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
+		case "aws-dynamo":
+			cfg := s.storageCfg.AWSStorageConfig
+
+			if cfg.DynamoDB.URL == nil {
+				level.Error(s.logger).Log("msg", "cannot scan DynamoDB, missing configuration", "schemaFrom", c.From.String())
+				continue
+			}
+
+			var err error
+			reader, err = aws.NewDynamoDBIndexReader(cfg.DynamoDBConfig, s.schema, s.reg, s.logger, s.indexReaderRowsRead)
+			if err != nil {
+				level.Error(s.logger).Log("msg", "cannot scan DynamoDB", "err", err)
+			}
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue
@@ -297,12 +311,12 @@ func (s *Scanner) running(ctx context.Context) error {
 
 type tableToProcess struct {
 	table  string
-	reader IndexReader
+	reader chunk.IndexReader
 	start  time.Time
 	end    time.Time // Will not be set for non-periodic tables. Exclusive.
 }
 
-func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
+func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader chunk.IndexReader, fromUnixTimestamp, toUnixTimestamp int64, tablesConfig chunk.PeriodicTableConfig) ([]tableToProcess, error) {
 	tables, err := indexReader.IndexTableNames(ctx)
 	if err != nil {
 		return nil, err
@@ -346,7 +360,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader IndexRead
 	return result, nil
 }
 
-func (s *Scanner) processTable(ctx context.Context, table string, indexReader IndexReader) error {
+func (s *Scanner) processTable(ctx context.Context, table string, indexReader chunk.IndexReader) error {
 	tableLog := log.With(s.logger, "table", table)
 
 	tableProcessedFile := filepath.Join(s.cfg.OutputDirectory, table+".processed")
@@ -469,7 +483,7 @@ func shouldSkipOperationBecauseFileExists(file string) bool {
 
 func scanSingleTable(
 	ctx context.Context,
-	indexReader IndexReader,
+	indexReader chunk.IndexReader,
 	tableName string,
 	outDir string,
 	concurrency int,
@@ -497,7 +511,7 @@ func scanSingleTable(
 		})
 	}
 
-	var ps []IndexEntryProcessor
+	var ps []chunk.IndexEntryProcessor
 
 	for i := 0; i < concurrency; i++ {
 		ps = append(ps, newProcessor(outDir, result, allowed, ignored, series, indexEntries, ignoredEntries))

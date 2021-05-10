@@ -20,6 +20,11 @@
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 
+## Blocksconvert
+
+* [ENHANCEMENT] Scanner: add support for DynamoDB (v9 schema only). #3828
+
+
 ## 1.9.0 in progress
 
 * [CHANGE] Fix for CVE-2021-31232: Local file disclosure vulnerability when `-experimental.alertmanager.enable-api` is used. The HTTP basic auth `password_file` can be used as an attack vector to send any file content via a webhook. The alertmanager templates can be used as an attack vector to send any file content because the alertmanager can load any text file specified in the templates list. #4129

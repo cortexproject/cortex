@@ -25,7 +25,9 @@ import (
 )
 
 const (
-	maxt, mint                 = 0, 10
+	maxt, mint = 0, 10
+	// originalDefaultTenantLabel is the default tenant label with a prefix.
+	// It is used to prevent matcher clashes for timeseries that happen to have a label with the same name as the default tenant label.
 	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
 )
 
@@ -35,6 +37,7 @@ type mockTenantQueryableWithFilter struct {
 	queryErrByTenant map[string]error
 }
 
+// Querier implements the storage.Queryable interface.
 func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64) (storage.Querier, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -64,6 +67,8 @@ func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64)
 	return q, nil
 }
 
+// UseQueryable implements the querier.QueryableWithFilter interface.
+// It ensures the mockTenantQueryableWithFilter storage.Queryable is always used.
 func (m *mockTenantQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	return true
 }
@@ -92,7 +97,7 @@ func (m mockTenantQuerier) matrix() model.Matrix {
 		},
 	}
 
-	// add extra labels
+	// Add extra labels to every sample stream in the matrix.
 	for pos := range m.extraLabels {
 		if pos%2 == 0 {
 			continue
@@ -107,6 +112,7 @@ func (m mockTenantQuerier) matrix() model.Matrix {
 
 }
 
+// metricMatches returns whether or not the selector matches the provided metric.
 func metricMatches(m model.Metric, selector labels.Selector) bool {
 	var labelStrings []string
 	for key, value := range m {
@@ -126,23 +132,24 @@ func (m *mockSeriesSet) Next() bool {
 	return m.upstream.Next()
 }
 
-// At returns full series. Returned series should be iterable even after Next is called.
+// At implements the storage.SeriesSet interface. It returns full series. Returned series should be iterable even after Next is called.
 func (m *mockSeriesSet) At() storage.Series {
 	return m.upstream.At()
 }
 
-// The error that iteration as failed with.
+// Err implements the storage.SeriesSet interface. It returns the error that iteration as failed with.
 // When an error occurs, set cannot continue to iterate.
 func (m *mockSeriesSet) Err() error {
 	return m.queryErr
 }
 
-// A collection of warnings for the whole set.
+// Warnings implements the storage.SeriesSet interface. It returns a collection of warnings for the whole set.
 // Warnings could be returned even if iteration has not failed with error.
 func (m *mockSeriesSet) Warnings() storage.Warnings {
 	return m.warnings
 }
 
+// Select implements the storage.Querier interface.
 func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, _ := spanlogger.New(m.ctx, "mockTenantQuerier.select")
 	defer log.Span.Finish()
@@ -161,6 +168,8 @@ func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 	}
 }
 
+// LabelValues implements the storage.LabelQuerier interface.
+// The mockTenantQuerier returns all a sorted slice of all label values and does not support reducing the result set with matchers.
 func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if len(matchers) > 0 {
 		return nil, nil, errors.New("matchers are not implemented yet")
@@ -187,6 +196,8 @@ func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher)
 	return results, m.warnings, nil
 }
 
+// LabelNames implements the storage.LabelQuerier interface.
+// It returns a sorted slice of all label names in the querier.
 func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	if m.queryErr != nil {
 		return nil, nil, m.queryErr
@@ -206,16 +217,20 @@ func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return results, m.warnings, nil
 }
 
+// Close implements the storage.LabelQuerier interface.
 func (mockTenantQuerier) Close() error {
 	return nil
 }
 
 type selectorTestCase struct {
-	name        string
-	selector    []*labels.Matcher
+	name string
+	// selector is a slice of label matchers used to filter series in the test case.
+	selector []*labels.Matcher
+	// seriesCount is the expected number of series returned by a Select filtered by the Matchers in selector.
 	seriesCount int
 }
 
+// test runs a selectorTestCase using the provided querier.
 func (c selectorTestCase) test(querier storage.Querier) func(*testing.T) {
 	return func(t *testing.T) {
 		seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt}, c.selector...)
@@ -231,20 +246,24 @@ func (c selectorTestCase) test(querier storage.Querier) func(*testing.T) {
 }
 
 type mergeQueryableTestCase struct {
-	name                string
-	tenants             []string
-	expectedQuerierErr  error
-	labelNames          []string
+	name    string
+	tenants []string
+	// expectedQuerierErr is the error expected when retrieving the querier.
+	expectedQuerierErr error
+	// labelNames are the expected label names returned from the querier.
+	labelNames []string
+	// expectedLabelValues are the expected label values returned from the querier.
 	expectedLabelValues map[string][]string
-	selectorCases       []selectorTestCase
+	// selectorCases are sub test cases using specific Matchers.
+	selectorCases []selectorTestCase
 
-	// do not bypass in the case of single queriers
+	// doNotByPassSingleQuerier determines whether the MergeQueryable is by-passed in favor of a single querier.
 	doNotByPassSingleQuerier bool
 
-	// storage.Warnings expected when querying
+	// expectedWarnings is a slice of storage.Warnings messages expected when querying.
 	expectedWarnings []string
 
-	// error expected when querying
+	// expectedQueryErr is the error expected when querying.
 	expectedQueryErr error
 
 	queryable mockTenantQueryableWithFilter
@@ -270,7 +289,7 @@ func TestMergeQueryable(t *testing.T) {
 		{
 			name:       "single tenant without bypass",
 			tenants:    []string{"team-a"},
-			labelNames: []string{"__tenant_id__", "instance", "tenant-team-a"},
+			labelNames: []string{defaultTenantLabel, "instance", "tenant-team-a"},
 			expectedLabelValues: map[string][]string{
 				"instance": {"host1", "host2.team-a"},
 			},
@@ -441,6 +460,7 @@ func TestMergeQueryable(t *testing.T) {
 	}
 }
 
+// assertEqualWarnings asserts that all the expected warning messages are present.
 func assertEqualWarnings(t *testing.T, exp []string, act storage.Warnings) {
 	if len(exp) == 0 && len(act) == 0 {
 		return

@@ -663,7 +663,7 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 	level.Info(am.logger).Log("msg", "synchronizing alertmanager configs for users")
 	am.syncTotal.WithLabelValues(syncReason).Inc()
 
-	cfgs, err := am.loadAlertmanagerConfigs(ctx)
+	allUsers, cfgs, err := am.loadAlertmanagerConfigs(ctx)
 	if err != nil {
 		am.syncFailures.WithLabelValues(syncReason).Inc()
 		return err
@@ -671,6 +671,13 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 
 	am.syncConfigs(cfgs)
 	am.deleteUnusedLocalUserState()
+
+	// Currently, remote state persistence is only used when sharding is enabled.
+	if am.cfg.ShardingEnabled {
+		// Note when cleaning up remote state, remember that the user may not necessarily be configured
+		// in this instance. Therefore, pass the list of _all_ configured users to filter by.
+		am.deleteUnusedRemoteUserState(ctx, allUsers)
+	}
 
 	return nil
 }
@@ -697,11 +704,11 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 }
 
 // loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
-func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) ([]string, map[string]alertspb.AlertConfigDesc, error) {
 	// Find all users with an alertmanager config.
 	userIDs, err := am.store.ListAllUsers(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
+		return nil, nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
 	}
 	numUsersDiscovered := len(userIDs)
 
@@ -719,12 +726,12 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 	// Load the configs for the owned users.
 	configs, err := am.store.GetAlertConfigs(ctx, userIDs)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
+		return nil, nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
 	}
 
 	am.tenantsDiscovered.Set(float64(numUsersDiscovered))
 	am.tenantsOwned.Set(float64(numUsersOwned))
-	return configs, nil
+	return userIDs, configs, nil
 }
 
 func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
@@ -1145,6 +1152,35 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	}
 
 	return &alertmanagerpb.UpdateStateResponse{Status: alertmanagerpb.OK}, nil
+}
+
+// deleteUnusedRemoteUserState deletes state objects in remote storage for users that are no longer configured.
+
+func (am *MultitenantAlertmanager) deleteUnusedRemoteUserState(ctx context.Context, allUsers []string) {
+
+	users := make(map[string]struct{}, len(allUsers))
+	for _, userID := range allUsers {
+		users[userID] = struct{}{}
+	}
+
+	usersWithState, err := am.store.ListUsersWithState(ctx)
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "failed to list users with state", "err", err)
+		return
+	}
+
+	for _, userID := range usersWithState {
+		if _, ok := users[userID]; ok {
+			continue
+		}
+
+		err := am.store.DeleteFullState(ctx, userID)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "failed to delete remote state for user", "user", userID, "err", err)
+		} else {
+			level.Info(am.logger).Log("msg", "deleted remote state for user", "user", userID)
+		}
+	}
 }
 
 // deleteUnusedLocalUserState deletes local files for users that we no longer need.

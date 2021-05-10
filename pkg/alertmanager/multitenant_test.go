@@ -571,6 +571,82 @@ func TestMultitenantAlertmanager_deleteUnusedLocalUserState(t *testing.T) {
 	require.NotZero(t, dirs[user2]) // has config, files survived
 }
 
+func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		user1 = "user1"
+		user2 = "user2"
+	)
+
+	alertStore := prepareInMemoryAlertStore()
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	reg := prometheus.NewPedanticRegistry()
+	cfg := mockAlertmanagerConfig(t)
+
+	cfg.ShardingRing.ReplicationFactor = 1
+	cfg.ShardingRing.InstanceID = "instance"
+	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
+	cfg.ShardingEnabled = true
+
+	// Increase state write interval so that state gets written sooner, making test faster.
+	cfg.Persister.Interval = 500 * time.Millisecond
+
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, ringStore, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+	})
+	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+	// Configure the users and wait for the state persister to write some state for both.
+	{
+		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+			User:      user1,
+			RawConfig: simpleConfigOne,
+			Templates: []*alertspb.TemplateDesc{},
+		}))
+		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+			User:      user2,
+			RawConfig: simpleConfigOne,
+			Templates: []*alertspb.TemplateDesc{},
+		}))
+
+		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			_, err1 := alertStore.GetFullState(context.Background(), user1)
+			_, err2 := alertStore.GetFullState(context.Background(), user2)
+			return err1 == nil && err2 == nil
+		}, 5*time.Second, 100*time.Millisecond, "timed out waiting for state to be persisted")
+	}
+
+	// Perform another sync to trigger cleanup; this should have no effect.
+	{
+		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+
+		_, err = alertStore.GetFullState(context.Background(), user1)
+		require.NoError(t, err)
+		_, err = alertStore.GetFullState(context.Background(), user2)
+		require.NoError(t, err)
+	}
+
+	// Delete one configuration and trigger cleanup; state for only that user should be deleted.
+	{
+		require.NoError(t, alertStore.DeleteAlertConfig(ctx, user1))
+
+		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+
+		_, err = alertStore.GetFullState(context.Background(), user1)
+		require.Equal(t, alertspb.ErrNotFound, err)
+		_, err = alertStore.GetFullState(context.Background(), user2)
+		require.NoError(t, err)
+	}
+}
+
 func createFile(t *testing.T, path string) string {
 	dir := filepath.Dir(path)
 	require.NoError(t, os.MkdirAll(dir, 0777))
@@ -834,6 +910,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 				require.True(t, am.ringLifecycler.IsRegistered())
 				require.Equal(t, ring.JOINING.String(), am.ringLifecycler.GetState().String())
 			})
+			bkt.MockIter("alertmanager/", nil, nil)
 
 			// Once successfully started, the instance should be ACTIVE in the ring.
 			require.NoError(t, services.StartAndAwaitRunning(ctx, am))
@@ -1184,6 +1261,7 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	// Mock the store to fail listing configs.
 	bkt := &bucket.ClientMock{}
 	bkt.MockIter("alerts/", nil, errors.New("failed to list alerts"))
+	bkt.MockIter("alertmanager/", nil, nil)
 	store := bucketclient.NewBucketAlertStore(bkt, nil, log.NewNopLogger())
 
 	am, err := createMultitenantAlertmanager(amConfig, nil, nil, store, ringStore, nil, log.NewNopLogger(), nil)

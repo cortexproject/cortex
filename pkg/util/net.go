@@ -28,7 +28,9 @@ func GetFirstAddressOf(names []string) (string, error) {
 			level.Warn(util_log.Logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
 			continue
 		}
-		ipAddr = filterIPs(addrs)
+		if ip := filterIPs(addrs); ip != "" {
+			ipAddr = ip
+		}
 		if strings.HasPrefix(ipAddr, `169.254.`) || ipAddr == "" {
 			continue
 		}

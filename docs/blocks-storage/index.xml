@@ -2108,22 +2108,24 @@ All tools also start gRPC server (&lt;code>-server.grpc*&lt;/code> options), but
 &lt;ul>
 &lt;li>&lt;code>-schema-config-file&lt;/code> – this is standard Cortex schema file.&lt;/li>
 &lt;li>&lt;code>-bigtable.instance&lt;/code>, &lt;code>-bigtable.project&lt;/code> – options for BigTable access.&lt;/li>
+&lt;li>&lt;code>-dynamodb.url&lt;/code> - for DynamoDB access. Example &lt;code>dynamodb://us-east-1/&lt;/code>&lt;/li>
 &lt;li>&lt;code>-blocks-storage.backend&lt;/code> and corresponding &lt;code>-blocks-storage.*&lt;/code> options for storing plan files.&lt;/li>
 &lt;li>&lt;code>-scanner.output-dir&lt;/code> – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.&lt;/li>
 &lt;li>&lt;code>-scanner.allowed-users&lt;/code> – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.&lt;/li>
 &lt;li>&lt;code>-scanner.ignore-users-regex&lt;/code> - If plans for all users are generated (&lt;code>-scanner.allowed-users&lt;/code> is not set), then users matching this non-empty regular expression will be skipped.&lt;/li>
 &lt;li>&lt;code>-scanner.tables-limit&lt;/code> – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.&lt;/li>
 &lt;li>&lt;code>-scanner.tables&lt;/code> – Comma-separated list of tables to be scanned. Can be used to scan specific tables only. Note that schema is still used to find all tables first, and then this list is consulted to select only specified tables.&lt;/li>
+&lt;li>&lt;code>-scanner.scan-period-start&lt;/code> &amp;amp; &lt;code>-scanner.scan-period-end&lt;/code> - limit the scan to a particular date range (format like &lt;code>2020-12-31&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;p>Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
 For each table, it will fully read the table and generate a plan for each user and day stored in the table.
 Plan files are then uploaded to the configured blocks-storage bucket (at the &lt;code>-blocksconvert.bucket-prefix&lt;/code> location prefix), and local copies are deleted.
 After that, scanner continues with the next table until it scans them all or &lt;code>-scanner.tables-limit&lt;/code> is reached.&lt;/p>
-&lt;p>Note that even though &lt;code>blocksconvert&lt;/code> has options for configuring different Index store backends, &lt;strong>it only supports BigTable at the moment.&lt;/strong>&lt;/p>
+&lt;p>Note that even though &lt;code>blocksconvert&lt;/code> has options for configuring different Index store backends, &lt;strong>it only supports BigTable and DynamoDB at the moment.&lt;/strong>&lt;/p>
 &lt;p>It is expected that only single Scanner process is running.
 Scanner does the scanning of multiple table subranges concurrently.&lt;/p>
-&lt;p>Scanner exposes metrics with &lt;code>cortex_blocksconvert_scanner_&lt;/code> prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn&amp;rsquo;t close currently plan files until entire table has been scanned), scanned BigTable rows and parsed index entries.&lt;/p>
-&lt;p>&lt;strong>Scanner only supports schema version v9, v10 and v11. Earlier schema versions are currently not supported.&lt;/strong>&lt;/p>
+&lt;p>Scanner exposes metrics with &lt;code>cortex_blocksconvert_scanner_&lt;/code> prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn&amp;rsquo;t close currently plan files until entire table has been scanned), scanned rows and parsed index entries.&lt;/p>
+&lt;p>&lt;strong>Scanner only supports schema version v9 on DynamoDB; v9, v10 and v11 on BigTable. Earlier schema versions are currently not supported.&lt;/strong>&lt;/p>
 &lt;h3 id="scheduler">Scheduler&lt;/h3>
 &lt;p>Scheduler is started by running &lt;code>blocksconvert -target=scheduler&lt;/code>. It only needs to be configured with options to access the object store with blocks:&lt;/p>
 &lt;ul>
@@ -2163,8 +2165,8 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;h3 id="limitations">Limitations&lt;/h3>
 &lt;p>The &lt;code>blocksconvert&lt;/code> toolset currently has the following limitations:&lt;/p>
 &lt;ul>
-&lt;li>Scanner supports only BigTable for chunks index backend, and cannot currently scan other databases.&lt;/li>
-&lt;li>Supports only chunks schema versions v9, v10 and v11&lt;/li>
+&lt;li>Scanner supports only BigTable and DynamoDB for chunks index backend, and cannot currently scan other databases.&lt;/li>
+&lt;li>Supports only chunks schema versions v9 for DynamoDB; v9, v10 and v11 for Bigtable.&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
 &lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
 &lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>

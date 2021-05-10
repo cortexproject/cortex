@@ -9,7 +9,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// When changing this, please update documentation for Limits.NotificationIntegrationLimits field.
 var allowedIntegrationNames = []string{
 	"webhook", "email", "pagerduty", "opsgenie", "wechat", "slack", "victorops", "pushover",
 }

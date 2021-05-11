@@ -87,7 +87,7 @@ var (
 
 	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
 	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
-	errShardingUnsupportedStorage = errors.New("configdb or local not supported for -alertmanager-storage.backend with -alertmanager.sharding-enabled")
+	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 )
 
 func init() {

@@ -704,22 +704,21 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 }
 
 // loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
+// Returns the list of all users with a configuration, and the set of users which should be configured in this instance.
 func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) ([]string, map[string]alertspb.AlertConfigDesc, error) {
 	// Find all users with an alertmanager config.
-	userIDs, err := am.store.ListAllUsers(ctx)
+	allUserIDs, err := am.store.ListAllUsers(ctx)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
 	}
-	numUsersDiscovered := len(userIDs)
+	numUsersDiscovered := len(allUserIDs)
+	userIDs := make([]string, 0, len(allUserIDs))
 
 	// Filter out users not owned by this shard.
-	for i := 0; i < len(userIDs); {
-		if !am.isUserOwned(userIDs[i]) {
-			userIDs = append(userIDs[:i], userIDs[i+1:]...)
-			continue
+	for _, userID := range allUserIDs {
+		if am.isUserOwned(userID) {
+			userIDs = append(userIDs, userID)
 		}
-
-		i++
 	}
 	numUsersOwned := len(userIDs)
 
@@ -731,7 +730,7 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 
 	am.tenantsDiscovered.Set(float64(numUsersDiscovered))
 	am.tenantsOwned.Set(float64(numUsersOwned))
-	return userIDs, configs, nil
+	return allUserIDs, configs, nil
 }
 
 func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {

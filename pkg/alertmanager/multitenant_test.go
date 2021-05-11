@@ -581,23 +581,34 @@ func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
 
 	alertStore := prepareInMemoryAlertStore()
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
-	reg := prometheus.NewPedanticRegistry()
-	cfg := mockAlertmanagerConfig(t)
 
-	cfg.ShardingRing.ReplicationFactor = 1
-	cfg.ShardingRing.InstanceID = "instance"
-	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
-	cfg.ShardingEnabled = true
+	createInstance := func(i int) *MultitenantAlertmanager {
+		reg := prometheus.NewPedanticRegistry()
+		cfg := mockAlertmanagerConfig(t)
 
-	// Increase state write interval so that state gets written sooner, making test faster.
-	cfg.Persister.Interval = 500 * time.Millisecond
+		cfg.ShardingRing.ReplicationFactor = 1
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("instance-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.1-%d", i)
+		cfg.ShardingEnabled = true
 
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, ringStore, nil, log.NewNopLogger(), reg)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
-	})
-	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+		// Increase state write interval so that state gets written sooner, making test faster.
+		cfg.Persister.Interval = 500 * time.Millisecond
+
+		am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, ringStore, nil, log.NewLogfmtLogger(os.Stdout), reg)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+		})
+		require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+		return am
+	}
+
+	// Create two instances. With replication factor of 1, this means that only one
+	// of the instances will own the user. This tests that an instance does not delete
+	// state for users that are configured, but are owned by other instances.
+	am1 := createInstance(1)
+	am2 := createInstance(2)
 
 	// Configure the users and wait for the state persister to write some state for both.
 	{
@@ -612,7 +623,9 @@ func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
 			Templates: []*alertspb.TemplateDesc{},
 		}))
 
-		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		err := am1.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		err = am2.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 		require.NoError(t, err)
 
 		require.Eventually(t, func() bool {
@@ -624,7 +637,9 @@ func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
 
 	// Perform another sync to trigger cleanup; this should have no effect.
 	{
-		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		err := am1.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		err = am2.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 		require.NoError(t, err)
 
 		_, err = alertStore.GetFullState(context.Background(), user1)
@@ -637,7 +652,9 @@ func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
 	{
 		require.NoError(t, alertStore.DeleteAlertConfig(ctx, user1))
 
-		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		err := am1.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		err = am2.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 		require.NoError(t, err)
 
 		_, err = alertStore.GetFullState(context.Background(), user1)

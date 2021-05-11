@@ -93,8 +93,8 @@ func (c *Store) DeleteAlertConfig(ctx context.Context, user string) error {
 	return errReadOnly
 }
 
-// ListUsersWithState implements alertstore.AlertStore.
-func (c *Store) ListUsersWithState(ctx context.Context) ([]string, error) {
+// ListUsersWithFullState implements alertstore.AlertStore.
+func (c *Store) ListUsersWithFullState(ctx context.Context) ([]string, error) {
 	return nil, errState
 }
 

@@ -124,8 +124,8 @@ func (s *BucketAlertStore) DeleteAlertConfig(ctx context.Context, userID string)
 	return err
 }
 
-// ListUsersWithState implements alertstore.AlertStore.
-func (s *BucketAlertStore) ListUsersWithState(ctx context.Context) ([]string, error) {
+// ListUsersWithFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) ListUsersWithFullState(ctx context.Context) ([]string, error) {
 	var userIDs []string
 
 	err := s.amBucket.Iter(ctx, "", func(key string) error {

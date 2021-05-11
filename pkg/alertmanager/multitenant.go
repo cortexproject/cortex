@@ -703,8 +703,9 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 	return nil
 }
 
-// loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
-// Returns the list of all users with a configuration, and the set of users which should be configured in this instance.
+// loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy. Returns:
+// - The list of discovered users (all users with a configuration in storage)
+// - The configurations of users owned by this instance.
 func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) ([]string, map[string]alertspb.AlertConfigDesc, error) {
 	// Find all users with an alertmanager config.
 	allUserIDs, err := am.store.ListAllUsers(ctx)
@@ -712,18 +713,18 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 		return nil, nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
 	}
 	numUsersDiscovered := len(allUserIDs)
-	userIDs := make([]string, 0, len(allUserIDs))
+	ownedUserIDs := make([]string, 0, len(allUserIDs))
 
 	// Filter out users not owned by this shard.
 	for _, userID := range allUserIDs {
 		if am.isUserOwned(userID) {
-			userIDs = append(userIDs, userID)
+			ownedUserIDs = append(ownedUserIDs, userID)
 		}
 	}
-	numUsersOwned := len(userIDs)
+	numUsersOwned := len(ownedUserIDs)
 
 	// Load the configs for the owned users.
-	configs, err := am.store.GetAlertConfigs(ctx, userIDs)
+	configs, err := am.store.GetAlertConfigs(ctx, ownedUserIDs)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
 	}
@@ -1154,7 +1155,6 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 }
 
 // deleteUnusedRemoteUserState deletes state objects in remote storage for users that are no longer configured.
-
 func (am *MultitenantAlertmanager) deleteUnusedRemoteUserState(ctx context.Context, allUsers []string) {
 
 	users := make(map[string]struct{}, len(allUsers))
@@ -1162,7 +1162,7 @@ func (am *MultitenantAlertmanager) deleteUnusedRemoteUserState(ctx context.Conte
 		users[userID] = struct{}{}
 	}
 
-	usersWithState, err := am.store.ListUsersWithState(ctx)
+	usersWithState, err := am.store.ListUsersWithFullState(ctx)
 	if err != nil {
 		level.Warn(am.logger).Log("msg", "failed to list users with state", "err", err)
 		return

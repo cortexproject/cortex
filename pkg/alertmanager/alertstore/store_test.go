@@ -221,7 +221,7 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		_, err = store.GetFullState(ctx, "user-2")
 		assert.Equal(t, alertspb.ErrNotFound, err)
 
-		users, err := store.ListUsersWithState(ctx)
+		users, err := store.ListUsersWithFullState(ctx)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, []string{}, users)
 	}
@@ -249,7 +249,7 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, exists)
 
-		users, err := store.ListUsersWithState(ctx)
+		users, err := store.ListUsersWithFullState(ctx)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, []string{"user-1", "user-2"}, users)
 	}
@@ -266,7 +266,7 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, state2, res)
 
-		users, err := store.ListUsersWithState(ctx)
+		users, err := store.ListUsersWithFullState(ctx)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, []string{"user-2"}, users)
 

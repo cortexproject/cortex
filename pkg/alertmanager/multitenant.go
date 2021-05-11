@@ -479,12 +479,13 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 
 	if am.cfg.ShardingEnabled {
 		// Make sure that all the alertmanagers we were initially configured with have
-		// fetched state from the replicas, before advertising as ACTIVE and letting
-		// them shut-down. This will reduce the possibility that we lose state when
-		// scaling up or down.
+		// fetched state from the replicas, before advertising as ACTIVE. This will
+		// reduce the possibility that we lose state when new instances join/leave.
+		level.Info(am.logger).Log("msg", "waiting until initial state sync is complete for all users")
 		if err := am.waitInitialStateSync(ctx); err != nil {
-			return err
+			return errors.Wrap(err, "failed to wait for initial state sync")
 		}
+		level.Info(am.logger).Log("msg", "initial state sync is complete")
 
 		// With the initial sync now completed, we should have loaded all assigned alertmanager configurations to this instance. We can switch it to ACTIVE and start serving requests.
 		if err := am.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {

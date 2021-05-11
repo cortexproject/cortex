@@ -94,45 +94,75 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 
 func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 	tests := map[string]struct {
-		setup    func(t *testing.T, cfg *MultitenantAlertmanagerConfig)
+		setup    func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config)
 		expected error
 	}{
 		"should pass with default config": {
-			setup:    func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {},
+			setup:    func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {},
 			expected: nil,
 		},
 		"should fail if persistent interval is 0": {
-			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
 				cfg.Persister.Interval = 0
 			},
 			expected: errInvalidPersistInterval,
 		},
 		"should fail if persistent interval is negative": {
-			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
 				cfg.Persister.Interval = -1
 			},
 			expected: errInvalidPersistInterval,
 		},
 		"should fail if external URL ends with /": {
-			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
 				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix/"))
 			},
 			expected: errInvalidExternalURL,
 		},
 		"should succeed if external URL does not end with /": {
-			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig) {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
 				require.NoError(t, cfg.ExternalURL.Set("http://localhost/prefix"))
 			},
 			expected: nil,
+		},
+		"should succeed if sharding enabled and new storage configuration given with bucket client": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
+				cfg.ShardingEnabled = true
+				storageCfg.Backend = "s3"
+			},
+			expected: nil,
+		},
+		"should fail if sharding enabled and new storage store configuration given with local type": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
+				cfg.ShardingEnabled = true
+				storageCfg.Backend = "local"
+			},
+			expected: errShardingUnsupportedStorage,
+		},
+		"should fail if sharding enabled and new storage store configuration given with configdb type": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
+				cfg.ShardingEnabled = true
+				storageCfg.Backend = "configdb"
+			},
+			expected: errShardingUnsupportedStorage,
+		},
+		"should fail if sharding enabled and legacy store configuration given": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
+				cfg.ShardingEnabled = true
+				cfg.Store.Type = "s3"
+			},
+			expected: errShardingLegacyStorage,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			cfg := &MultitenantAlertmanagerConfig{}
+			storageCfg := alertstore.Config{}
 			flagext.DefaultValues(cfg)
-			testData.setup(t, cfg)
-			assert.Equal(t, testData.expected, cfg.Validate())
+			flagext.DefaultValues(&storageCfg)
+			testData.setup(t, cfg, &storageCfg)
+			assert.Equal(t, testData.expected, cfg.Validate(storageCfg))
 		})
 	}
 }

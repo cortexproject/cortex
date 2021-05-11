@@ -86,7 +86,9 @@ const (
 var (
 	statusTemplate *template.Template
 
-	errInvalidExternalURL = errors.New("the configured external URL is invalid: should not end with /")
+	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
+	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
+	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 )
 
 func init() {
@@ -175,7 +177,7 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-func (cfg *MultitenantAlertmanagerConfig) Validate() error {
+func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config) error {
 	if cfg.ExternalURL.URL != nil && strings.HasSuffix(cfg.ExternalURL.Path, "/") {
 		return errInvalidExternalURL
 	}
@@ -186,6 +188,15 @@ func (cfg *MultitenantAlertmanagerConfig) Validate() error {
 
 	if err := cfg.Persister.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.ShardingEnabled {
+		if !cfg.Store.IsDefaults() {
+			return errShardingLegacyStorage
+		}
+		if !storageCfg.IsFullStateSupported() {
+			return errShardingUnsupportedStorage
+		}
 	}
 
 	return nil

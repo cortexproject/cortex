@@ -153,6 +153,20 @@ func TestIsUserVisibleModule(t *testing.T) {
 	assert.False(t, result, "expects result be false when module does not exist")
 }
 
+func TestIsModuleRegistered(t *testing.T) {
+	successModule := "successModule"
+	failureModule := "failureModule"
+
+	m := NewManager()
+	m.RegisterModule(successModule, mockInitFunc)
+
+	var result = m.IsModuleRegistered(successModule)
+	assert.True(t, result, "module '%v' should be registered", successModule)
+
+	result = m.IsModuleRegistered(failureModule)
+	assert.False(t, result, "module '%v' should NOT be registered", failureModule)
+}
+
 func TestDependenciesForModule(t *testing.T) {
 	m := NewManager()
 	m.RegisterModule("test", nil)

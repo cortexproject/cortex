@@ -284,6 +284,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	return am, nil
 }
 
+func (am *Alertmanager) WaitInitialStateSync(ctx context.Context) error {
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitRunning(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for ring-based replication service")
+		}
+	}
+	return nil
+}
+
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
 func clusterWait(position func() int, timeout time.Duration) func() time.Duration {

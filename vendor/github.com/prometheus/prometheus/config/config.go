@@ -382,11 +382,21 @@ type ScrapeConfig struct {
 	MetricsPath string `yaml:"metrics_path,omitempty"`
 	// The URL scheme with which to fetch metrics from targets.
 	Scheme string `yaml:"scheme,omitempty"`
-	// More than this many samples post metric-relabeling will cause the scrape to fail.
+	// More than this many samples post metric-relabeling will cause the scrape to
+	// fail.
 	SampleLimit uint `yaml:"sample_limit,omitempty"`
 	// More than this many targets after the target relabeling will cause the
 	// scrapes to fail.
 	TargetLimit uint `yaml:"target_limit,omitempty"`
+	// More than this many labels post metric-relabeling will cause the scrape to
+	// fail.
+	LabelLimit uint `yaml:"label_limit,omitempty"`
+	// More than this label name length post metric-relabeling will cause the
+	// scrape to fail.
+	LabelNameLengthLimit uint `yaml:"label_name_length_limit,omitempty"`
+	// More than this label value length post metric-relabeling will cause the
+	// scrape to fail.
+	LabelValueLengthLimit uint `yaml:"label_value_length_limit,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -622,6 +632,7 @@ type RemoteWriteConfig struct {
 	Headers             map[string]string `yaml:"headers,omitempty"`
 	WriteRelabelConfigs []*relabel.Config `yaml:"write_relabel_configs,omitempty"`
 	Name                string            `yaml:"name,omitempty"`
+	SendExemplars       bool              `yaml:"send_exemplars,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.

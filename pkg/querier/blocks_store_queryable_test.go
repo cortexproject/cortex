@@ -514,9 +514,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			ctx := context.Background()
-			ctx = limiter.AddPerQueryLimiterToContext(ctx, testData.perQueryLimiter)
-
+			ctx := limiter.AddPerQueryLimiterToContext(context.Background(), testData.perQueryLimiter)
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 			finder := &blocksFinderMock{}

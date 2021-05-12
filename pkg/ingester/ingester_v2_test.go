@@ -1277,6 +1277,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 		})
 	}
 }
+
 func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
 	require.NoError(t, err)
@@ -3149,8 +3150,10 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
-	metricsToCheck := []string{memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
-		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total"}
+	metricsToCheck := []string{
+		memSeriesCreatedTotalName, memSeriesRemovedTotalName, "cortex_ingester_memory_users", "cortex_ingester_active_series",
+		"cortex_ingester_memory_metadata", "cortex_ingester_memory_metadata_created_total", "cortex_ingester_memory_metadata_removed_total",
+	}
 
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
@@ -3612,7 +3615,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 				},
 			},
 
-			expectedErr: wrapWithUser(errMaxSeriesLimitReached, "test"),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(makeLimitError(perInstanceMaxSeriesLimit, errPerInstanceMaxSeriesLimitExceeded), "test").Error()),
 		},
 
 		"should fail creating two users": {
@@ -3836,8 +3839,8 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 }
 
 func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {
-	var lbls = make([]labels.Labels, 0, count)
-	var samples = make([]cortexpb.Sample, 0, count)
+	lbls := make([]labels.Labels, 0, count)
+	samples := make([]cortexpb.Sample, 0, count)
 
 	for i := 0; i < count; i++ {
 		samples = append(samples, cortexpb.Sample{

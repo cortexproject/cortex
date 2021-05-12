@@ -52,6 +52,8 @@ const (
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
+	perInstanceMaxSeriesLimit = "per_instance_series_limit"
+
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
 
@@ -60,6 +62,8 @@ const (
 
 var (
 	errExemplarRef = errors.New("exemplars not ingested because series not already present")
+
+	errPerInstanceMaxSeriesLimitExceeded = fmt.Errorf("per-instance series limit exceeded, please contact administrator")
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -755,16 +759,17 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount     = 0
-		failedSamplesCount        = 0
-		succeededExemplarsCount   = 0
-		failedExemplarsCount      = 0
-		startAppend               = time.Now()
-		sampleOutOfBoundsCount    = 0
-		sampleOutOfOrderCount     = 0
-		newValueForTimestampCount = 0
-		perUserSeriesLimitCount   = 0
-		perMetricSeriesLimitCount = 0
+		succeededSamplesCount          = 0
+		failedSamplesCount             = 0
+		succeededExemplarsCount        = 0
+		failedExemplarsCount           = 0
+		startAppend                    = time.Now()
+		sampleOutOfBoundsCount         = 0
+		sampleOutOfOrderCount          = 0
+		newValueForTimestampCount      = 0
+		perUserSeriesLimitCount        = 0
+		perMetricSeriesLimitCount      = 0
+		perInstanceMaxSeriesLimitCount = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -838,6 +843,11 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
 				})
+				continue
+
+			case errMaxSeriesLimitReached:
+				perInstanceMaxSeriesLimitCount++
+				updateFirstPartial(func() error { return makeLimitError(perInstanceMaxSeriesLimit, errPerInstanceMaxSeriesLimitExceeded) })
 				continue
 			}
 
@@ -925,6 +935,9 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	}
 	if perMetricSeriesLimitCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+	}
+	if perInstanceMaxSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perInstanceMaxSeriesLimit, userID).Add(float64(perInstanceMaxSeriesLimitCount))
 	}
 
 	// Distributor counts both samples and metadata, so for consistency ingester does the same.

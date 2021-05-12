@@ -15,6 +15,7 @@ service Ingester {
   rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
   rpc Query(QueryRequest) returns (QueryResponse) {};
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
+  rpc QueryExemplars(ExemplarQueryRequest) returns (QueryResponse) {};
 
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
@@ -39,6 +40,16 @@ message QueryRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
   repeated LabelMatcher matchers = 3;
+}
+
+message Matchers {
+  repeated LabelMatcher matchers = 1;
+}
+
+message ExemplarQueryRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+  repeated Matchers matchers = 3;
 }
 
 message QueryResponse {

@@ -326,6 +326,7 @@ type Cortex struct {
 	Purger                   *purger.Purger
 	TombstonesLoader         *purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
+	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware queryrange.Tripperware
 

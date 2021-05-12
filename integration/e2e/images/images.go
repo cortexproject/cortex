@@ -7,7 +7,7 @@ package images
 
 var (
 	Memcached        = "memcached:1.6.1"
-	Minio            = "minio/minio:RELEASE.2019-12-30T05-45-39Z"
+	Minio            = "minio/minio:RELEASE.2021-04-22T15-44-28Z" // Last Apache2 release of minio.
 	Consul           = "consul:1.8.4"
 	ETCD             = "gcr.io/etcd-development/etcd:v3.4.7"
 	DynamoDB         = "amazon/dynamodb-local:1.11.477"

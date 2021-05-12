@@ -126,7 +126,7 @@ jobs:
         # locally and the download time doesn't account in the test execution time, which is subject
         # to a timeout
         run: |
-          docker pull minio/minio:RELEASE.2019-12-30T05-45-39Z
+          docker pull minio/minio:RELEASE.2021-04-22T15-44-28Z
           docker pull amazon/dynamodb-local:1.11.477
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7

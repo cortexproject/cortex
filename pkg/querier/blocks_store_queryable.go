@@ -3,6 +3,8 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"io"
 	"sort"
 	"strings"
@@ -423,7 +425,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		if maxChunksLimit > 0 {
 			leftChunksLimit -= numChunks
 		}
-
 		resultMtx.Unlock()
 
 		return queriedBlocks, nil
@@ -563,6 +564,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		queriedBlocks = []ulid.ULID(nil)
 		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
+		queryLimiter  = limiter.PerQueryLimiterFromContext(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -610,6 +612,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				// Response may either contain series, warning or hints.
 				if s := resp.GetSeries(); s != nil {
 					mySeries = append(mySeries, s)
+
+					//Add series fingerprint to query limiter; will return error if we are over the limit
+					limitErr := queryLimiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()), matchers)
+					if limitErr != nil {
+						return limitErr
+					}
 
 					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
 					if maxChunksLimit > 0 {

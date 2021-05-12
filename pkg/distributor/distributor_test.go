@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"io"
 	"math"
 	"net/http"
@@ -943,6 +944,59 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "the query hit the max number of chunks limit")
+}
+
+func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReached(t *testing.T) {
+	const maxSeriesLimit = 10
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.MaxSeriesPerQuery = maxSeriesLimit
+	ctx = limiter.NewPerQueryLimiterOnContext(ctx, maxSeriesLimit, 0)
+	// Prepare distributors.
+	ds, _, r, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+	defer stopAll(ds, r)
+
+	// Push a number of series below the max series limit. Each series has 1 sample,
+	initialSeries := maxSeriesLimit
+	writeReq := makeWriteRequest(0, initialSeries, 0)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	allSeriesMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
+	}
+
+	// Since the number of series is equal to the limit (but doesn't
+	// exceed it), we expect a query running on all series to succeed.
+	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+	assert.Len(t, queryRes.Chunkseries, initialSeries)
+
+	// Push more series to exceed the limit once we'll query back all series.
+	writeReq = &cortexpb.WriteRequest{}
+	for i := 0; i < initialSeries; i++ {
+		writeReq.Timeseries = append(writeReq.Timeseries,
+			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0),
+		)
+	}
+
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of series is exceeding the limit, we expect
+	// a query running on all series to fail.
+	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max number of series limit while")
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {

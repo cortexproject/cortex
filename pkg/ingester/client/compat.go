@@ -36,13 +36,13 @@ func FromQueryRequest(req *QueryRequest) (model.Time, model.Time, []*labels.Matc
 
 // ToExemplarQueryRequest builds an ExemplarQueryRequest proto.
 func ToExemplarQueryRequest(from, to model.Time, matchers ...[]*labels.Matcher) (*ExemplarQueryRequest, error) {
-	var reqMatchers []*Matchers
+	var reqMatchers []*LabelMatchers
 	for _, m := range matchers {
 		ms, err := toLabelMatchers(m)
 		if err != nil {
 			return nil, err
 		}
-		reqMatchers = append(reqMatchers, &Matchers{ms})
+		reqMatchers = append(reqMatchers, &LabelMatchers{ms})
 	}
 
 	return &ExemplarQueryRequest{

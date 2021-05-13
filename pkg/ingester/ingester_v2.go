@@ -157,8 +157,8 @@ func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.
 	return u.db.ChunkQuerier(ctx, mint, maxt)
 }
 
-func (u *userTSDB) ExemplarQuerier(_ context.Context) (storage.ExemplarQuerier, error) {
-	return u.db.ExemplarQuerier(nil)
+func (u *userTSDB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
+	return u.db.ExemplarQuerier(ctx)
 }
 
 func (u *userTSDB) Head() *tsdb.Head {
@@ -1035,7 +1035,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	return result, ss.Err()
 }
 
-func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.QueryResponse, error) {
+func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1050,11 +1050,11 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 
 	db := i.getTSDB(userID)
 	if db == nil {
-		return &client.QueryResponse{}, nil
+		return &client.ExemplarQueryResponse{}, nil
 	}
 
-	// Prometheus' exemplar querier does nothing with a context that you pass it.
-	q, err := db.ExemplarQuerier(nil)
+	// Note that currently Prometheus' exemplar querier does nothing with a context that you pass it.
+	q, err := db.ExemplarQuerier(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1067,7 +1067,7 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 
 	numExemplars := 0
 
-	result := &client.QueryResponse{}
+	result := &client.ExemplarQueryResponse{}
 	for _, es := range res {
 		ts := cortexpb.TimeSeries{
 			Labels:    cortexpb.FromLabelsToLabelAdapters(es.SeriesLabels),

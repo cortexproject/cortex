@@ -36,7 +36,7 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 			return err
 		}
 
-		replicationSet, err := d.GetIngestersForQuery(ctx, false, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -54,15 +54,16 @@ func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers .
 	return matrix, err
 }
 
-func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*ingester_client.QueryResponse, error) {
-	var result *ingester_client.QueryResponse
+func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*ingester_client.ExemplarQueryResponse, error) {
+	var result *ingester_client.ExemplarQueryResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryExemplars", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		req, err := ingester_client.ToExemplarQueryRequest(from, to, matchers...)
 		if err != nil {
 			return err
 		}
 
-		replicationSet, err := d.GetIngestersForQuery(ctx, false, nil)
+		// We ask for all ingesters without passing matchers because exemplar queries take in an array of array of label matchers.
+		replicationSet, err := d.GetIngestersForQuery(ctx, nil)
 		if err != nil {
 			return err
 		}
@@ -94,7 +95,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		replicationSet, err := d.GetIngestersForQuery(ctx, true, matchers...)
+		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
 		if err != nil {
 			return err
 		}
@@ -114,7 +115,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 
 // GetIngestersForQuery returns a replication set including all ingesters that should be queried
 // to fetch series matching input label matchers.
-func (d *Distributor) GetIngestersForQuery(ctx context.Context, exemplarQuery bool, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
+func (d *Distributor) GetIngestersForQuery(ctx context.Context, matchers ...*labels.Matcher) (ring.ReplicationSet, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return ring.ReplicationSet{}, err
@@ -132,7 +133,7 @@ func (d *Distributor) GetIngestersForQuery(ctx context.Context, exemplarQuery bo
 	}
 
 	// If "shard by all labels" is disabled, we can get ingesters by metricName if exists.
-	if !d.cfg.ShardByAllLabels && !exemplarQuery {
+	if !d.cfg.ShardByAllLabels && len(matchers) > 0 {
 		metricNameMatcher, _, ok := extract.MetricNameMatcherFromMatchers(matchers)
 
 		if ok && metricNameMatcher.Type == labels.MatchEqual {
@@ -211,7 +212,8 @@ func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.Re
 	return result, nil
 }
 
-// mergeExemplarSets merges and dedupes two sets of already sorted sample pairs.
+// mergeExemplarSets merges and dedupes two sets of already sorted exemplar pairs.
+// Both a and b should be lists of exemplars from the same series.
 // Defined here instead of pkg/util to avoid a import cycle.
 func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 	result := make([]cortexpb.Exemplar, 0, len(a)+len(b))
@@ -236,7 +238,7 @@ func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 }
 
 // queryIngestersExemplars queries the ingesters for exemplars.
-func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.QueryResponse, error) {
+func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
 	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
 	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
@@ -283,7 +285,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		result = append(result, exemplarResults[k])
 	}
 
-	return &ingester_client.QueryResponse{Timeseries: result}, nil
+	return &ingester_client.ExemplarQueryResponse{Timeseries: result}, nil
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.

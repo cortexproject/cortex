@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
@@ -336,9 +335,9 @@ func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matche
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(model.Matrix), args.Error(1)
 }
-func (m *mockDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) ([]exemplar.QueryResult, error) {
+func (m *mockDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).([]exemplar.QueryResult), args.Error(1)
+	return args.Get(0).(*client.ExemplarQueryResponse), args.Error(1)
 }
 func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	args := m.Called(ctx, from, to, matchers)

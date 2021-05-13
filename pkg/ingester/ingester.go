@@ -886,7 +886,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 }
 
 // Query implements service.IngesterServer
-func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.QueryResponse, error) {
+func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {
 		return nil, err
 	}

@@ -226,7 +226,7 @@ func TestIngester_v2Push(t *testing.T) {
 
 				# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
 				# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
-				cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1000
+				cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1
 
 				# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
 				# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter

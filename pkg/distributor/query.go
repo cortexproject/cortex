@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"io"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -190,7 +190,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 	var (
 		chunksLimit  = d.limits.MaxChunksPerQueryFromIngesters(userID)
 		chunksCount  = atomic.Int32{}
-		queryLimiter = limiter.PerQueryLimiterFromContext(ctx)
+		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 		matchers, _  = ingester_client.FromLabelMatchers(req.Matchers)
 	)
 
@@ -233,8 +233,13 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 				}
 			}
 			for _, series := range resp.Chunkseries {
-				//Add series, with fingerprint inside of limiter
-				limitErr := queryLimiter.AddFingerPrint(series.Labels, matchers)
+				limitErr := queryLimiter.AddSeries(series.Labels, matchers)
+				if limitErr != nil {
+					return nil, limitErr
+				}
+			}
+			for _, series := range resp.Timeseries {
+				limitErr := queryLimiter.AddSeries(series.Labels, matchers)
 				if limitErr != nil {
 					return nil, limitErr
 				}

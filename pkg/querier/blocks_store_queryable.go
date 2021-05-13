@@ -3,8 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"io"
 	"sort"
 	"strings"
@@ -29,6 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -39,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -564,7 +564,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		queriedBlocks = []ulid.ULID(nil)
 		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
-		queryLimiter  = limiter.PerQueryLimiterFromContext(ctx)
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -613,8 +613,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if s := resp.GetSeries(); s != nil {
 					mySeries = append(mySeries, s)
 
-					//Add series fingerprint to query limiter; will return error if we are over the limit
-					limitErr := queryLimiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()), matchers)
+					// Add series fingerprint to query limiter; will return error if we are over the limit
+					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()), matchers)
 					if limitErr != nil {
 						return limitErr
 					}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -223,9 +223,8 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 		if err != nil {
 			return nil, err
 		}
-		//Take the set tenant limits
-		//TODO When Chunk Bytes per Query Limit is created take that in here (Currently Unlimited)
-		ctx = limiter.NewPerQueryLimiterOnContext(ctx, limits.MaxSeriesPerQuery(userID), 0)
+		// Take the set tenant limits
+		ctx = limiter.NewQueryLimiterOnContext(ctx, limits.MaxSeriesPerQuery(userID))
 
 		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, limits, cfg.MaxQueryIntoFuture)
 		if err == errEmptyTimeRange {

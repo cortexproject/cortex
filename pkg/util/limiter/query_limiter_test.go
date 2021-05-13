@@ -2,11 +2,13 @@ package limiter
 
 import (
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"testing"
+
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestPerQueryLimiter_AddFingerPrint(t *testing.T) {
@@ -27,11 +29,11 @@ func TestPerQueryLimiter_AddFingerPrint(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 		}
 
-		limiter = NewPerQueryLimiter(100, 100)
+		limiter = NewQueryLimiter(100)
 	)
-	limiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
-	err := limiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
-	assert.Equal(t, 2, limiter.UniqueFingerPrints())
+	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
+	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
+	assert.Equal(t, 2, limiter.UniqueSeries())
 	assert.Nil(t, err)
 
 }
@@ -54,11 +56,11 @@ func TestPerQueryLimiter_AddFingerPrintExceedLimit(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 		}
 
-		limiter = NewPerQueryLimiter(1, 1)
+		limiter = NewQueryLimiter(1)
 	)
-	err := limiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
+	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
 	assert.Equal(t, nil, err)
-	err = limiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
+	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
 	require.Error(t, err)
 }
 
@@ -80,24 +82,10 @@ func BenchmarkPerQueryLimiter_AddFingerPrint(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		limiter := NewPerQueryLimiter(10000, 10000)
+		limiter := NewQueryLimiter(10000)
 		for _, s := range series {
-			limiter.AddFingerPrint(cortexpb.FromLabelsToLabelAdapters(s), matchers)
+			limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s), matchers)
 		}
 	}
 
-}
-
-func TestPerQueryLimiter_AddChunkBytes(t *testing.T) {
-	limiter := NewPerQueryLimiter(100, 100)
-	err := limiter.AddChunkBytes(int32(10))
-	assert.Equal(t, int32(10), limiter.ChunkBytesCount())
-	assert.Nil(t, err)
-}
-
-func TestPerQueryLimiter_AddChunkBytesExceedLimit(t *testing.T) {
-	limiter := NewPerQueryLimiter(100, 10)
-	err := limiter.AddChunkBytes(int32(11))
-	assert.Equal(t, int32(11), limiter.ChunkBytesCount())
-	require.Error(t, err)
 }

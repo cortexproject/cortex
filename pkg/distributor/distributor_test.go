@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"io"
 	"math"
 	"net/http"
@@ -41,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -952,7 +952,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.MaxSeriesPerQuery = maxSeriesLimit
-	ctx = limiter.NewPerQueryLimiterOnContext(ctx, maxSeriesLimit, 0)
+	ctx = limiter.NewQueryLimiterOnContext(ctx, maxSeriesLimit)
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
 		numIngesters:     3,

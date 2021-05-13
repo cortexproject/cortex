@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -37,7 +38,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -86,7 +86,9 @@ const (
 var (
 	statusTemplate *template.Template
 
-	errInvalidExternalURL = errors.New("the configured external URL is invalid: should not end with /")
+	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
+	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
+	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 )
 
 func init() {
@@ -158,9 +160,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
-
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
-
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
@@ -177,7 +177,7 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-func (cfg *MultitenantAlertmanagerConfig) Validate() error {
+func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config) error {
 	if cfg.ExternalURL.URL != nil && strings.HasSuffix(cfg.ExternalURL.Path, "/") {
 		return errInvalidExternalURL
 	}
@@ -188,6 +188,15 @@ func (cfg *MultitenantAlertmanagerConfig) Validate() error {
 
 	if err := cfg.Persister.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.ShardingEnabled {
+		if !cfg.Store.IsDefaults() {
+			return errShardingLegacyStorage
+		}
+		if !storageCfg.IsFullStateSupported() {
+			return errShardingUnsupportedStorage
+		}
 	}
 
 	return nil
@@ -214,6 +223,28 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 	}, []string{"user"})
 
 	return m
+}
+
+// Limits defines limits used by Alertmanager.
+type Limits interface {
+	// AlertmanagerReceiversBlockCIDRNetworks returns the list of network CIDRs that should be blocked
+	// in the Alertmanager receivers for the given user.
+	AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR
+
+	// AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
+	// in the Alertmanager receivers for the given user.
+	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
+
+	// EmailNotificationRateLimit returns limit used by rate-limiter. If set to 0, no emails are allowed.
+	// rate.Inf = all emails are allowed.
+	//
+	// Note that when  negative or zero values specified by user are translated to rate.Limit by Overrides,
+	// and may have different meaning there.
+	EmailNotificationRateLimit(tenant string) rate.Limit
+
+	// EmailNotificationBurst returns burst-size for rate limiter. If 0, no notifications are allowed except
+	// when limit == rate.Inf.
+	EmailNotificationBurst(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -258,6 +289,8 @@ type MultitenantAlertmanager struct {
 	peer                    *cluster.Peer
 	alertmanagerClientsPool ClientsPool
 
+	limits Limits
+
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
 	tenantsOwned      prometheus.Gauge
@@ -267,7 +300,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alertstore.AlertStore, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alertstore.AlertStore, limits Limits, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -327,10 +360,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 		}
 	}
 
-	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, logger, registerer)
+	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, limits, logger, registerer)
 }
 
-func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store alertstore.AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store alertstore.AlertStore, ringStore kv.Client, limits Limits, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	am := &MultitenantAlertmanager{
 		cfg:                 cfg,
 		fallbackConfig:      string(fallbackConfig),
@@ -342,6 +375,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		store:               store,
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
+		limits:              limits,
 		ringCheckErrors: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_alertmanager_ring_check_errors_total",
 			Help: "Number of errors that have occurred when checking the ring for ownership.",
@@ -467,6 +501,15 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}
 
 	if am.cfg.ShardingEnabled {
+		// Make sure that all the alertmanagers we were initially configured with have
+		// fetched state from the replicas, before advertising as ACTIVE. This will
+		// reduce the possibility that we lose state when new instances join/leave.
+		level.Info(am.logger).Log("msg", "waiting until initial state sync is complete for all users")
+		if err := am.waitInitialStateSync(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for initial state sync")
+		}
+		level.Info(am.logger).Log("msg", "initial state sync is complete")
+
 		// With the initial sync now completed, we should have loaded all assigned alertmanager configurations to this instance. We can switch it to ACTIVE and start serving requests.
 		if err := am.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 			return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
@@ -652,6 +695,23 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 	return nil
 }
 
+func (am *MultitenantAlertmanager) waitInitialStateSync(ctx context.Context) error {
+	am.alertmanagersMtx.Lock()
+	ams := make([]*Alertmanager, 0, len(am.alertmanagers))
+	for _, userAM := range am.alertmanagers {
+		ams = append(ams, userAM)
+	}
+	am.alertmanagersMtx.Unlock()
+
+	for _, userAM := range ams {
+		if err := userAM.WaitInitialStateSync(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // stopping runs when MultitenantAlertmanager transitions to Stopping state.
 func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
@@ -710,7 +770,7 @@ func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
 		return true
 	}
 
-	alertmanagers, err := am.ring.Get(shardByUser(userID), RingOp, nil, nil, nil)
+	alertmanagers, err := am.ring.Get(shardByUser(userID), SyncRingOp, nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
 		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
@@ -765,7 +825,12 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var hasTemplateChanges bool
 
 	for _, tmpl := range cfg.Templates {
-		hasChanged, err := storeTemplateFile(filepath.Join(am.getTenantDirectory(cfg.User), templatesDir), tmpl.Filename, tmpl.Body)
+		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.getTenantDirectory(cfg.User), templatesDir), tmpl.Filename)
+		if err != nil {
+			return err
+		}
+
+		hasChanged, err := storeTemplateFile(templateFilepath, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -863,7 +928,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	newAM, err := New(&Config{
 		UserID:            userID,
 		TenantDataDir:     tenantDir,
-		Logger:            util_log.Logger,
+		Logger:            am.logger,
 		Peer:              am.peer,
 		PeerTimeout:       am.cfg.Cluster.PeerTimeout,
 		Retention:         am.cfg.Retention,
@@ -873,6 +938,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 		Store:             am.store,
 		PersisterConfig:   am.cfg.Persister,
+		Limits:            am.limits,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
@@ -1212,30 +1278,68 @@ func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// storeTemplateFile stores template file with given content into specific directory.
-// Since templateFileName is provided by end-user, it is verified that it doesn't do any path-traversal.
-// Returns true, if file content has changed (new or updated file), false if file with the same name
-// and content was already stored locally.
-func storeTemplateFile(dir, templateFileName, content string) (bool, error) {
-	if templateFileName != filepath.Base(templateFileName) {
-		return false, fmt.Errorf("template file name '%s' is not not valid", templateFileName)
+// validateTemplateFilename validated the template filename and returns error if it's not valid.
+// The validation done in this function is a first fence to avoid having a tenant submitting
+// a config which may escape the per-tenant data directory on disk.
+func validateTemplateFilename(filename string) error {
+	if filepath.Base(filename) != filename {
+		return fmt.Errorf("invalid template name %q: the template name cannot contain any path", filename)
 	}
 
+	// Further enforce no path in the template name.
+	if filepath.Dir(filepath.Clean(filename)) != "." {
+		return fmt.Errorf("invalid template name %q: the template name cannot contain any path", filename)
+	}
+
+	return nil
+}
+
+// safeTemplateFilepath builds and return the template filepath within the provided dir.
+// This function also performs a security check to make sure the provided templateName
+// doesn't contain a relative path escaping the provided dir.
+func safeTemplateFilepath(dir, templateName string) (string, error) {
+	// We expect all template files to be stored and referenced within the provided directory.
+	containerDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+
+	// Build the actual path of the template.
+	actualPath, err := filepath.Abs(filepath.Join(containerDir, templateName))
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure the actual path of the template is within the expected directory.
+	// This check is a counter-measure to make sure the tenant is not trying to
+	// escape its own directory on disk.
+	if !strings.HasPrefix(actualPath, containerDir) {
+		return "", fmt.Errorf("invalid template name %q: the template filepath is escaping the per-tenant local directory", templateName)
+	}
+
+	return actualPath, nil
+}
+
+// storeTemplateFile stores template file at the given templateFilepath.
+// Returns true, if file content has changed (new or updated file), false if file with the same name
+// and content was already stored locally.
+func storeTemplateFile(templateFilepath, content string) (bool, error) {
+	// Make sure the directory exists.
+	dir := filepath.Dir(templateFilepath)
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return false, fmt.Errorf("unable to create Alertmanager templates directory %q: %s", dir, err)
 	}
 
-	file := filepath.Join(dir, templateFileName)
 	// Check if the template file already exists and if it has changed
-	if tmpl, err := ioutil.ReadFile(file); err == nil && string(tmpl) == content {
+	if tmpl, err := ioutil.ReadFile(templateFilepath); err == nil && string(tmpl) == content {
 		return false, nil
 	} else if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
 
-	if err := ioutil.WriteFile(file, []byte(content), 0644); err != nil {
-		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", file, err)
+	if err := ioutil.WriteFile(templateFilepath, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", templateFilepath, err)
 	}
 
 	return true, nil

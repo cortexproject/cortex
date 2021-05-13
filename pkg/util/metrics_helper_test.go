@@ -95,6 +95,45 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 	}, out2)
 }
 
+func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
+	const (
+		numMetrics         = 1000
+		numLabelsPerMetric = 10
+	)
+
+	// Generate metrics and add them to a metric family.
+	mf := &dto.MetricFamily{Metric: make([]*dto.Metric, 0, numMetrics)}
+	for i := 0; i < numMetrics; i++ {
+		labels := []*dto.LabelPair{{
+			Name:  proto.String("unique"),
+			Value: proto.String(strconv.Itoa(i)),
+		}}
+
+		for l := 1; l < numLabelsPerMetric; l++ {
+			labels = append(labels, &dto.LabelPair{
+				Name:  proto.String(fmt.Sprintf("label_%d", l)),
+				Value: proto.String(fmt.Sprintf("value_%d", l)),
+			})
+		}
+
+		mf.Metric = append(mf.Metric, &dto.Metric{
+			Label:   labels,
+			Counter: &dto.Counter{Value: proto.Float64(1.5)},
+		})
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		out := getMetricsWithLabelNames(mf, []string{"label_1", "label_2", "label_3"})
+
+		if expected := 1; len(out) != expected {
+			b.Fatalf("unexpected number of output groups: expected = %d got = %d", expected, len(out))
+		}
+	}
+}
+
 func makeLabels(namesAndValues ...string) []*dto.LabelPair {
 	out := []*dto.LabelPair(nil)
 

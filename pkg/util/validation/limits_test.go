@@ -10,7 +10,10 @@ import (
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // mockTenantLimits exposes per-tenant limits based on a provided map
@@ -64,6 +67,43 @@ func TestLimits_Validate(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.limits.Validate(testData.shardByAllLabels))
+		})
+	}
+}
+
+func TestOverrides_MaxChunksPerQueryFromStore(t *testing.T) {
+	tests := map[string]struct {
+		setup    func(limits *Limits)
+		expected int
+	}{
+		"should return the default legacy setting with the default config": {
+			setup:    func(limits *Limits) {},
+			expected: 2000000,
+		},
+		"the new config option should take precedence over the deprecated one": {
+			setup: func(limits *Limits) {
+				limits.MaxChunksPerQueryFromStore = 10
+				limits.MaxChunksPerQuery = 20
+			},
+			expected: 20,
+		},
+		"the deprecated config option should be used if the new config option is unset": {
+			setup: func(limits *Limits) {
+				limits.MaxChunksPerQueryFromStore = 10
+			},
+			expected: 10,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			limits := Limits{}
+			flagext.DefaultValues(&limits)
+			testData.setup(&limits)
+
+			overrides, err := NewOverrides(limits, nil)
+			require.NoError(t, err)
+			assert.Equal(t, testData.expected, overrides.MaxChunksPerQueryFromStore("test"))
 		})
 	}
 }
@@ -298,5 +338,61 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: time.Hour},
 	} {
 		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroDurationPerTenant(tc.tenantIDs, ov.MaxQueryLength))
+	}
+}
+
+func TestAlertmanagerEmailNotificationLimits(t *testing.T) {
+	for name, tc := range map[string]struct {
+		inputYAML         string
+		expectedRateLimit rate.Limit
+		expectedBurstSize int
+	}{
+		"zero limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: 0
+alertmanager_email_notification_burst_size: 0
+`,
+			expectedRateLimit: rate.Inf,
+			expectedBurstSize: 0,
+		},
+
+		"negative limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: -10
+alertmanager_email_notification_burst_size: 5
+`,
+			expectedRateLimit: 0,
+			expectedBurstSize: 5,
+		},
+
+		"positive limit, negative burst": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: 222
+alertmanager_email_notification_burst_size: -1
+`,
+			expectedRateLimit: 222,
+			expectedBurstSize: 0,
+		},
+
+		"infinte limit": {
+			inputYAML: `
+alertmanager_email_notification_rate_limit: .inf
+alertmanager_email_notification_burst_size: 50
+`,
+			expectedRateLimit: rate.Inf,
+			expectedBurstSize: 50,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			limitsYAML := Limits{}
+			err := yaml.Unmarshal([]byte(tc.inputYAML), &limitsYAML)
+			require.NoError(t, err, "expected to be able to unmarshal from YAML")
+
+			ov, err := NewOverrides(limitsYAML, nil)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedRateLimit, ov.EmailNotificationRateLimit("user"))
+			require.Equal(t, tc.expectedBurstSize, ov.EmailNotificationBurst("user"))
+		})
 	}
 }

@@ -40,10 +40,14 @@ import (
 	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -65,6 +69,7 @@ type Config struct {
 	PeerTimeout time.Duration
 	Retention   time.Duration
 	ExternalURL *url.URL
+	Limits      Limits
 
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
@@ -95,6 +100,9 @@ type Alertmanager struct {
 	mux             *http.ServeMux
 	registry        *prometheus.Registry
 
+	// Pipeline created during last ApplyConfig call. Used for testing only.
+	lastPipeline notify.Stage
+
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
 	// Given its metrics don't have any variable labels we need to re-use the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
@@ -103,6 +111,8 @@ type Alertmanager struct {
 	// Further, in upstream AM, this metric is handled using the config coordinator which we don't use
 	// hence we need to generate the metric ourselves.
 	configHashMetric prometheus.Gauge
+
+	rateLimitedNotifications *prometheus.CounterVec
 }
 
 var (
@@ -151,6 +161,11 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Name: "alertmanager_config_hash",
 			Help: "Hash of the currently loaded alertmanager configuration.",
 		}),
+
+		rateLimitedNotifications: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_notification_rate_limited_total",
+			Help: "Number of rate-limited notifications per integration.",
+		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
 	}
 
 	am.registry = reg
@@ -167,7 +182,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager with ring-based replication")
 		state := newReplicatedStates(cfg.UserID, cfg.ReplicationFactor, cfg.Replicator, cfg.Store, am.logger, am.registry)
 		am.state = state
-		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger)
+		am.persister = newStatePersister(cfg.PersisterConfig, cfg.UserID, state, cfg.Store, am.logger, am.registry)
 	} else {
 		level.Debug(am.logger).Log("msg", "starting tenant alertmanager without replication")
 		am.state = &NilPeer{}
@@ -269,6 +284,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	return am, nil
 }
 
+func (am *Alertmanager) WaitInitialStateSync(ctx context.Context) error {
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitRunning(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for ring-based replication service")
+		}
+	}
+	return nil
+}
+
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
 func clusterWait(position func() int, timeout time.Duration) func() time.Duration {
@@ -280,10 +304,13 @@ func clusterWait(position func() int, timeout time.Duration) func() time.Duratio
 // ApplyConfig applies a new configuration to an Alertmanager.
 func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg string) error {
 	templateFiles := make([]string, len(conf.Templates))
-	if len(conf.Templates) > 0 {
-		for i, t := range conf.Templates {
-			templateFiles[i] = filepath.Join(am.cfg.TenantDataDir, templatesDir, t)
+	for i, t := range conf.Templates {
+		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.cfg.TenantDataDir, templatesDir), t)
+		if err != nil {
+			return err
 		}
+
+		templateFiles[i] = templateFilepath
 	}
 
 	tmpl, err := template.FromGlobs(templateFiles...)
@@ -315,7 +342,20 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		return d + waitFunc()
 	}
 
-	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, am.logger)
+	// Create a firewall binded to the per-tenant config.
+	firewallDialer := util_net.NewFirewallDialer(newFirewallDialerConfigProvider(userID, am.cfg.Limits))
+
+	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger, func(integrationName string, notifier notify.Notifier) notify.Notifier {
+		if integrationName == "email" && am.cfg.Limits != nil {
+			rl := &tenantRateLimits{
+				tenant: userID,
+				limits: am.cfg.Limits,
+			}
+
+			return newRateLimitedNotifier(notifier, rl, 10*time.Second, am.rateLimitedNotifications.WithLabelValues(integrationName))
+		}
+		return notifier
+	})
 	if err != nil {
 		return nil
 	}
@@ -334,6 +374,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.nflog,
 		am.state,
 	)
+	am.lastPipeline = pipeline
 	am.dispatcher = dispatch.NewDispatcher(
 		am.alerts,
 		dispatch.NewRoute(conf.Route, nil),
@@ -407,10 +448,10 @@ func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger log.Logger) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, notifierWrapper func(string, notify.Notifier) notify.Notifier) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
-		integrations, err := buildReceiverIntegrations(rcv, tmpl, logger)
+		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger, notifierWrapper)
 		if err != nil {
 			return nil, err
 		}
@@ -422,7 +463,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, logger
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration
@@ -432,33 +473,39 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 				errs.Add(err)
 				return
 			}
+			n = wrapper(name, n)
 			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
 		}
 	)
 
+	// Inject the firewall to any receiver integration supporting it.
+	httpOps := []commoncfg.HTTPClientOption{
+		commoncfg.WithDialContextFunc(firewallDialer.DialContext),
+	}
+
 	for i, c := range nc.WebhookConfigs {
-		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l) })
+		add("webhook", i, c, func(l log.Logger) (notify.Notifier, error) { return webhook.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.EmailConfigs {
 		add("email", i, c, func(l log.Logger) (notify.Notifier, error) { return email.New(c, tmpl, l), nil })
 	}
 	for i, c := range nc.PagerdutyConfigs {
-		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l) })
+		add("pagerduty", i, c, func(l log.Logger) (notify.Notifier, error) { return pagerduty.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.OpsGenieConfigs {
-		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l) })
+		add("opsgenie", i, c, func(l log.Logger) (notify.Notifier, error) { return opsgenie.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.WechatConfigs {
-		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l) })
+		add("wechat", i, c, func(l log.Logger) (notify.Notifier, error) { return wechat.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.SlackConfigs {
-		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l) })
+		add("slack", i, c, func(l log.Logger) (notify.Notifier, error) { return slack.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.VictorOpsConfigs {
-		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l) })
+		add("victorops", i, c, func(l log.Logger) (notify.Notifier, error) { return victorops.New(c, tmpl, l, httpOps...) })
 	}
 	for i, c := range nc.PushoverConfigs {
-		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l) })
+		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
 	}
 	if errs.Len() > 0 {
 		return nil, &errs
@@ -491,3 +538,36 @@ func (p *NilPeer) AddState(string, cluster.State, prometheus.Registerer) cluster
 type NilChannel struct{}
 
 func (c *NilChannel) Broadcast([]byte) {}
+
+type firewallDialerConfigProvider struct {
+	userID string
+	limits Limits
+}
+
+func newFirewallDialerConfigProvider(userID string, limits Limits) firewallDialerConfigProvider {
+	return firewallDialerConfigProvider{
+		userID: userID,
+		limits: limits,
+	}
+}
+
+func (p firewallDialerConfigProvider) BlockCIDRNetworks() []flagext.CIDR {
+	return p.limits.AlertmanagerReceiversBlockCIDRNetworks(p.userID)
+}
+
+func (p firewallDialerConfigProvider) BlockPrivateAddresses() bool {
+	return p.limits.AlertmanagerReceiversBlockPrivateAddresses(p.userID)
+}
+
+type tenantRateLimits struct {
+	tenant string
+	limits Limits
+}
+
+func (t *tenantRateLimits) RateLimit() rate.Limit {
+	return t.limits.EmailNotificationRateLimit(t.tenant)
+}
+
+func (t *tenantRateLimits) Burst() int {
+	return t.limits.EmailNotificationBurst(t.tenant)
+}

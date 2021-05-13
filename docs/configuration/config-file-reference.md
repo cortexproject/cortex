@@ -3938,9 +3938,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [metric_relabel_configs: <relabel_config...> | default = ]
 
 # The maximum number of series for which a query can fetch samples from each
-# ingester. This limit is enforced only in the ingesters (when querying samples
-# not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage.
+# ingester and block storage. This limit is enforced in the ingesters and block
+# storage and it's a per-instance limit.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 

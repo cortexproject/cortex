@@ -483,6 +483,10 @@ Valid per-tenant limits are (with their corresponding flags for default values):
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
+  
+    When running Cortex chunks storage: limit enforced when fetching metrics from ingesters only.  
+    When running Cortex blocks storage: limit enforced when fetching metrics both from ingesters and store-gateways.
+
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.

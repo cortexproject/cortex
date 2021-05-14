@@ -484,8 +484,8 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
   
-    When running Cortex chunks storage: limit enforced when fetching metrics from ingesters only.  
-    When running Cortex blocks storage: limit enforced when fetching metrics both from ingesters and store-gateways.
+    When running Cortex chunks storage: limit enforced in the ingesters only and it's a per-instance limit.
+    When running Cortex blocks storage: limit enforced in the queriers both on samples fetched from ingesters and store-gateways (long-term storage).
 
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 

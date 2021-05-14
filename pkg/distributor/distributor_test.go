@@ -963,7 +963,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	})
 	defer stopAll(ds, r)
 
-	// Push a number of series below the max series limit. Each series has 1 sample,
+	// Push a number of series below the max series limit. Each series has 1 sample.
 	initialSeries := maxSeriesLimit
 	writeReq := makeWriteRequest(0, initialSeries, 0)
 	writeRes, err := ds[0].Push(ctx, writeReq)

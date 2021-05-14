@@ -11,7 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
-func TestPerQueryLimiter_AddFingerPrint(t *testing.T) {
+func TestQueryLimiter_AddSeries_ShouldReturnNoErrorOnLimitNotExceeded(t *testing.T) {
 	const (
 		metricName = "test_metric"
 	)
@@ -35,10 +35,9 @@ func TestPerQueryLimiter_AddFingerPrint(t *testing.T) {
 	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
 	assert.Equal(t, 2, limiter.UniqueSeries())
 	assert.Nil(t, err)
-
 }
 
-func TestPerQueryLimiter_AddFingerPrintExceedLimit(t *testing.T) {
+func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) {
 	const (
 		metricName = "test_metric"
 	)
@@ -59,12 +58,12 @@ func TestPerQueryLimiter_AddFingerPrintExceedLimit(t *testing.T) {
 		limiter = NewQueryLimiter(1)
 	)
 	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
-	assert.Equal(t, nil, err)
+	require.NoError(t, err)
 	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
 	require.Error(t, err)
 }
 
-func BenchmarkPerQueryLimiter_AddFingerPrint(b *testing.B) {
+func BenchmarkQueryLimiter_AddSeries(b *testing.B) {
 	const (
 		metricName = "test_metric"
 	)

@@ -29,7 +29,7 @@ var (
 	errMaxSeriesHit = "The query hit the max number of series limit while fetching chunks %s (limit: %d)"
 )
 
-// NewQueryLimiter makes a new per-query rate limiter. Each per-query limiter
+// NewQueryLimiter makes a new per-query limiter. Each per-query limiter
 // is configured using the `maxSeriesPerQuery` and `maxChunkBytesPerQuery` limits.
 func NewQueryLimiter(maxSeriesPerQuery int) *QueryLimiter {
 	return &QueryLimiter{
@@ -50,8 +50,8 @@ func AddQueryLimiterToContext(ctx context.Context, limiter *QueryLimiter) contex
 	return context.WithValue(ctx, qlCtxKey, limiter)
 }
 
-// QueryLimiterFromContextWithFallback returns a Query Limiter from the current context.
-// IF there is Per Query Limiter on the context we will return a new no-op limiter
+// QueryLimiterFromContextWithFallback returns a QueryLimiter from the current context.
+// If there is not a QueryLimiter on the context it will return a new no-op limiter.
 func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 	ql, ok := ctx.Value(qlCtxKey).(*QueryLimiter)
 	if !ok {
@@ -61,9 +61,7 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 	return ql
 }
 
-// AddSeries Add labels for series to the count of unique series. If the
-// added series label causes us to go over the limit of maxSeriesPerQuery we will
-// return a validation error
+// AddSeries adds the input series and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddSeries(labelAdapter []cortexpb.LabelAdapter, matchers []*labels.Matcher) error {
 	// If the max series is unlimited just return without managing map
 	if ql.maxSeriesPerQuery == 0 {

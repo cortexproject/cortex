@@ -18,9 +18,7 @@
   * `cortex_alertmanager_state_persist_failed_total`
 * [ENHANCEMENT] Blocks storage: support ingesting exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
-* [ENHANCEMENT] Ingester/Block Storage: Added ingester and block storage support for `max_series_per_query` / `-ingester.max-series-per-query`
-  If cortex is running in chunk mode the series limit is only supported for fetched series from the ingester. If cortex is in blocks mode this
-  this limit is for fetched series from block storage and ingester. #4179
+* [ENHANCEMENT] Querier: Added `-ingester.max-series-per-query` support for blocks storage. When Cortex is running with blocks storage, the limit is enforced in the querier and applies both to data received from ingesters and store-gateway (long-term storage). #4179
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 

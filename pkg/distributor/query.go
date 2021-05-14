@@ -233,14 +233,12 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 				}
 			}
 			for _, series := range resp.Chunkseries {
-				limitErr := queryLimiter.AddSeries(series.Labels, matchers)
-				if limitErr != nil {
+				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
 					return nil, limitErr
 				}
 			}
 			for _, series := range resp.Timeseries {
-				limitErr := queryLimiter.AddSeries(series.Labels, matchers)
-				if limitErr != nil {
+				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
 					return nil, limitErr
 				}
 			}

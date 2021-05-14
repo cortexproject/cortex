@@ -25,16 +25,17 @@ func TestQueryLimiter_AddSeries_ShouldReturnNoErrorOnLimitNotExceeded(t *testing
 			labels.MetricName: metricName + "_2",
 			"series2":         "1",
 		})
-		matchers = []*labels.Matcher{
-			labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
-		}
-
 		limiter = NewQueryLimiter(100)
 	)
-	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
-	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
-	assert.Equal(t, 2, limiter.UniqueSeries())
-	assert.Nil(t, err)
+	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
+	assert.NoError(t, err)
+	assert.Equal(t, 2, limiter.uniqueSeriesCount())
+
+	// Re-add previous series to make sure it's not double counted
+	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	assert.NoError(t, err)
+	assert.Equal(t, 2, limiter.uniqueSeriesCount())
 }
 
 func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) {
@@ -51,15 +52,11 @@ func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) 
 			labels.MetricName: metricName + "_2",
 			"series2":         "1",
 		})
-		matchers = []*labels.Matcher{
-			labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
-		}
-
 		limiter = NewQueryLimiter(1)
 	)
-	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1), matchers)
+	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
 	require.NoError(t, err)
-	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2), matchers)
+	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
 	require.Error(t, err)
 }
 
@@ -68,23 +65,18 @@ func BenchmarkQueryLimiter_AddSeries(b *testing.B) {
 		metricName = "test_metric"
 	)
 	var series []labels.Labels
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < b.N; i++ {
 		series = append(series,
 			labels.FromMap(map[string]string{
 				labels.MetricName: metricName + "_1",
 				"series1":         fmt.Sprint(i),
 			}))
 	}
-	matchers := []*labels.Matcher{
-		labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
-	}
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
-		limiter := NewQueryLimiter(10000)
-		for _, s := range series {
-			limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s), matchers)
-		}
+	limiter := NewQueryLimiter(b.N + 1)
+	for _, s := range series {
+		limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s))
 	}
 
 }

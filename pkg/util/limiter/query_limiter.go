@@ -6,44 +6,35 @@ import (
 	"sync"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+type queryLimiterCtxKey struct{}
+
+var (
+	qlCtxKey        = &queryLimiterCtxKey{}
+	errMaxSeriesHit = "The query hit the max number of series limit while fetching chunks (limit: %d)"
 )
 
 type QueryLimiter struct {
 	uniqueSeriesMx sync.RWMutex
 	uniqueSeries   map[model.Fingerprint]struct{}
 
-	chunkBytesCount   *atomic.Int32
 	maxSeriesPerQuery int
 }
-type queryLimiterCtxKey struct{}
 
-var (
-	qlCtxKey        = &queryLimiterCtxKey{}
-	errMaxSeriesHit = "The query hit the max number of series limit while fetching chunks %s (limit: %d)"
-)
-
-// NewQueryLimiter makes a new per-query limiter. Each per-query limiter
-// is configured using the `maxSeriesPerQuery` and `maxChunkBytesPerQuery` limits.
+// NewQueryLimiter makes a new per-query limiter. Each query limiter
+// is configured using the `maxSeriesPerQuery` limit.
 func NewQueryLimiter(maxSeriesPerQuery int) *QueryLimiter {
 	return &QueryLimiter{
 		uniqueSeriesMx: sync.RWMutex{},
 		uniqueSeries:   map[model.Fingerprint]struct{}{},
 
-		chunkBytesCount: atomic.NewInt32(0),
-
 		maxSeriesPerQuery: maxSeriesPerQuery,
 	}
-}
-
-func NewQueryLimiterOnContext(ctx context.Context, maxSeriesPerQuery int) context.Context {
-	return context.WithValue(ctx, qlCtxKey, NewQueryLimiter(maxSeriesPerQuery))
 }
 
 func AddQueryLimiterToContext(ctx context.Context, limiter *QueryLimiter) context.Context {
@@ -62,7 +53,7 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 }
 
 // AddSeries adds the input series and returns an error if the limit is reached.
-func (ql *QueryLimiter) AddSeries(labelAdapter []cortexpb.LabelAdapter, matchers []*labels.Matcher) error {
+func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	// If the max series is unlimited just return without managing map
 	if ql.maxSeriesPerQuery == 0 {
 		return nil
@@ -71,16 +62,16 @@ func (ql *QueryLimiter) AddSeries(labelAdapter []cortexpb.LabelAdapter, matchers
 	ql.uniqueSeriesMx.Lock()
 	defer ql.uniqueSeriesMx.Unlock()
 
-	ql.uniqueSeries[client.FastFingerprint(labelAdapter)] = struct{}{}
+	ql.uniqueSeries[client.FastFingerprint(seriesLabels)] = struct{}{}
 	if len(ql.uniqueSeries) > ql.maxSeriesPerQuery {
 		// Format error with query and max limit
-		return validation.LimitError(fmt.Sprintf(errMaxSeriesHit, util.LabelMatchersToString(matchers), ql.maxSeriesPerQuery))
+		return validation.LimitError(fmt.Sprintf(errMaxSeriesHit, ql.maxSeriesPerQuery))
 	}
 	return nil
 }
 
 // UniqueSeries returns the count of unique series seen by this query limiter.
-func (ql *QueryLimiter) UniqueSeries() int {
+func (ql *QueryLimiter) uniqueSeriesCount() int {
 	ql.uniqueSeriesMx.RLock()
 	defer ql.uniqueSeriesMx.RUnlock()
 	return len(ql.uniqueSeries)

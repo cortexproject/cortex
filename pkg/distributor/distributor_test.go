@@ -951,8 +951,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.MaxSeriesPerQuery = maxSeriesLimit
-	ctx = limiter.NewQueryLimiterOnContext(ctx, maxSeriesLimit)
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit))
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
 		numIngesters:     3,
@@ -982,11 +981,9 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 
 	// Push more series to exceed the limit once we'll query back all series.
 	writeReq = &cortexpb.WriteRequest{}
-	for i := 0; i < initialSeries; i++ {
-		writeReq.Timeseries = append(writeReq.Timeseries,
-			makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series_%d", i)}}, 0, 0),
-		)
-	}
+	writeReq.Timeseries = append(writeReq.Timeseries,
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series")}}, 0, 0),
+	)
 
 	writeRes, err = ds[0].Push(ctx, writeReq)
 	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)

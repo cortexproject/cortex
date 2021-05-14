@@ -614,7 +614,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					mySeries = append(mySeries, s)
 
 					// Add series fingerprint to query limiter; will return error if we are over the limit
-					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()), matchers)
+					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
 					if limitErr != nil {
 						return limitErr
 					}

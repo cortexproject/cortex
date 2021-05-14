@@ -45,14 +45,14 @@ receivers:
 
 #### 2. Upload the Alertmanager configuration
 
-In this example,  Cortex `Alertmanager` is set to be available via localhost on port 8095 with only one user/org = 0.
+In this example,  Cortex `Alertmanager` is set to be available via localhost on port 8095 with user/org = 100.
 
 To upload the above configuration `.yml` file with `--key` to be your Basic Authentication or API key:
 
 ```
 cortextool alertmanager load ./amconfig.yml \
 --address=http://localhost:8095 \
---id=0
+--id=100 \
 --key=<yourKey>
 ```
 If there is no error reported, the upload is successful.
@@ -64,6 +64,6 @@ To upload the configuration for Cortex `Alertmanager` using Cortex API and curl 
 ```
 cortextool alertmanager get \
 --adress=http://localhost:8095 \
---id=0
+--id=100 \
 --key=<yourKey>
 ```

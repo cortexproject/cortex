@@ -37,7 +37,7 @@ spec:
 
       containers:
       - name: ingester
-        image: quay.io/cortexproject/cortex:v1.8.1
+        image: quay.io/cortexproject/cortex:v1.9.0
         imagePullPolicy: IfNotPresent
         args:
         - -target=ingester

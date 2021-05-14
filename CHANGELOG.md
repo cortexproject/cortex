@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.9.0-rc.0 / 2021-04-29
+## 1.9.0 / 2021-05-14
 
 * [CHANGE] Alertmanager now removes local files after Alertmanager is no longer running for removed or resharded user. #3910
 * [CHANGE] Alertmanager now stores local files in per-tenant folders. Files stored by Alertmanager previously are migrated to new hierarchy. Support for this migration will be removed in Cortex 1.11. #3910

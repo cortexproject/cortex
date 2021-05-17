@@ -13,11 +13,11 @@ var allowedIntegrationNames = []string{
 	"webhook", "email", "pagerduty", "opsgenie", "wechat", "slack", "victorops", "pushover",
 }
 
-type NotificationLimitsMap map[string]NotificationLimits
+type NotificationRateLimitMap map[string]float64
 
 // String implements flag.Value
-func (m NotificationLimitsMap) String() string {
-	out, err := json.Marshal(map[string]NotificationLimits(m))
+func (m NotificationRateLimitMap) String() string {
+	out, err := json.Marshal(map[string]float64(m))
 	if err != nil {
 		return fmt.Sprintf("failed to marshal: %v", err)
 	}
@@ -25,20 +25,20 @@ func (m NotificationLimitsMap) String() string {
 }
 
 // Set implements flag.Value
-func (m NotificationLimitsMap) Set(s string) error {
-	newMap := map[string]NotificationLimits{}
+func (m NotificationRateLimitMap) Set(s string) error {
+	newMap := map[string]float64{}
 	return m.updateMap(json.Unmarshal([]byte(s), &newMap), newMap)
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (m NotificationLimitsMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	newMap := map[string]NotificationLimits{}
+func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	newMap := map[string]float64{}
 	return m.updateMap(unmarshal(newMap), newMap)
 }
 
-func (m NotificationLimitsMap) updateMap(err error, newMap map[string]NotificationLimits) error {
-	if err != nil {
-		return err
+func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[string]float64) error {
+	if unmarshalErr != nil {
+		return unmarshalErr
 	}
 
 	for k, v := range newMap {
@@ -51,6 +51,6 @@ func (m NotificationLimitsMap) updateMap(err error, newMap map[string]Notificati
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (m NotificationLimitsMap) MarshalYAML() (interface{}, error) {
-	return map[string]NotificationLimits(m), nil
+func (m NotificationRateLimitMap) MarshalYAML() (interface{}, error) {
+	return map[string]float64(m), nil
 }

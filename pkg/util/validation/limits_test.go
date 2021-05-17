@@ -349,59 +349,47 @@ func TestAlertmanagerNotificationLimits(t *testing.T) {
 	}{
 		"no email specific limit": {
 			inputYAML: `
-alertmanager_notification_limits:
-  rate_limit: 100
-  burst_size: 100
+alertmanager_notification_rate_limit: 100
 `,
 			expectedRateLimit: 100,
 			expectedBurstSize: 100,
 		},
 		"zero limit": {
 			inputYAML: `
-alertmanager_notification_limits:
-  rate_limit: 100
-  burst_size: 100
+alertmanager_notification_rate_limit: 100
 
-alertmanager_notification_limits_per_integration:
-  email:
-    rate_limit: 0
-    burst_size: 0
+alertmanager_notification_rate_limit_per_integration:
+  email: 0
 `,
 			expectedRateLimit: rate.Inf,
-			expectedBurstSize: 0,
+			expectedBurstSize: maxInt,
 		},
 
 		"negative limit": {
 			inputYAML: `
-alertmanager_notification_limits_per_integration:
-  email:
-    rate_limit: -10
-    burst_size: 5
+alertmanager_notification_rate_limit_per_integration:
+  email: -10
 `,
 			expectedRateLimit: 0,
-			expectedBurstSize: 5,
+			expectedBurstSize: 0,
 		},
 
 		"positive limit, negative burst": {
 			inputYAML: `
-alertmanager_notification_limits_per_integration:
-  email:
-    rate_limit: 222
-    burst_size: -1
+alertmanager_notification_rate_limit_per_integration:
+  email: 222
 `,
 			expectedRateLimit: 222,
-			expectedBurstSize: 0,
+			expectedBurstSize: 222,
 		},
 
 		"infinte limit": {
 			inputYAML: `
-alertmanager_notification_limits_per_integration:
-  email:
-    rate_limit: .inf
-    burst_size: 50
+alertmanager_notification_rate_limit_per_integration:
+  email: .inf
 `,
 			expectedRateLimit: rate.Inf,
-			expectedBurstSize: 50,
+			expectedBurstSize: maxInt,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -420,49 +408,35 @@ alertmanager_notification_limits_per_integration:
 
 func TestAlertmanagerNotificationLimitsOverrides(t *testing.T) {
 	baseYaml := `
-alertmanager_notification_limits:
-  rate_limit: 5
-  burst_size: 5
+alertmanager_notification_rate_limit: 5
 
-alertmanager_notification_limits_per_integration:
- email:
-   rate_limit: 100
-   burst_size: 100
+alertmanager_notification_rate_limit_per_integration:
+ email: 100
 `
 
 	overrideGenericLimitsOnly := `
 testuser:
-  alertmanager_notification_limits:
-    rate_limit: 333
-    burst_size: 333
+  alertmanager_notification_rate_limit: 333
 `
 
 	overrideEmailLimits := `
 testuser:
-  alertmanager_notification_limits_per_integration:
-    email:
-      rate_limit: 7777
-      burst_size: 7777
+  alertmanager_notification_rate_limit_per_integration:
+    email: 7777
 `
 
 	overrideGenericLimitsAndEmailLimits := `
 testuser:
-  alertmanager_notification_limits:
-    rate_limit: 333
-    burst_size: 333
+  alertmanager_notification_rate_limit: 333
 
-  alertmanager_notification_limits_per_integration:
-    email:
-      rate_limit: 7777
-      burst_size: 7777
+  alertmanager_notification_rate_limit_per_integration:
+    email: 7777
 `
 
 	differentUserOverride := `
 differentuser:
   alertmanager_notification_limits_per_integration:
-    email:
-      rate_limit: 500
-      burst_size: 20
+    email: 500
 `
 
 	for name, tc := range map[string]struct {
@@ -529,12 +503,11 @@ differentuser:
 			testedIntegration: "email",
 			overrides: `
 testuser:
-  alertmanager_notification_limits_per_integration:
-    email:
-      rate_limit: 500
+  alertmanager_notification_rate_limit_per_integration:
+    email: 500
 `,
 			expectedRateLimit: 500, // overridden
-			expectedBurstSize: 0,   // also overridden, but not visible
+			expectedBurstSize: 500, // same as rate limit
 		},
 
 		"different user override, pushover": {

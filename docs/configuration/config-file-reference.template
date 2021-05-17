@@ -26,7 +26,6 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
 * `<relabel_config>`: a [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
 * `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), and RFC 3339 formats: `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)
-* `<limits_map>`: Map with integration names as keys, mapped to object with two fields: `rate_limit` and `burst_size`. If either of them is specified, this per-integration limit will take precedence over shared notification limit, even if other field is not specified (in which case, it defaults to 0!).
 
 ### Use environment variables in the configuration
 

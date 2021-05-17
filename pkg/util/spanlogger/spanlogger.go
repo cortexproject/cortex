@@ -8,15 +8,15 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type loggerCtxMarker struct{}
 
 const (
-	TenantIdTagName = "tenant_id"
+	TenantIDTagName = "tenant_id"
 )
 
 var (
@@ -39,8 +39,8 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 // retrieved with FromContext or FromContextWithFallback.
 func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
-	if orgId, err := user.ExtractOrgID(ctx); err == nil {
-		span.SetTag(TenantIdTagName, orgId)
+	if ids, _ := tenant.TenantIDs(ctx); ids != nil {
+		span.SetTag(TenantIDTagName, tenant.JoinTenantIDs(ids))
 	}
 	logger := &SpanLogger{
 		Logger: log.With(util_log.WithContext(ctx, l), "method", method),

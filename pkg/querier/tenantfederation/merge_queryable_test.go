@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	sl "github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	sl "github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const (
@@ -507,9 +507,9 @@ func TestTracingMergeQueryable(t *testing.T) {
 
 	require.NoError(t, seriesSet.Err())
 	spans := mockTracer.FinishedSpans()
-	assertSpanExist(t, spans, "mergeQuerier.select", map[string]string{sl.TenantIdTagName: "team-a|team-b"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIdTagName: "team-a"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIdTagName: "team-b"})
+	assertSpanExist(t, spans, "mergeQuerier.select", map[string]string{sl.TenantIDTagName: "team-a|team-b"})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIDTagName: "team-a"})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIDTagName: "team-b"})
 }
 
 func assertSpanExist(t *testing.T,

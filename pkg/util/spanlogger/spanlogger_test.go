@@ -50,13 +50,13 @@ func TestSpanLogger_CustomLogger(t *testing.T) {
 func TestSpanCreatedWithTenantTag(t *testing.T) {
 	mockSpan := createSpan(user.InjectOrgID(context.Background(), "team-a"))
 
-	require.Equal(t, "team-a", mockSpan.Tag(TenantIdTagName))
+	require.Equal(t, "team-a", mockSpan.Tag(TenantIDTagName))
 }
 
 func TestSpanCreatedWithoutTenantTag(t *testing.T) {
 	mockSpan := createSpan(context.Background())
 
-	_, exist := mockSpan.Tags()[TenantIdTagName]
+	_, exist := mockSpan.Tags()[TenantIDTagName]
 	require.False(t, exist)
 }
 

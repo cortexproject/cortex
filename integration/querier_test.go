@@ -897,13 +897,13 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 	defer s.Close()
 
 	// Configure the blocks storage to frequently compact TSDB head
-	// and ship blocks to the storage. TODO Add new flags
-	flags := mergeFlags(map[string]string{
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.tsdb.block-ranges-period":   blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":         "1s",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
-		"-querier.ingester-streaming":                strconv.FormatBool(true),
+		"-querier.ingester-streaming":                "true",
 		"-querier.query-store-for-labels-enabled":    "true",
 		"-ingester.max-series-per-query":             "3",
 	})
@@ -936,9 +936,9 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 
 	// Push some series to Cortex.
 	series1Timestamp := time.Now()
-	series2Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
 	series3Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
-	series4Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series4Timestamp := series1Timestamp.Add(blockRangePeriod * 3)
 
 	series1, _ := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
 	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
@@ -948,23 +948,24 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 	res, err := c.Push(series1)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
-	res, err = c.Push(series3)
+	res, err = c.Push(series2)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	result, err := c.QueryRange("series_*", time.Unix(0, 0), series3Timestamp.Add(1*time.Hour), blockRangePeriod)
+	result, err := c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series2Timestamp.Add(1*time.Hour), blockRangePeriod)
 	require.NoError(t, err)
-	require.Equal(t, model.ValVector, result.Type())
+	require.Equal(t, model.ValMatrix, result.Type())
 
-	res, err = c.Push(series2)
+	res, err = c.Push(series3)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 	res, err = c.Push(series4)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	result, err = c.QueryRange("series_*", time.Unix(0, 0), series3Timestamp.Add(1*time.Hour), blockRangePeriod)
+	result, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max number of series limit while")
 }
 
 func TestHashCollisionHandling(t *testing.T) {

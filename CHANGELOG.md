@@ -8,6 +8,7 @@
   - `-alertmanager.receivers-firewall.block.private-addresses` renamed to `-alertmanager.receivers-firewall-block-private-addresses`
 * [CHANGE] Change default value of `-server.grpc.keepalive.min-time-between-pings` to `10s` and `-server.grpc.keepalive.ping-without-stream-allowed` to `true`. #4168
 * [FEATURE] Alertmanager: Added rate-limits to email notifier. Rate limits can be configured using `-alertmanager.email-notification-rate-limit` and `-alertmanager.email-notification-burst-size`. These limits are applied on individual alertmanagers. Rate-limited email notifications are failed notifications. It is possible to monitor rate-limited notifications via new `cortex_alertmanager_notification_rate_limited_total` metric. #4135
+* [FEATURE] Querier: Added new `-querier.max-series-per-query` flag. When Cortex is running with blocks storage, the max series per query limit is enforced in the querier and applies both to series received from ingesters and store-gateway (long-term storage). #4179
 * [ENHANCEMENT] Alertmanager: introduced new metrics to monitor operation when using `-alertmanager.sharding-enabled`: #4149
   * `cortex_alertmanager_state_fetch_replica_state_total`
   * `cortex_alertmanager_state_fetch_replica_state_failed_total`
@@ -18,7 +19,6 @@
   * `cortex_alertmanager_state_persist_failed_total`
 * [ENHANCEMENT] Blocks storage: support ingesting exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
-* [ENHANCEMENT] Querier: Added `-ingester.max-series-per-query` support for blocks storage. When Cortex is running with blocks storage, the limit is enforced in the querier and applies both to data received from ingesters and store-gateway (long-term storage). #4179
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 

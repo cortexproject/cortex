@@ -905,7 +905,7 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
 		"-querier.ingester-streaming":                "true",
 		"-querier.query-store-for-labels-enabled":    "true",
-		"-ingester.max-series-per-query":             "3",
+		"-querier.max-series-per-query":              "3",
 	})
 
 	// Start dependencies.

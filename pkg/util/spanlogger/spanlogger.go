@@ -40,7 +40,7 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
 	if ids, _ := tenant.TenantIDs(ctx); ids != nil {
-		span.SetTag(TenantIDTagName, tenant.JoinTenantIDs(ids))
+		span.SetTag(TenantIDTagName, ids)
 	}
 	logger := &SpanLogger{
 		Logger: log.With(util_log.WithContext(ctx, l), "method", method),

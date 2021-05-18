@@ -20,7 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
-	sl "github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const (
@@ -143,7 +143,7 @@ func (m *mockSeriesSet) Warnings() storage.Warnings {
 }
 
 func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	log, _ := sl.New(m.ctx, "mockTenantQuerier.select")
+	log, _ := spanlogger.New(m.ctx, "mockTenantQuerier.select")
 	defer log.Span.Finish()
 	var matrix model.Matrix
 
@@ -507,9 +507,9 @@ func TestTracingMergeQueryable(t *testing.T) {
 
 	require.NoError(t, seriesSet.Err())
 	spans := mockTracer.FinishedSpans()
-	assertSpanExist(t, spans, "mergeQuerier.select", map[string]string{sl.TenantIDTagName: "team-a|team-b"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIDTagName: "team-a"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{sl.TenantIDTagName: "team-b"})
+	assertSpanExist(t, spans, "mergeQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-a|team-b"})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-a"})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-b"})
 }
 
 func assertSpanExist(t *testing.T,

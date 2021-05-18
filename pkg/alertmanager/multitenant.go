@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
@@ -37,7 +38,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -86,7 +86,9 @@ const (
 var (
 	statusTemplate *template.Template
 
-	errInvalidExternalURL = errors.New("the configured external URL is invalid: should not end with /")
+	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
+	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
+	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 )
 
 func init() {
@@ -102,12 +104,11 @@ func init() {
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir           string           `yaml:"data_dir"`
-	Retention         time.Duration    `yaml:"retention"`
-	ExternalURL       flagext.URLValue `yaml:"external_url"`
-	PollInterval      time.Duration    `yaml:"poll_interval"`
-	MaxRecvMsgSize    int64            `yaml:"max_recv_msg_size"`
-	ReceiversFirewall FirewallConfig   `yaml:"receivers_firewall"`
+	DataDir        string           `yaml:"data_dir"`
+	Retention      time.Duration    `yaml:"retention"`
+	ExternalURL    flagext.URLValue `yaml:"external_url"`
+	PollInterval   time.Duration    `yaml:"poll_interval"`
+	MaxRecvMsgSize int64            `yaml:"max_recv_msg_size"`
 
 	// Enable sharding for the Alertmanager
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
@@ -160,7 +161,6 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
-	cfg.ReceiversFirewall.RegisterFlagsWithPrefix("alertmanager.receivers-firewall", f)
 	cfg.ShardingRing.RegisterFlags(f)
 	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
@@ -177,7 +177,7 @@ func (cfg *ClusterConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 // Validate config and returns error on failure
-func (cfg *MultitenantAlertmanagerConfig) Validate() error {
+func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config) error {
 	if cfg.ExternalURL.URL != nil && strings.HasSuffix(cfg.ExternalURL.Path, "/") {
 		return errInvalidExternalURL
 	}
@@ -188,6 +188,15 @@ func (cfg *MultitenantAlertmanagerConfig) Validate() error {
 
 	if err := cfg.Persister.Validate(); err != nil {
 		return err
+	}
+
+	if cfg.ShardingEnabled {
+		if !cfg.Store.IsDefaults() {
+			return errShardingLegacyStorage
+		}
+		if !storageCfg.IsFullStateSupported() {
+			return errShardingUnsupportedStorage
+		}
 	}
 
 	return nil
@@ -214,6 +223,28 @@ func newMultitenantAlertmanagerMetrics(reg prometheus.Registerer) *multitenantAl
 	}, []string{"user"})
 
 	return m
+}
+
+// Limits defines limits used by Alertmanager.
+type Limits interface {
+	// AlertmanagerReceiversBlockCIDRNetworks returns the list of network CIDRs that should be blocked
+	// in the Alertmanager receivers for the given user.
+	AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR
+
+	// AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
+	// in the Alertmanager receivers for the given user.
+	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
+
+	// EmailNotificationRateLimit returns limit used by rate-limiter. If set to 0, no emails are allowed.
+	// rate.Inf = all emails are allowed.
+	//
+	// Note that when  negative or zero values specified by user are translated to rate.Limit by Overrides,
+	// and may have different meaning there.
+	EmailNotificationRateLimit(tenant string) rate.Limit
+
+	// EmailNotificationBurst returns burst-size for rate limiter. If 0, no notifications are allowed except
+	// when limit == rate.Inf.
+	EmailNotificationBurst(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -258,6 +289,8 @@ type MultitenantAlertmanager struct {
 	peer                    *cluster.Peer
 	alertmanagerClientsPool ClientsPool
 
+	limits Limits
+
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
 	tenantsOwned      prometheus.Gauge
@@ -267,7 +300,7 @@ type MultitenantAlertmanager struct {
 }
 
 // NewMultitenantAlertmanager creates a new MultitenantAlertmanager.
-func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alertstore.AlertStore, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alertstore.AlertStore, limits Limits, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	err := os.MkdirAll(cfg.DataDir, 0777)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create Alertmanager data directory %q: %s", cfg.DataDir, err)
@@ -327,10 +360,10 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 		}
 	}
 
-	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, logger, registerer)
+	return createMultitenantAlertmanager(cfg, fallbackConfig, peer, store, ringStore, limits, logger, registerer)
 }
 
-func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store alertstore.AlertStore, ringStore kv.Client, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
+func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackConfig []byte, peer *cluster.Peer, store alertstore.AlertStore, ringStore kv.Client, limits Limits, logger log.Logger, registerer prometheus.Registerer) (*MultitenantAlertmanager, error) {
 	am := &MultitenantAlertmanager{
 		cfg:                 cfg,
 		fallbackConfig:      string(fallbackConfig),
@@ -342,6 +375,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		store:               store,
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
+		limits:              limits,
 		ringCheckErrors: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_alertmanager_ring_check_errors_total",
 			Help: "Number of errors that have occurred when checking the ring for ownership.",
@@ -467,6 +501,15 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}
 
 	if am.cfg.ShardingEnabled {
+		// Make sure that all the alertmanagers we were initially configured with have
+		// fetched state from the replicas, before advertising as ACTIVE. This will
+		// reduce the possibility that we lose state when new instances join/leave.
+		level.Info(am.logger).Log("msg", "waiting until initial state sync is complete for all users")
+		if err := am.waitInitialStateSync(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for initial state sync")
+		}
+		level.Info(am.logger).Log("msg", "initial state sync is complete")
+
 		// With the initial sync now completed, we should have loaded all assigned alertmanager configurations to this instance. We can switch it to ACTIVE and start serving requests.
 		if err := am.ringLifecycler.ChangeState(ctx, ring.ACTIVE); err != nil {
 			return errors.Wrapf(err, "switch instance to %s in the ring", ring.ACTIVE)
@@ -648,6 +691,23 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 
 	am.syncConfigs(cfgs)
 	am.deleteUnusedLocalUserState()
+
+	return nil
+}
+
+func (am *MultitenantAlertmanager) waitInitialStateSync(ctx context.Context) error {
+	am.alertmanagersMtx.Lock()
+	ams := make([]*Alertmanager, 0, len(am.alertmanagers))
+	for _, userAM := range am.alertmanagers {
+		ams = append(ams, userAM)
+	}
+	am.alertmanagersMtx.Unlock()
+
+	for _, userAM := range ams {
+		if err := userAM.WaitInitialStateSync(ctx); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -868,7 +928,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 	newAM, err := New(&Config{
 		UserID:            userID,
 		TenantDataDir:     tenantDir,
-		Logger:            util_log.Logger,
+		Logger:            am.logger,
 		Peer:              am.peer,
 		PeerTimeout:       am.cfg.Cluster.PeerTimeout,
 		Retention:         am.cfg.Retention,
@@ -878,7 +938,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		ReplicationFactor: am.cfg.ShardingRing.ReplicationFactor,
 		Store:             am.store,
 		PersisterConfig:   am.cfg.Persister,
-		ReceiversFirewall: am.cfg.ReceiversFirewall,
+		Limits:            am.limits,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

@@ -235,13 +235,10 @@ func TestAlertmanagerClustering(t *testing.T) {
 
 func TestAlertmanagerSharding(t *testing.T) {
 	tests := map[string]struct {
-		legacyAlertStore  bool
 		replicationFactor int
 	}{
-		"legacy alertstore, RF = 2": {legacyAlertStore: true, replicationFactor: 2},
-		"bucket alertstore, RF = 2": {legacyAlertStore: false, replicationFactor: 2},
-		"legacy alertstore, RF = 3": {legacyAlertStore: true, replicationFactor: 3},
-		"bucket alertstore, RF = 3": {legacyAlertStore: false, replicationFactor: 3},
+		"RF = 2": {replicationFactor: 2},
+		"RF = 3": {replicationFactor: 3},
 	}
 
 	for testName, testCfg := range tests {
@@ -250,7 +247,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(testCfg.legacyAlertStore))
+			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(false))
 
 			// Start dependencies.
 			consul := e2edb.NewConsul()
@@ -386,29 +383,58 @@ func TestAlertmanagerSharding(t *testing.T) {
 				assert.Equal(t, s3, ids[id3].Status.State)
 			}
 
-			// Endpoint: GET /silences
+			// Endpoint: GET /v1/silences
 			{
 				for _, c := range clients {
-					list, err := c.GetSilences(context.Background())
+					list, err := c.GetSilencesV1(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
 				}
 			}
 
-			// Endpoint: GET /silence/{id}
+			// Endpoint: GET /v2/silences
 			{
 				for _, c := range clients {
-					sil1, err := c.GetSilence(context.Background(), id1)
+					list, err := c.GetSilencesV2(context.Background())
+					require.NoError(t, err)
+					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
+				}
+			}
+
+			// Endpoint: GET /v1/silence/{id}
+			{
+				for _, c := range clients {
+					sil1, err := c.GetSilenceV1(context.Background(), id1)
 					require.NoError(t, err)
 					assert.Equal(t, comment(1), sil1.Comment)
 					assert.Equal(t, types.SilenceStateActive, sil1.Status.State)
 
-					sil2, err := c.GetSilence(context.Background(), id2)
+					sil2, err := c.GetSilenceV1(context.Background(), id2)
 					require.NoError(t, err)
 					assert.Equal(t, comment(2), sil2.Comment)
 					assert.Equal(t, types.SilenceStateActive, sil2.Status.State)
 
-					sil3, err := c.GetSilence(context.Background(), id3)
+					sil3, err := c.GetSilenceV1(context.Background(), id3)
+					require.NoError(t, err)
+					assert.Equal(t, comment(3), sil3.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil3.Status.State)
+				}
+			}
+
+			// Endpoint: GET /v2/silence/{id}
+			{
+				for _, c := range clients {
+					sil1, err := c.GetSilenceV2(context.Background(), id1)
+					require.NoError(t, err)
+					assert.Equal(t, comment(1), sil1.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil1.Status.State)
+
+					sil2, err := c.GetSilenceV2(context.Background(), id2)
+					require.NoError(t, err)
+					assert.Equal(t, comment(2), sil2.Comment)
+					assert.Equal(t, types.SilenceStateActive, sil2.Status.State)
+
+					sil3, err := c.GetSilenceV2(context.Background(), id3)
 					require.NoError(t, err)
 					assert.Equal(t, comment(3), sil3.Comment)
 					assert.Equal(t, types.SilenceStateActive, sil3.Status.State)
@@ -445,7 +471,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, waitForSilences("expired", 1*testCfg.replicationFactor))
 
 				for _, c := range clients {
-					list, err := c.GetSilences(context.Background())
+					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateActive)
 				}
@@ -455,7 +481,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, waitForSilences("expired", 2*testCfg.replicationFactor))
 
 				for _, c := range clients {
-					list, err := c.GetSilences(context.Background())
+					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateExpired)
 				}
@@ -465,7 +491,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, waitForSilences("expired", 3*testCfg.replicationFactor))
 
 				for _, c := range clients {
-					list, err := c.GetSilences(context.Background())
+					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateExpired, types.SilenceStateExpired, types.SilenceStateExpired)
 				}
@@ -505,21 +531,23 @@ func TestAlertmanagerSharding(t *testing.T) {
 				// Therefore, the alerts we posted should always be visible.
 
 				for _, c := range clients {
-					list, err := c.GetAlerts(context.Background())
+					list, err := c.GetAlertsV1(context.Background())
 					require.NoError(t, err)
 					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
 				}
 			}
 
-			// Endpoint: GET /alerts/groups
+			// Endpoint: GET /v2/alerts
 			{
-				// Writes do not block for the write slowest replica, and reads do not
-				// currently merge results from multiple replicas, so we have to wait.
-				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
-					e2e.Equals(float64(3*testCfg.replicationFactor)),
-					[]string{"cortex_alertmanager_alerts_received_total"},
-					e2e.SkipMissingMetrics))
+				for _, c := range clients {
+					list, err := c.GetAlertsV2(context.Background())
+					require.NoError(t, err)
+					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
+				}
+			}
 
+			// Endpoint: GET /v2/alerts/groups
+			{
 				for _, c := range clients {
 					list, err := c.GetAlertGroups(context.Background())
 					require.NoError(t, err)
@@ -535,7 +563,15 @@ func TestAlertmanagerSharding(t *testing.T) {
 					require.Contains(t, groups, "group_2")
 					assert.ElementsMatch(t, []string{"alert_3"}, alertNames(groups["group_2"]))
 				}
+
+				// Note: /v1/alerts/groups does not exist.
 			}
+
+			// Check the alerts were eventually written to every replica.
+			require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+				e2e.Equals(float64(3*testCfg.replicationFactor)),
+				[]string{"cortex_alertmanager_alerts_received_total"},
+				e2e.SkipMissingMetrics))
 		})
 	}
 }

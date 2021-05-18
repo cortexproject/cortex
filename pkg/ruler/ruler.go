@@ -426,11 +426,7 @@ func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 					<p>Ruler running with shards disabled</p>
 				</body>
 			</html>`
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(unshardedPage))
-		if err != nil {
-			level.Error(r.logger).Log("msg", "unable to serve status page", "err", err)
-		}
+		util.WriteHTMLResponse(w, unshardedPage)
 	}
 }
 

@@ -294,6 +294,9 @@ func (s *ConcreteService) WaitReady() (err error) {
 func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []string {
 	args := []string{"run", "--rm", "--net=" + networkName, "--name=" + networkName + "-" + s.name, "--hostname=" + s.name}
 
+	// For Drone CI users, expire the container after 6 hours using drone-gc
+	args = append(args, "--label", fmt.Sprintf("io.drone.expires=%d", time.Now().Add(6*time.Hour).Unix()))
+
 	// Mount the shared/ directory into the container
 	args = append(args, "-v", fmt.Sprintf("%s:%s:z", sharedDir, ContainerSharedDir))
 

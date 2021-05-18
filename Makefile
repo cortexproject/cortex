@@ -2,7 +2,7 @@
 # WARNING: do not commit to a repository!
 -include Makefile.local
 
-.PHONY: all test clean images protos exes dist doc clean-doc check-doc
+.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc
 .DEFAULT_GOAL := all
 
 # Version number
@@ -115,7 +115,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos web-build web-pre web-deploy doc: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -200,7 +200,14 @@ lint:
 	kubeval ./k8s/*
 
 test:
-	./tools/test -netgo
+	go test -tags netgo -timeout 30m -race -count 1 ./...
+
+cover:
+	$(eval COVERDIR := $(shell mktemp -d coverage.XXXXXXXXXX))
+	$(eval COVERFILE := $(shell mktemp $(COVERDIR)/unit.XXXXXXXXXX))
+	go test -tags netgo -timeout 30m -race -count 1 -coverprofile=$(COVERFILE) ./...
+	go tool cover -html=$(COVERFILE) -o cover.html
+	go tool cover -func=cover.html | tail -n1
 
 shell:
 	bash

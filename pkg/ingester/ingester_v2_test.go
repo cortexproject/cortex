@@ -76,6 +76,7 @@ func TestIngester_v2Push(t *testing.T) {
 		expectedMetrics          string
 		additionalMetrics        []string
 		disableActiveSeries      bool
+		maxExemplars             int
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*cortexpb.WriteRequest{
@@ -143,6 +144,93 @@ func TestIngester_v2Push(t *testing.T) {
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"should succeed on valid series with exemplars": {
+			maxExemplars: 2,
+			reqs: []*cortexpb.WriteRequest{
+				// Ingesting an exemplar requires a sample to create the series first
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
+					cortexpb.API),
+				{
+					Timeseries: []cortexpb.PreallocTimeseries{
+						{
+							TimeSeries: &cortexpb.TimeSeries{
+								Labels: []cortexpb.LabelAdapter{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
+								Exemplars: []cortexpb.Exemplar{
+									{
+										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+										TimestampMs: 1000,
+										Value:       1000,
+									},
+									{
+										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "456"}},
+										TimestampMs: 1001,
+										Value:       1001,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErr: nil,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 9}}},
+			},
+			expectedMetadataIngested: nil,
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_exemplar_exemplars_appended_total",
+				"cortex_ingester_tsdb_exemplar_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
+				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 1
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+				cortex_ingester_tsdb_exemplar_exemplars_appended_total 2
+
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_exemplars_in_storage 2
+
+				# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
+				# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="test"} 1
+
+				# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+				# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+				cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 1
+
+				# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
+				# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+				cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 0
 			`,
 		},
 		"successful push, active series disabled": {
@@ -316,6 +404,82 @@ func TestIngester_v2Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
+		"should soft fail on exemplar with unknown series": {
+			maxExemplars: 1,
+			reqs: []*cortexpb.WriteRequest{
+				// Ingesting an exemplar requires a sample to create the series first
+				// This is not done here.
+				{
+					Timeseries: []cortexpb.PreallocTimeseries{
+						{
+							TimeSeries: &cortexpb.TimeSeries{
+								Labels: []cortexpb.LabelAdapter{metricLabelAdapters[0]}, // Cannot reuse test slice var because it is cleared and returned to the pool
+								Exemplars: []cortexpb.Exemplar{
+									{
+										Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+										TimestampMs: 1000,
+										Value:       1000,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedErr:              httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestExemplarErr(errExemplarRef, model.Time(1000), cortexpb.FromLabelsToLabelAdapters(metricLabels), []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}}), userID).Error()),
+			expectedIngested:         nil,
+			expectedMetadataIngested: nil,
+			additionalMetrics: []string{
+				"cortex_ingester_tsdb_exemplar_exemplars_appended_total",
+				"cortex_ingester_tsdb_exemplar_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage",
+				"cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds",
+				"cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total",
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 0
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 0
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 0
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 0
+
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_appended_total Total number of TSDB exemplars appended.
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_appended_total counter
+				cortex_ingester_tsdb_exemplar_exemplars_appended_total 0
+
+				# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
+				# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_exemplars_in_storage 0
+
+				# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
+				# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
+				cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="test"} 0
+
+				# HELP cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds The timestamp of the oldest exemplar stored in circular storage. Useful to check for what time range the current exemplar buffer limit allows. This usually means the last timestamp for all exemplars for a typical setup. This is not true though if one of the series timestamp is in future compared to rest series.
+				# TYPE cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds gauge
+				cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="test"} 0
+
+				# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
+				# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
+				cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 0
+			`,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -329,6 +493,7 @@ func TestIngester_v2Push(t *testing.T) {
 			cfg := defaultIngesterTestConfig()
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
+			cfg.BlocksStorageConfig.TSDB.MaxExemplars = testData.maxExemplars
 
 			i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
 			require.NoError(t, err)
@@ -1416,7 +1581,7 @@ func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
 	)
 
 	now := util.TimeToMillis(time.Now())
-	i := createIngesterWithSeries(t, userID, numSeries, now)
+	i := createIngesterWithSeries(t, userID, numSeries, 1, now, 1)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	req := &client.MetricsForLabelMatchersRequest{
@@ -1439,21 +1604,28 @@ func Test_Ingester_v2MetricsForLabelMatchers_Deduplication(t *testing.T) {
 }
 
 func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
-	const (
-		userID    = "test"
-		numSeries = 100000
+	var (
+		userID              = "test"
+		numSeries           = 10000
+		numSamplesPerSeries = 60 * 6 // 6h on 1 sample per minute
+		startTimestamp      = util.TimeToMillis(time.Now())
+		step                = int64(60000) // 1 sample per minute
 	)
 
-	now := util.TimeToMillis(time.Now())
-	i := createIngesterWithSeries(b, userID, numSeries, now)
+	i := createIngesterWithSeries(b, userID, numSeries, numSamplesPerSeries, startTimestamp, step)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
+	// Flush the ingester to ensure blocks have been compacted, so we'll test
+	// fetching labels from blocks.
+	i.Flush()
+
 	b.ResetTimer()
+	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
 		req := &client.MetricsForLabelMatchersRequest{
-			StartTimestampMs: now,
-			EndTimestampMs:   now,
+			StartTimestampMs: math.MinInt64,
+			EndTimestampMs:   math.MaxInt64,
 			MatchersSet: []*client.LabelMatchers{{Matchers: []*client.LabelMatcher{
 				{Type: client.REGEX_MATCH, Name: model.MetricNameLabel, Value: "test.*"},
 			}}},
@@ -1465,9 +1637,8 @@ func Benchmark_Ingester_v2MetricsForLabelMatchers(b *testing.B) {
 	}
 }
 
-// createIngesterWithSeries creates an ingester and push numSeries with 1 sample
-// per series.
-func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timestamp int64) *Ingester {
+// createIngesterWithSeries creates an ingester and push numSeries with numSamplesPerSeries each.
+func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamplesPerSeries int, startTimestamp, step int64) *Ingester {
 	const maxBatchSize = 1000
 
 	// Create ingester.
@@ -1486,28 +1657,30 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries int, timest
 	// Push fixtures.
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	for o := 0; o < numSeries; o += maxBatchSize {
-		batchSize := util_math.Min(maxBatchSize, numSeries-o)
+	for ts := startTimestamp; ts < startTimestamp+(step*int64(numSamplesPerSeries)); ts += step {
+		for o := 0; o < numSeries; o += maxBatchSize {
+			batchSize := util_math.Min(maxBatchSize, numSeries-o)
 
-		// Generate metrics and samples (1 for each series).
-		metrics := make([]labels.Labels, 0, batchSize)
-		samples := make([]cortexpb.Sample, 0, batchSize)
+			// Generate metrics and samples (1 for each series).
+			metrics := make([]labels.Labels, 0, batchSize)
+			samples := make([]cortexpb.Sample, 0, batchSize)
 
-		for s := 0; s < batchSize; s++ {
-			metrics = append(metrics, labels.Labels{
-				{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
-			})
+			for s := 0; s < batchSize; s++ {
+				metrics = append(metrics, labels.Labels{
+					{Name: labels.MetricName, Value: fmt.Sprintf("test_%d", o+s)},
+				})
 
-			samples = append(samples, cortexpb.Sample{
-				TimestampMs: timestamp,
-				Value:       1,
-			})
+				samples = append(samples, cortexpb.Sample{
+					TimestampMs: ts,
+					Value:       1,
+				})
+			}
+
+			// Send metrics to the ingester.
+			req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
+			_, err := i.v2Push(ctx, req)
+			require.NoError(t, err)
 		}
-
-		// Send metrics to the ingester.
-		req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
-		_, err := i.v2Push(ctx, req)
-		require.NoError(t, err)
 	}
 
 	return i

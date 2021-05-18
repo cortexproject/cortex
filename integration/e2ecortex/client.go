@@ -509,7 +509,7 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	return nil
 }
 
-func (c *Client) GetAlerts(ctx context.Context) ([]model.Alert, error) {
+func (c *Client) GetAlertsV1(ctx context.Context) ([]model.Alert, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v1/alerts", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -545,6 +545,35 @@ func (c *Client) GetAlerts(ctx context.Context) ([]model.Alert, error) {
 	}
 
 	return decoded.Data, nil
+}
+
+func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v2/alerts", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting alerts failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := []model.Alert{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, err
+	}
+
+	return decoded, nil
 }
 
 type AlertGroup struct {
@@ -622,7 +651,7 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 	return decoded.Data.SilenceID, nil
 }
 
-func (c *Client) GetSilences(ctx context.Context) ([]types.Silence, error) {
+func (c *Client) GetSilencesV1(ctx context.Context) ([]types.Silence, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -660,7 +689,36 @@ func (c *Client) GetSilences(ctx context.Context) ([]types.Silence, error) {
 	return decoded.Data, nil
 }
 
-func (c *Client) GetSilence(ctx context.Context, id string) (types.Silence, error) {
+func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
+	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("getting silences failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := []types.Silence{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil, err
+	}
+
+	return decoded, nil
+}
+
+func (c *Client) GetSilenceV1(ctx context.Context, id string) (types.Silence, error) {
 	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -696,6 +754,35 @@ func (c *Client) GetSilence(ctx context.Context, id string) (types.Silence, erro
 	}
 
 	return decoded.Data, nil
+}
+
+func (c *Client) GetSilenceV2(ctx context.Context, id string) (types.Silence, error) {
+	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v2/silence/%s", url.PathEscape(id)), nil)
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return types.Silence{}, fmt.Errorf("error creating request: %v", err)
+	}
+
+	resp, body, err := c.alertmanagerClient.Do(ctx, req)
+	if err != nil {
+		return types.Silence{}, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return types.Silence{}, ErrNotFound
+	}
+
+	if resp.StatusCode/100 != 2 {
+		return types.Silence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
+	}
+
+	decoded := types.Silence{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return types.Silence{}, err
+	}
+
+	return decoded, nil
 }
 
 func (c *Client) DeleteSilence(ctx context.Context, id string) error {

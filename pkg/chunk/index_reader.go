@@ -1,14 +1,15 @@
-package scanner
+package chunk
 
 import (
 	"context"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
-// Processor that receives index entries from the table.
+// IndexEntryProcessor receives index entries from a table.
 type IndexEntryProcessor interface {
-	ProcessIndexEntry(indexEntry chunk.IndexEntry) error
+	ProcessIndexEntry(indexEntry IndexEntry) error
+
+	// Will this user be accepted by the processor?
+	AcceptUser(user string) bool
 
 	// Called at the end of reading of index entries.
 	Flush() error

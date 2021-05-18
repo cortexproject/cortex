@@ -387,13 +387,13 @@ grpc_tls_config:
 # If client sends keepalive ping more often, server will send GOAWAY and close
 # the connection.
 # CLI flag: -server.grpc.keepalive.min-time-between-pings
-[grpc_server_min_time_between_pings: <duration> | default = 5m]
+[grpc_server_min_time_between_pings: <duration> | default = 10s]
 
 # If true, server allows keepalive pings even when there are no active
 # streams(RPCs). If false, and client sends ping when there are no active
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
-[grpc_server_ping_without_stream_allowed: <boolean> | default = false]
+[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
@@ -1848,20 +1848,6 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # Maximum size (bytes) of an accepted HTTP request body.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
-
-receivers_firewall:
-  block:
-    # Comma-separated list of network CIDRs to block in Alertmanager receiver
-    # integrations.
-    # CLI flag: -alertmanager.receivers-firewall.block.cidr-networks
-    [cidr_networks: <string> | default = ""]
-
-    # True to block private and local addresses in Alertmanager receiver
-    # integrations. It blocks private addresses defined by  RFC 1918 (IPv4
-    # addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local
-    # unicast and local multicast addresses.
-    # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
-    [private_addresses: <boolean> | default = false]
 
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
@@ -4007,13 +3993,24 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage. When running the
-# Cortex chunks storage, this limit is enforced in the querier, while when
-# running the Cortex blocks storage this limit is both enforced in the querier
-# and store-gateway. 0 to disable.
+# Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
+# respective YAML config option instead. Maximum number of chunks that can be
+# fetched in a single query. This limit is enforced when fetching chunks from
+# the long-term storage only. When running the Cortex chunks storage, this limit
+# is enforced in the querier and ruler, while when running the Cortex blocks
+# storage this limit is enforced in the querier, ruler and store-gateway. 0 to
+# disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
+
+# Maximum number of chunks that can be fetched in a single query from ingesters
+# and long-term storage: the total number of actual fetched chunks could be 2x
+# the limit, being independently applied when querying ingesters and long-term
+# storage. This limit is enforced in the ingester (if chunks streaming is
+# enabled), querier, ruler and store-gateway. Takes precedence over the
+# deprecated -store.query-chunk-limit. 0 to disable.
+# CLI flag: -querier.max-fetched-chunks-per-query
+[max_fetched_chunks_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4097,6 +4094,29 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Comma-separated list of network CIDRs to block in Alertmanager receiver
+# integrations.
+# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
+[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
+
+# True to block private and local addresses in Alertmanager receiver
+# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
+# and local multicast addresses.
+# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
+[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
+
+# Per-user rate limit for sending email notifications from Alertmanager in
+# emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
+# CLI flag: -alertmanager.email-notification-rate-limit
+[alertmanager_email_notification_rate_limit: <float> | default = 0]
+
+# Per-user burst size for email notifications. If set to 0, no email
+# notifications will be sent, unless rate-limit is disabled, in which case all
+# email notifications are allowed.
+# CLI flag: -alertmanager.email-notification-burst-size
+[alertmanager_email_notification_burst_size: <int> | default = 1]
 ```
 
 ### `redis_config`
@@ -4934,6 +4954,11 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
 ```
 
 ### `compactor_config`

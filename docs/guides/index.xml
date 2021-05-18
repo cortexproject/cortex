@@ -147,7 +147,46 @@ that want to be part of gossip cluster, and then point &lt;code>join_members&lt;
 &lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
 &amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
-and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
+and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: Configuring Notification using Cortex Alertmanager</title><link>/docs/guides/alertmanager-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/alertmanager-configuration/</guid><description>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>Cortex Alertmanager notification setup follow mostly the syntax of Prometheus Alertmanager since it is based on the same codebase. The following is a description on how to load the configuration setup so that Alertmanager can use for notification when an alert event happened.&lt;/p>
+&lt;h3 id="cortex-alertmanager-configuration">Cortex Alertmanager configuration&lt;/h3>
+&lt;p>Cortex Alertmanager can be uploaded via Cortex &lt;a href="/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a> or using Grafana Labs &lt;a href="https://github.com/grafana/cortex-tools">Cortex Tools&lt;/a>.&lt;/p>
+&lt;p>Follow the instruction at the &lt;code>cortextool&lt;/code> link above to download or update to the latest version of the tool.&lt;/p>
+&lt;p>To obtain the full help of how to use &lt;code>cortextool&lt;/code> for all commands and flags, use
+&lt;code>cortextool --help-long&lt;/code>.&lt;/p>
+&lt;p>The following example shows the steps to upload the configuration to Cortex &lt;code>Alertmanager&lt;/code> using &lt;code>cortextool&lt;/code>.&lt;/p>
+&lt;h4 id="1-create-the-alertmanager-configuration-yml-file">1. Create the Alertmanager configuration &lt;code>yml&lt;/code> file.&lt;/h4>
+&lt;p>The following is &lt;code>amconfig.yml&lt;/code>, an example of a configuration for Cortex &lt;code>Alertmanager&lt;/code> to send notification via email:&lt;/p>
+&lt;pre>&lt;code>global:
+# The smarthost and SMTP sender used for mail notifications.
+smtp_smarthost: 'localhost:25'
+smtp_from: 'alertmanager@example.org'
+smtp_auth_username: 'alertmanager'
+smtp_auth_password: 'password'
+route:
+# A default receiver.
+receiver: send-email
+receivers:
+- name: send-email
+email_configs:
+- to: 'someone@localhost'
+&lt;/code>&lt;/pre>&lt;p>&lt;a href="https://grafana.com/blog/2020/02/25/step-by-step-guide-to-setting-up-prometheus-alertmanager-with-slack-pagerduty-and-gmail/#:~:text=To%20set%20up%20alerting%20in,to%20receive%20notifications%20from%20Alertmanager.">Example on how to setup Slack&lt;/a> to support receiving Alertmanager notification.&lt;/p>
+&lt;h4 id="2-upload-the-alertmanager-configuration">2. Upload the Alertmanager configuration&lt;/h4>
+&lt;p>In this example, Cortex &lt;code>Alertmanager&lt;/code> is set to be available via localhost on port 8095 with user/org = 100.&lt;/p>
+&lt;p>To upload the above configuration &lt;code>.yml&lt;/code> file with &lt;code>--key&lt;/code> to be your Basic Authentication or API key:&lt;/p>
+&lt;pre>&lt;code>cortextool alertmanager load ./amconfig.yml \
+--address=http://localhost:8095 \
+--id=100 \
+--key=&amp;lt;yourKey&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>If there is no error reported, the upload is successful.&lt;/p>
+&lt;p>To upload the configuration for Cortex &lt;code>Alertmanager&lt;/code> using Cortex API and curl - see Cortex &lt;a href="https://cortexmetrics.io/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a>.&lt;/p>
+&lt;h4 id="3-ensure-the-configuration-has-been-uploaded-successfully">3. Ensure the configuration has been uploaded successfully&lt;/h4>
+&lt;pre>&lt;code>cortextool alertmanager get \
+--address=http://localhost:8095 \
+--id=100 \
+--key=&amp;lt;yourKey&amp;gt;
+&lt;/code>&lt;/pre></description></item><item><title>Docs: Authentication and Authorisation</title><link>/docs/guides/auth/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/auth/</guid><description>
 &lt;p>All Cortex components take the tenant ID from a header &lt;code>X-Scope-OrgID&lt;/code>
 on each request. A tenant (also called &amp;ldquo;user&amp;rdquo; or &amp;ldquo;org&amp;rdquo;) is the owner of
 a set of series written to and queried from Cortex. All Cortex components

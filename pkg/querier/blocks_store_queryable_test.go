@@ -508,7 +508,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 			limits:       &blocksStoreLimitsMock{},
 			queryLimiter: limiter.NewQueryLimiter(1),
-			expectedErr:  validation.LimitError(fmt.Sprintf("The query hit the max number of series limit while fetching chunks (limit: %d)", 1)),
+			expectedErr:  validation.LimitError(fmt.Sprintf("The query hit the max number of series limit (limit: %d)", 1)),
 		},
 	}
 

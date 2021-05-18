@@ -191,7 +191,6 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 		chunksLimit  = d.limits.MaxChunksPerQueryFromIngesters(userID)
 		chunksCount  = atomic.Int32{}
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
-		matchers, _  = ingester_client.FromLabelMatchers(req.Matchers)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -229,6 +228,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 					// We expect to be always able to convert the label matchers back to Prometheus ones.
 					// In case we fail (unexpected) the error will not include the matchers, but the core
 					// logic doesn't break.
+					matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
 					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
 				}
 			}

@@ -905,7 +905,7 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
 		"-querier.ingester-streaming":                "true",
 		"-querier.query-store-for-labels-enabled":    "true",
-		"-querier.max-series-per-query":              "3",
+		"-querier.max-fetched-series-per-query":      "3",
 	})
 
 	// Start dependencies.
@@ -963,9 +963,9 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	result, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
+	_, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "max number of series limit while")
+	assert.Contains(t, err.Error(), "max number of series limit")
 }
 
 func TestHashCollisionHandling(t *testing.T) {

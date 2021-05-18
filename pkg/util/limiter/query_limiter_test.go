@@ -27,13 +27,13 @@ func TestQueryLimiter_AddSeries_ShouldReturnNoErrorOnLimitNotExceeded(t *testing
 		})
 		limiter = NewQueryLimiter(100)
 	)
-	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
-	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
+	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, limiter.uniqueSeriesCount())
 
 	// Re-add previous series to make sure it's not double counted
-	limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, limiter.uniqueSeriesCount())
 }
@@ -76,7 +76,8 @@ func BenchmarkQueryLimiter_AddSeries(b *testing.B) {
 
 	limiter := NewQueryLimiter(b.N + 1)
 	for _, s := range series {
-		limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s))
+		err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s))
+		assert.NoError(b, err)
 	}
 
 }

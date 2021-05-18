@@ -223,7 +223,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 		if err != nil {
 			return nil, err
 		}
-		// Take the set tenant limits
+
 		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(limits.MaxFetchedSeriesPerQuery(userID)))
 
 		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, limits, cfg.MaxQueryIntoFuture)

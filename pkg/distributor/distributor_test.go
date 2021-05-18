@@ -962,7 +962,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	})
 	defer stopAll(ds, r)
 
-	// Push a number of series below the max series limit. Each series has 1 sample.
+	// Push a number of series below the max series limit.
 	initialSeries := maxSeriesLimit
 	writeReq := makeWriteRequest(0, initialSeries, 0)
 	writeRes, err := ds[0].Push(ctx, writeReq)
@@ -982,7 +982,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	// Push more series to exceed the limit once we'll query back all series.
 	writeReq = &cortexpb.WriteRequest{}
 	writeReq.Timeseries = append(writeReq.Timeseries,
-		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: fmt.Sprintf("another_series")}}, 0, 0),
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
 	)
 
 	writeRes, err = ds[0].Push(ctx, writeReq)
@@ -993,7 +993,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	// a query running on all series to fail.
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "max number of series limit while")
+	assert.Contains(t, err.Error(), "max number of series limit")
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
@@ -2004,7 +2004,7 @@ func makeWriteRequestExemplar(seriesLabels []string, timestamp int64, exemplarLa
 		Timeseries: []cortexpb.PreallocTimeseries{
 			{
 				TimeSeries: &cortexpb.TimeSeries{
-					//Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
+					// Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
 					Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...)),
 					Exemplars: []cortexpb.Exemplar{
 						{

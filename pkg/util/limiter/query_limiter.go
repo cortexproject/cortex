@@ -15,12 +15,12 @@ import (
 type queryLimiterCtxKey struct{}
 
 var (
-	qlCtxKey        = &queryLimiterCtxKey{}
-	errMaxSeriesHit = "The query hit the max number of series limit while fetching chunks (limit: %d)"
+	ctxKey          = &queryLimiterCtxKey{}
+	errMaxSeriesHit = "The query hit the max number of series limit (limit: %d)"
 )
 
 type QueryLimiter struct {
-	uniqueSeriesMx sync.RWMutex
+	uniqueSeriesMx sync.Mutex
 	uniqueSeries   map[model.Fingerprint]struct{}
 
 	maxSeriesPerQuery int
@@ -30,7 +30,7 @@ type QueryLimiter struct {
 // is configured using the `maxSeriesPerQuery` limit.
 func NewQueryLimiter(maxSeriesPerQuery int) *QueryLimiter {
 	return &QueryLimiter{
-		uniqueSeriesMx: sync.RWMutex{},
+		uniqueSeriesMx: sync.Mutex{},
 		uniqueSeries:   map[model.Fingerprint]struct{}{},
 
 		maxSeriesPerQuery: maxSeriesPerQuery,
@@ -38,13 +38,13 @@ func NewQueryLimiter(maxSeriesPerQuery int) *QueryLimiter {
 }
 
 func AddQueryLimiterToContext(ctx context.Context, limiter *QueryLimiter) context.Context {
-	return context.WithValue(ctx, qlCtxKey, limiter)
+	return context.WithValue(ctx, ctxKey, limiter)
 }
 
 // QueryLimiterFromContextWithFallback returns a QueryLimiter from the current context.
 // If there is not a QueryLimiter on the context it will return a new no-op limiter.
 func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
-	ql, ok := ctx.Value(qlCtxKey).(*QueryLimiter)
+	ql, ok := ctx.Value(ctxKey).(*QueryLimiter)
 	if !ok {
 		// If there's no limiter return a new unlimited limiter as a fallback
 		ql = NewQueryLimiter(0)
@@ -58,21 +58,22 @@ func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	if ql.maxSeriesPerQuery == 0 {
 		return nil
 	}
+	fingerprint := client.FastFingerprint(seriesLabels)
 
 	ql.uniqueSeriesMx.Lock()
 	defer ql.uniqueSeriesMx.Unlock()
 
-	ql.uniqueSeries[client.FastFingerprint(seriesLabels)] = struct{}{}
+	ql.uniqueSeries[fingerprint] = struct{}{}
 	if len(ql.uniqueSeries) > ql.maxSeriesPerQuery {
-		// Format error with query and max limit
+		// Format error with max limit
 		return validation.LimitError(fmt.Sprintf(errMaxSeriesHit, ql.maxSeriesPerQuery))
 	}
 	return nil
 }
 
-// UniqueSeries returns the count of unique series seen by this query limiter.
+// uniqueSeriesCount returns the count of unique series seen by this query limiter.
 func (ql *QueryLimiter) uniqueSeriesCount() int {
-	ql.uniqueSeriesMx.RLock()
-	defer ql.uniqueSeriesMx.RUnlock()
+	ql.uniqueSeriesMx.Lock()
+	defer ql.uniqueSeriesMx.Unlock()
 	return len(ql.uniqueSeries)
 }

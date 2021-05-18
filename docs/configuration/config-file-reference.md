@@ -3940,7 +3940,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage.
+# ignored when running the Cortex blocks storage. When running Cortex with
+# blocks storage use -querier.max-fetched-series-per-query limit instead.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
@@ -4012,11 +4013,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-fetched-chunks-per-query
 [max_fetched_chunks_per_query: <int> | default = 0]
 
-# The maximum number of series for which a query can fetch samples from each
-# ingesters and block storage. When running in block storage mode this limit is
-# enforced on the querier and counts series returned from ingesters and block
-# storage as a per-query limit.
-# CLI flag: -querier.max-series-per-query
+# The maximum number of unique series for which a query can fetch samples from
+# each ingesters and blocks storage. This limit is enforced in the querier only
+# when running Cortex with blocks storage. 0 to disable
+# CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until

@@ -484,17 +484,16 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
   
-    When running Cortex chunks storage: limit enforced in the ingesters only and it's a per-instance limit.
-    When running Cortex blocks storage: limit enforced in the queriers both on samples fetched from ingesters and store-gateways (long-term storage).
-
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
 
 - `max_metadata_per_user` / `-ingester.max-metadata-per-user`
 - `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`
-
   Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+
+- `max_fetched_series_per_query` / `querier.max-fetched-series-per-query`
+  When running Cortex with blocks storage this limit is enforced in the queriers on unique series fetched from ingesters and store-gateways (long-term storage).
 
 - `max_global_metadata_per_user` / `-ingester.max-global-metadata-per-user`
 - `max_global_metadata_per_metric` / `-ingester.max-global-metadata-per-metric`

@@ -3993,6 +3993,17 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
+# The maximum number of exemplars per user, per ingester. 0 to disable.
+# CLI flag: -ingester.max-exemplars-per-user
+[max_exemplars_per_user: <int> | default = 0]
+
+# The maximum number of exemplars per user, across the cluster. This limit is
+# only supported when -distributor.shard-by-all-labels is true and shuffle
+# sharding is used for the tenant, because then data is evenly distributed
+# across a known number of ingesters. 0 to disable.
+# CLI flag: -ingester.max-global-exemplars-per-user
+[max_global_exemplars_per_user: <int> | default = 0]
+
 # Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
 # respective YAML config option instead. Maximum number of chunks that can be
 # fetched in a single query. This limit is enforced when fetching chunks from

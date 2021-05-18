@@ -193,8 +193,7 @@ func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[str
 			}
 			for _, mgr := range mgs {
 				if mgr.GetNamespace() == gr.GetNamespace() && mgr.GetName() == gr.GetName() {
-					gr.Rules = mgr.Rules
-					gr.Options = mgr.Options
+					*gr = *mgr
 				}
 			}
 		}

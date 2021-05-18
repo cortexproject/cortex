@@ -23,7 +23,7 @@ func TestLimiter_maxSeriesPerMetric(t *testing.T) {
 		return limiter.maxSeriesPerMetric("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true)
 }
 
 func TestLimiter_maxMetadataPerMetric(t *testing.T) {
@@ -36,7 +36,7 @@ func TestLimiter_maxMetadataPerMetric(t *testing.T) {
 		return limiter.maxMetadataPerMetric("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true)
 }
 
 func TestLimiter_maxSeriesPerUser(t *testing.T) {
@@ -49,7 +49,7 @@ func TestLimiter_maxSeriesPerUser(t *testing.T) {
 		return limiter.maxSeriesPerUser("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
 }
 
 func TestLimiter_maxMetadataPerUser(t *testing.T) {
@@ -62,7 +62,7 @@ func TestLimiter_maxMetadataPerUser(t *testing.T) {
 		return limiter.maxMetadataPerUser("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
 }
 
 func runLimiterMaxFunctionTest(
@@ -70,13 +70,7 @@ func runLimiterMaxFunctionTest(
 	applyLimits func(limits *validation.Limits, localLimit, globalLimit int),
 	runMaxFn func(limiter *Limiter) int,
 	globalLimitShardByMetricNameSupport bool,
-	unboundedWhenLimitDisabled bool,
 ) {
-	noLimitValue := 0
-	if unboundedWhenLimitDisabled {
-		noLimitValue = math.MaxInt32
-	}
-
 	tests := map[string]struct {
 		localLimit               int
 		globalLimit              int
@@ -96,8 +90,8 @@ func runLimiterMaxFunctionTest(
 			ringIngesterCount:       1,
 			ringZonesCount:          1,
 			shardByAllLabels:        false,
-			expectedDefaultSharding: noLimitValue,
-			expectedShuffleSharding: noLimitValue,
+			expectedDefaultSharding: math.MaxInt32,
+			expectedShuffleSharding: math.MaxInt32,
 		},
 		"only local limit is enabled": {
 			localLimit:              1000,
@@ -121,13 +115,13 @@ func runLimiterMaxFunctionTest(
 				if globalLimitShardByMetricNameSupport {
 					return 1000
 				}
-				return noLimitValue
+				return math.MaxInt32
 			}(),
 			expectedShuffleSharding: func() int {
 				if globalLimitShardByMetricNameSupport {
 					return 1000
 				}
-				return noLimitValue
+				return math.MaxInt32
 			}(),
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
@@ -240,19 +234,6 @@ func runLimiterMaxFunctionTest(
 		})
 	}
 }
-
-/*func TestLimiter_maxExemplarsPerUser_Combined(t *testing.T) {
-	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
-		limits.MaxExemplarsPerUser = localLimit
-		limits.MaxGlobalExemplarsPerUser = globalLimit
-	}
-
-	runMaxFn := func(limiter *Limiter) int {
-		return limiter.maxExemplarsPerUser("test")
-	}
-
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, false)
-}*/
 
 func TestLimiter_maxExemplarsPerUser(t *testing.T) {
 	tests := map[string]struct {

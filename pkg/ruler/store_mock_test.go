@@ -182,7 +182,23 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 }
 
 func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
-	// Nothing to do, as mockRuleStore already returns groups with loaded rules.
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	for _, gs := range groupsToLoad {
+		for _, gr := range gs {
+			mgs, ok := m.rules[gr.GetUser()]
+			if !ok {
+				return fmt.Errorf("failed to get rule group user %s", gr.GetUser())
+			}
+			for _, mgr := range mgs {
+				if mgr.GetNamespace() == gr.GetNamespace() && mgr.GetName() == gr.GetName() {
+					gr.Rules = mgr.Rules
+					gr.Options = mgr.Options
+				}
+			}
+		}
+	}
 	return nil
 }
 

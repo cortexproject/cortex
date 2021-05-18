@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
@@ -227,6 +228,10 @@ func (s *Scanner) running(ctx context.Context) error {
 			if err != nil {
 				level.Error(s.logger).Log("msg", "cannot scan DynamoDB", "err", err)
 			}
+		case "cassandra":
+			cass := s.storageCfg.CassandraStorageConfig
+
+			reader = newCassandraIndexReader(cass, s.schema, s.logger, s.indexReaderRowsRead, s.indexReaderParsedIndexEntries, s.currentTableRanges, s.currentTableScannedRanges)
 		default:
 			level.Warn(s.logger).Log("msg", "unsupported index type", "type", c.IndexType, "schemaFrom", c.From.String())
 			continue
@@ -431,9 +436,25 @@ func uploadPlansConcurrently(ctx context.Context, log log.Logger, dir string, bu
 				src := filepath.Join(dir, filepath.FromSlash(p))
 				dst := path.Join(bucketPrefix, p)
 
-				err := objstore.UploadFile(ctx, log, bucket, src, dst)
-				if err != nil {
-					return err
+				boff := util.NewBackoff(ctx, util.BackoffConfig{
+					MinBackoff: 1 * time.Second,
+					MaxBackoff: 5 * time.Second,
+					MaxRetries: 5,
+				})
+
+				for boff.Ongoing() {
+					err := objstore.UploadFile(ctx, log, bucket, src, dst)
+
+					if err == nil {
+						break
+					}
+
+					level.Warn(log).Log("msg", "failed to upload block", "err", err)
+					boff.Wait()
+				}
+
+				if boff.Err() != nil {
+					return boff.Err()
 				}
 			}
 			return nil

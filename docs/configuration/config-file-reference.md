@@ -835,7 +835,8 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.batch-iterators
 [batch_iterators: <boolean> | default = true]
 
-# Use streaming RPCs to query ingester.
+# Deprecated. Future versions of Cortex will have streaming always enabled. When
+# enabled, querier uses streaming RPCs to query ingesters.
 # CLI flag: -querier.ingester-streaming
 [ingester_streaming: <boolean> | default = true]
 

@@ -214,6 +214,28 @@ func (l *Limiter) maxMetadataPerUser(userID string) int {
 	)
 }
 
+func (l *Limiter) maxExemplarsPerUser(userID string) int {
+	// Return minimum nonzero limit, or 0 if no limits applied.
+	// Because the exemplar value cannot be changed at runtime, it supports
+	// only fixed values, either a local per-ingester limit, or
+	// global limited divided by fixed shuffle shard size when both shuffle sharding
+	// and shard by all labels are enabled.
+
+	limit := l.limits.MaxLocalExemplarsPerUser(userID)
+
+	if globalLimit := l.limits.MaxGlobalExemplarsPerUser(userID); globalLimit > 0 && l.shardByAllLabels {
+		if shardSize := l.getShardSize(userID); shardSize > 0 {
+			numIngesters := util.ShuffleShardExpectedInstances(shardSize, l.getNumZones())
+
+			globalPerIngester := int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+
+			limit = minNonZero(limit, globalPerIngester)
+		}
+	}
+
+	return limit
+}
+
 func (l *Limiter) maxByLocalAndGlobal(userID string, localLimitFn, globalLimitFn func(string) int) int {
 	localLimit := localLimitFn(userID)
 

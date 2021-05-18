@@ -23,7 +23,7 @@ func TestLimiter_maxSeriesPerMetric(t *testing.T) {
 		return limiter.maxSeriesPerMetric("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true, true)
 }
 
 func TestLimiter_maxMetadataPerMetric(t *testing.T) {
@@ -36,7 +36,7 @@ func TestLimiter_maxMetadataPerMetric(t *testing.T) {
 		return limiter.maxMetadataPerMetric("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, true, true)
 }
 
 func TestLimiter_maxSeriesPerUser(t *testing.T) {
@@ -49,7 +49,7 @@ func TestLimiter_maxSeriesPerUser(t *testing.T) {
 		return limiter.maxSeriesPerUser("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, true)
 }
 
 func TestLimiter_maxMetadataPerUser(t *testing.T) {
@@ -62,7 +62,7 @@ func TestLimiter_maxMetadataPerUser(t *testing.T) {
 		return limiter.maxMetadataPerUser("test")
 	}
 
-	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, true)
 }
 
 func runLimiterMaxFunctionTest(
@@ -70,7 +70,13 @@ func runLimiterMaxFunctionTest(
 	applyLimits func(limits *validation.Limits, localLimit, globalLimit int),
 	runMaxFn func(limiter *Limiter) int,
 	globalLimitShardByMetricNameSupport bool,
+	unboundedWhenLimitDisabled bool,
 ) {
+	noLimitValue := 0
+	if unboundedWhenLimitDisabled {
+		noLimitValue = math.MaxInt32
+	}
+
 	tests := map[string]struct {
 		localLimit               int
 		globalLimit              int
@@ -90,8 +96,8 @@ func runLimiterMaxFunctionTest(
 			ringIngesterCount:       1,
 			ringZonesCount:          1,
 			shardByAllLabels:        false,
-			expectedDefaultSharding: math.MaxInt32,
-			expectedShuffleSharding: math.MaxInt32,
+			expectedDefaultSharding: noLimitValue,
+			expectedShuffleSharding: noLimitValue,
 		},
 		"only local limit is enabled": {
 			localLimit:              1000,
@@ -115,13 +121,13 @@ func runLimiterMaxFunctionTest(
 				if globalLimitShardByMetricNameSupport {
 					return 1000
 				}
-				return math.MaxInt32
+				return noLimitValue
 			}(),
 			expectedShuffleSharding: func() int {
 				if globalLimitShardByMetricNameSupport {
 					return 1000
 				}
-				return math.MaxInt32
+				return noLimitValue
 			}(),
 		},
 		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
@@ -230,6 +236,175 @@ func runLimiterMaxFunctionTest(
 			// Assert on shuffle sharding strategy.
 			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled)
 			actual = runMaxFn(limiter)
+			assert.Equal(t, testData.expectedShuffleSharding, actual)
+		})
+	}
+}
+
+/*func TestLimiter_maxExemplarsPerUser_Combined(t *testing.T) {
+	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
+		limits.MaxExemplarsPerUser = localLimit
+		limits.MaxGlobalExemplarsPerUser = globalLimit
+	}
+
+	runMaxFn := func(limiter *Limiter) int {
+		return limiter.maxExemplarsPerUser("test")
+	}
+
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false, false)
+}*/
+
+func TestLimiter_maxExemplarsPerUser(t *testing.T) {
+	tests := map[string]struct {
+		localLimit               int
+		globalLimit              int
+		ringReplicationFactor    int
+		ringZoneAwarenessEnabled bool
+		ringIngesterCount        int
+		ringZonesCount           int
+		shardByAllLabels         bool
+		shardSize                int
+		expectedDefaultSharding  int
+		expectedShuffleSharding  int
+	}{
+		"both local and global limits are disabled": {
+			localLimit:              0,
+			globalLimit:             0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			ringZonesCount:          1,
+			shardByAllLabels:        false,
+			expectedDefaultSharding: 0,
+			expectedShuffleSharding: 0,
+		},
+		"only local limit is enabled": {
+			localLimit:              1000,
+			globalLimit:             0,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       1,
+			ringZonesCount:          1,
+			shardByAllLabels:        false,
+			expectedDefaultSharding: 1000,
+			expectedShuffleSharding: 1000,
+		},
+		"only global limit is enabled with shard-by-all-labels=false and replication-factor=1": {
+			localLimit:              0,
+			globalLimit:             1000,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       10,
+			ringZonesCount:          1,
+			shardByAllLabels:        false,
+			shardSize:               5,
+			expectedDefaultSharding: 0,
+			expectedShuffleSharding: 0, // Global limit is ignored when shard-by-all-labels=false
+		},
+		"only global limit is enabled with shard-by-all-labels=true and replication-factor=1": {
+			localLimit:              0,
+			globalLimit:             1000,
+			ringReplicationFactor:   1,
+			ringIngesterCount:       10,
+			ringZonesCount:          1,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 0,
+			expectedShuffleSharding: 200, // Only for shuffle sharding
+		},
+		"only global limit is enabled with shard-by-all-labels=true and replication-factor=3": {
+			localLimit:              0,
+			globalLimit:             1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			ringZonesCount:          1,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 0,
+			expectedShuffleSharding: 600, // Only for shuffle sharding
+		},
+		"both local and global limits are set with local limit < global limit": {
+			localLimit:              150,
+			globalLimit:             1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			ringZonesCount:          1,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 150,
+			expectedShuffleSharding: 150,
+		},
+		"both local and global limits are set with local limit > global limit": {
+			localLimit:              800,
+			globalLimit:             1000,
+			ringReplicationFactor:   3,
+			ringIngesterCount:       10,
+			ringZonesCount:          1,
+			shardByAllLabels:        true,
+			shardSize:               5,
+			expectedDefaultSharding: 800, // Uses local limit
+			expectedShuffleSharding: 600, // 1000 / 5 * 3
+		},
+		"zone-awareness enabled, global limit enabled and the shard size is NOT divisible by number of zones": {
+			localLimit:               0,
+			globalLimit:              900,
+			ringReplicationFactor:    3,
+			ringZoneAwarenessEnabled: true,
+			ringIngesterCount:        9,
+			ringZonesCount:           3,
+			shardByAllLabels:         true,
+			shardSize:                5,   // Not divisible by number of zones.
+			expectedDefaultSharding:  0,   // Uses local limit
+			expectedShuffleSharding:  450, // (900 / 6) * 3
+		},
+		"zone-awareness enabled, global limit enabled and the shard size is divisible by number of zones": {
+			localLimit:               0,
+			globalLimit:              900,
+			ringReplicationFactor:    3,
+			ringZoneAwarenessEnabled: true,
+			ringIngesterCount:        9,
+			ringZonesCount:           3,
+			shardByAllLabels:         true,
+			shardSize:                6,   // Divisible by number of zones.
+			expectedDefaultSharding:  0,   // Uses local limit
+			expectedShuffleSharding:  450, // (900 / 6) * 3
+		},
+		"zone-awareness enabled, global limit enabled and the shard size > number of ingesters": {
+			localLimit:               0,
+			globalLimit:              900,
+			ringReplicationFactor:    3,
+			ringZoneAwarenessEnabled: true,
+			ringIngesterCount:        9,
+			ringZonesCount:           3,
+			shardByAllLabels:         true,
+			shardSize:                20,  // Greater than number of ingesters.
+			expectedDefaultSharding:  0,   // Uses local limit
+			expectedShuffleSharding:  128, // 900 / 21 * 3
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			// Mock the ring
+			ring := &ringCountMock{}
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
+			ring.On("ZonesCount").Return(testData.ringZonesCount)
+
+			// Mock limits
+			limits := validation.Limits{IngestionTenantShardSize: testData.shardSize}
+			limits.MaxExemplarsPerUser = testData.localLimit
+			limits.MaxGlobalExemplarsPerUser = testData.globalLimit
+
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+
+			// Assert on default sharding strategy.
+			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled)
+			actual := limiter.maxExemplarsPerUser(userID)
+			assert.Equal(t, testData.expectedDefaultSharding, actual)
+
+			// Assert on shuffle sharding strategy.
+			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled)
+			actual = limiter.maxExemplarsPerUser(userID)
 			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
 	}

@@ -114,6 +114,9 @@ type userTSDB struct {
 	seriesInMetric *metricCounter
 	limiter        *Limiter
 
+	// Value assigned on TSDB creation, cached
+	maxExemplars int
+
 	instanceSeriesCount *atomic.Int64 // Shared across all userTSDB instances created by ingester.
 	instanceLimitsFn    func() *InstanceLimits
 
@@ -856,7 +859,7 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 			})
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+		if db.maxExemplars > 0 {
 			// app.AppendExemplar currently doesn't create the series, it must
 			// already exist.  If it does not then drop.
 			if ref == 0 && len(ts.Exemplars) > 0 {
@@ -1504,12 +1507,20 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	blockRanges := i.cfg.BlocksStorageConfig.TSDB.BlockRanges.ToMilliseconds()
 
+	// Min of nonzero options
+	maxExemplars := 0
+	if i.limiter != nil {
+		maxExemplars = i.limiter.maxExemplarsPerUser(userID)
+	}
+	maxExemplars = minNonZero(maxExemplars, i.cfg.BlocksStorageConfig.TSDB.MaxExemplars)
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
 		seriesInMetric:      newMetricCounter(i.limiter),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
+		maxExemplars:        maxExemplars,
 
 		instanceLimitsFn:    i.getInstanceLimits,
 		instanceSeriesCount: &i.TSDBState.seriesCount,
@@ -1527,7 +1538,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		WALSegmentSize:            i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:   userDB,
 		BlocksToDelete:            userDB.blocksToDelete,
-		MaxExemplars:              i.cfg.BlocksStorageConfig.TSDB.MaxExemplars,
+		MaxExemplars:              maxExemplars,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

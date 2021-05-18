@@ -19,6 +19,7 @@ To obtain the full help of how to use `cortextool` for all commands and flags, u
 `cortextool --help-long`.
 
 The following example shows the steps to upload the configuration to Cortex `Alertmanager` using `cortextool`. 
+
 #### 1. Create the Alertmanager configuration `yml` file.  
 
 The following is `amconfig.yml`, an example of a configuration for Cortex `Alertmanager` to send notification via email:
@@ -59,11 +60,11 @@ If there is no error reported, the upload is successful.
 
 To upload the configuration for Cortex `Alertmanager` using Cortex API and curl - see Cortex [Set Alertmanager configuration API](https://cortexmetrics.io/docs/api/#set-alertmanager-configuration).
 
-#### 3. Ensure the configuration has been uploaded sucessfully
+#### 3. Ensure the configuration has been uploaded successfully
 
 ```
 cortextool alertmanager get \
---adress=http://localhost:8095 \
+--address=http://localhost:8095 \
 --id=100 \
 --key=<yourKey>
 ```

@@ -133,7 +133,13 @@ func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rulespb
 
 	result := make(map[string]rulespb.RuleGroupList)
 	for k, v := range m.rules {
-		result[k] = append(rulespb.RuleGroupList(nil), v...)
+		for _, r := range v {
+			result[k] = append(result[k], &rulespb.RuleGroupDesc{
+				Namespace: r.Namespace,
+				Name:      r.Name,
+				User:      k,
+			})
+		}
 	}
 
 	return result, nil
@@ -146,6 +152,14 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	userRules, exists := m.rules[userID]
 	if !exists {
 		return rulespb.RuleGroupList{}, nil
+	}
+
+	for i, r := range userRules {
+		userRules[i] = &rulespb.RuleGroupDesc{
+			Namespace: r.Namespace,
+			Name:      r.Name,
+			User:      userID,
+		}
 	}
 
 	if namespace == "" {

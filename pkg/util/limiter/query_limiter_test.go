@@ -28,6 +28,7 @@ func TestQueryLimiter_AddSeries_ShouldReturnNoErrorOnLimitNotExceeded(t *testing
 		limiter = NewQueryLimiter(100)
 	)
 	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	assert.NoError(t, err)
 	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, limiter.uniqueSeriesCount())

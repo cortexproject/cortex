@@ -174,7 +174,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		l.NotificationRateLimitPerIntegration = NotificationRateLimitMap{}
 	}
 	f.Var(&l.NotificationRateLimitPerIntegration, "alertmanager.notification-rate-limit-per-integration", "Per-integration notification rate limits. Value is a map, where each key is integration name and value is a rate-limit (float). On command line, this map is given in JSON format. Rate limit has the same meaning as -alertmanager.notification-rate-limit, but only applies for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", ")+".")
-	f.IntVar(&l.AlertmanagerMaxConfigSize, "alertmanager.max-config-size", 0, "Maximum size of configuration file for Alertmanager that tenant can upload. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxConfigSize, "alertmanager.max-config-size", 0, "Maximum size of configuration file for Alertmanager that tenant can upload via Alertmanager API. 0 = no limit.")
 }
 
 // Validate the limits config and returns an error if the validation

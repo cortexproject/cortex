@@ -382,21 +382,21 @@ func TestMergeQueryable_Select(t *testing.T) {
 			mergeQueryableScenario: threeTenantsScenario,
 			selectTestCases: []selectTestCase{
 				{
-					name:                "no matchers should return all series",
+					name:                "should return all series when no matchers are provided",
 					expectedSeriesCount: 6,
 				},
 				{
-					name:                "not-equals matcher for team-b tenant should return only series for team-a and team-c tenants",
+					name:                "should return only series for team-a and team-c tenants when there is a not-equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 4,
 				},
 				{
-					name:                "equals matcher for team-b tenant should return only series for team-b tenant",
+					name:                "should return only series for team-b when there is an equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
 				},
 				{
-					name:                "equals matcher for host1 instance should return one series for each tenant",
+					name:                "should return one series for each tenant when there is an equals matcher for the host1 instance",
 					matchers:            []*labels.Matcher{{Name: "instance", Value: "host1", Type: labels.MatchEqual}},
 					expectedSeriesCount: 3,
 				},
@@ -406,31 +406,31 @@ func TestMergeQueryable_Select(t *testing.T) {
 			mergeQueryableScenario: threeTenantsWithDefaultTenantIDScenario,
 			selectTestCases: []selectTestCase{
 				{
-					name:                "no matchers should return all series",
+					name:                "should return all series when no matchers are provided",
 					expectedSeriesCount: 6,
 				},
 				{
-					name:                "not-equals matcher for team-b tenant should return only series for team-a and team-c tenants",
+					name:                "should return only series for team-a and team-c tenants when there is with not-equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 4,
 				},
 				{
-					name:                "equals matcher for team-b tenant should return only series for team-b tenant",
+					name:                "should return only series for team-b when there is an equals matcher for team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
 				},
 				{
-					name:                "equals matcher for the original value with the revised tenant label should return all series",
+					name:                "should return all series when there is an equals matcher for the original value of __tenant_id__ using the revised tenant label",
 					matchers:            []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
 					expectedSeriesCount: 6,
 				},
 				{
-					name:                "regexp matcher for the original value with the revised tenant label should return all series",
+					name:                "should return all series when there is a regexp matcher for the original value of __tenant_id__ using the revised tenant label",
 					matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, originalDefaultTenantLabel, "original-value")},
 					expectedSeriesCount: 6,
 				},
 				{
-					name:                "not-equals matcher for the original value with the revised tenant label should return no series",
+					name:                "should return no series when there is a not-equals matcher for the original value of __tenant_id__ using the revised tenant label",
 					matchers:            []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 0,
 				},
@@ -439,7 +439,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 		{
 			mergeQueryableScenario: threeTenantsWithWarningsScenario,
 			selectTestCases: []selectTestCase{{
-				name: "warnings from all merged queryables should be returned",
+				name: "should return warnings from all tenant queryables",
 				expectedWarnings: []string{
 					`warning querying tenant_id team-b: don't like them`,
 					`warning querying tenant_id team-c: out of office`,
@@ -450,7 +450,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 		{
 			mergeQueryableScenario: threeTenantsWithErrorScenario,
 			selectTestCases: []selectTestCase{{
-				name:             "any error encountered with a single tenant should be returned",
+				name:             "should return any error encountered with any tenant",
 				expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
 			}},
 		},
@@ -489,35 +489,35 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 		{
 			mergeQueryableScenario: singleTenantScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:               "should return only the instance and tenant specific team label",
+				name:               "should not return the __tenant_id__ label as the MergeQueryable has been bypassed",
 				expectedLabelNames: []string{"instance", "tenant-team-a"},
 			},
 		},
 		{
 			mergeQueryableScenario: singleTenantNoBypassScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:               "should return the instance, the tenant specific team label, and the __tenant_id__ label as the single querier bypass is not set",
+				name:               "should return the __tenant_id__ label as the MergeQueryable has not been bypassed",
 				expectedLabelNames: []string{defaultTenantLabel, "instance", "tenant-team-a"},
 			},
 		},
 		{
 			mergeQueryableScenario: threeTenantsScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:               "should return the instance, tenant specific team labels, and the __tenant_id__ label",
+				name:               "should return the __tenant_id__ label and all tenant team labels",
 				expectedLabelNames: []string{defaultTenantLabel, "instance", "tenant-team-a", "tenant-team-b", "tenant-team-c"},
 			},
 		},
 		{
 			mergeQueryableScenario: threeTenantsWithDefaultTenantIDScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:               "should return the instance, tenant specific team labels, the __tenant_id__ label, and the __original_tenant_id__ label",
+				name:               "should return  the __tenant_id__ label and all tenant team labels, and the __original_tenant_id__ label",
 				expectedLabelNames: []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-a", "tenant-team-b", "tenant-team-c"},
 			},
 		},
 		{
 			mergeQueryableScenario: threeTenantsWithWarningsScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:               "warnings from all merged queryables should be returned",
+				name:               "should return warnings from all tenant queryables",
 				expectedLabelNames: []string{defaultTenantLabel, "instance", "tenant-team-a", "tenant-team-b", "tenant-team-c"},
 				expectedWarnings: []string{
 					`warning querying tenant_id team-b: don't like them`,
@@ -528,7 +528,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 		{
 			mergeQueryableScenario: threeTenantsWithErrorScenario,
 			labelNamesTestCase: labelNamesTestCase{
-				name:             "any error encountered with a single tenant should be returned",
+				name:             "should return any error encountered with any tenant",
 				expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
 			},
 		},
@@ -558,48 +558,83 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 	for _, scenario := range []labelValuesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
-			labelValuesTestCases: []labelValuesTestCase{{
-				name:                "returns all label values for usual label name",
-				labelName:           "instance",
-				expectedLabelValues: []string{"host1", "host2.team-a"},
-			}},
+			labelValuesTestCases: []labelValuesTestCase{
+				{
+					name:                "should return all label values for instance when no matchers are provided",
+					labelName:           "instance",
+					expectedLabelValues: []string{"host1", "host2.team-a"},
+				},
+				{
+					name:                "should return no tenant values for the __tenant_id__ label as the MergeQueryable has been bypassed",
+					labelName:           defaultTenantLabel,
+					expectedLabelValues: nil,
+				},
+			},
 		},
 		{
 			mergeQueryableScenario: singleTenantNoBypassScenario,
-			labelValuesTestCases: []labelValuesTestCase{{
-				name:                "returns all label values for usual label name when not bypassing the merge queryable",
-				labelName:           "instance",
-				expectedLabelValues: []string{"host1", "host2.team-a"},
-			}},
+			labelValuesTestCases: []labelValuesTestCase{
+				{
+					name:                "should return all label values for instance when no matchers are provided",
+					labelName:           "instance",
+					expectedLabelValues: []string{"host1", "host2.team-a"},
+				},
+				{
+					name:                "should return a tenant team value for the __tenant_id__ label as the MergeQueryable has not been bypassed",
+					labelName:           defaultTenantLabel,
+					expectedLabelValues: []string{"team-a"},
+				},
+			},
 		},
 		{
 			mergeQueryableScenario: threeTenantsScenario,
-			labelValuesTestCases: []labelValuesTestCase{{
-				labelName:           "instance",
-				expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
-			}},
+			labelValuesTestCases: []labelValuesTestCase{
+				{
+					name:                "should return all label values for instance when no matchers are provided",
+					labelName:           "instance",
+					expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+				},
+				{
+					name:                "should return all tenant team values for the __tenant_id__ label when no matchers are provided",
+					labelName:           defaultTenantLabel,
+					expectedLabelValues: []string{"team-a", "team-b", "team-c"},
+				},
+				// TODO(jdb): These tests are failing as matchers are not implemented. They should pass when the matchers are implemented
+				// 	{
+				// 		name:                "should return only label values for team-a and team-c tenants when there is a not-equals matcher for team-b tenant",
+				// 		labelName:           defaultTenantLabel,
+				// 		matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
+				// 		expectedLabelValues: []string{"team-a", "team-c"},
+				// 	},
+				// 	{
+				// 		name:                "should return only label values for team-b tenant when there is an equals matcher for team-b tenant",
+				// 		labelName:           defaultTenantLabel,
+				// 		matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
+				// 		expectedLabelValues: []string{"team-b"},
+				// 	},
+			},
 		},
 		{
 			mergeQueryableScenario: threeTenantsWithDefaultTenantIDScenario,
 			labelValuesTestCases: []labelValuesTestCase{
 				{
-					name:                "returns all label values for usual label name",
+					name:                "should return all label values for instance when no matchers are provided",
 					labelName:           "instance",
 					expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 				},
 				{
-					name:                "returns all tenant values for __tenant_id__ label name",
+					name:                "should return all tenant values for __tenant_id__ label name",
 					labelName:           defaultTenantLabel,
 					expectedLabelValues: []string{"team-a", "team-b", "team-c"},
 				},
 				{
-					name:                "returns the original values of the __tenant_id__ label for the __original_tenant_id__ label name",
+					name:                "should return the original value for the revised tenant labelname when no matchers are provided",
 					labelName:           originalDefaultTenantLabel,
 					expectedLabelValues: []string{"original-value"},
 				},
 				{
-					name:             "equals matcher for __original_tenant_id__ label should error as matchers aren't implemented for LabelValues yet",
-					matchers:         []*labels.Matcher{{Name: defaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
+					name:             "with equals matcher for __original_tenant_id__ label it should error as matchers aren't implemented for LabelValues yet",
+					matchers:         []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
 					labelName:        originalDefaultTenantLabel,
 					expectedQueryErr: errMatchersNotImplemented,
 				},

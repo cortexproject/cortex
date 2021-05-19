@@ -559,6 +559,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 		{
 			mergeQueryableScenario: singleTenantScenario,
 			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "returns all label values for usual label name",
 				labelName:           "instance",
 				expectedLabelValues: []string{"host1", "host2.team-a"},
 			}},
@@ -566,6 +567,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 		{
 			mergeQueryableScenario: singleTenantNoBypassScenario,
 			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "returns all label values for usual label name when not bypassing the merge queryable",
 				labelName:           "instance",
 				expectedLabelValues: []string{"host1", "host2.team-a"},
 			}},

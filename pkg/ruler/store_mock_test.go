@@ -151,36 +151,19 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	userRules, exists := m.rules[userID]
-	if !exists {
-		return rulespb.RuleGroupList{}, nil
-	}
+	var result rulespb.RuleGroupList
+	for _, r := range m.rules[userID] {
+		if namespace != "" && namespace != r.Namespace {
+			continue
+		}
 
-	for i, r := range userRules {
-		userRules[i] = &rulespb.RuleGroupDesc{
+		result = append(result, &rulespb.RuleGroupDesc{
 			Namespace: r.Namespace,
 			Name:      r.Name,
 			User:      userID,
-		}
+		})
 	}
-
-	if namespace == "" {
-		return userRules, nil
-	}
-
-	namespaceRules := rulespb.RuleGroupList{}
-
-	for _, rg := range userRules {
-		if rg.Namespace == namespace {
-			namespaceRules = append(namespaceRules, rg)
-		}
-	}
-
-	if len(namespaceRules) == 0 {
-		return rulespb.RuleGroupList{}, nil
-	}
-
-	return namespaceRules, nil
+	return result, nil
 }
 
 func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {

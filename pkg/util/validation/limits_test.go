@@ -341,46 +341,55 @@ func TestSmallestPositiveNonZeroDurationPerTenant(t *testing.T) {
 	}
 }
 
-func TestAlertmanagerEmailNotificationLimits(t *testing.T) {
+func TestAlertmanagerNotificationLimits(t *testing.T) {
 	for name, tc := range map[string]struct {
 		inputYAML         string
 		expectedRateLimit rate.Limit
 		expectedBurstSize int
 	}{
+		"no email specific limit": {
+			inputYAML: `
+alertmanager_notification_rate_limit: 100
+`,
+			expectedRateLimit: 100,
+			expectedBurstSize: 100,
+		},
 		"zero limit": {
 			inputYAML: `
-alertmanager_email_notification_rate_limit: 0
-alertmanager_email_notification_burst_size: 0
+alertmanager_notification_rate_limit: 100
+
+alertmanager_notification_rate_limit_per_integration:
+  email: 0
 `,
 			expectedRateLimit: rate.Inf,
-			expectedBurstSize: 0,
+			expectedBurstSize: maxInt,
 		},
 
 		"negative limit": {
 			inputYAML: `
-alertmanager_email_notification_rate_limit: -10
-alertmanager_email_notification_burst_size: 5
+alertmanager_notification_rate_limit_per_integration:
+  email: -10
 `,
 			expectedRateLimit: 0,
-			expectedBurstSize: 5,
+			expectedBurstSize: 0,
 		},
 
 		"positive limit, negative burst": {
 			inputYAML: `
-alertmanager_email_notification_rate_limit: 222
-alertmanager_email_notification_burst_size: -1
+alertmanager_notification_rate_limit_per_integration:
+  email: 222
 `,
 			expectedRateLimit: 222,
-			expectedBurstSize: 0,
+			expectedBurstSize: 222,
 		},
 
 		"infinte limit": {
 			inputYAML: `
-alertmanager_email_notification_rate_limit: .inf
-alertmanager_email_notification_burst_size: 50
+alertmanager_notification_rate_limit_per_integration:
+  email: .inf
 `,
 			expectedRateLimit: rate.Inf,
-			expectedBurstSize: 50,
+			expectedBurstSize: maxInt,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -391,8 +400,150 @@ alertmanager_email_notification_burst_size: 50
 			ov, err := NewOverrides(limitsYAML, nil)
 			require.NoError(t, err)
 
-			require.Equal(t, tc.expectedRateLimit, ov.EmailNotificationRateLimit("user"))
-			require.Equal(t, tc.expectedBurstSize, ov.EmailNotificationBurst("user"))
+			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("user", "email"))
+			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("user", "email"))
+		})
+	}
+}
+
+func TestAlertmanagerNotificationLimitsOverrides(t *testing.T) {
+	baseYaml := `
+alertmanager_notification_rate_limit: 5
+
+alertmanager_notification_rate_limit_per_integration:
+ email: 100
+`
+
+	overrideGenericLimitsOnly := `
+testuser:
+  alertmanager_notification_rate_limit: 333
+`
+
+	overrideEmailLimits := `
+testuser:
+  alertmanager_notification_rate_limit_per_integration:
+    email: 7777
+`
+
+	overrideGenericLimitsAndEmailLimits := `
+testuser:
+  alertmanager_notification_rate_limit: 333
+
+  alertmanager_notification_rate_limit_per_integration:
+    email: 7777
+`
+
+	differentUserOverride := `
+differentuser:
+  alertmanager_notification_limits_per_integration:
+    email: 500
+`
+
+	for name, tc := range map[string]struct {
+		testedIntegration string
+		overrides         string
+		expectedRateLimit rate.Limit
+		expectedBurstSize int
+	}{
+		"no overrides, pushover": {
+			testedIntegration: "pushover",
+			expectedRateLimit: 5,
+			expectedBurstSize: 5,
+		},
+
+		"no overrides, email": {
+			testedIntegration: "email",
+			expectedRateLimit: 100,
+			expectedBurstSize: 100,
+		},
+
+		"generic override, pushover": {
+			testedIntegration: "pushover",
+			overrides:         overrideGenericLimitsOnly,
+			expectedRateLimit: 333,
+			expectedBurstSize: 333,
+		},
+
+		"generic override, email": {
+			testedIntegration: "email",
+			overrides:         overrideGenericLimitsOnly,
+			expectedRateLimit: 100, // there is email-specific override in default config.
+			expectedBurstSize: 100,
+		},
+
+		"email limit override, pushover": {
+			testedIntegration: "pushover",
+			overrides:         overrideEmailLimits,
+			expectedRateLimit: 5, // loaded from defaults when parsing YAML
+			expectedBurstSize: 5,
+		},
+
+		"email limit override, email": {
+			testedIntegration: "email",
+			overrides:         overrideEmailLimits,
+			expectedRateLimit: 7777,
+			expectedBurstSize: 7777,
+		},
+
+		"generic and email limit override, pushover": {
+			testedIntegration: "pushover",
+			overrides:         overrideGenericLimitsAndEmailLimits,
+			expectedRateLimit: 333,
+			expectedBurstSize: 333,
+		},
+
+		"generic and email limit override, email": {
+			testedIntegration: "email",
+			overrides:         overrideGenericLimitsAndEmailLimits,
+			expectedRateLimit: 7777,
+			expectedBurstSize: 7777,
+		},
+
+		"partial email limit override": {
+			testedIntegration: "email",
+			overrides: `
+testuser:
+  alertmanager_notification_rate_limit_per_integration:
+    email: 500
+`,
+			expectedRateLimit: 500, // overridden
+			expectedBurstSize: 500, // same as rate limit
+		},
+
+		"different user override, pushover": {
+			testedIntegration: "pushover",
+			overrides:         differentUserOverride,
+			expectedRateLimit: 5,
+			expectedBurstSize: 5,
+		},
+
+		"different user overridem, email": {
+			testedIntegration: "email",
+			overrides:         differentUserOverride,
+			expectedRateLimit: 100,
+			expectedBurstSize: 100,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			SetDefaultLimitsForYAMLUnmarshalling(Limits{})
+
+			limitsYAML := Limits{}
+			err := yaml.Unmarshal([]byte(baseYaml), &limitsYAML)
+			require.NoError(t, err, "expected to be able to unmarshal from YAML")
+
+			SetDefaultLimitsForYAMLUnmarshalling(limitsYAML)
+
+			overrides := map[string]*Limits{}
+			err = yaml.Unmarshal([]byte(tc.overrides), &overrides)
+			require.NoError(t, err, "parsing overrides")
+
+			tl := newMockTenantLimits(overrides)
+
+			ov, err := NewOverrides(limitsYAML, tl)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedRateLimit, ov.NotificationRateLimit("testuser", tc.testedIntegration))
+			require.Equal(t, tc.expectedBurstSize, ov.NotificationBurstSize("testuser", tc.testedIntegration))
 		})
 	}
 }

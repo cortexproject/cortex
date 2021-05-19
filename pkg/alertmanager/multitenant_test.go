@@ -1952,10 +1952,10 @@ func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user 
 	panic("implement me")
 }
 
-func (m mockAlertManagerLimits) EmailNotificationRateLimit(_ string) rate.Limit {
+func (m mockAlertManagerLimits) NotificationRateLimit(_ string, integration string) rate.Limit {
 	return m.emailNotificationRateLimit
 }
 
-func (m mockAlertManagerLimits) EmailNotificationBurst(_ string) int {
+func (m mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
 	return m.emailNotificationBurst
 }

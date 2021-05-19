@@ -235,16 +235,17 @@ type Limits interface {
 	// in the Alertmanager receivers for the given user.
 	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 
-	// EmailNotificationRateLimit returns limit used by rate-limiter. If set to 0, no emails are allowed.
-	// rate.Inf = all emails are allowed.
+	// NotificationRateLimit methods return limit used by rate-limiter for given integration.
+	// If set to 0, no notifications are allowed.
+	// rate.Inf = all notifications are allowed.
 	//
-	// Note that when  negative or zero values specified by user are translated to rate.Limit by Overrides,
+	// Note that when negative or zero values specified by user are translated to rate.Limit by Overrides,
 	// and may have different meaning there.
-	EmailNotificationRateLimit(tenant string) rate.Limit
+	NotificationRateLimit(tenant string, integration string) rate.Limit
 
-	// EmailNotificationBurst returns burst-size for rate limiter. If 0, no notifications are allowed except
+	// NotificationBurstSize returns burst-size for rate limiter for given integration type. If 0, no notifications are allowed except
 	// when limit == rate.Inf.
-	EmailNotificationBurst(tenant string) int
+	NotificationBurstSize(tenant string, integration string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

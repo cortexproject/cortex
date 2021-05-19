@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -47,6 +48,8 @@ var (
 			"https://%s.blob.core.usgovcloudapi.net/%s",
 		},
 	}
+
+	errorCodeRegex = regexp.MustCompile(`X-Ms-Error-Code:\D*\[(\w+)\]`)
 )
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
@@ -136,6 +139,9 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	// Request access to the blob
 	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
+		if isObjNotFoundErr(err) {
+			return nil, chunk.ErrStorageObjectNotFound
+		}
 		return nil, err
 	}
 
@@ -263,4 +269,26 @@ func (b *BlobStorage) selectBlobURLFmt() string {
 
 func (b *BlobStorage) selectContainerURLFmt() string {
 	return endpoints[b.cfg.Environment].containerURLFmt
+}
+
+// isObjNotFoundErr returns true if error means that object is not found. Relevant to GetObject operations.
+func isObjNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errorCode := parseError(err.Error())
+	if errorCode == "InvalidUri" || errorCode == "BlobNotFound" {
+		return true
+	}
+
+	return false
+}
+
+func parseError(errorCode string) string {
+	match := errorCodeRegex.FindStringSubmatch(errorCode)
+	if len(match) == 2 {
+		return match[1]
+	}
+	return errorCode
 }

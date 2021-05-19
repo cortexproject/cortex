@@ -33,8 +33,10 @@ import (
 
 func TestAMConfigValidationAPI(t *testing.T) {
 	testCases := []struct {
-		name     string
-		cfg      string
+		name          string
+		cfg           string
+		maxConfigSize int
+
 		response string
 		err      error
 	}{
@@ -452,14 +454,50 @@ template_files:
 `,
 			err: fmt.Errorf(`error validating Alertmanager config: template: test.tmpl:1: function "invalid" not defined`),
 		},
+		{
+			name: "config too big",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+`,
+			maxConfigSize: 10,
+			err:           fmt.Errorf(errConfigurationTooBig, 10),
+		},
+		{
+			name: "config size OK",
+			cfg: `
+alertmanager_config: |
+  route:
+    receiver: 'default-receiver'
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    group_by: [cluster, alertname]
+  receivers:
+    - name: default-receiver
+`,
+			maxConfigSize: 1000,
+			err:           nil,
+		},
 	}
 
+	limits := &mockAlertManagerLimits{}
 	am := &MultitenantAlertmanager{
 		store:  prepareInMemoryAlertStore(),
 		logger: util_log.Logger,
+		limits: limits,
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			limits.maxConfigSize = tc.maxConfigSize
+
 			req := httptest.NewRequest(http.MethodPost, "http://alertmanager/api/v1/alerts", bytes.NewReader([]byte(tc.cfg)))
 			ctx := user.InjectOrgID(req.Context(), "testing")
 			w := httptest.NewRecorder()

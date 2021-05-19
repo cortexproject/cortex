@@ -246,6 +246,9 @@ type Limits interface {
 	// NotificationBurstSize returns burst-size for rate limiter for given integration type. If 0, no notifications are allowed except
 	// when limit == rate.Inf.
 	NotificationBurstSize(tenant string, integration string) int
+
+	// AlertmanagerMaxConfigSize returns max size of configuration file that user is allowed to upload. If 0, there is no limit.
+	AlertmanagerMaxConfigSize(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

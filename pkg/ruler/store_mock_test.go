@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ type mockRuleStore struct {
 }
 
 var (
+	delim               = "/"
 	interval, _         = time.ParseDuration("1m")
 	mockRulesNamespaces = map[string]rulespb.RuleGroupList{
 		"user1": {
@@ -185,17 +187,24 @@ func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[str
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	gm := make(map[string]*rulespb.RuleGroupDesc)
+	for _, gs := range m.rules {
+		for _, gr := range gs {
+			user, namespace, name := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+			key := user + delim + base64.URLEncoding.EncodeToString([]byte(namespace)) + delim + base64.URLEncoding.EncodeToString([]byte(name))
+			gm[key] = gr
+		}
+	}
+
 	for _, gs := range groupsToLoad {
 		for _, gr := range gs {
-			mgs, ok := m.rules[gr.GetUser()]
+			user, namespace, name := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+			key := user + delim + base64.URLEncoding.EncodeToString([]byte(namespace)) + delim + base64.URLEncoding.EncodeToString([]byte(name))
+			mgr, ok := gm[key]
 			if !ok {
 				return fmt.Errorf("failed to get rule group user %s", gr.GetUser())
 			}
-			for _, mgr := range mgs {
-				if mgr.GetNamespace() == gr.GetNamespace() && mgr.GetName() == gr.GetName() {
-					*gr = *mgr
-				}
-			}
+			*gr = *mgr
 		}
 	}
 	return nil

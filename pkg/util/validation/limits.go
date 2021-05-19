@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -103,8 +104,8 @@ type Limits struct {
 	AlertmanagerReceiversBlockPrivateAddresses bool                 `yaml:"alertmanager_receivers_firewall_block_private_addresses" json:"alertmanager_receivers_firewall_block_private_addresses"`
 
 	// Alertmanager limits
-	EmailNotificationRateLimit float64 `yaml:"alertmanager_email_notification_rate_limit" json:"alertmanager_email_notification_rate_limit"`
-	EmailNotificationBurstSize int     `yaml:"alertmanager_email_notification_burst_size" json:"alertmanager_email_notification_burst_size"`
+	NotificationRateLimit               float64                  `yaml:"alertmanager_notification_rate_limit" json:"alertmanager_notification_rate_limit"`
+	NotificationRateLimitPerIntegration NotificationRateLimitMap `yaml:"alertmanager_notification_rate_limit_per_integration" json:"alertmanager_notification_rate_limit_per_integration"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -165,8 +166,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
 	f.BoolVar(&l.AlertmanagerReceiversBlockPrivateAddresses, "alertmanager.receivers-firewall-block-private-addresses", false, "True to block private and local addresses in Alertmanager receiver integrations. It blocks private addresses defined by  RFC 1918 (IPv4 addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast and local multicast addresses.")
-	f.Float64Var(&l.EmailNotificationRateLimit, "alertmanager.email-notification-rate-limit", 0, "Per-user rate limit for sending email notifications from Alertmanager in emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.")
-	f.IntVar(&l.EmailNotificationBurstSize, "alertmanager.email-notification-burst-size", 1, "Per-user burst size for email notifications. If set to 0, no email notifications will be sent, unless rate-limit is disabled, in which case all email notifications are allowed.")
+
+	f.Float64Var(&l.NotificationRateLimit, "alertmanager.notification-rate-limit", 0, "Per-user rate limit for sending notifications from Alertmanager in notifications/sec. 0 = rate limit disabled. Negative value = no notifications are allowed.")
+
+	if l.NotificationRateLimitPerIntegration == nil {
+		l.NotificationRateLimitPerIntegration = NotificationRateLimitMap{}
+	}
+	f.Var(&l.NotificationRateLimitPerIntegration, "alertmanager.notification-rate-limit-per-integration", "Per-integration notification rate limits. Value is a map, where each key is integration name and value is a rate-limit (float). On command line, this map is given in JSON format. Rate limit has the same meaning as -alertmanager.notification-rate-limit, but only applies for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", ")+".")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -190,6 +196,8 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		*l = *defaultLimits
+		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
+		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 	type plain Limits
 	return unmarshal((*plain)(l))
@@ -202,10 +210,19 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	// behind type indirection.
 	if defaultLimits != nil {
 		*l = *defaultLimits
+		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
+		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 
 	type plain Limits
 	return json.Unmarshal(data, (*plain)(l))
+}
+
+func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
+	l.NotificationRateLimitPerIntegration = make(map[string]float64, len(defaults))
+	for k, v := range defaults {
+		l.NotificationRateLimitPerIntegration[k] = v
+	}
 }
 
 // When we load YAML from disk, we want the various per-customer limits
@@ -508,24 +525,52 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
-func (o *Overrides) EmailNotificationRateLimit(user string) rate.Limit {
-	l := o.getOverridesForUser(user).EmailNotificationRateLimit
+// Notification limits are special. Limits are returned in following order:
+// 1. per-tenant limits for given integration
+// 2. default limits for given integration
+// 3. per-tenant limits
+// 4. default limits
+func (o *Overrides) getNotificationLimitForUser(user, integration string) float64 {
+	u := o.getOverridesForUser(user)
+	if n, ok := u.NotificationRateLimitPerIntegration[integration]; ok {
+		return n
+	}
+
+	return u.NotificationRateLimit
+}
+
+func (o *Overrides) NotificationRateLimit(user string, integration string) rate.Limit {
+	l := o.getNotificationLimitForUser(user, integration)
 	if l == 0 || math.IsInf(l, 1) {
 		return rate.Inf // No rate limit.
 	}
 
 	if l < 0 {
-		l = 0 // No emails will be sent.
+		l = 0 // No notifications will be sent.
 	}
 	return rate.Limit(l)
 }
 
-func (o *Overrides) EmailNotificationBurst(user string) int {
-	b := o.getOverridesForUser(user).EmailNotificationBurstSize
-	if b < 0 {
-		b = 0
+const maxInt = int(^uint(0) >> 1)
+
+func (o *Overrides) NotificationBurstSize(user string, integration string) int {
+	// Burst size is computed from rate limit. Rate limit is already normalized to [0, +inf), where 0 means disabled.
+	l := o.NotificationRateLimit(user, integration)
+	if l == 0 {
+		return 0
 	}
-	return b
+
+	// floats can be larger than max int. This also handles case where l == rate.Inf.
+	if float64(l) >= float64(maxInt) {
+		return maxInt
+	}
+
+	// For values between (0, 1), allow single notification per second (every 1/limit seconds).
+	if l < 1 {
+		return 1
+	}
+
+	return int(l)
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

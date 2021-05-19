@@ -4107,16 +4107,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -alertmanager.receivers-firewall-block-private-addresses
 [alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
 
-# Per-user rate limit for sending email notifications from Alertmanager in
-# emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
-# CLI flag: -alertmanager.email-notification-rate-limit
-[alertmanager_email_notification_rate_limit: <float> | default = 0]
+# Per-user rate limit for sending notifications from Alertmanager in
+# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
+# are allowed.
+# CLI flag: -alertmanager.notification-rate-limit
+[alertmanager_notification_rate_limit: <float> | default = 0]
 
-# Per-user burst size for email notifications. If set to 0, no email
-# notifications will be sent, unless rate-limit is disabled, in which case all
-# email notifications are allowed.
-# CLI flag: -alertmanager.email-notification-burst-size
-[alertmanager_email_notification_burst_size: <int> | default = 1]
+# Per-integration notification rate limits. Value is a map, where each key is
+# integration name and value is a rate-limit (float). On command line, this map
+# is given in JSON format. Rate limit has the same meaning as
+# -alertmanager.notification-rate-limit, but only applies for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover.
+# CLI flag: -alertmanager.notification-rate-limit-per-integration
+[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 ```
 
 ### `redis_config`

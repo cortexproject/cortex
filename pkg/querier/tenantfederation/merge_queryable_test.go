@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -507,29 +508,27 @@ func TestTracingMergeQueryable(t *testing.T) {
 
 	require.NoError(t, seriesSet.Err())
 	spans := mockTracer.FinishedSpans()
-	assertSpanExist(t, spans, "mergeQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-a|team-b"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-a"})
-	assertSpanExist(t, spans, "mockTenantQuerier.select", map[string]string{spanlogger.TenantIDTagName: "team-b"})
+	assertSpanExist(t, spans, "mergeQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-a", "team-b"}})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-a"}})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-b"}})
 }
 
 func assertSpanExist(t *testing.T,
 	actualSpans []*mocktracer.MockSpan,
 	name string,
-	expectedTags map[string]string) {
+	tag expectedTag) {
 	for _, span := range actualSpans {
-		if span.OperationName == name && containsTags(span, expectedTags) {
+		if span.OperationName == name && containsTags(span, tag) {
 			return
 		}
 	}
 	require.FailNow(t, "can not find span matching params",
 		"expected span with name `%v` and with "+
 			"tags %v to be present but it was not. actual spans: %+v",
-		name, expectedTags, extractNameWithTags(actualSpans))
-}
-
-type spanWithTags struct {
-	name string
-	tags map[string]interface{}
+		name, tag, extractNameWithTags(actualSpans))
 }
 
 func extractNameWithTags(actualSpans []*mocktracer.MockSpan) []spanWithTags {
@@ -540,12 +539,16 @@ func extractNameWithTags(actualSpans []*mocktracer.MockSpan) []spanWithTags {
 	return result
 }
 
-func containsTags(span *mocktracer.MockSpan,
-	expectedTags map[string]string) bool {
-	for k, expectedVal := range expectedTags {
-		if span.Tag(k) == expectedVal {
-			return true
-		}
-	}
-	return false
+func containsTags(span *mocktracer.MockSpan, expectedTag expectedTag) bool {
+	return reflect.DeepEqual(span.Tag(expectedTag.key), expectedTag.values)
+}
+
+type spanWithTags struct {
+	name string
+	tags map[string]interface{}
+}
+
+type expectedTag struct {
+	key    string
+	values []string
 }

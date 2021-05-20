@@ -16,7 +16,7 @@ import (
 type loggerCtxMarker struct{}
 
 const (
-	TenantIDTagName = "tenant_id"
+	TenantIDTagName = "tenant_ids"
 )
 
 var (
@@ -39,7 +39,7 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 // retrieved with FromContext or FromContextWithFallback.
 func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
-	if ids, _ := tenant.TenantIDs(ctx); ids != nil {
+	if ids, _ := tenant.TenantIDs(ctx); len(ids) > 0 {
 		span.SetTag(TenantIDTagName, ids)
 	}
 	logger := &SpanLogger{

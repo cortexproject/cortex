@@ -137,7 +137,7 @@ type mergeQuerier struct {
 // For the label "original_" + `idLabelName it will return all the values
 // of the underlying queriers for `idLabelName`.
 func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	log, _ := spanlogger.New(m.ctx, "mergeQuerier.labelValues")
+	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
 	if name == m.idLabelName {
 		return m.ids, nil, nil
@@ -158,7 +158,7 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 // queriers. It also adds the `idLabelName` and if present in the original
 // results the original `idLabelName`.
 func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	log, _ := spanlogger.New(m.ctx, "mergeQuerier.labelNames")
+	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelNames")
 	defer log.Span.Finish()
 	labelNames, warnings, err := m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelNames()
@@ -280,7 +280,7 @@ type selectJob struct {
 // matching. The forwarded labelSelector is not containing those that operate
 // on `idLabelName`.
 func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	log, ctx := spanlogger.New(m.ctx, "mergeQuerier.select")
+	log, ctx := spanlogger.New(m.ctx, "mergeQuerier.Select")
 	defer log.Span.Finish()
 	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
 	var jobs = make([]interface{}, len(matchedValues))

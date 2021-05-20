@@ -40,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -943,6 +944,56 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "the query hit the max number of chunks limit")
+}
+
+func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReached(t *testing.T) {
+	const maxSeriesLimit = 10
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit))
+	// Prepare distributors.
+	ds, _, r, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+	defer stopAll(ds, r)
+
+	// Push a number of series below the max series limit.
+	initialSeries := maxSeriesLimit
+	writeReq := makeWriteRequest(0, initialSeries, 0)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	allSeriesMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
+	}
+
+	// Since the number of series is equal to the limit (but doesn't
+	// exceed it), we expect a query running on all series to succeed.
+	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+	assert.Len(t, queryRes.Chunkseries, initialSeries)
+
+	// Push more series to exceed the limit once we'll query back all series.
+	writeReq = &cortexpb.WriteRequest{}
+	writeReq.Timeseries = append(writeReq.Timeseries,
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
+	)
+
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of series is exceeding the limit, we expect
+	// a query running on all series to fail.
+	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max number of series limit")
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
@@ -1953,7 +2004,7 @@ func makeWriteRequestExemplar(seriesLabels []string, timestamp int64, exemplarLa
 		Timeseries: []cortexpb.PreallocTimeseries{
 			{
 				TimeSeries: &cortexpb.TimeSeries{
-					//Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
+					// Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "test"}},
 					Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(seriesLabels...)),
 					Exemplars: []cortexpb.Exemplar{
 						{

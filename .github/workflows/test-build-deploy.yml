@@ -139,6 +139,7 @@ jobs:
           docker pull quay.io/cortexproject/cortex:v1.6.0
           docker pull quay.io/cortexproject/cortex:v1.7.0
           docker pull quay.io/cortexproject/cortex:v1.8.0
+          docker pull quay.io/cortexproject/cortex:v1.9.0
           docker pull shopify/bigtable-emulator:0.1.0
           docker pull rinscy/cassandra:3.11.0
           docker pull memcached:1.6.1

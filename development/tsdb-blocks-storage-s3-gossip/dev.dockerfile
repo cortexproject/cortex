@@ -1,5 +1,5 @@
 FROM golang:1.16
-ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+ENV CGO_ENABLED=0
 RUN go get github.com/go-delve/delve/cmd/dlv
 
 FROM alpine:3.13

@@ -284,6 +284,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	return am, nil
 }
 
+func (am *Alertmanager) WaitInitialStateSync(ctx context.Context) error {
+	if service, ok := am.state.(services.Service); ok {
+		if err := service.AwaitRunning(ctx); err != nil {
+			return errors.Wrap(err, "failed to wait for ring-based replication service")
+		}
+	}
+	return nil
+}
+
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
 func clusterWait(position func() int, timeout time.Duration) func() time.Duration {
@@ -337,10 +346,11 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	firewallDialer := util_net.NewFirewallDialer(newFirewallDialerConfigProvider(userID, am.cfg.Limits))
 
 	integrationsMap, err := buildIntegrationsMap(conf.Receivers, tmpl, firewallDialer, am.logger, func(integrationName string, notifier notify.Notifier) notify.Notifier {
-		if integrationName == "email" && am.cfg.Limits != nil {
+		if am.cfg.Limits != nil {
 			rl := &tenantRateLimits{
-				tenant: userID,
-				limits: am.cfg.Limits,
+				tenant:      userID,
+				limits:      am.cfg.Limits,
+				integration: integrationName,
 			}
 
 			return newRateLimitedNotifier(notifier, rl, 10*time.Second, am.rateLimitedNotifications.WithLabelValues(integrationName))
@@ -498,6 +508,7 @@ func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, fir
 	for i, c := range nc.PushoverConfigs {
 		add("pushover", i, c, func(l log.Logger) (notify.Notifier, error) { return pushover.New(c, tmpl, l, httpOps...) })
 	}
+	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {
 		return nil, &errs
 	}
@@ -551,14 +562,15 @@ func (p firewallDialerConfigProvider) BlockPrivateAddresses() bool {
 }
 
 type tenantRateLimits struct {
-	tenant string
-	limits Limits
+	tenant      string
+	integration string
+	limits      Limits
 }
 
 func (t *tenantRateLimits) RateLimit() rate.Limit {
-	return t.limits.EmailNotificationRateLimit(t.tenant)
+	return t.limits.NotificationRateLimit(t.tenant, t.integration)
 }
 
 func (t *tenantRateLimits) Burst() int {
-	return t.limits.EmailNotificationBurst(t.tenant)
+	return t.limits.NotificationBurstSize(t.tenant, t.integration)
 }

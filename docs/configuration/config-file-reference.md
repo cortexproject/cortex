@@ -3940,7 +3940,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage.
+# ignored when running the Cortex blocks storage. When running Cortex with
+# blocks storage use -querier.max-fetched-series-per-query limit instead.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
@@ -4011,6 +4012,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # deprecated -store.query-chunk-limit. 0 to disable.
 # CLI flag: -querier.max-fetched-chunks-per-query
 [max_fetched_chunks_per_query: <int> | default = 0]
+
+# The maximum number of unique series for which a query can fetch samples from
+# each ingesters and blocks storage. This limit is enforced in the querier only
+# when running Cortex with blocks storage. 0 to disable
+# CLI flag: -querier.max-fetched-series-per-query
+[max_fetched_series_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4107,16 +4114,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -alertmanager.receivers-firewall-block-private-addresses
 [alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
 
-# Per-user rate limit for sending email notifications from Alertmanager in
-# emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.
-# CLI flag: -alertmanager.email-notification-rate-limit
-[alertmanager_email_notification_rate_limit: <float> | default = 0]
+# Per-user rate limit for sending notifications from Alertmanager in
+# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
+# are allowed.
+# CLI flag: -alertmanager.notification-rate-limit
+[alertmanager_notification_rate_limit: <float> | default = 0]
 
-# Per-user burst size for email notifications. If set to 0, no email
-# notifications will be sent, unless rate-limit is disabled, in which case all
-# email notifications are allowed.
-# CLI flag: -alertmanager.email-notification-burst-size
-[alertmanager_email_notification_burst_size: <int> | default = 1]
+# Per-integration notification rate limits. Value is a map, where each key is
+# integration name and value is a rate-limit (float). On command line, this map
+# is given in JSON format. Rate limit has the same meaning as
+# -alertmanager.notification-rate-limit, but only applies for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover.
+# CLI flag: -alertmanager.notification-rate-limit-per-integration
+[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 ```
 
 ### `redis_config`

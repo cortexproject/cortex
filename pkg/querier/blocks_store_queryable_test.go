@@ -31,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -43,13 +44,14 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	)
 
 	var (
-		block1          = ulid.MustNew(1, nil)
-		block2          = ulid.MustNew(2, nil)
-		block3          = ulid.MustNew(3, nil)
-		block4          = ulid.MustNew(4, nil)
-		metricNameLabel = labels.Label{Name: labels.MetricName, Value: metricName}
-		series1Label    = labels.Label{Name: "series", Value: "1"}
-		series2Label    = labels.Label{Name: "series", Value: "2"}
+		block1           = ulid.MustNew(1, nil)
+		block2           = ulid.MustNew(2, nil)
+		block3           = ulid.MustNew(3, nil)
+		block4           = ulid.MustNew(4, nil)
+		metricNameLabel  = labels.Label{Name: labels.MetricName, Value: metricName}
+		series1Label     = labels.Label{Name: "series", Value: "1"}
+		series2Label     = labels.Label{Name: "series", Value: "2"}
+		noOpQueryLimiter = limiter.NewQueryLimiter(0)
 	)
 
 	type valueResult struct {
@@ -67,6 +69,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		finderErr         error
 		storeSetResponses []interface{}
 		limits            BlocksStoreLimits
+		queryLimiter      *limiter.QueryLimiter
 		expectedSeries    []seriesResult
 		expectedErr       error
 		expectedMetrics   string
@@ -74,12 +77,14 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		"no block in the storage matching the query time range": {
 			finderResult: nil,
 			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedErr:  nil,
 		},
 		"error while finding blocks matching the query time range": {
-			finderErr:   errors.New("unable to find blocks"),
-			limits:      &blocksStoreLimitsMock{},
-			expectedErr: errors.New("unable to find blocks"),
+			finderErr:    errors.New("unable to find blocks"),
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  errors.New("unable to find blocks"),
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
@@ -89,8 +94,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
 			},
-			limits:      &blocksStoreLimitsMock{},
-			expectedErr: errors.New("no client found"),
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  errors.New("no client found"),
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
 			finderResult: bucketindex.Blocks{
@@ -106,7 +112,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block1, block2},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel),
@@ -132,7 +139,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block1, block2},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),
@@ -165,7 +173,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block2},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel),
@@ -194,7 +203,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block2},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel),
@@ -229,7 +239,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block3},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),
@@ -290,8 +301,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// Second attempt returns an error because there are no other store-gateways left.
 				errors.New("no store-gateway remaining after exclude"),
 			},
-			limits:      &blocksStoreLimitsMock{},
-			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s", block2.String()),
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  fmt.Errorf("consistency check failed because some blocks were not queried: %s", block2.String()),
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
@@ -315,8 +327,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				// Second attempt returns an error because there are no other store-gateways left.
 				errors.New("no store-gateway remaining after exclude"),
 			},
-			limits:      &blocksStoreLimitsMock{},
-			expectedErr: fmt.Errorf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  fmt.Errorf("consistency check failed because some blocks were not queried: %s %s", block3.String(), block4.String()),
 		},
 		"multiple store-gateway instances have some missing blocks but queried from a replica during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
@@ -352,7 +365,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block4},
 				},
 			},
-			limits: &blocksStoreLimitsMock{},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),
@@ -410,7 +424,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block1, block2},
 				},
 			},
-			limits: &blocksStoreLimitsMock{maxChunksPerQuery: 3},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 3},
+			queryLimiter: noOpQueryLimiter,
 			expectedSeries: []seriesResult{
 				{
 					lbls: labels.New(metricNameLabel, series1Label),
@@ -435,8 +450,9 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block1, block2},
 				},
 			},
-			limits:      &blocksStoreLimitsMock{maxChunksPerQuery: 1},
-			expectedErr: validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1)),
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 1)),
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
@@ -472,14 +488,33 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					}}: {block4},
 				},
 			},
-			limits:      &blocksStoreLimitsMock{maxChunksPerQuery: 3},
-			expectedErr: validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 3)),
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 3},
+			queryLimiter: noOpQueryLimiter,
+			expectedErr:  validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, fmt.Sprintf("{__name__=%q}", metricName), 3)),
+		},
+		"max series per query limit hit while fetching chunks": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series2Label}, minT+1, 2),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: limiter.NewQueryLimiter(1),
+			expectedErr:  validation.LimitError(fmt.Sprintf("The query hit the max number of series limit (limit: %d)", 1)),
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := limiter.AddQueryLimiterToContext(context.Background(), testData.queryLimiter)
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 			finder := &blocksFinderMock{}

@@ -235,13 +235,10 @@ func TestAlertmanagerClustering(t *testing.T) {
 
 func TestAlertmanagerSharding(t *testing.T) {
 	tests := map[string]struct {
-		legacyAlertStore  bool
 		replicationFactor int
 	}{
-		"legacy alertstore, RF = 2": {legacyAlertStore: true, replicationFactor: 2},
-		"bucket alertstore, RF = 2": {legacyAlertStore: false, replicationFactor: 2},
-		"legacy alertstore, RF = 3": {legacyAlertStore: true, replicationFactor: 3},
-		"bucket alertstore, RF = 3": {legacyAlertStore: false, replicationFactor: 3},
+		"RF = 2": {replicationFactor: 2},
+		"RF = 3": {replicationFactor: 3},
 	}
 
 	for testName, testCfg := range tests {
@@ -250,7 +247,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(testCfg.legacyAlertStore))
+			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(false))
 
 			// Start dependencies.
 			consul := e2edb.NewConsul()

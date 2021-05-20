@@ -118,7 +118,7 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_queried_exemplars",
 			Help: "The total number of exemplars returned from queries.",
 			// TODO: think about buckets, guessing here.
-			Buckets: prometheus.ExponentialBuckets(1, 5, 5),
+			Buckets: prometheus.ExponentialBuckets(10, 5, 5),
 		}),
 		queriedSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_series",

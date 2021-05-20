@@ -332,7 +332,7 @@ GET,POST <legacy-http-prefix>/api/v1/query_exemplars
 
 Prometheus-compatible exemplar query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
 
-_For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
+_For more information, please check out the Prometheus [exemplar query](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-exemplars) documentation._
 
 _Requires [authentication](#authentication)._
 

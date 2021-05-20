@@ -1053,7 +1053,6 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 		return &client.ExemplarQueryResponse{}, nil
 	}
 
-	// Note that currently Prometheus' exemplar querier does nothing with a context that you pass it.
 	q, err := db.ExemplarQuerier(ctx)
 	if err != nil {
 		return nil, err
@@ -1078,8 +1077,6 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 		result.Timeseries = append(result.Timeseries, ts)
 	}
 
-	// TODO should we update this series metric again?
-	// i.metrics.queriedSeries.Observe(float64(len(result.Timeseries)))
 	i.metrics.queriedExemplars.Observe(float64(numExemplars))
 
 	return result, nil

@@ -618,19 +618,18 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 		user3 = "user3"
 	)
 
-	createInstance := func(i int, zone string) *MultitenantAlertmanager {
+	createInstance := func(i int, zone string, registries *util.UserRegistries) *MultitenantAlertmanager {
 		reg := prometheus.NewPedanticRegistry()
 		cfg := mockAlertmanagerConfig(t)
+		instanceID := fmt.Sprintf("instance-%d", i)
+		registries.AddUserRegistry(instanceID, reg)
 
 		cfg.ShardingRing.ReplicationFactor = 2
-		cfg.ShardingRing.InstanceID = fmt.Sprintf("instance-%d", i)
+		cfg.ShardingRing.InstanceID = instanceID
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.1-%d", i)
 		cfg.ShardingEnabled = true
 		cfg.ShardingRing.ZoneAwarenessEnabled = true
 		cfg.ShardingRing.InstanceZone = zone
-
-		// Increase state write interval so that state gets written sooner, making test faster.
-		cfg.Persister.Interval = 500 * time.Millisecond
 
 		am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, ringStore, nil, log.NewLogfmtLogger(os.Stdout), reg)
 		require.NoError(t, err)
@@ -642,11 +641,13 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 		return am
 	}
 
-	am1ZoneA := createInstance(1, "zoneA")
-	am2ZoneA := createInstance(2, "zoneA")
-	am1ZoneB := createInstance(3, "zoneB")
+	registriesZoneA := util.NewUserRegistries()
+	registriesZoneB := util.NewUserRegistries()
 
-	// Configure the users and wait for the state persister to write some state for both.
+	am1ZoneA := createInstance(1, "zoneA", registriesZoneA)
+	am2ZoneA := createInstance(2, "zoneA", registriesZoneA)
+	am1ZoneB := createInstance(3, "zoneB", registriesZoneB)
+
 	{
 		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 			User:      user1,
@@ -670,33 +671,13 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 		require.NoError(t, err)
 		err = am1ZoneB.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 		require.NoError(t, err)
-
-		require.Eventually(t, func() bool {
-			_, err1 := alertStore.GetFullState(context.Background(), user1)
-			_, err2 := alertStore.GetFullState(context.Background(), user2)
-			_, err3 := alertStore.GetFullState(context.Background(), user3)
-			return err1 == nil && err2 == nil && err3 == nil
-		}, 5*time.Second, 100*time.Millisecond, "timed out waiting for state to be persisted")
 	}
 
-	zoneATotal := 0
-	allUserIDs, configs, err := am1ZoneA.loadAlertmanagerConfigs(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, len(allUserIDs), 3)
-	zoneATotal += len(configs)
+	metricsZoneA := registriesZoneA.BuildMetricFamiliesPerUser()
+	metricsZoneB := registriesZoneB.BuildMetricFamiliesPerUser()
 
-	allUserIDs, configs, err = am2ZoneA.loadAlertmanagerConfigs(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, len(allUserIDs), 3)
-	zoneATotal += len(configs)
-
-	assert.Equal(t, len(allUserIDs), zoneATotal)
-
-	allUserIDs, configs, err = am1ZoneB.loadAlertmanagerConfigs(ctx)
-	require.NoError(t, err)
-	assert.Equal(t, len(allUserIDs), 3)
-	// This is the only instance on this AZ, so all users should be owned by this instance
-	assert.Equal(t, len(configs), len(allUserIDs))
+	assert.Equal(t, float64(3), metricsZoneA.GetSumOfGauges("cortex_alertmanager_tenants_owned"))
+	assert.Equal(t, float64(3), metricsZoneB.GetSumOfGauges("cortex_alertmanager_tenants_owned"))
 }
 
 func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {

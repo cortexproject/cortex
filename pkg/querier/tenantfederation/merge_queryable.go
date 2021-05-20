@@ -137,7 +137,7 @@ type mergeQuerier struct {
 // For the label "original_" + `idLabelName it will return all the values
 // of the underlying queriers for `idLabelName`.
 func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
+	log, ctx := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
 	if name == m.idLabelName {
 		return m.ids, nil, nil
@@ -149,7 +149,8 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = m.idLabelName
 	}
 
-	return m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+	return m.mergeDistinctStringSlice(ctx, func(ctx context.Context,
+		q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelValues(name, matchers...)
 	})
 }
@@ -158,9 +159,10 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 // queriers. It also adds the `idLabelName` and if present in the original
 // results the original `idLabelName`.
 func (m *mergeQuerier) LabelNames() ([]string, storage.Warnings, error) {
-	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelNames")
+	log, ctx := spanlogger.New(m.ctx, "mergeQuerier.LabelNames")
 	defer log.Span.Finish()
-	labelNames, warnings, err := m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+	labelNames, warnings, err := m.mergeDistinctStringSlice(ctx, func(ctx context.Context,
+		q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelNames()
 	})
 	if err != nil {
@@ -204,7 +206,8 @@ type stringSliceFuncJob struct {
 // on per querier in parallel. It removes duplicates and sorts the result. It
 // doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
-func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
+func (m *mergeQuerier) mergeDistinctStringSlice(ctx context.Context,
+	f stringSliceFunc) ([]string, storage.Warnings, error) {
 	var jobs = make([]interface{}, len(m.ids))
 
 	for pos := range m.ids {
@@ -229,7 +232,7 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 		return nil
 	}
 
-	err := concurrency.ForEach(m.ctx, jobs, maxConcurrency, run)
+	err := concurrency.ForEach(ctx, jobs, maxConcurrency, run)
 	if err != nil {
 		return nil, nil, err
 	}

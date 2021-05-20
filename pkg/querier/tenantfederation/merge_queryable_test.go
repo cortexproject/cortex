@@ -508,7 +508,7 @@ func TestTracingMergeQueryable(t *testing.T) {
 
 	require.NoError(t, seriesSet.Err())
 	spans := mockTracer.FinishedSpans()
-	assertSpanExist(t, spans, "mergeQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+	assertSpanExist(t, spans, "mergeQuerier.Select", expectedTag{spanlogger.TenantIDTagName,
 		[]string{"team-a", "team-b"}})
 	assertSpanExist(t, spans, "mockTenantQuerier.select", expectedTag{spanlogger.TenantIDTagName,
 		[]string{"team-a"}})

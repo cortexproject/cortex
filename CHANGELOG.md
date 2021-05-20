@@ -19,6 +19,7 @@
   * `cortex_alertmanager_state_persist_failed_total`
 * [ENHANCEMENT] Blocks storage: support ingesting exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
+* [ENHANCEMENT] Added `tenant_ids` tag to tracing spans #4147
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 

@@ -26,6 +26,9 @@ type Config struct {
 	MaxRetries  int                     `yaml:"max_retries"`
 	EnableTLS   bool                    `yaml:"tls_enabled"`
 	TLS         cortex_tls.ClientConfig `yaml:",inline"`
+
+	UserName string `yaml:"username"`
+	Password string `yaml:"password"`
 }
 
 // Client implements ring.KVClient for etcd.
@@ -87,6 +90,8 @@ func New(cfg Config, codec codec.Codec) (*Client, error) {
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
 		PermitWithoutStream:  true,
 		TLS:                  tlsConfig,
+		Username:             cfg.UserName,
+		Password:             cfg.Password,
 	})
 	if err != nil {
 		return nil, err

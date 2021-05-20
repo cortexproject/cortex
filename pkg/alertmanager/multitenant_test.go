@@ -695,7 +695,7 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 	allUserIDs, configs, err = am1ZoneB.loadAlertmanagerConfigs(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, len(allUserIDs), 3)
-	// This is tis only instance on this AZ, so all users should be loaded on this instance
+	// This is the only instance on this AZ, so all users should be owned by this instance
 	assert.Equal(t, len(configs), len(allUserIDs))
 }
 

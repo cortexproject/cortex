@@ -149,8 +149,7 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = m.idLabelName
 	}
 
-	return m.mergeDistinctStringSlice(func(ctx context.Context,
-		q storage.Querier) ([]string, storage.Warnings, error) {
+	return m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelValues(name, matchers...)
 	})
 }

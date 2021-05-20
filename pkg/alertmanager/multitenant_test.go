@@ -153,6 +153,13 @@ func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 			},
 			expected: errShardingLegacyStorage,
 		},
+		"should fail if zone aware is enabled but zone is not set": {
+			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
+				cfg.ShardingEnabled = true
+				cfg.ShardingRing.ZoneAwarenessEnabled = true
+			},
+			expected: errZoneAwarenessEnabledWithoutZoneInfo,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -599,6 +606,97 @@ func TestMultitenantAlertmanager_deleteUnusedLocalUserState(t *testing.T) {
 
 	require.Zero(t, dirs[user1])    // has no configuration, files were deleted
 	require.NotZero(t, dirs[user2]) // has config, files survived
+}
+
+func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
+	ctx := context.Background()
+	alertStore := prepareInMemoryAlertStore()
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	const (
+		user1 = "user1"
+		user2 = "user2"
+		user3 = "user3"
+	)
+
+	createInstance := func(i int, zone string) *MultitenantAlertmanager {
+		reg := prometheus.NewPedanticRegistry()
+		cfg := mockAlertmanagerConfig(t)
+
+		cfg.ShardingRing.ReplicationFactor = 2
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("instance-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.1-%d", i)
+		cfg.ShardingEnabled = true
+		cfg.ShardingRing.ZoneAwarenessEnabled = true
+		cfg.ShardingRing.InstanceZone = zone
+
+		// Increase state write interval so that state gets written sooner, making test faster.
+		cfg.Persister.Interval = 500 * time.Millisecond
+
+		am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, ringStore, nil, log.NewLogfmtLogger(os.Stdout), reg)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+		})
+		require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+		return am
+	}
+
+	am1ZoneA := createInstance(1, "zoneA")
+	am2ZoneA := createInstance(2, "zoneA")
+	am1ZoneB := createInstance(3, "zoneB")
+
+	// Configure the users and wait for the state persister to write some state for both.
+	{
+		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+			User:      user1,
+			RawConfig: simpleConfigOne,
+			Templates: []*alertspb.TemplateDesc{},
+		}))
+		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+			User:      user2,
+			RawConfig: simpleConfigOne,
+			Templates: []*alertspb.TemplateDesc{},
+		}))
+		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
+			User:      user3,
+			RawConfig: simpleConfigOne,
+			Templates: []*alertspb.TemplateDesc{},
+		}))
+
+		err := am1ZoneA.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		err = am2ZoneA.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		err = am1ZoneB.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			_, err1 := alertStore.GetFullState(context.Background(), user1)
+			_, err2 := alertStore.GetFullState(context.Background(), user2)
+			_, err3 := alertStore.GetFullState(context.Background(), user3)
+			return err1 == nil && err2 == nil && err3 == nil
+		}, 5*time.Second, 100*time.Millisecond, "timed out waiting for state to be persisted")
+	}
+
+	zoneATotal := 0
+	allUserIDs, configs, err := am1ZoneA.loadAlertmanagerConfigs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, len(allUserIDs), 3)
+	zoneATotal += len(configs)
+
+	allUserIDs, configs, err = am2ZoneA.loadAlertmanagerConfigs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, len(allUserIDs), 3)
+	zoneATotal += len(configs)
+
+	assert.Equal(t, len(allUserIDs), zoneATotal)
+
+	allUserIDs, configs, err = am1ZoneB.loadAlertmanagerConfigs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, len(allUserIDs), 3)
+	// This is tis only instance on this AZ, so all users should be loaded on this instance
+	assert.Equal(t, len(configs), len(allUserIDs))
 }
 
 func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {

@@ -1903,9 +1903,19 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback

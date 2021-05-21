@@ -11,20 +11,31 @@ RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN npm install -g postcss-cli@5.0.1 autoprefixer@9.8.5
 
 ENV HUGO_VERSION=0.72.0
-RUN GOARCH=$(go env GOARCH) && echo $GOARCH && \
-	if [ "$GOARCH"="amd64" ]; then \
+RUN GOARCH=$(go env GOARCH) && \
+	if [ "$GOARCH" = "amd64" ]; then \
 		URL=https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz; \
-	elif [ "$GOARCH"="arm64" ]; then \
+		DIGEST=28353611210d48c681f1f83a64ce36972d010e751f2794122db80f5060fe933d; \
+	elif [ "$GOARCH" = "arm64" ]; then \
 		URL=https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-ARM64.tar.gz; \
+		DIGEST=17d079d07d5ec5a5e66fc1264a391dad3010662252563f4304bcbed796083206; \
 	fi && \
 	echo Downloading ${URL} && \
 	curl -s -L -o hugo.tar.gz "${URL}" && \
+	echo "$DIGEST  hugo.tar.gz" | sha256sum -c && \
 	tar xzvf hugo.tar.gz -C /usr/bin && \
 	rm hugo.tar.gz && \
 	chmod +x /usr/bin/hugo
 
 ENV SHFMT_VERSION=3.2.4
-RUN curl -fsSLo shfmt https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_$(go env GOARCH) && \
+RUN GOARCH=$(go env GOARCH) && \
+	if [ "$GOARCH" = "amd64" ]; then \
+    	DIGEST=3f5a47f8fec27fae3e06d611559a2063f5d27e4b9501171dde9959b8c60a3538; \
+    elif [ "$GOARCH" = "arm64" ]; then \
+    	DIGEST=6474d9cc08a1c9fe2ef4be7a004951998e3067d46cf55a011ddd5ff7bfab3de6; \
+    fi && \
+    URL=https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_${GOARCH}; \
+    curl -fsSLo shfmt "${URL}" && \
+	echo "$DIGEST  shfmt" | sha256sum -c && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
 

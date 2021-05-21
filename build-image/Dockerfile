@@ -38,14 +38,12 @@ RUN GO111MODULE=on go get \
 		github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 \
 		github.com/fatih/faillint@v1.5.0 \
 		github.com/campoy/embedmd@v1.0.0 \
-	&& true
+	&& rm -rf /go/pkg /go/src
 
 # Cannot get it to run together in above go get.
 RUN GO111MODULE=on go get  \
 		github.com/instrumenta/kubeval@v0.16.1 \
-	&& true
-
-RUN rm -rf /go/pkg /go/src
+	&& rm -rf /go/pkg /go/src
 
 ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /

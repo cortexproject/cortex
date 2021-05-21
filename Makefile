@@ -293,17 +293,22 @@ web-serve:
 	cd website && hugo --config config.toml --minify -v server
 
 # Generate binaries for a Cortex release
-dist dist/cortex-linux-amd64 dist/cortex-darwin-amd64 dist/query-tee-linux-amd64 dist/query-tee-darwin-amd64 dist/cortex-linux-amd64-sha-256 dist/cortex-darwin-amd64-sha-256 dist/query-tee-linux-amd64-sha-256 dist/query-tee-darwin-amd64-sha-256:
+dist: dist/$(UPTODATE)
+
+dist/$(UPTODATE):
 	rm -fr ./dist
 	mkdir -p ./dist
-	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
-	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
-	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-linux-amd64   ./cmd/query-tee
-	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-darwin-amd64  ./cmd/query-tee
-	sha256sum ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
-	sha256sum ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
-	sha256sum ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
-	sha256sum ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256
+	for os in linux darwin; do \
+      for arch in amd64 arm64; do \
+        echo "Building Cortex for $$os/$$arch"; \
+        GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-$$os-$$arch ./cmd/cortex; \
+		sha256sum ./dist/cortex-$$os-$$arch | cut -d ' ' -f 1 > ./dist/cortex-$$os-$$arch-sha-256; \
+        echo "Building query-tee for $$os/$$arch"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-$$os-$$arch ./cmd/query-tee; \
+		sha256sum ./dist/query-tee-$$os-$$arch | cut -d ' ' -f 1 > ./dist/cortex-$$os-$$arch-sha-256; \
+      done; \
+    done; \
+    touch dist/.uptodate
 
 # Generate packages for a Cortex release.
 FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
@@ -319,7 +324,7 @@ PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
 ifeq ($(PACKAGE_IN_CONTAINER), true)
 
 .PHONY: packages
-packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
+packages: dist packaging/fpm/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo ">>>> Entering build container: $@"

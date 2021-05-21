@@ -13,7 +13,7 @@ RUN npm install -g postcss-cli@5.0.1 autoprefixer@9.8.5
 ENV HUGO_VERSION=v0.72.0
 RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
 	cd hugo  && go install --tags extended && cd ../ && \
-	rm -rf hugo/ && rm -rf /go/pkg /go/src
+	rm -rf hugo/ && rm -rf /go/pkg /go/src /root/.cache
 
 ENV SHFMT_VERSION=3.2.4
 RUN GOARCH=$(go env GOARCH) && \
@@ -38,12 +38,12 @@ RUN GO111MODULE=on go get \
 		github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 \
 		github.com/fatih/faillint@v1.5.0 \
 		github.com/campoy/embedmd@v1.0.0 \
-	&& rm -rf /go/pkg /go/src
+	&& rm -rf /go/pkg /go/src /root/.cache
 
 # Cannot get it to run together in above go get.
 RUN GO111MODULE=on go get  \
 		github.com/instrumenta/kubeval@v0.16.1 \
-	&& rm -rf /go/pkg /go/src
+	&& rm -rf /go/pkg /go/src /root/.cache
 
 ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /

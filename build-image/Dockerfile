@@ -10,21 +10,10 @@ RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 # and viceversa.
 RUN npm install -g postcss-cli@5.0.1 autoprefixer@9.8.5
 
-ENV HUGO_VERSION=0.72.0
-RUN GOARCH=$(go env GOARCH) && \
-	if [ "$GOARCH" = "amd64" ]; then \
-		URL=https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz; \
-		DIGEST=28353611210d48c681f1f83a64ce36972d010e751f2794122db80f5060fe933d; \
-	elif [ "$GOARCH" = "arm64" ]; then \
-		URL=https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-ARM64.tar.gz; \
-		DIGEST=17d079d07d5ec5a5e66fc1264a391dad3010662252563f4304bcbed796083206; \
-	fi && \
-	echo Downloading ${URL} && \
-	curl -s -L -o hugo.tar.gz "${URL}" && \
-	echo "$DIGEST  hugo.tar.gz" | sha256sum -c && \
-	tar xzvf hugo.tar.gz -C /usr/bin && \
-	rm hugo.tar.gz && \
-	chmod +x /usr/bin/hugo
+ENV HUGO_VERSION=v0.72.0
+RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
+	cd hugo  && go install --tags extended && cd ../ && \
+	rm -rf hugo/ && rm -rf /go/pkg /go/src
 
 ENV SHFMT_VERSION=3.2.4
 RUN GOARCH=$(go env GOARCH) && \

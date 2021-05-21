@@ -38,8 +38,9 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	@echo
-	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) $(@D)/
-	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-arm64 $(@D)/
+	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-$(shell go env GOARCH)
 	touch $@
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
@@ -48,7 +49,7 @@ DONT_FIND := -name vendor -prune -o -name .git -prune -o -name .cache -prune -o 
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
-UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
+UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES)) dist/$(UPTODATE)-packages
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 images:
@@ -250,7 +251,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache $(PACKAGES) dist/*
+	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache dist/*
 	go clean ./...
 
 clean-protos:
@@ -308,17 +309,14 @@ dist/$(UPTODATE):
 		sha256sum ./dist/query-tee-$$os-$$arch | cut -d ' ' -f 1 > ./dist/cortex-$$os-$$arch-sha-256; \
       done; \
     done; \
-    touch dist/.uptodate
+    touch $@
 
 # Generate packages for a Cortex release.
 FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
 	--license "Apache 2.0" \
 	--url "https://github.com/cortexproject/cortex"
 
-FPM_ARGS := dist/cortex-linux-amd64=/usr/local/bin/cortex \
-	docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml\
-
-PACKAGES := dist/cortex-$(VERSION).rpm dist/cortex-$(VERSION).deb
+PACKAGES := dist/cortex-$(VERSION)_amd64.rpm dist/cortex-$(VERSION)_amd64.deb dist/cortex-$(VERSION)_arm64.rpm dist/cortex-$(VERSION)_arm64.deb
 PACKAGE_IN_CONTAINER := true
 PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
 ifeq ($(PACKAGE_IN_CONTAINER), true)
@@ -334,25 +332,40 @@ packages: dist packaging/fpm/$(UPTODATE)
 
 else
 
-packages: $(PACKAGES)
+packages: dist/$(UPTODATE)-packages
 
-dist/%.deb: dist/cortex-linux-amd64 $(wildcard packaging/deb/**)
-	$(FPM_OPTS) -t deb \
-		--after-install packaging/deb/control/postinst \
-		--before-remove packaging/deb/control/prerm \
-		--package $@ $(FPM_ARGS) \
-		packaging/deb/default/cortex=/etc/default/cortex \
-		packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service
-	sha256sum ./dist/cortex-$(VERSION).deb | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).deb-sha-256
+dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packaging/rpm/**)
+	for arch in amd64 arm64; do \
+  		rpm_arch=x86_64; \
+  		deb_arch=x86_64; \
+  		if [ "$$arch" = "arm64" ]; then \
+		    rpm_arch=aarch64; \
+		    deb_arch=arm64; \
+		fi; \
+		$(FPM_OPTS) -t deb \
+			--architecture $$deb_arch \
+			--after-install packaging/deb/control/postinst \
+			--before-remove packaging/deb/control/prerm \
+			--package dist/cortex-$(VERSION)_$$arch.deb \
+			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			packaging/deb/default/cortex=/etc/default/cortex \
+			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+		$(FPM_OPTS) -t rpm  \
+			--architecture $$rpm_arch \
+			--after-install packaging/rpm/control/post \
+			--before-remove packaging/rpm/control/preun \
+			--package dist/cortex-$(VERSION)_$$arch.rpm \
+			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
+			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+	done
+	for pkg in dist/*.deb dist/*.rpm; do \
+  		sha256sum $$pkg | cut -d ' ' -f 1 > $${pkg}-sha-256; \
+  	done; \
+  	touch $@
 
-dist/%.rpm: dist/cortex-linux-amd64 $(wildcard packaging/rpm/**)
-	$(FPM_OPTS) -t rpm  \
-		--after-install packaging/rpm/control/post \
-		--before-remove packaging/rpm/control/preun \
-		--package $@ $(FPM_ARGS) \
-		packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
-		packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service
-	sha256sum ./dist/cortex-$(VERSION).rpm | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).rpm-sha-256
 endif
 
 .PHONY: test-packages

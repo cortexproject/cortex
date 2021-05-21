@@ -48,7 +48,7 @@ DONT_FIND := -name vendor -prune -o -name .git -prune -o -name .cache -prune -o 
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
-UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES)) dist/$(UPTODATE)
+UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES))
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 images:
@@ -250,7 +250,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache dist/*
+	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache dist
 	go clean ./...
 
 clean-protos:
@@ -315,7 +315,6 @@ FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
 	--license "Apache 2.0" \
 	--url "https://github.com/cortexproject/cortex"
 
-PACKAGES := dist/cortex-$(VERSION)_amd64.rpm dist/cortex-$(VERSION)_amd64.deb dist/cortex-$(VERSION)_arm64.rpm dist/cortex-$(VERSION)_arm64.deb
 PACKAGE_IN_CONTAINER := true
 PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
 ifeq ($(PACKAGE_IN_CONTAINER), true)

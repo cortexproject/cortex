@@ -23,22 +23,20 @@ import (
 )
 
 func TestRemoteReadHandler(t *testing.T) {
-	q := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return mockQuerier{
-			matrix: model.Matrix{
-				{
-					Metric: model.Metric{"foo": "bar"},
-					Values: []model.SamplePair{
-						{Timestamp: 0, Value: 0},
-						{Timestamp: 1, Value: 1},
-						{Timestamp: 2, Value: 2},
-						{Timestamp: 3, Value: 3},
-					},
+	q := mockSampleAndChunkQueryable{
+		querierMatrix: model.Matrix{
+			{
+				Metric: model.Metric{"foo": "bar"},
+				Values: []model.SamplePair{
+					{Timestamp: 0, Value: 0},
+					{Timestamp: 1, Value: 1},
+					{Timestamp: 2, Value: 2},
+					{Timestamp: 3, Value: 3},
 				},
 			},
-		}, nil
-	})
-	handler := RemoteReadHandler(q, log.NewNopLogger())
+		},
+	}
+	handler := NewRemoteReadHandler(q, log.NewNopLogger(), 0)
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{
@@ -86,9 +84,23 @@ func TestRemoteReadHandler(t *testing.T) {
 	require.Equal(t, expected, response)
 }
 
+type mockSampleAndChunkQueryable struct {
+	querierMatrix model.Matrix
+}
+
+func (m mockSampleAndChunkQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return mockQuerier{matrix: m.querierMatrix}, nil
+}
+
+func (m mockSampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+	return mockChunkQuerier{}, nil
+}
+
 type mockQuerier struct {
 	matrix model.Matrix
 }
+
+type mockChunkQuerier struct {}
 
 func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if sp == nil {
@@ -105,6 +117,26 @@ func (m mockQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (mockQuerier) Close() error {
+func (m mockQuerier) Close() error {
 	return nil
 }
+
+func (m mockChunkQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.ChunkSeriesSet {
+	if sp == nil {
+		panic(fmt.Errorf("select params must be set"))
+	}
+	return nil
+}
+
+func (m mockChunkQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (m mockChunkQuerier) LabelNames() ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (m mockChunkQuerier) Close() error {
+	return nil
+}
+

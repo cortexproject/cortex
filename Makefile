@@ -230,7 +230,7 @@ web-pre:
 	./tools/website/web-pre.sh
 
 web-build: web-pre
-	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
+	cd website && HUGO_ENV=production hugo --verbose --verboseLog --config config.toml  --minify -v
 
 web-deploy:
 	./tools/website/web-deploy.sh

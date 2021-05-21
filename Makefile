@@ -48,7 +48,7 @@ DONT_FIND := -name vendor -prune -o -name .git -prune -o -name .cache -prune -o 
 
 # Get a list of directories containing Dockerfiles
 DOCKERFILES := $(shell find . $(DONT_FIND) -type f -name 'Dockerfile' -print)
-UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES)) dist/$(UPTODATE)-packages
+UPTODATE_FILES := $(patsubst %/Dockerfile,%/$(UPTODATE),$(DOCKERFILES)) dist/$(UPTODATE)
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 IMAGE_NAMES := $(foreach dir,$(DOCKER_IMAGE_DIRS),$(patsubst %,$(IMAGE_PREFIX)%,$(shell basename $(dir))))
 images:

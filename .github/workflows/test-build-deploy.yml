@@ -69,6 +69,8 @@ jobs:
         run: |
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false
+      - name: Setup upterm session
+        uses: lhotari/action-upterm@v1
       - name: Build Website
         run: |
           touch build-image/.uptodate

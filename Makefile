@@ -38,9 +38,8 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	@echo
-	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
-	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-arm64 $(@D)/
-	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-$(shell go env GOARCH)
+	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
+	$(SUDO) docker tag $(IMAGE_PREFIX)$(shell basename $(@D)) $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)
 	touch $@
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
@@ -367,6 +366,16 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
   	touch $@
 
 endif
+
+packaging/rpm/centos-systemd/.uptodate: packaging/rpm/centos-systemd/Dockerfile
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-arm64 $(@D)/
+	touch $@
+
+packaging/deb/debian-systemd/.uptodate: packaging/deb/debian-systemd/Dockerfile
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-arm64 $(@D)/
+	touch $@
 
 .PHONY: test-packages
 test-packages: packages packaging/rpm/centos-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)

@@ -116,6 +116,7 @@ func TestMergeExemplarSets(t *testing.T) {
 	exemplar2 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-2")), TimestampMs: now + 1, Value: 2}
 	exemplar3 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-3")), TimestampMs: now + 4, Value: 3}
 	exemplar4 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now + 8, Value: 7}
+	exemplar5 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now, Value: 7}
 
 	for _, c := range []struct {
 		exemplarsA []cortexpb.Exemplar
@@ -145,6 +146,11 @@ func TestMergeExemplarSets(t *testing.T) {
 		{
 			exemplarsA: []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3},
 			exemplarsB: []cortexpb.Exemplar{exemplar1, exemplar3, exemplar4},
+			expected:   []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3, exemplar4},
+		},
+		{ // Ensure that when there are exemplars with duplicate timestamps, the first one wins.
+			exemplarsA: []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3},
+			exemplarsB: []cortexpb.Exemplar{exemplar5, exemplar3, exemplar4},
 			expected:   []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3, exemplar4},
 		},
 	} {

@@ -554,13 +554,13 @@ func TestIngester_v2Push(t *testing.T) {
 				StartTimestampMs: math.MinInt64,
 				EndTimestampMs:   math.MaxInt64,
 				Matchers: []*client.LabelMatchers{
-					&client.LabelMatchers{[]*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}}},
+					{Matchers: []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}}},
 				},
 			})
 
 			require.NoError(t, err)
-			require.NotNil(t, res)
-			assert.Equal(t, cortexpb.TimeSeries{}, exemplarRes.Timeseries)
+			require.NotNil(t, exemplarRes)
+			assert.Equal(t, testData.expectedExemplarsIngested, exemplarRes.Timeseries)
 
 			// Read back metadata to see what has been really ingested.
 			mres, err := i.MetricsMetadata(ctx, &client.MetricsMetadataRequest{})

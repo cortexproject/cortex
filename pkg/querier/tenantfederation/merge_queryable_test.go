@@ -26,13 +26,14 @@ import (
 
 const (
 	maxt, mint = 0, 10
+	// matchersNotImplemented is a message used to indicate that the MergeQueryable does not yet support filtering by matchers.
+	// This message will be removed once matchers have been implemented in the MergeQueryable.
+	matchersNotImplemented = "matchers are not implemented in the MergeQueryable"
+	// mockMatchersNotImplemented is a message used to indicate that the mockTenantQueryable used in the tests does not support filtering by matchers.
+	mockMatchersNotImplemented = "matchers are not implemented in the mockTenantQueryable"
 	// originalDefaultTenantLabel is the default tenant label with a prefix.
 	// It is used to prevent matcher clashes for timeseries that happen to have a label with the same name as the default tenant label.
 	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
-)
-
-var (
-	errMatchersNotImplemented = errors.New("matchers are not implemented yet")
 )
 
 // mockTenantQueryableWithFilter is a storage.Queryable that can be use to return specific warnings or errors by tenant.
@@ -180,7 +181,7 @@ func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 // The mockTenantQuerier returns all a sorted slice of all label values and does not support reducing the result set with matchers.
 func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if len(matchers) > 0 {
-		return nil, nil, errMatchersNotImplemented
+		m.warnings = append(m.warnings, errors.New(mockMatchersNotImplemented))
 	}
 
 	if m.queryErr != nil {
@@ -306,6 +307,8 @@ type labelValuesTestCase struct {
 	expectedWarnings []string
 	// expectedQueryErr is the error expected when querying.
 	expectedQueryErr error
+	// skipReason is a reason that the test case should be skipped. An empty reason, represented by an empty string will mean that a test case is not skipped.
+	skipReason string
 }
 
 // labelValuesScenario tests a call to LabelValues over a range of test cases in a specific scenario.
@@ -413,6 +416,12 @@ func TestMergeQueryable_Select(t *testing.T) {
 					name:                "should return only series for team-a and team-c tenants when there is with not-equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 4,
+				},
+				{
+					name: "should return no series where there are conflicting tenant matchers",
+					matchers: []*labels.Matcher{
+						{Name: defaultTenantLabel, Value: "team-a", Type: labels.MatchEqual}, {Name: defaultTenantLabel, Value: "team-c", Type: labels.MatchEqual}},
+					expectedSeriesCount: 0,
 				},
 				{
 					name:                "should return only series for team-b when there is an equals matcher for team-b tenant",
@@ -595,23 +604,42 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 					expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 				},
 				{
+					name: "should return no values for the instance label when there are conflicting tenant matchers",
+					matchers: []*labels.Matcher{
+						{Name: defaultTenantLabel, Value: "team-a", Type: labels.MatchEqual},
+						{Name: defaultTenantLabel, Value: "team-c", Type: labels.MatchEqual},
+					},
+					labelName:           "instance",
+					expectedLabelValues: []string{},
+					skipReason:          matchersNotImplemented,
+				},
+				{
+					name:                "should only query tenant-b when there is an equals matcher for team-b tenant",
+					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
+					labelName:           "instance",
+					expectedLabelValues: []string{"host1", "host2.team-b"},
+					expectedWarnings:    []string{"warning querying tenant_id team-b: " + mockMatchersNotImplemented},
+					skipReason:          matchersNotImplemented,
+				},
+				{
 					name:                "should return all tenant team values for the __tenant_id__ label when no matchers are provided",
 					labelName:           defaultTenantLabel,
 					expectedLabelValues: []string{"team-a", "team-b", "team-c"},
 				},
-				// TODO(jdb): These tests are failing as matchers are not implemented. They should pass when the matchers are implemented
-				// 	{
-				// 		name:                "should return only label values for team-a and team-c tenants when there is a not-equals matcher for team-b tenant",
-				// 		labelName:           defaultTenantLabel,
-				// 		matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
-				// 		expectedLabelValues: []string{"team-a", "team-c"},
-				// 	},
-				// 	{
-				// 		name:                "should return only label values for team-b tenant when there is an equals matcher for team-b tenant",
-				// 		labelName:           defaultTenantLabel,
-				// 		matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
-				// 		expectedLabelValues: []string{"team-b"},
-				// 	},
+				{
+					name:                "should return only label values for team-a and team-c tenants when there is a not-equals matcher for team-b tenant",
+					labelName:           defaultTenantLabel,
+					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
+					expectedLabelValues: []string{"team-a", "team-c"},
+					skipReason:          matchersNotImplemented,
+				},
+				{
+					name:                "should return only label values for team-b tenant when there is an equals matcher for team-b tenant",
+					labelName:           defaultTenantLabel,
+					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
+					expectedLabelValues: []string{"team-b"},
+					skipReason:          matchersNotImplemented,
+				},
 			},
 		},
 		{
@@ -628,39 +656,59 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 					expectedLabelValues: []string{"team-a", "team-b", "team-c"},
 				},
 				{
-					name:                "should return the original value for the revised tenant labelname when no matchers are provided",
+					name:                "should return the original value for the revised tenant label name when no matchers are provided",
 					labelName:           originalDefaultTenantLabel,
 					expectedLabelValues: []string{"original-value"},
 				},
 				{
-					name:             "with equals matcher for __original_tenant_id__ label it should error as matchers aren't implemented for LabelValues yet",
-					matchers:         []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
-					labelName:        originalDefaultTenantLabel,
-					expectedQueryErr: errMatchersNotImplemented,
+					name:                "should return the original value for the revised tenant label name with matchers",
+					matchers:            []*labels.Matcher{{Name: originalDefaultTenantLabel, Value: "original-value", Type: labels.MatchEqual}},
+					labelName:           originalDefaultTenantLabel,
+					expectedLabelValues: []string{"original-value"},
+					expectedWarnings: []string{
+						"warning querying tenant_id team-a: " + mockMatchersNotImplemented,
+						"warning querying tenant_id team-b: " + mockMatchersNotImplemented,
+						"warning querying tenant_id team-c: " + mockMatchersNotImplemented,
+					},
 				},
 			},
 		},
-		// TODO(jdb): Should these errors be warnings and errors be present?
-		// Currently they are not returned by the LabelValues.
-		// {
-		// 	mergeQueryableScenario: threeTenantsWithWarningsScenario,
-		// 	labelValuesTestCases: []labelValuesTestCase{{
-		// 		name:                "warnings from all merged queryables should be returned",
-		// 		labelName:           defaultTenantLabel,
-		// 		expectedLabelValues: []string{"team-a", "team-b", "team-c"},
-		// 		expectedWarnings: []string{
-		// 			`warning querying tenant_id team-b: don't like them`,
-		// 			`warning querying tenant_id team-c: out of office`,
-		// 		},
-		// 	}},
-		// },
-		// {
-		// 	mergeQueryableScenario: threeTenantsWithErrorScenario,
-		// 	labelValuesTestCases: []labelValuesTestCase{{
-		// 		name:             "any error encountered with a single tenant should be returned",
-		// 		expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
-		// 	}},
-		// },
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "should return warnings from all tenant queryables",
+				labelName:           "instance",
+				expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+				expectedWarnings: []string{
+					`warning querying tenant_id team-b: don't like them`,
+					`warning querying tenant_id team-c: out of office`,
+				},
+			}},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "should not return warnings as the underlying queryables are not queried in requests for the __tenant_id__ label",
+				labelName:           defaultTenantLabel,
+				expectedLabelValues: []string{"team-a", "team-b", "team-c"},
+			}},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithErrorScenario,
+			labelValuesTestCases: []labelValuesTestCase{{
+				name:             "should return any error encountered with any tenant",
+				labelName:        "instance",
+				expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
+			}},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithErrorScenario,
+			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "should not return errors as the underlying queryables are not queried in requests for the __tenant_id__ label",
+				labelName:           defaultTenantLabel,
+				expectedLabelValues: []string{"team-a", "team-b", "team-c"},
+			}},
+		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			querier, err := scenario.init()
@@ -668,9 +716,12 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 
 			for _, tc := range scenario.labelValuesTestCases {
 				t.Run(tc.name, func(t *testing.T) {
+					if tc.skipReason != "" {
+						t.Skip(tc.skipReason)
+					}
 					actLabelValues, warnings, err := querier.LabelValues(tc.labelName, tc.matchers...)
 					if tc.expectedQueryErr != nil {
-						assert.ErrorIs(t, err, tc.expectedQueryErr)
+						require.EqualError(t, err, tc.expectedQueryErr.Error())
 					} else {
 						require.NoError(t, err)
 						assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))

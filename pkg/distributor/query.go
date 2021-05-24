@@ -232,9 +232,15 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
 				}
 			}
+
 			for _, series := range resp.Chunkseries {
 				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
 					return nil, limitErr
+				}
+				for _, chunks := range series.Chunks {
+					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunks.Size()); chunkBytesLimitErr != nil {
+						return nil, chunkBytesLimitErr
+					}
 				}
 			}
 			for _, series := range resp.Timeseries {

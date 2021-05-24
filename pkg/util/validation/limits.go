@@ -75,6 +75,7 @@ type Limits struct {
 	MaxChunksPerQueryFromStore int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"` // TODO Remove in Cortex 1.12.
 	MaxChunksPerQuery          int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
 	MaxFetchedSeriesPerQuery   int            `yaml:"max_fetched_series_per_query" json:"max_fetched_series_per_query"`
+	MaxChunkBytesPerQuery      int            `yaml:"max_chunk_bytes_per_query" json:"max_chunk_bytes_per_query"`
 	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
@@ -147,6 +148,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxChunksPerQueryFromStore, "store.query-chunk-limit", 2e6, "Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its respective YAML config option instead. Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage only. When running the Cortex chunks storage, this limit is enforced in the querier and ruler, while when running the Cortex blocks storage this limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxChunksPerQuery, "querier.max-fetched-chunks-per-query", 0, "Maximum number of chunks that can be fetched in a single query from ingesters and long-term storage: the total number of actual fetched chunks could be 2x the limit, being independently applied when querying ingesters and long-term storage. This limit is enforced in the ingester (if chunks streaming is enabled), querier, ruler and store-gateway. Takes precedence over the deprecated -store.query-chunk-limit. 0 to disable.")
 	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier only when running Cortex with blocks storage. 0 to disable")
+	f.IntVar(&l.MaxChunkBytesPerQuery, "querier.max-chunk bytes-per-query", 0, "The maximum number of chunk bytes for which a query can fetch from each ingesters and blocks storage. This limit is enforced in the querier only when running Cortex with blocks storage. 0 to disable")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
@@ -392,6 +394,12 @@ func (o *Overrides) MaxChunksPerQueryFromIngesters(userID string) int {
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedSeriesPerQuery(userID string) int {
 	return o.getOverridesForUser(userID).MaxFetchedSeriesPerQuery
+}
+
+// MaxChunkBytesPerQuery returns the maximum number of bytes for chunks allowed per query when fetching
+// chunks from ingesters and blocks storage.
+func (o *Overrides) MaxChunkBytesPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxChunkBytesPerQuery
 }
 
 // MaxQueryLookback returns the max lookback period of queries.

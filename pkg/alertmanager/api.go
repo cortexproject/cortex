@@ -119,7 +119,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 
 	if maxConfigSize > 0 && len(payload) > maxConfigSize {
 		msg := fmt.Sprintf(errConfigurationTooBig, maxConfigSize)
-		level.Error(logger).Log("msg", msg)
+		level.Warn(logger).Log("msg", msg)
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}

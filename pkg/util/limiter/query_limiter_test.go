@@ -84,7 +84,7 @@ func BenchmarkQueryLimiter_AddSeries(b *testing.B) {
 	}
 	b.ResetTimer()
 
-	limiter := NewQueryLimiter(b.N + 1, 0)
+	limiter := NewQueryLimiter(b.N+1, 0)
 	for _, s := range series {
 		err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s))
 		assert.NoError(b, err)

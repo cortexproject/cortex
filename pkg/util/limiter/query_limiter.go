@@ -40,7 +40,7 @@ func NewQueryLimiter(maxSeriesPerQuery int, maxChunkBytesPerQuery int) *QueryLim
 
 		chunkBytesCount: atomic.NewInt32(0),
 
-		maxSeriesPerQuery: maxSeriesPerQuery,
+		maxSeriesPerQuery:     maxSeriesPerQuery,
 		maxChunkBytesPerQuery: maxChunkBytesPerQuery,
 	}
 }

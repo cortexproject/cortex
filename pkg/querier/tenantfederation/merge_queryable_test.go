@@ -604,6 +604,18 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 					expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
 				},
 				{
+					name:      "should propagate non-tenant matchers to downstream queriers",
+					matchers:  []*labels.Matcher{{Name: "instance", Value: "host2.team-b", Type: labels.MatchEqual}},
+					labelName: "instance",
+					// All label values are returned as the downstream queryable does not implement matching.
+					expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-b", "host2.team-c"},
+					expectedWarnings: []string{
+						"warning querying tenant_id team-a: " + mockMatchersNotImplemented,
+						"warning querying tenant_id team-b: " + mockMatchersNotImplemented,
+						"warning querying tenant_id team-c: " + mockMatchersNotImplemented,
+					},
+				},
+				{
 					name: "should return no values for the instance label when there are conflicting tenant matchers",
 					matchers: []*labels.Matcher{
 						{Name: defaultTenantLabel, Value: "team-a", Type: labels.MatchEqual},

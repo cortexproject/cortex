@@ -139,8 +139,19 @@ type mergeQuerier struct {
 func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
+
+	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
+	var labelValues []string
+	var ids []int
+	for labelPos := range m.ids {
+		if _, matched := matchedValues[m.ids[labelPos]]; matched {
+			labelValues = append(labelValues, m.ids[labelPos])
+			ids = append(ids, labelPos)
+		}
+	}
+
 	if name == m.idLabelName {
-		return m.ids, nil, nil
+		return labelValues, nil, nil
 	}
 
 	// ensure the name of a retained label gets handled under the original
@@ -149,9 +160,9 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = m.idLabelName
 	}
 
-	return m.mergeDistinctStringSlice(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
-		return q.LabelValues(name, matchers...)
-	})
+	return m.mergeDistinctStringSliceWithIds(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+		return q.LabelValues(name, filteredMatchers...)
+	}, ids)
 }
 
 // LabelNames returns all the unique label names present in the underlying
@@ -200,17 +211,18 @@ type stringSliceFuncJob struct {
 	warnings storage.Warnings
 }
 
-// mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
-// on per querier in parallel. It removes duplicates and sorts the result. It
-// doesn't require the output of the stringSliceFunc to be sorted, as results
-// of LabelValues are not sorted.
-func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
-	var jobs = make([]interface{}, len(m.ids))
+// mergeDistinctStringSliceWithIds aggregates results from stringSliceFunc
+// calls using the specified ids. ids outside of the mergeQuerier.ids range
+// will be ignored as they won't correspond to a known querier.
+func (m *mergeQuerier) mergeDistinctStringSliceWithIds(f stringSliceFunc, ids []int) ([]string, storage.Warnings, error) {
+	var jobs = make([]interface{}, len(ids))
 
-	for pos := range m.ids {
-		jobs[pos] = &stringSliceFuncJob{
-			querier: m.queriers[pos],
-			id:      m.ids[pos],
+	for pos, id := range ids {
+		if 0 <= id && id < len(m.ids) {
+			jobs[pos] = &stringSliceFuncJob{
+				querier: m.queriers[id],
+				id:      m.ids[id],
+			}
 		}
 	}
 
@@ -258,6 +270,18 @@ func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, st
 	}
 	sort.Strings(result)
 	return result, warnings, nil
+}
+
+// mergeDistinctStringSlice is aggregating results from stringSliceFunc calls
+// on per querier in parallel. It removes duplicates and sorts the result. It
+// doesn't require the output of the stringSliceFunc to be sorted, as results
+// of LabelValues are not sorted.
+func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
+	ids := make([]int, len(m.ids))
+	for i := range m.ids {
+		ids[i] = i
+	}
+	return m.mergeDistinctStringSliceWithIds(f, ids)
 }
 
 // Close releases the resources of the Querier.

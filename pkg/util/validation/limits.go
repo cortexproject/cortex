@@ -104,9 +104,10 @@ type Limits struct {
 	AlertmanagerReceiversBlockCIDRNetworks     flagext.CIDRSliceCSV `yaml:"alertmanager_receivers_firewall_block_cidr_networks" json:"alertmanager_receivers_firewall_block_cidr_networks"`
 	AlertmanagerReceiversBlockPrivateAddresses bool                 `yaml:"alertmanager_receivers_firewall_block_private_addresses" json:"alertmanager_receivers_firewall_block_private_addresses"`
 
-	// Alertmanager limits
 	NotificationRateLimit               float64                  `yaml:"alertmanager_notification_rate_limit" json:"alertmanager_notification_rate_limit"`
 	NotificationRateLimitPerIntegration NotificationRateLimitMap `yaml:"alertmanager_notification_rate_limit_per_integration" json:"alertmanager_notification_rate_limit_per_integration"`
+
+	AlertmanagerMaxConfigSizeBytes int `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -175,6 +176,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		l.NotificationRateLimitPerIntegration = NotificationRateLimitMap{}
 	}
 	f.Var(&l.NotificationRateLimitPerIntegration, "alertmanager.notification-rate-limit-per-integration", "Per-integration notification rate limits. Value is a map, where each key is integration name and value is a rate-limit (float). On command line, this map is given in JSON format. Rate limit has the same meaning as -alertmanager.notification-rate-limit, but only applies for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", ")+".")
+	f.IntVar(&l.AlertmanagerMaxConfigSizeBytes, "alertmanager.max-config-size-bytes", 0, "Maximum size of configuration file for Alertmanager that tenant can upload via Alertmanager API. 0 = no limit.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -579,6 +581,10 @@ func (o *Overrides) NotificationBurstSize(user string, integration string) int {
 	}
 
 	return int(l)
+}
+
+func (o *Overrides) AlertmanagerMaxConfigSize(userID string) int {
+	return o.getOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

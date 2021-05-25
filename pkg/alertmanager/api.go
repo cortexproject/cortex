@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -32,6 +33,7 @@ const (
 	errDeletingConfiguration = "unable to delete the Alertmanager config"
 	errNoOrgID               = "unable to determine the OrgID"
 	errListAllUser           = "unable to list the Alertmanager users"
+	errConfigurationTooBig   = "Alertmanager configuration is too big, limit: %d bytes"
 
 	fetchConcurrency = 16
 )
@@ -98,10 +100,27 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 		return
 	}
 
-	payload, err := ioutil.ReadAll(r.Body)
+	var input io.Reader
+	maxConfigSize := am.limits.AlertmanagerMaxConfigSize(userID)
+	if maxConfigSize > 0 {
+		// LimitReader will return EOF after reading specified number of bytes. To check if
+		// we have read too many bytes, allow one extra byte.
+		input = io.LimitReader(r.Body, int64(maxConfigSize)+1)
+	} else {
+		input = r.Body
+	}
+
+	payload, err := ioutil.ReadAll(input)
 	if err != nil {
 		level.Error(logger).Log("msg", errReadingConfiguration, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errReadingConfiguration, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	if maxConfigSize > 0 && len(payload) > maxConfigSize {
+		msg := fmt.Sprintf(errConfigurationTooBig, maxConfigSize)
+		level.Warn(logger).Log("msg", msg)
+		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 

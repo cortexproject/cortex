@@ -1867,7 +1867,7 @@ receivers:
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, limits, log.NewNopLogger(), reg)
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, &limits, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
@@ -1942,20 +1942,25 @@ func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, e
 type mockAlertManagerLimits struct {
 	emailNotificationRateLimit rate.Limit
 	emailNotificationBurst     int
+	maxConfigSize              int
 }
 
-func (m mockAlertManagerLimits) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
+func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
+	return m.maxConfigSize
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
 	panic("implement me")
 }
 
-func (m mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
+func (m *mockAlertManagerLimits) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
 	panic("implement me")
 }
 
-func (m mockAlertManagerLimits) NotificationRateLimit(_ string, integration string) rate.Limit {
+func (m *mockAlertManagerLimits) NotificationRateLimit(_ string, integration string) rate.Limit {
 	return m.emailNotificationRateLimit
 }
 
-func (m mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
+func (m *mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
 	return m.emailNotificationBurst
 }

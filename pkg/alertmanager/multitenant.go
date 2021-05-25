@@ -86,9 +86,10 @@ const (
 var (
 	statusTemplate *template.Template
 
-	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
-	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
-	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
+	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
+	errShardingLegacyStorage               = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
+	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
+	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
 )
 
 func init() {
@@ -196,6 +197,9 @@ func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config)
 		}
 		if !storageCfg.IsFullStateSupported() {
 			return errShardingUnsupportedStorage
+		}
+		if cfg.ShardingRing.ZoneAwarenessEnabled && cfg.ShardingRing.InstanceZone == "" {
+			return errZoneAwarenessEnabledWithoutZoneInfo
 		}
 	}
 

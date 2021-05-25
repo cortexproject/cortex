@@ -864,7 +864,11 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
-		data := map[string]map[string][]rulefmt.RuleGroup{userID: rg.Formatted()}
+		userRules := map[string]rulespb.RuleGroupList{userID: rg}
+		if err := r.store.LoadRuleGroups(ctx, userRules); err != nil {
+			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
+		}
+		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}
 
 		select {
 		case iter <- data:

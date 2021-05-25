@@ -404,6 +404,7 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+github.com/opentracing/opentracing-go/mocktracer
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors

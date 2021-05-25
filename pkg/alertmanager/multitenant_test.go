@@ -2022,10 +2022,20 @@ type mockAlertManagerLimits struct {
 	emailNotificationRateLimit rate.Limit
 	emailNotificationBurst     int
 	maxConfigSize              int
+	maxTemplatesCount          int
+	maxSizeOfTemplate          int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
 	return m.maxConfigSize
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxTemplatesCount(tenant string) int {
+	return m.maxTemplatesCount
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxTemplateSize(tenant string) int {
+	return m.maxSizeOfTemplate
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {

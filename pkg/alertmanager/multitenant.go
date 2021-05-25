@@ -253,6 +253,12 @@ type Limits interface {
 
 	// AlertmanagerMaxConfigSize returns max size of configuration file that user is allowed to upload. If 0, there is no limit.
 	AlertmanagerMaxConfigSize(tenant string) int
+
+	// AlertmanagerMaxTemplatesCount returns max number of templates that tenant can use in the configuration. 0 = no limit.
+	AlertmanagerMaxTemplatesCount(tenant string) int
+
+	// AlertmanagerMaxTemplateSize returns max size of individual template. 0 = no limit.
+	AlertmanagerMaxTemplateSize(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

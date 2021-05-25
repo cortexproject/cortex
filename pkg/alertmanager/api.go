@@ -34,6 +34,8 @@ const (
 	errNoOrgID               = "unable to determine the OrgID"
 	errListAllUser           = "unable to list the Alertmanager users"
 	errConfigurationTooBig   = "Alertmanager configuration is too big, limit: %d bytes"
+	errTooManyTemplates      = "too many templates in the configuration: %d (limit: %d)"
+	errTemplateTooBig        = "template %s is too big: %d bytes (limit: %d bytes)"
 
 	fetchConcurrency = 16
 )
@@ -133,7 +135,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 	}
 
 	cfgDesc := alertspb.ToProto(cfg.AlertmanagerConfig, cfg.TemplateFiles, userID)
-	if err := validateUserConfig(logger, cfgDesc); err != nil {
+	if err := validateUserConfig(logger, cfgDesc, am.limits, userID); err != nil {
 		level.Warn(logger).Log("msg", errValidatingConfig, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errValidatingConfig, err.Error()), http.StatusBadRequest)
 		return
@@ -171,7 +173,7 @@ func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *ht
 }
 
 // Partially copied from: https://github.com/prometheus/alertmanager/blob/8e861c646bf67599a1704fc843c6a94d519ce312/cli/check_config.go#L65-L96
-func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
+func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc, limits Limits, user string) error {
 	// We don't have a valid use case for empty configurations. If a tenant does not have a
 	// configuration set and issue a request to the Alertmanager, we'll a) upload an empty
 	// config and b) immediately start an Alertmanager instance for them if a fallback
@@ -194,6 +196,19 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc) error {
 	for _, name := range amCfg.Templates {
 		if err := validateTemplateFilename(name); err != nil {
 			return err
+		}
+	}
+
+	// Check template limits.
+	if l := limits.AlertmanagerMaxTemplatesCount(user); l > 0 && len(cfg.Templates) > l {
+		return fmt.Errorf(errTooManyTemplates, len(cfg.Templates), l)
+	}
+
+	if maxSize := limits.AlertmanagerMaxTemplateSize(user); maxSize > 0 {
+		for _, tmpl := range cfg.Templates {
+			if size := len(tmpl.GetBody()); size > maxSize {
+				return fmt.Errorf(errTemplateTooBig, tmpl.GetFilename(), size, maxSize)
+			}
 		}
 	}
 

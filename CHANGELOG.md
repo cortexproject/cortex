@@ -31,6 +31,7 @@
 * [BUGFIX] Ruler: fix `/ruler/rule_groups` endpoint doesn't work when used with object store. #4182
 * [BUGFIX] Ruler: Honor the evaluation delay for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
 * [BUGFIX] Fixed cache fetch error on Redis Cluster. #4056
+* [BUGFIX] Querier: Fix issue where samples in a chunk might get skipped by batch iterator. #4218
 
 ## Blocksconvert
 

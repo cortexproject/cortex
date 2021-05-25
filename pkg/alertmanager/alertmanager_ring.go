@@ -53,7 +53,7 @@ type RingConfig struct {
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
-	InstanceZone string `yaml:"instance_availability_zone"`
+	InstanceZone           string   `yaml:"instance_availability_zone"`
 
 	// Injected internally
 	ListenPort      int           `yaml:"-"`

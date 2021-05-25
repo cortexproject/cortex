@@ -18,14 +18,14 @@ type queryLimiterCtxKey struct{}
 var (
 	ctxKey              = &queryLimiterCtxKey{}
 	errMaxSeriesHit     = "The query hit the max number of series limit (limit: %d)"
-	errMaxChunkBytesHit = "The query hit the max number of chunk bytes limit (limit: %d)"
+	errMaxChunkBytesHit = "The query hit the aggregated chunks size limit (limit: %d)"
 )
 
 type QueryLimiter struct {
 	uniqueSeriesMx sync.Mutex
 	uniqueSeries   map[model.Fingerprint]struct{}
 
-	chunkBytesCount *atomic.Int32
+	chunkBytesCount *atomic.Int64
 
 	maxSeriesPerQuery     int
 	maxChunkBytesPerQuery int
@@ -33,12 +33,12 @@ type QueryLimiter struct {
 
 // NewQueryLimiter makes a new per-query limiter. Each query limiter
 // is configured using the `maxSeriesPerQuery` limit.
-func NewQueryLimiter(maxSeriesPerQuery int, maxChunkBytesPerQuery int) *QueryLimiter {
+func NewQueryLimiter(maxSeriesPerQuery, maxChunkBytesPerQuery int) *QueryLimiter {
 	return &QueryLimiter{
 		uniqueSeriesMx: sync.Mutex{},
 		uniqueSeries:   map[model.Fingerprint]struct{}{},
 
-		chunkBytesCount: atomic.NewInt32(0),
+		chunkBytesCount: atomic.NewInt64(0),
 
 		maxSeriesPerQuery:     maxSeriesPerQuery,
 		maxChunkBytesPerQuery: maxChunkBytesPerQuery,
@@ -86,11 +86,12 @@ func (ql *QueryLimiter) uniqueSeriesCount() int {
 	return len(ql.uniqueSeries)
 }
 
-func (ql *QueryLimiter) AddChunkBytes(bytes int) error {
+// AddChunkBytes adds the input chunk size in bytes and returns an error if the limit is reached.
+func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 	if ql.maxChunkBytesPerQuery == 0 {
 		return nil
 	}
-	if ql.chunkBytesCount.Add(int32(bytes)) > int32(ql.maxChunkBytesPerQuery) {
+	if ql.chunkBytesCount.Add(int64(chunkSizeInBytes)) > int64(ql.maxChunkBytesPerQuery) {
 		return validation.LimitError(fmt.Sprintf(errMaxChunkBytesHit, ql.maxChunkBytesPerQuery))
 	}
 	return nil

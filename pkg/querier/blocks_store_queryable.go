@@ -56,7 +56,6 @@ const (
 var (
 	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
 	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
-	errMaxChunkBytesHit = "The query hit the max number of chunk bytes limit (limit: %d)"
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -627,11 +626,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
 						}
 					}
-
-					for _, c := range s.Chunks{
-						if chunkBytesLimitErr := queryLimiter.AddChunkBytes(c.Size()); chunkBytesLimitErr != nil {
-							return chunkBytesLimitErr
-						}
+					chunksSize := 0
+					for _, c := range s.Chunks {
+						chunksSize += c.Size()
+					}
+					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
+						return chunkBytesLimitErr
 					}
 				}
 

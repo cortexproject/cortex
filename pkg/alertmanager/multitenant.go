@@ -198,10 +198,9 @@ func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config)
 		if !storageCfg.IsFullStateSupported() {
 			return errShardingUnsupportedStorage
 		}
-	}
-
-	if cfg.ShardingEnabled && cfg.ShardingRing.ZoneAwarenessEnabled && cfg.ShardingRing.InstanceZone == "" {
-		return errZoneAwarenessEnabledWithoutZoneInfo
+		if cfg.ShardingRing.ZoneAwarenessEnabled && cfg.ShardingRing.InstanceZone == "" {
+			return errZoneAwarenessEnabledWithoutZoneInfo
+		}
 	}
 
 	return nil

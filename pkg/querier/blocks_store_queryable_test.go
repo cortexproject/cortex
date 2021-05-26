@@ -526,7 +526,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			},
 			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
 			queryLimiter: limiter.NewQueryLimiter(0, 8),
-			expectedErr:  validation.LimitError(fmt.Sprintf("The query hit the aggregated chunks size limit (limit: %d)", 8)),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, 8)),
 		},
 	}
 

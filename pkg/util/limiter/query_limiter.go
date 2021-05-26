@@ -18,7 +18,7 @@ type queryLimiterCtxKey struct{}
 var (
 	ctxKey              = &queryLimiterCtxKey{}
 	errMaxSeriesHit     = "The query hit the max number of series limit (limit: %d)"
-	errMaxChunkBytesHit = "The query hit the aggregated chunks size limit (limit: %d)"
+	ErrMaxChunkBytesHit = "The query hit the aggregated chunks size limit (limit: %d bytes)"
 )
 
 type QueryLimiter struct {
@@ -92,7 +92,7 @@ func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 		return nil
 	}
 	if ql.chunkBytesCount.Add(int64(chunkSizeInBytes)) > int64(ql.maxChunkBytesPerQuery) {
-		return validation.LimitError(fmt.Sprintf(errMaxChunkBytesHit, ql.maxChunkBytesPerQuery))
+		return validation.LimitError(fmt.Sprintf(ErrMaxChunkBytesHit, ql.maxChunkBytesPerQuery))
 	}
 	return nil
 }

@@ -952,6 +952,11 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0))
+	t.Cleanup(func() {
+		// Reset the limiter for future tests.
+		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0))
+	})
+
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
 		numIngesters:     3,
@@ -994,14 +999,17 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "max number of series limit")
+
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIsReached(t *testing.T) {
-	const maxBytesLimit = 100
+	const seriesToAdd = 10
+	// This is used to track our initial test series to calculate response chunk size.
+	const initialSeries = 1
 
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit))
+
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
 		numIngesters:     3,
@@ -1012,24 +1020,42 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	})
 	defer stopAll(ds, r)
 
-	// Push a number of series below the max series limit.
-	initialSeries := maxBytesLimit / 60
-	writeReq := makeWriteRequest(0, initialSeries, 0)
-	writeRes, err := ds[0].Push(ctx, writeReq)
-	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
-	assert.Nil(t, err)
-
 	allSeriesMatchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
 	}
+	// Push a single series to allow us to calculate the chunk size to calculate the limit for the test.
+	writeReq := &cortexpb.WriteRequest{}
+	writeReq.Timeseries = append(writeReq.Timeseries,
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
+	)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	chunkSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
 
-	// Since the number of series is equal to the limit (but doesn't
+	// Use the resulting chunks size to calculate the limit as (series to add + our test series) * the response chunk size.
+	var responseChunkSize = chunkSizeResponse.ChunksSize()
+	var maxBytesLimit = (seriesToAdd + initialSeries) * responseChunkSize
+
+	// Update the limiter with the calculated limits.
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit))
+	t.Cleanup(func() {
+		// Reset the limiter for future tests.
+		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0))
+	})
+
+	// Push a number of series below the max chunk bytes limit.
+	writeReq = makeWriteRequest(0, seriesToAdd, 0)
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of chunk bytes is equal to the limit (but doesn't
 	// exceed it), we expect a query running on all series to succeed.
 	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.NoError(t, err)
-	assert.Len(t, queryRes.Chunkseries, initialSeries)
+	assert.Len(t, queryRes.Chunkseries, seriesToAdd+initialSeries)
 
-	// Push more series to exceed the limit once we'll query back all series.
+	// Push another series to exceed the chunk bytes limit once we'll query back all series.
 	writeReq = &cortexpb.WriteRequest{}
 	writeReq.Timeseries = append(writeReq.Timeseries,
 		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
@@ -1039,11 +1065,11 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
 	assert.Nil(t, err)
 
-	// Since the number of series is exceeding the limit, we expect
+	// Since the aggregated chunk size is exceeding the limit, we expect
 	// a query running on all series to fail.
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "aggregated chunks size limit")
+	assert.Equal(t, err, validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, maxBytesLimit)))
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {

@@ -577,11 +577,11 @@ func TestAlertmanagerSharding(t *testing.T) {
 }
 
 func TestAlertmanagerShardingScaling(t *testing.T) {
-	// Note that we run the test with the persister interval reduced is in
+	// Note that we run the test with the persister interval reduced in
 	// order to speed up the testing. However, this could mask issues with
-	// the process of syncing state from replicas. Therefore, we also run
-	// the tests with the sync interval increased, with the caveat that we
-	// cannot test the all-replica shutdown/restart.
+	// the syncing state from replicas. Therefore, we also run the tests
+	// with the sync interval increased (with the caveat that we cannot
+	// test the all-replica shutdown/restart).
 	tests := map[string]struct {
 		replicationFactor int
 		withPersister     bool
@@ -733,7 +733,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 				}
 			}
 
-			// Scale up by adding some number of new instances. We don't do too high to
+			// Scale up by adding some number of new instances. We don't go too high to
 			// keep the test run-time low (RF+2) - going higher has diminishing returns.
 			{
 				scale := (testCfg.replicationFactor + 2)

@@ -41,7 +41,10 @@ func (a *pusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (
 	// This then causes 'out of order' append failures once the series is
 	// becoming available again.
 	// see https://github.com/prometheus/prometheus/blob/6c56a1faaaad07317ff585bda75b99bdba0517ad/rules/manager.go#L647-L660
-	if a.evaluationDelay > 0 && value.IsStaleNaN(v) {
+	// Similar to staleness markers, the rule manager also appends actual time to the ALERTS and ALERTS_FOR_STATE series.
+	// See: https://github.com/prometheus/prometheus/blob/ae086c73cb4d6db9e8b67d5038d3704fea6aec4a/rules/alerting.go#L414-L417
+	metricName := l.Get(labels.MetricName)
+	if a.evaluationDelay > 0 && (value.IsStaleNaN(v) || metricName == "ALERTS" || metricName == "ALERTS_FOR_STATE") {
 		t -= a.evaluationDelay.Milliseconds()
 	}
 

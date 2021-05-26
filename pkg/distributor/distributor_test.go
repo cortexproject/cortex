@@ -1029,6 +1029,8 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
 	)
 	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
 	chunkSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.NoError(t, err)
 

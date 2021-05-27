@@ -450,6 +450,14 @@ func TestAlertmanagerSharding(t *testing.T) {
 				}
 			}
 
+			// Endpoint: GET /multitenant_alertmanager/status
+			{
+				for _, c := range clients {
+					_, err := c.GetAlertmanagerStatusPage(context.Background())
+					assert.NoError(t, err)
+				}
+			}
+
 			// Endpoint: GET /status
 			{
 				for _, c := range clients {

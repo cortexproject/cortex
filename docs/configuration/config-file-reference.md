@@ -1297,6 +1297,10 @@ storage:
     # CLI flag: -ruler.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
 
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -ruler.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
+
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
     # specified as a host, proper endpoint will be deduced. Use
@@ -2000,6 +2004,10 @@ storage:
     # The duration after which the requests to GCS should be timed out.
     # CLI flag: -alertmanager.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
+
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -alertmanager.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
 
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
@@ -2990,6 +2998,10 @@ gcs:
   # The duration after which the requests to GCS should be timed out.
   # CLI flag: -gcs.request-timeout
   [request_timeout: <duration> | default = 0s]
+
+  # Enabled OpenCensus (OC) instrumentation for all requests.
+  # CLI flag: -gcs.enable-opencensus
+  [enable_opencensus: <boolean> | default = true]
 
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.

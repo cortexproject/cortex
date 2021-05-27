@@ -41,6 +41,7 @@ import (
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.
 type DistributorPushWrapper func(next push.Func) push.Func
+type ConfigHandler func(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc
 
 type Config struct {
 	ResponseCompression bool `yaml:"response_compression_enabled"`
@@ -56,6 +57,12 @@ type Config struct {
 	// This allows downstream projects to wrap the distributor push function
 	// and access the deserialized write requests before/after they are pushed.
 	DistributorPushWrapper DistributorPushWrapper `yaml:"-"`
+
+	// The CustomConfigHandler allows for providing a different handler for the
+	// `/config` endpoint. If this field is set _before_ the API module is
+	// initialized, the custom config handler will be used instead of
+	// DefaultConfigHandler.
+	CustomConfigHandler ConfigHandler `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -198,7 +205,7 @@ func (a *API) RegisterAPI(httpPathPrefix string, actualCfg interface{}, defaultC
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config", "Current Config (including the default values)")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/config?mode=diff", "Current Config (show only values that differ from the defaults)")
 
-	a.RegisterRoute("/config", configHandler(actualCfg, defaultCfg), false, "GET")
+	a.RegisterRoute("/config", a.cfg.configHandler(actualCfg, defaultCfg), false, "GET")
 	a.RegisterRoute("/", indexHandler(httpPathPrefix, a.indexPage), false, "GET")
 	a.RegisterRoute("/debug/fgprof", fgprof.Handler(), false, "GET")
 }

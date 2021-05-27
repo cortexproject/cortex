@@ -12,6 +12,7 @@
 * [FEATURE] Alertmanager: Added `-alertmanager.max-config-size-bytes` limit to control size of configuration files that Cortex users can upload to Alertmanager via API. This limit is configurable per-tenant. #4201
 * [FEATURE] Alertmanager: Added `-alertmanager.max-templates-count` and `-alertmanager.max-template-size-bytes` options to control number and size of templates uploaded to Alertmanager via API. These limits are configurable per-tenant. #4223
 * [FEATURE] Added flag `-debug.block-profile-rate` to enable goroutine blocking events profiling. #4217
+* [ENHANCEMENT] Storage: Added the ability to disable Open Census within GCS client (e.g `-gcs.enable-opencensus=false`). #4219
 * [ENHANCEMENT] Alertmanager: introduced new metrics to monitor operation when using `-alertmanager.sharding-enabled`: #4149
   * `cortex_alertmanager_state_fetch_replica_state_total`
   * `cortex_alertmanager_state_fetch_replica_state_failed_total`
@@ -27,7 +28,8 @@
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 * [BUGFIX] Ruler: fix `/ruler/rule_groups` endpoint doesn't work when used with object store. #4182
-* [BUGFIX] Ruler: Honor the evaluation for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
+* [BUGFIX] Ruler: Honor the evaluation delay for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
+* [BUGFIX] Fixed cache fetch error on Redis Cluster. #4056
 
 ## Blocksconvert
 

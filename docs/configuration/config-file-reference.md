@@ -387,13 +387,13 @@ grpc_tls_config:
 # If client sends keepalive ping more often, server will send GOAWAY and close
 # the connection.
 # CLI flag: -server.grpc.keepalive.min-time-between-pings
-[grpc_server_min_time_between_pings: <duration> | default = 5m]
+[grpc_server_min_time_between_pings: <duration> | default = 10s]
 
 # If true, server allows keepalive pings even when there are no active
 # streams(RPCs). If false, and client sends ping when there are no active
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
-[grpc_server_ping_without_stream_allowed: <boolean> | default = false]
+[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
@@ -1903,9 +1903,19 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback
@@ -3940,7 +3950,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage.
+# ignored when running the Cortex blocks storage. When running Cortex with
+# blocks storage use -querier.max-fetched-series-per-query limit instead.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
@@ -4011,6 +4022,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # deprecated -store.query-chunk-limit. 0 to disable.
 # CLI flag: -querier.max-fetched-chunks-per-query
 [max_fetched_chunks_per_query: <int> | default = 0]
+
+# The maximum number of unique series for which a query can fetch samples from
+# each ingesters and blocks storage. This limit is enforced in the querier only
+# when running Cortex with blocks storage. 0 to disable
+# CLI flag: -querier.max-fetched-series-per-query
+[max_fetched_series_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4106,6 +4123,36 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # and local multicast addresses.
 # CLI flag: -alertmanager.receivers-firewall-block-private-addresses
 [alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
+
+# Per-user rate limit for sending notifications from Alertmanager in
+# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
+# are allowed.
+# CLI flag: -alertmanager.notification-rate-limit
+[alertmanager_notification_rate_limit: <float> | default = 0]
+
+# Per-integration notification rate limits. Value is a map, where each key is
+# integration name and value is a rate-limit (float). On command line, this map
+# is given in JSON format. Rate limit has the same meaning as
+# -alertmanager.notification-rate-limit, but only applies for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover.
+# CLI flag: -alertmanager.notification-rate-limit-per-integration
+[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
+
+# Maximum size of configuration file for Alertmanager that tenant can upload via
+# Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-config-size-bytes
+[alertmanager_max_config_size_bytes: <int> | default = 0]
+
+# Maximum number of templates in tenant's Alertmanager configuration uploaded
+# via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-templates-count
+[alertmanager_max_templates_count: <int> | default = 0]
+
+# Maximum size of single template in tenant's Alertmanager configuration
+# uploaded via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-template-size-bytes
+[alertmanager_max_template_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`
@@ -4943,6 +4990,11 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
 ```
 
 ### `compactor_config`

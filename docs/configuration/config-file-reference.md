@@ -1907,9 +1907,19 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback
@@ -4140,6 +4150,21 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # wechat, slack, victorops, pushover.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
+
+# Maximum size of configuration file for Alertmanager that tenant can upload via
+# Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-config-size-bytes
+[alertmanager_max_config_size_bytes: <int> | default = 0]
+
+# Maximum number of templates in tenant's Alertmanager configuration uploaded
+# via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-templates-count
+[alertmanager_max_templates_count: <int> | default = 0]
+
+# Maximum size of single template in tenant's Alertmanager configuration
+# uploaded via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-template-size-bytes
+[alertmanager_max_template_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`

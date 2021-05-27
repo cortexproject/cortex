@@ -575,3 +575,196 @@ func TestAlertmanagerSharding(t *testing.T) {
 		})
 	}
 }
+
+func TestAlertmanagerShardingScaling(t *testing.T) {
+	// Note that we run the test with the persister interval reduced in
+	// order to speed up the testing. However, this could mask issues with
+	// the syncing state from replicas. Therefore, we also run the tests
+	// with the sync interval increased (with the caveat that we cannot
+	// test the all-replica shutdown/restart).
+	tests := map[string]struct {
+		replicationFactor int
+		withPersister     bool
+	}{
+		"RF = 2 with persister":    {replicationFactor: 2, withPersister: true},
+		"RF = 3 with persister":    {replicationFactor: 3, withPersister: true},
+		"RF = 2 without persister": {replicationFactor: 2, withPersister: false},
+		"RF = 3 without persister": {replicationFactor: 3, withPersister: false},
+	}
+
+	for testName, testCfg := range tests {
+		t.Run(testName, func(t *testing.T) {
+			s, err := e2e.NewScenario(networkName)
+			require.NoError(t, err)
+			defer s.Close()
+
+			// Start dependencies.
+			consul := e2edb.NewConsul()
+			minio := e2edb.NewMinio(9000, alertsBucketName)
+			require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+			client, err := s3.NewS3ObjectClient(s3.S3Config{
+				Endpoint:         minio.HTTPEndpoint(),
+				S3ForcePathStyle: true,
+				Insecure:         true,
+				BucketNames:      alertsBucketName,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+			})
+			require.NoError(t, err)
+
+			// Create and upload Alertmanager configurations.
+			numUsers := 20
+			for i := 1; i <= numUsers; i++ {
+				user := fmt.Sprintf("user-%d", i)
+				desc := alertspb.AlertConfigDesc{
+					RawConfig: simpleAlertmanagerConfig,
+					User:      user,
+					Templates: []*alertspb.TemplateDesc{},
+				}
+
+				d, err := desc.Marshal()
+				require.NoError(t, err)
+				err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+				require.NoError(t, err)
+			}
+
+			persistInterval := "5h"
+			if testCfg.withPersister {
+				persistInterval = "5s"
+			}
+
+			flags := mergeFlags(AlertmanagerFlags(),
+				AlertmanagerS3Flags(false),
+				AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), testCfg.replicationFactor),
+				AlertmanagerPersisterFlags(persistInterval))
+
+			instances := make([]*e2ecortex.CortexService, 0)
+
+			// Helper to start an instance.
+			startInstance := func() *e2ecortex.CortexService {
+				i := len(instances) + 1
+				am := e2ecortex.NewAlertmanager(fmt.Sprintf("alertmanager-%d", i), flags, "")
+				require.NoError(t, s.StartAndWaitReady(am))
+				instances = append(instances, am)
+				return am
+			}
+
+			// Helper to stop the most recently started instance.
+			popInstance := func() {
+				require.Greater(t, len(instances), 0)
+				last := len(instances) - 1
+				require.NoError(t, s.Stop(instances[last]))
+				instances = instances[:last]
+			}
+
+			// Helper to validate the system wide metrics as we add and remove instances.
+			validateMetrics := func(expectedSilences int) {
+				// Check aggregate metrics across all instances.
+				ams := e2ecortex.NewCompositeCortexService(instances...)
+
+				// All instances should discover all tenants.
+				require.NoError(t, ams.WaitSumMetrics(
+					e2e.Equals(float64(numUsers*len(instances))),
+					"cortex_alertmanager_tenants_discovered"))
+
+				// If the number of instances has not yet reached the replication
+				// factor, then effective replication will be reduced.
+				var expectedReplication int
+				if len(instances) <= testCfg.replicationFactor {
+					expectedReplication = len(instances)
+				} else {
+					expectedReplication = testCfg.replicationFactor
+				}
+
+				require.NoError(t, ams.WaitSumMetrics(
+					e2e.Equals(float64(numUsers*expectedReplication)),
+					"cortex_alertmanager_tenants_owned"))
+
+				require.NoError(t, ams.WaitSumMetrics(
+					e2e.Equals(float64(numUsers*expectedReplication)),
+					"cortex_alertmanager_config_last_reload_successful"))
+
+				require.NoError(t, ams.WaitSumMetrics(
+					e2e.Equals(float64(expectedSilences*expectedReplication)),
+					"cortex_alertmanager_silences"))
+			}
+
+			// Start up the first instance and use it to create some silences.
+			numSilences := 0
+			{
+				am1 := startInstance()
+
+				// Validate metrics with only the first instance running, before creating silences.
+				validateMetrics(0)
+
+				// Only create silences for every other user. It will be common that some users
+				// have no silences, so some irregularity in the test is beneficial.
+				for i := 1; i <= numUsers; i += 2 {
+					user := fmt.Sprintf("user-%d", i)
+					client, err := e2ecortex.NewClient("", "", am1.HTTPEndpoint(), "", user)
+					require.NoError(t, err)
+
+					for j := 1; j <= 10; j++ {
+						silence := types.Silence{
+							Matchers: amlabels.Matchers{
+								{Name: "instance", Value: "prometheus-one"},
+							},
+							Comment:  fmt.Sprintf("Silence Comment #%d", j),
+							StartsAt: time.Now(),
+							EndsAt:   time.Now().Add(time.Hour),
+						}
+
+						_, err = client.CreateSilence(context.Background(), silence)
+						assert.NoError(t, err)
+						numSilences++
+					}
+				}
+
+				// Validate metrics after creating silences.
+				validateMetrics(numSilences)
+
+				// If we are testing with persistence, then check the persister actually activated.
+				// It's unlikely that nothing has been persisted by now if correctly configured.
+				if testCfg.withPersister {
+					require.NoError(t, instances[0].WaitSumMetrics(
+						e2e.Greater(0),
+						"cortex_alertmanager_state_persist_total"))
+				}
+			}
+
+			// Scale up by adding some number of new instances. We don't go too high to
+			// keep the test run-time low (RF+2) - going higher has diminishing returns.
+			{
+				scale := (testCfg.replicationFactor + 2)
+				for i := 2; i <= scale; i++ {
+					_ = startInstance()
+					validateMetrics(numSilences)
+				}
+			}
+
+			// Scale down to a single instance. Note that typically scaling down would be performed
+			// carefully, one instance at a time. For this test, the act of waiting for metrics
+			// to reach expected values, essentially inhibits the scale down sufficiently.
+			{
+				for len(instances) >= 2 {
+					popInstance()
+					validateMetrics(numSilences)
+				}
+			}
+
+			// Stop the last instance.
+			popInstance()
+
+			// Restart the first instance.
+			_ = startInstance()
+
+			// With persistence, then the silences will not be lost. Otherwise, they will.
+			if testCfg.withPersister {
+				validateMetrics(numSilences)
+			} else {
+				validateMetrics(0)
+			}
+		})
+	}
+}

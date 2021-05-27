@@ -114,6 +114,12 @@ var (
 		}
 	}
 
+	AlertmanagerPersisterFlags = func(interval string) map[string]string {
+		return map[string]string{
+			"-alertmanager.persist-interval": interval,
+		}
+	}
+
 	AlertmanagerLocalFlags = func() map[string]string {
 		return map[string]string{
 			"-alertmanager.storage.type":       "local",

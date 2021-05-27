@@ -661,8 +661,8 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 func TestCheckReplicaCleanup(t *testing.T) {
 	replica := "r1"
 	cluster := "c1"
-	userId := "user"
-	ctx := user.InjectOrgID(context.Background(), userId)
+	userID := "user"
+	ctx := user.InjectOrgID(context.Background(), userID)
 
 	reg := prometheus.NewPedanticRegistry()
 
@@ -680,32 +680,32 @@ func TestCheckReplicaCleanup(t *testing.T) {
 
 	now := time.Now()
 
-	err = c.checkReplica(context.Background(), userId, cluster, replica, now)
+	err = c.checkReplica(context.Background(), userID, cluster, replica, now)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, userId, cluster, replica, now)
+	checkReplicaTimestamp(t, time.Second, c, userID, cluster, replica, now)
 
 	// Replica is not marked for deletion yet.
-	checkReplicaDeletionState(t, time.Second, c, userId, cluster, true, true, false)
+	checkReplicaDeletionState(t, time.Second, c, userID, cluster, true, true, false)
 
 	// This will mark replica for deletion (with time.Now())
 	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
 
 	// Verify marking for deletion.
-	checkReplicaDeletionState(t, time.Second, c, userId, cluster, false, true, true)
+	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, true, true)
 
 	// This will "revive" the replica.
 	now = time.Now()
-	err = c.checkReplica(context.Background(), userId, cluster, replica, now)
+	err = c.checkReplica(context.Background(), userID, cluster, replica, now)
 	assert.NoError(t, err)
-	checkReplicaTimestamp(t, time.Second, c, userId, cluster, replica, now) // This also checks that entry is not marked for deletion.
+	checkReplicaTimestamp(t, time.Second, c, userID, cluster, replica, now) // This also checks that entry is not marked for deletion.
 
 	// This will mark replica for deletion again (with new time.Now())
 	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
-	checkReplicaDeletionState(t, time.Second, c, userId, cluster, false, true, true)
+	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, true, true)
 
 	// Delete entry marked for deletion completely.
 	c.cleanupOldReplicas(ctx, time.Now().Add(5*time.Second))
-	checkReplicaDeletionState(t, time.Second, c, userId, cluster, false, false, false)
+	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, false, false)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total Number of elected replicas marked for deletion.

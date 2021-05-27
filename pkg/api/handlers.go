@@ -111,7 +111,14 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	}
 }
 
-func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+func (cfg *Config) configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+	if cfg.CustomConfigHandler != nil {
+		return cfg.CustomConfigHandler(actualCfg, defaultCfg)
+	}
+	return DefaultConfigHandler(actualCfg, defaultCfg)
+}
+
+func DefaultConfigHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var output interface{}
 		switch r.URL.Query().Get("mode") {

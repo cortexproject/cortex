@@ -67,8 +67,8 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 	require.True(t, sut.Next())
 	require.True(t, sut.Seek(0))
 
-	actual, _ := sut.At()
-
+	actual, val := sut.At()
+	require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since mkChunk use ts as value.
 	require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
 }
 

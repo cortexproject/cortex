@@ -25,7 +25,7 @@ type QueryLimiter struct {
 	uniqueSeriesMx sync.Mutex
 	uniqueSeries   map[model.Fingerprint]struct{}
 
-	chunkBytesCount *atomic.Int64
+	chunkBytesCount atomic.Int64
 
 	maxSeriesPerQuery     int
 	maxChunkBytesPerQuery int
@@ -37,8 +37,6 @@ func NewQueryLimiter(maxSeriesPerQuery, maxChunkBytesPerQuery int) *QueryLimiter
 	return &QueryLimiter{
 		uniqueSeriesMx: sync.Mutex{},
 		uniqueSeries:   map[model.Fingerprint]struct{}{},
-
-		chunkBytesCount: atomic.NewInt64(0),
 
 		maxSeriesPerQuery:     maxSeriesPerQuery,
 		maxChunkBytesPerQuery: maxChunkBytesPerQuery,

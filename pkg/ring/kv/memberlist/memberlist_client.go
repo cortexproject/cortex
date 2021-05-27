@@ -891,6 +891,7 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 	pairData, err := kvPair.Marshal()
 	if err != nil {
 		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "err", err)
+		return
 	}
 
 	if len(pairData) > 65535 {

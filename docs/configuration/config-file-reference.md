@@ -4019,9 +4019,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
-# The maximum size of all chunks in bytes for which a query can fetch from each
-# ingester and blocks storage. This limit is enforced in the querier only when
-# running Cortex with blocks storage. 0 to disable.
+# The maximum size of all chunks in bytes that a query can fetch from each
+# ingester and storage. This limit is enforced in the querier and ruler only
+# when running Cortex with blocks storage. 0 to disable.
 # CLI flag: -querier.max-fetched-chunk-bytes-per-query
 [max_fetched_chunk_bytes_per_query: <int> | default = 0]
 

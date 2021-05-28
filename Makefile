@@ -261,7 +261,7 @@ endif
 
 clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
-	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache $(PACKAGES) dist/*
+	rm -rf -- $(UPTODATE_FILES) $(EXES) .cache dist
 	go clean ./...
 
 clean-protos:
@@ -304,33 +304,34 @@ web-serve:
 	cd website && hugo --config config.toml --minify -v server
 
 # Generate binaries for a Cortex release
-dist dist/cortex-linux-amd64 dist/cortex-darwin-amd64 dist/query-tee-linux-amd64 dist/query-tee-darwin-amd64 dist/cortex-linux-amd64-sha-256 dist/cortex-darwin-amd64-sha-256 dist/query-tee-linux-amd64-sha-256 dist/query-tee-darwin-amd64-sha-256:
+dist: dist/$(UPTODATE)
+
+dist/$(UPTODATE):
 	rm -fr ./dist
 	mkdir -p ./dist
-	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-linux-amd64   ./cmd/cortex
-	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-darwin-amd64  ./cmd/cortex
-	GOOS="linux"  GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-linux-amd64   ./cmd/query-tee
-	GOOS="darwin" GOARCH="amd64" CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-darwin-amd64  ./cmd/query-tee
-	sha256sum ./dist/cortex-darwin-amd64 | cut -d ' ' -f 1 > ./dist/cortex-darwin-amd64-sha-256
-	sha256sum ./dist/cortex-linux-amd64  | cut -d ' ' -f 1 > ./dist/cortex-linux-amd64-sha-256
-	sha256sum ./dist/query-tee-darwin-amd64 | cut -d ' ' -f 1 > ./dist/query-tee-darwin-amd64-sha-256
-	sha256sum ./dist/query-tee-linux-amd64  | cut -d ' ' -f 1 > ./dist/query-tee-linux-amd64-sha-256
+	for os in linux darwin; do \
+      for arch in amd64 arm64; do \
+        echo "Building Cortex for $$os/$$arch"; \
+        GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/cortex-$$os-$$arch ./cmd/cortex; \
+        sha256sum ./dist/cortex-$$os-$$arch | cut -d ' ' -f 1 > ./dist/cortex-$$os-$$arch-sha-256; \
+        echo "Building query-tee for $$os/$$arch"; \
+        GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build $(GO_FLAGS) -o ./dist/query-tee-$$os-$$arch ./cmd/query-tee; \
+        sha256sum ./dist/query-tee-$$os-$$arch | cut -d ' ' -f 1 > ./dist/query-tee-$$os-$$arch-sha-256; \
+      done; \
+    done; \
+    touch $@
 
 # Generate packages for a Cortex release.
 FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
 	--license "Apache 2.0" \
 	--url "https://github.com/cortexproject/cortex"
 
-FPM_ARGS := dist/cortex-linux-amd64=/usr/local/bin/cortex \
-	docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml\
-
-PACKAGES := dist/cortex-$(VERSION).rpm dist/cortex-$(VERSION).deb
 PACKAGE_IN_CONTAINER := true
 PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
 ifeq ($(PACKAGE_IN_CONTAINER), true)
 
 .PHONY: packages
-packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
+packages: dist packaging/fpm/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo ">>>> Entering build container: $@"
@@ -340,26 +341,52 @@ packages: dist/cortex-linux-amd64 packaging/fpm/$(UPTODATE)
 
 else
 
-packages: $(PACKAGES)
+packages: dist/$(UPTODATE)-packages
 
-dist/%.deb: dist/cortex-linux-amd64 $(wildcard packaging/deb/**)
-	$(FPM_OPTS) -t deb \
-		--after-install packaging/deb/control/postinst \
-		--before-remove packaging/deb/control/prerm \
-		--package $@ $(FPM_ARGS) \
-		packaging/deb/default/cortex=/etc/default/cortex \
-		packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service
-	sha256sum ./dist/cortex-$(VERSION).deb | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).deb-sha-256
+dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packaging/rpm/**)
+	for arch in amd64 arm64; do \
+  		rpm_arch=x86_64; \
+  		deb_arch=x86_64; \
+  		if [ "$$arch" = "arm64" ]; then \
+		    rpm_arch=aarch64; \
+		    deb_arch=arm64; \
+		fi; \
+		$(FPM_OPTS) -t deb \
+			--architecture $$deb_arch \
+			--after-install packaging/deb/control/postinst \
+			--before-remove packaging/deb/control/prerm \
+			--package dist/cortex-$(VERSION)_$$arch.deb \
+			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			packaging/deb/default/cortex=/etc/default/cortex \
+			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+		$(FPM_OPTS) -t rpm  \
+			--architecture $$rpm_arch \
+			--after-install packaging/rpm/control/post \
+			--before-remove packaging/rpm/control/preun \
+			--package dist/cortex-$(VERSION)_$$arch.rpm \
+			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
+			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+	done
+	for pkg in dist/*.deb dist/*.rpm; do \
+  		sha256sum $$pkg | cut -d ' ' -f 1 > $${pkg}-sha-256; \
+  	done; \
+  	touch $@
 
-dist/%.rpm: dist/cortex-linux-amd64 $(wildcard packaging/rpm/**)
-	$(FPM_OPTS) -t rpm  \
-		--after-install packaging/rpm/control/post \
-		--before-remove packaging/rpm/control/preun \
-		--package $@ $(FPM_ARGS) \
-		packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
-		packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service
-	sha256sum ./dist/cortex-$(VERSION).rpm | cut -d ' ' -f 1 > ./dist/cortex-$(VERSION).rpm-sha-256
 endif
+
+# Build both arm64 and amd64 images, so that we can test deb/rpm packages for both architectures.
+packaging/rpm/centos-systemd/$(UPTODATE): packaging/rpm/centos-systemd/Dockerfile
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	touch $@
+
+packaging/deb/debian-systemd/$(UPTODATE): packaging/deb/debian-systemd/Dockerfile
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	touch $@
 
 .PHONY: test-packages
 test-packages: packages packaging/rpm/centos-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)

@@ -252,13 +252,16 @@ type KV struct {
 	totalSizeOfPushes                   prometheus.Counter
 	numberOfBroadcastMessagesInQueue    prometheus.GaugeFunc
 	totalSizeOfBroadcastMessagesInQueue prometheus.Gauge
+	numberOfBroadcastMessagesDropped    prometheus.Counter
 	casAttempts                         prometheus.Counter
 	casFailures                         prometheus.Counter
 	casSuccesses                        prometheus.Counter
 	watchPrefixDroppedNotifications     *prometheus.CounterVec
 
-	storeValuesDesc *prometheus.Desc
-	storeSizesDesc  *prometheus.Desc
+	storeValuesDesc        *prometheus.Desc
+	storeSizesDesc         *prometheus.Desc
+	storeTombstones        *prometheus.GaugeVec
+	storeRemovedTombstones *prometheus.CounterVec
 
 	memberlistMembersCount prometheus.GaugeFunc
 	memberlistHealthScore  prometheus.GaugeFunc
@@ -625,7 +628,7 @@ func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, 
 		if mr, ok := out.(Mergeable); ok {
 			// remove ALL tombstones before returning to client.
 			// No need for clients to see them.
-			mr.RemoveTombstones(time.Time{})
+			_, _ = mr.RemoveTombstones(time.Time{})
 		}
 	}
 
@@ -883,14 +886,16 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) 
 func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec codec.Codec) {
 	data, err := codec.Encode(change)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to encode change", "err", err)
+		level.Error(m.logger).Log("msg", "failed to encode change", "key", key, "version", version, "err", err)
+		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
 	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
 	pairData, err := kvPair.Marshal()
 	if err != nil {
-		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "err", err)
+		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "key", key, "version", version, "err", err)
+		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
@@ -901,7 +906,8 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		//
 		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
 		// when broadcasting result of push/pull update.
-		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "len", len(pairData))
+		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "key", key, "version", version, "len", len(pairData))
+		m.numberOfBroadcastMessagesDropped.Inc()
 		return
 	}
 
@@ -1191,7 +1197,9 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 
 	if m.cfg.LeftIngestersTimeout > 0 {
 		limit := time.Now().Add(-m.cfg.LeftIngestersTimeout)
-		result.RemoveTombstones(limit)
+		total, removed := result.RemoveTombstones(limit)
+		m.storeTombstones.WithLabelValues(key).Set(float64(total))
+		m.storeRemovedTombstones.WithLabelValues(key).Add(float64(removed))
 	}
 
 	encoded, err := codec.Encode(result)

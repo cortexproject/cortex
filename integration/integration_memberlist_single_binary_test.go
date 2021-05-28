@@ -86,15 +86,23 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(3*512), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(3*512), "cortex_ring_tokens_total"))
 
+	// All Cortex servers should initially have no tombstones; nobody has left yet.
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(0), "memberlist_client_kv_store_value_tombstones"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(0), "memberlist_client_kv_store_value_tombstones"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(0), "memberlist_client_kv_store_value_tombstones"))
+
 	require.NoError(t, s.Stop(cortex1))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1), "memberlist_client_kv_store_value_tombstones"))
 	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1), "memberlist_client_kv_store_value_tombstones"))
 
 	require.NoError(t, s.Stop(cortex2))
 	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1*512), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(1), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(2), "memberlist_client_kv_store_value_tombstones"))
 
 	require.NoError(t, s.Stop(cortex3))
 }

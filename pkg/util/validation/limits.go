@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/prometheus/common/model"
@@ -24,7 +25,7 @@ const (
 	GlobalIngestionRateStrategy = "global"
 )
 
-//LimitError are errors that do not comply with the limits specified.
+// LimitError are errors that do not comply with the limits specified.
 type LimitError string
 
 func (e LimitError) Error() string {
@@ -71,14 +72,16 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric" json:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQueryFromStore int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"` // TODO Remove in Cortex 1.12.
-	MaxChunksPerQuery          int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
-	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
-	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxChunksPerQueryFromStore   int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"` // TODO Remove in Cortex 1.12.
+	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
+	MaxFetchedSeriesPerQuery     int            `yaml:"max_fetched_series_per_query" json:"max_fetched_series_per_query"`
+	MaxFetchedChunkBytesPerQuery int            `yaml:"max_fetched_chunk_bytes_per_query" json:"max_fetched_chunk_bytes_per_query"`
+	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	CardinalityLimit             int            `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
+	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -102,9 +105,12 @@ type Limits struct {
 	AlertmanagerReceiversBlockCIDRNetworks     flagext.CIDRSliceCSV `yaml:"alertmanager_receivers_firewall_block_cidr_networks" json:"alertmanager_receivers_firewall_block_cidr_networks"`
 	AlertmanagerReceiversBlockPrivateAddresses bool                 `yaml:"alertmanager_receivers_firewall_block_private_addresses" json:"alertmanager_receivers_firewall_block_private_addresses"`
 
-	// Alertmanager limits
-	EmailNotificationRateLimit float64 `yaml:"alertmanager_email_notification_rate_limit" json:"alertmanager_email_notification_rate_limit"`
-	EmailNotificationBurstSize int     `yaml:"alertmanager_email_notification_burst_size" json:"alertmanager_email_notification_burst_size"`
+	NotificationRateLimit               float64                  `yaml:"alertmanager_notification_rate_limit" json:"alertmanager_notification_rate_limit"`
+	NotificationRateLimitPerIntegration NotificationRateLimitMap `yaml:"alertmanager_notification_rate_limit_per_integration" json:"alertmanager_notification_rate_limit_per_integration"`
+
+	AlertmanagerMaxConfigSizeBytes   int `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
+	AlertmanagerMaxTemplatesCount    int `yaml:"alertmanager_max_templates_count" json:"alertmanager_max_templates_count"`
+	AlertmanagerMaxTemplateSizeBytes int `yaml:"alertmanager_max_template_size_bytes" json:"alertmanager_max_template_size_bytes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -130,7 +136,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 
-	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage.")
+	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage. When running Cortex with blocks storage use -querier.max-fetched-series-per-query limit instead.")
 	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return. This limit only applies when running the Cortex chunks storage with -querier.ingester-streaming=false.")
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
@@ -144,6 +150,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxGlobalMetadataPerMetric, "ingester.max-global-metadata-per-metric", 0, "The maximum number of metadata per metric, across the cluster. 0 to disable.")
 	f.IntVar(&l.MaxChunksPerQueryFromStore, "store.query-chunk-limit", 2e6, "Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its respective YAML config option instead. Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage only. When running the Cortex chunks storage, this limit is enforced in the querier and ruler, while when running the Cortex blocks storage this limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxChunksPerQuery, "querier.max-fetched-chunks-per-query", 0, "Maximum number of chunks that can be fetched in a single query from ingesters and long-term storage: the total number of actual fetched chunks could be 2x the limit, being independently applied when querying ingesters and long-term storage. This limit is enforced in the ingester (if chunks streaming is enabled), querier, ruler and store-gateway. Takes precedence over the deprecated -store.query-chunk-limit. 0 to disable.")
+	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier only when running Cortex with blocks storage. 0 to disable")
+	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler only when running Cortex with blocks storage. 0 to disable.")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
@@ -165,8 +173,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
 	f.BoolVar(&l.AlertmanagerReceiversBlockPrivateAddresses, "alertmanager.receivers-firewall-block-private-addresses", false, "True to block private and local addresses in Alertmanager receiver integrations. It blocks private addresses defined by  RFC 1918 (IPv4 addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast and local multicast addresses.")
-	f.Float64Var(&l.EmailNotificationRateLimit, "alertmanager.email-notification-rate-limit", 0, "Per-user rate limit for sending email notifications from Alertmanager in emails/sec. 0 = rate limit disabled. Negative value = no emails are allowed.")
-	f.IntVar(&l.EmailNotificationBurstSize, "alertmanager.email-notification-burst-size", 1, "Per-user burst size for email notifications. If set to 0, no email notifications will be sent, unless rate-limit is disabled, in which case all email notifications are allowed.")
+
+	f.Float64Var(&l.NotificationRateLimit, "alertmanager.notification-rate-limit", 0, "Per-user rate limit for sending notifications from Alertmanager in notifications/sec. 0 = rate limit disabled. Negative value = no notifications are allowed.")
+
+	if l.NotificationRateLimitPerIntegration == nil {
+		l.NotificationRateLimitPerIntegration = NotificationRateLimitMap{}
+	}
+	f.Var(&l.NotificationRateLimitPerIntegration, "alertmanager.notification-rate-limit-per-integration", "Per-integration notification rate limits. Value is a map, where each key is integration name and value is a rate-limit (float). On command line, this map is given in JSON format. Rate limit has the same meaning as -alertmanager.notification-rate-limit, but only applies for specific integration. Allowed integration names: "+strings.Join(allowedIntegrationNames, ", ")+".")
+	f.IntVar(&l.AlertmanagerMaxConfigSizeBytes, "alertmanager.max-config-size-bytes", 0, "Maximum size of configuration file for Alertmanager that tenant can upload via Alertmanager API. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxTemplatesCount, "alertmanager.max-templates-count", 0, "Maximum number of templates in tenant's Alertmanager configuration uploaded via Alertmanager API. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxTemplateSizeBytes, "alertmanager.max-template-size-bytes", 0, "Maximum size of single template in tenant's Alertmanager configuration uploaded via Alertmanager API. 0 = no limit.")
 }
 
 // Validate the limits config and returns an error if the validation
@@ -190,6 +206,8 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		*l = *defaultLimits
+		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
+		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 	type plain Limits
 	return unmarshal((*plain)(l))
@@ -202,10 +220,19 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	// behind type indirection.
 	if defaultLimits != nil {
 		*l = *defaultLimits
+		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
+		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 
 	type plain Limits
 	return json.Unmarshal(data, (*plain)(l))
+}
+
+func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
+	l.NotificationRateLimitPerIntegration = make(map[string]float64, len(defaults))
+	for k, v := range defaults {
+		l.NotificationRateLimitPerIntegration[k] = v
+	}
 }
 
 // When we load YAML from disk, we want the various per-customer limits
@@ -363,10 +390,22 @@ func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQueryFromStore
 }
 
-// MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
+// MaxChunksPerQueryFromIngesters returns the maximum number of chunks allowed per query when fetching
 // chunks from ingesters.
 func (o *Overrides) MaxChunksPerQueryFromIngesters(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQuery
+}
+
+// MaxFetchedSeriesPerQuery returns the maximum number of series allowed per query when fetching
+// chunks from ingesters and blocks storage.
+func (o *Overrides) MaxFetchedSeriesPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxFetchedSeriesPerQuery
+}
+
+// MaxFetchedChunkBytesPerQuery returns the maximum number of bytes for chunks allowed per query when fetching
+// chunks from ingesters and blocks storage.
+func (o *Overrides) MaxFetchedChunkBytesPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxFetchedChunkBytesPerQuery
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
@@ -508,24 +547,64 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
-func (o *Overrides) EmailNotificationRateLimit(user string) rate.Limit {
-	l := o.getOverridesForUser(user).EmailNotificationRateLimit
+// Notification limits are special. Limits are returned in following order:
+// 1. per-tenant limits for given integration
+// 2. default limits for given integration
+// 3. per-tenant limits
+// 4. default limits
+func (o *Overrides) getNotificationLimitForUser(user, integration string) float64 {
+	u := o.getOverridesForUser(user)
+	if n, ok := u.NotificationRateLimitPerIntegration[integration]; ok {
+		return n
+	}
+
+	return u.NotificationRateLimit
+}
+
+func (o *Overrides) NotificationRateLimit(user string, integration string) rate.Limit {
+	l := o.getNotificationLimitForUser(user, integration)
 	if l == 0 || math.IsInf(l, 1) {
 		return rate.Inf // No rate limit.
 	}
 
 	if l < 0 {
-		l = 0 // No emails will be sent.
+		l = 0 // No notifications will be sent.
 	}
 	return rate.Limit(l)
 }
 
-func (o *Overrides) EmailNotificationBurst(user string) int {
-	b := o.getOverridesForUser(user).EmailNotificationBurstSize
-	if b < 0 {
-		b = 0
+const maxInt = int(^uint(0) >> 1)
+
+func (o *Overrides) NotificationBurstSize(user string, integration string) int {
+	// Burst size is computed from rate limit. Rate limit is already normalized to [0, +inf), where 0 means disabled.
+	l := o.NotificationRateLimit(user, integration)
+	if l == 0 {
+		return 0
 	}
-	return b
+
+	// floats can be larger than max int. This also handles case where l == rate.Inf.
+	if float64(l) >= float64(maxInt) {
+		return maxInt
+	}
+
+	// For values between (0, 1), allow single notification per second (every 1/limit seconds).
+	if l < 1 {
+		return 1
+	}
+
+	return int(l)
+}
+
+func (o *Overrides) AlertmanagerMaxConfigSize(userID string) int {
+	return o.getOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
+}
+
+func (o *Overrides) AlertmanagerMaxTemplatesCount(userID string) int {
+	return o.getOverridesForUser(userID).AlertmanagerMaxTemplatesCount
+}
+
+func (o *Overrides) AlertmanagerMaxTemplateSize(userID string) int {
+	return o.getOverridesForUser(userID).AlertmanagerMaxTemplateSizeBytes
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

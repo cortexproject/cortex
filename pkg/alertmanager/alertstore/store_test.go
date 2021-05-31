@@ -220,6 +220,10 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 
 		_, err = store.GetFullState(ctx, "user-2")
 		assert.Equal(t, alertspb.ErrNotFound, err)
+
+		users, err := store.ListUsersWithFullState(ctx)
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []string{}, users)
 	}
 
 	// The storage contains users.
@@ -244,6 +248,10 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		exists, err = bucket.Exists(ctx, "alertmanager/user-2/fullstate")
 		require.NoError(t, err)
 		assert.True(t, exists)
+
+		users, err := store.ListUsersWithFullState(ctx)
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []string{"user-1", "user-2"}, users)
 	}
 
 	// The storage has had user-1 deleted.
@@ -257,6 +265,10 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		res, err := store.GetFullState(ctx, "user-2")
 		require.NoError(t, err)
 		assert.Equal(t, state2, res)
+
+		users, err := store.ListUsersWithFullState(ctx)
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []string{"user-2"}, users)
 
 		// Delete again (should be idempotent).
 		require.NoError(t, store.DeleteFullState(ctx, "user-1"))

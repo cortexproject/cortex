@@ -71,3 +71,4 @@ Currently experimental features are:
   - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
 - Instance limits in ingester and distributor
 - Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (`-blocks-storage.tsdb.max-exemplars`)
+- Alertmanager: notification rate limits. (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)

@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -18,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 const (
@@ -37,7 +41,11 @@ func (m *mockTenantQueryableWithFilter) Querier(ctx context.Context, _, _ int64)
 		return nil, err
 	}
 
-	q := mockTenantQuerier{tenant: tenantIDs[0], extraLabels: m.extraLabels}
+	q := mockTenantQuerier{
+		tenant:      tenantIDs[0],
+		extraLabels: m.extraLabels,
+		ctx:         ctx,
+	}
 
 	// set warning if exists
 	if m.warningsByTenant != nil {
@@ -66,6 +74,7 @@ type mockTenantQuerier struct {
 
 	warnings storage.Warnings
 	queryErr error
+	ctx      context.Context
 }
 
 func (m mockTenantQuerier) matrix() model.Matrix {
@@ -135,6 +144,8 @@ func (m *mockSeriesSet) Warnings() storage.Warnings {
 }
 
 func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	log, _ := spanlogger.New(m.ctx, "mockTenantQuerier.select")
+	defer log.Span.Finish()
 	var matrix model.Matrix
 
 	for _, s := range m.matrix() {
@@ -477,4 +488,67 @@ func TestSetLabelsRetainExisting(t *testing.T) {
 	} {
 		assert.Equal(t, tc.expected, setLabelsRetainExisting(tc.labels, tc.additionalLabels...))
 	}
+}
+
+func TestTracingMergeQueryable(t *testing.T) {
+	mockTracer := mocktracer.New()
+	opentracing.SetGlobalTracer(mockTracer)
+	ctx := user.InjectOrgID(context.Background(), "team-a|team-b")
+
+	// set a multi tenant resolver
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+	filter := mockTenantQueryableWithFilter{}
+	q := NewQueryable(&filter, false)
+	// retrieve querier if set
+	querier, err := q.Querier(ctx, mint, maxt)
+	require.NoError(t, err)
+
+	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint,
+		End: maxt})
+
+	require.NoError(t, seriesSet.Err())
+	spans := mockTracer.FinishedSpans()
+	assertSpanExist(t, spans, "mergeQuerier.Select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-a", "team-b"}})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-a"}})
+	assertSpanExist(t, spans, "mockTenantQuerier.select", expectedTag{spanlogger.TenantIDTagName,
+		[]string{"team-b"}})
+}
+
+func assertSpanExist(t *testing.T,
+	actualSpans []*mocktracer.MockSpan,
+	name string,
+	tag expectedTag) {
+	for _, span := range actualSpans {
+		if span.OperationName == name && containsTags(span, tag) {
+			return
+		}
+	}
+	require.FailNow(t, "can not find span matching params",
+		"expected span with name `%v` and with "+
+			"tags %v to be present but it was not. actual spans: %+v",
+		name, tag, extractNameWithTags(actualSpans))
+}
+
+func extractNameWithTags(actualSpans []*mocktracer.MockSpan) []spanWithTags {
+	result := make([]spanWithTags, len(actualSpans))
+	for i, span := range actualSpans {
+		result[i] = spanWithTags{span.OperationName, span.Tags()}
+	}
+	return result
+}
+
+func containsTags(span *mocktracer.MockSpan, expectedTag expectedTag) bool {
+	return reflect.DeepEqual(span.Tag(expectedTag.key), expectedTag.values)
+}
+
+type spanWithTags struct {
+	name string
+	tags map[string]interface{}
+}
+
+type expectedTag struct {
+	key    string
+	values []string
 }

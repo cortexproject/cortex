@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -38,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -54,53 +54,14 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 5
-
-	statusPage = `
-<!doctype html>
-<html>
-	<head><title>Cortex Alertmanager Status</title></head>
-	<body>
-		<h1>Cortex Alertmanager Status</h1>
-		<h2>Node</h2>
-		<dl>
-			<dt>Name</dt><dd>{{.self.Name}}</dd>
-			<dt>Addr</dt><dd>{{.self.Addr}}</dd>
-			<dt>Port</dt><dd>{{.self.Port}}</dd>
-		</dl>
-		<h3>Members</h3>
-		{{ with .members }}
-		<table>
-		<tr><th>Name</th><th>Addr</th></tr>
-		{{ range . }}
-		<tr><td>{{ .Name }}</td><td>{{ .Addr }}</td></tr>
-		{{ end }}
-		</table>
-		{{ else }}
-		<p>No peers</p>
-		{{ end }}
-	</body>
-</html>
-`
 )
 
 var (
-	statusTemplate *template.Template
-
-	errInvalidExternalURL         = errors.New("the configured external URL is invalid: should not end with /")
-	errShardingLegacyStorage      = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
-	errShardingUnsupportedStorage = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
+	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
+	errShardingLegacyStorage               = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
+	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
+	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
 )
-
-func init() {
-	statusTemplate = template.Must(template.New("statusPage").Funcs(map[string]interface{}{
-		"state": func(enabled bool) string {
-			if enabled {
-				return "enabled"
-			}
-			return "disabled"
-		},
-	}).Parse(statusPage))
-}
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
@@ -197,6 +158,9 @@ func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config)
 		if !storageCfg.IsFullStateSupported() {
 			return errShardingUnsupportedStorage
 		}
+		if cfg.ShardingRing.ZoneAwarenessEnabled && cfg.ShardingRing.InstanceZone == "" {
+			return errZoneAwarenessEnabledWithoutZoneInfo
+		}
 	}
 
 	return nil
@@ -235,16 +199,26 @@ type Limits interface {
 	// in the Alertmanager receivers for the given user.
 	AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 
-	// EmailNotificationRateLimit returns limit used by rate-limiter. If set to 0, no emails are allowed.
-	// rate.Inf = all emails are allowed.
+	// NotificationRateLimit methods return limit used by rate-limiter for given integration.
+	// If set to 0, no notifications are allowed.
+	// rate.Inf = all notifications are allowed.
 	//
-	// Note that when  negative or zero values specified by user are translated to rate.Limit by Overrides,
+	// Note that when negative or zero values specified by user are translated to rate.Limit by Overrides,
 	// and may have different meaning there.
-	EmailNotificationRateLimit(tenant string) rate.Limit
+	NotificationRateLimit(tenant string, integration string) rate.Limit
 
-	// EmailNotificationBurst returns burst-size for rate limiter. If 0, no notifications are allowed except
+	// NotificationBurstSize returns burst-size for rate limiter for given integration type. If 0, no notifications are allowed except
 	// when limit == rate.Inf.
-	EmailNotificationBurst(tenant string) int
+	NotificationBurstSize(tenant string, integration string) int
+
+	// AlertmanagerMaxConfigSize returns max size of configuration file that user is allowed to upload. If 0, there is no limit.
+	AlertmanagerMaxConfigSize(tenant string) int
+
+	// AlertmanagerMaxTemplatesCount returns max number of templates that tenant can use in the configuration. 0 = no limit.
+	AlertmanagerMaxTemplatesCount(tenant string) int
+
+	// AlertmanagerMaxTemplateSize returns max size of individual template. 0 = no limit.
+	AlertmanagerMaxTemplateSize(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -350,6 +324,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 
 	var ringStore kv.Client
 	if cfg.ShardingEnabled {
+		util_log.WarnExperimentalUse("Alertmanager sharding")
+
 		ringStore, err = kv.NewClient(
 			cfg.ShardingRing.KVStore,
 			ring.GetCodec(),
@@ -683,7 +659,7 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 	level.Info(am.logger).Log("msg", "synchronizing alertmanager configs for users")
 	am.syncTotal.WithLabelValues(syncReason).Inc()
 
-	cfgs, err := am.loadAlertmanagerConfigs(ctx)
+	allUsers, cfgs, err := am.loadAlertmanagerConfigs(ctx)
 	if err != nil {
 		am.syncFailures.WithLabelValues(syncReason).Inc()
 		return err
@@ -691,6 +667,13 @@ func (am *MultitenantAlertmanager) loadAndSyncConfigs(ctx context.Context, syncR
 
 	am.syncConfigs(cfgs)
 	am.deleteUnusedLocalUserState()
+
+	// Currently, remote state persistence is only used when sharding is enabled.
+	if am.cfg.ShardingEnabled {
+		// Note when cleaning up remote state, remember that the user may not necessarily be configured
+		// in this instance. Therefore, pass the list of _all_ configured users to filter by.
+		am.deleteUnusedRemoteUserState(ctx, allUsers)
+	}
 
 	return nil
 }
@@ -733,35 +716,35 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 	return nil
 }
 
-// loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy.
-func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) (map[string]alertspb.AlertConfigDesc, error) {
+// loadAlertmanagerConfigs Loads (and filters) the alertmanagers configuration from object storage, taking into consideration the sharding strategy. Returns:
+// - The list of discovered users (all users with a configuration in storage)
+// - The configurations of users owned by this instance.
+func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) ([]string, map[string]alertspb.AlertConfigDesc, error) {
 	// Find all users with an alertmanager config.
-	userIDs, err := am.store.ListAllUsers(ctx)
+	allUserIDs, err := am.store.ListAllUsers(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
+		return nil, nil, errors.Wrap(err, "failed to list users with alertmanager configuration")
 	}
-	numUsersDiscovered := len(userIDs)
+	numUsersDiscovered := len(allUserIDs)
+	ownedUserIDs := make([]string, 0, len(allUserIDs))
 
 	// Filter out users not owned by this shard.
-	for i := 0; i < len(userIDs); {
-		if !am.isUserOwned(userIDs[i]) {
-			userIDs = append(userIDs[:i], userIDs[i+1:]...)
-			continue
+	for _, userID := range allUserIDs {
+		if am.isUserOwned(userID) {
+			ownedUserIDs = append(ownedUserIDs, userID)
 		}
-
-		i++
 	}
-	numUsersOwned := len(userIDs)
+	numUsersOwned := len(ownedUserIDs)
 
 	// Load the configs for the owned users.
-	configs, err := am.store.GetAlertConfigs(ctx, userIDs)
+	configs, err := am.store.GetAlertConfigs(ctx, ownedUserIDs)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
+		return nil, nil, errors.Wrapf(err, "failed to load alertmanager configurations for owned users")
 	}
 
 	am.tenantsDiscovered.Set(float64(numUsersDiscovered))
 	am.tenantsOwned.Set(float64(numUsersOwned))
-	return configs, nil
+	return allUserIDs, configs, nil
 }
 
 func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
@@ -1051,14 +1034,6 @@ func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string)
 	return am.alertmanagers[userID], nil
 }
 
-// GetStatusHandler returns the status handler for this multi-tenant
-// alertmanager.
-func (am *MultitenantAlertmanager) GetStatusHandler() StatusHandler {
-	return StatusHandler{
-		am: am,
-	}
-}
-
 // ReplicateStateForUser attempts to replicate a partial state sent by an alertmanager to its other replicas through the ring.
 func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, userID string, part *clusterpb.Part) error {
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
@@ -1094,7 +1069,6 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 // ReadFullStateForUser attempts to read the full state from each replica for user. Note that it will try to obtain and return
 // state from all replicas, but will consider it a success if state is obtained from at least one replica.
 func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
-
 	// Only get the set of replicas which contain the specified user.
 	key := shardByUser(userID)
 	replicationSet, err := am.ring.Get(key, RingOp, nil, nil, nil)
@@ -1184,6 +1158,34 @@ func (am *MultitenantAlertmanager) UpdateState(ctx context.Context, part *cluste
 	return &alertmanagerpb.UpdateStateResponse{Status: alertmanagerpb.OK}, nil
 }
 
+// deleteUnusedRemoteUserState deletes state objects in remote storage for users that are no longer configured.
+func (am *MultitenantAlertmanager) deleteUnusedRemoteUserState(ctx context.Context, allUsers []string) {
+
+	users := make(map[string]struct{}, len(allUsers))
+	for _, userID := range allUsers {
+		users[userID] = struct{}{}
+	}
+
+	usersWithState, err := am.store.ListUsersWithFullState(ctx)
+	if err != nil {
+		level.Warn(am.logger).Log("msg", "failed to list users with state", "err", err)
+		return
+	}
+
+	for _, userID := range usersWithState {
+		if _, ok := users[userID]; ok {
+			continue
+		}
+
+		err := am.store.DeleteFullState(ctx, userID)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "failed to delete remote state for user", "user", userID, "err", err)
+		} else {
+			level.Info(am.logger).Log("msg", "deleted remote state for user", "user", userID)
+		}
+	}
+}
+
 // deleteUnusedLocalUserState deletes local files for users that we no longer need.
 func (am *MultitenantAlertmanager) deleteUnusedLocalUserState() {
 	userDirs := am.getPerUserDirectories()
@@ -1263,19 +1265,6 @@ func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmana
 		Status: alertmanagerpb.READ_OK,
 		State:  state,
 	}, nil
-}
-
-// StatusHandler shows the status of the alertmanager.
-type StatusHandler struct {
-	am *MultitenantAlertmanager
-}
-
-// ServeHTTP serves the status of the alertmanager.
-func (s StatusHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	err := statusTemplate.Execute(w, s.am.peer.Info())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 // validateTemplateFilename validated the template filename and returns error if it's not valid.

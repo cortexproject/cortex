@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/kit/log"
@@ -121,6 +122,18 @@ func (s *BucketAlertStore) DeleteAlertConfig(ctx context.Context, userID string)
 		return nil
 	}
 	return err
+}
+
+// ListUsersWithFullState implements alertstore.AlertStore.
+func (s *BucketAlertStore) ListUsersWithFullState(ctx context.Context) ([]string, error) {
+	var userIDs []string
+
+	err := s.amBucket.Iter(ctx, "", func(key string) error {
+		userIDs = append(userIDs, strings.TrimRight(key, "/"))
+		return nil
+	})
+
+	return userIDs, err
 }
 
 // GetFullState implements alertstore.AlertStore.

@@ -1297,6 +1297,10 @@ storage:
     # CLI flag: -ruler.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
 
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -ruler.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
+
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
     # specified as a host, proper endpoint will be deduced. Use
@@ -1903,9 +1907,19 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback
@@ -1990,6 +2004,10 @@ storage:
     # The duration after which the requests to GCS should be timed out.
     # CLI flag: -alertmanager.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
+
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -alertmanager.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
 
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
@@ -2980,6 +2998,10 @@ gcs:
   # The duration after which the requests to GCS should be timed out.
   # CLI flag: -gcs.request-timeout
   [request_timeout: <duration> | default = 0s]
+
+  # Enabled OpenCensus (OC) instrumentation for all requests.
+  # CLI flag: -gcs.enable-opencensus
+  [enable_opencensus: <boolean> | default = true]
 
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.
@@ -4019,6 +4041,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
+# The maximum size of all chunks in bytes that a query can fetch from each
+# ingester and storage. This limit is enforced in the querier and ruler only
+# when running Cortex with blocks storage. 0 to disable.
+# CLI flag: -querier.max-fetched-chunk-bytes-per-query
+[max_fetched_chunk_bytes_per_query: <int> | default = 0]
+
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
 # and ruler. If the requested time range is outside the allowed range, the
@@ -4128,6 +4156,21 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # wechat, slack, victorops, pushover.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
+
+# Maximum size of configuration file for Alertmanager that tenant can upload via
+# Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-config-size-bytes
+[alertmanager_max_config_size_bytes: <int> | default = 0]
+
+# Maximum number of templates in tenant's Alertmanager configuration uploaded
+# via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-templates-count
+[alertmanager_max_templates_count: <int> | default = 0]
+
+# Maximum size of single template in tenant's Alertmanager configuration
+# uploaded via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-template-size-bytes
+[alertmanager_max_template_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`

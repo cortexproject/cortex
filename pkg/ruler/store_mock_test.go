@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ type mockRuleStore struct {
 }
 
 var (
+	delim               = "/"
 	interval, _         = time.ParseDuration("1m")
 	mockRulesNamespaces = map[string]rulespb.RuleGroupList{
 		"user1": {
@@ -133,7 +135,13 @@ func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rulespb
 
 	result := make(map[string]rulespb.RuleGroupList)
 	for k, v := range m.rules {
-		result[k] = append(rulespb.RuleGroupList(nil), v...)
+		for _, r := range v {
+			result[k] = append(result[k], &rulespb.RuleGroupDesc{
+				Namespace: r.Namespace,
+				Name:      r.Name,
+				User:      k,
+			})
+		}
 	}
 
 	return result, nil
@@ -143,32 +151,45 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	userRules, exists := m.rules[userID]
-	if !exists {
-		return rulespb.RuleGroupList{}, nil
-	}
-
-	if namespace == "" {
-		return userRules, nil
-	}
-
-	namespaceRules := rulespb.RuleGroupList{}
-
-	for _, rg := range userRules {
-		if rg.Namespace == namespace {
-			namespaceRules = append(namespaceRules, rg)
+	var result rulespb.RuleGroupList
+	for _, r := range m.rules[userID] {
+		if namespace != "" && namespace != r.Namespace {
+			continue
 		}
-	}
 
-	if len(namespaceRules) == 0 {
-		return rulespb.RuleGroupList{}, nil
+		result = append(result, &rulespb.RuleGroupDesc{
+			Namespace: r.Namespace,
+			Name:      r.Name,
+			User:      userID,
+		})
 	}
-
-	return namespaceRules, nil
+	return result, nil
 }
 
 func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
-	// Nothing to do, as mockRuleStore already returns groups with loaded rules.
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	gm := make(map[string]*rulespb.RuleGroupDesc)
+	for _, gs := range m.rules {
+		for _, gr := range gs {
+			user, namespace, name := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+			key := user + delim + base64.URLEncoding.EncodeToString([]byte(namespace)) + delim + base64.URLEncoding.EncodeToString([]byte(name))
+			gm[key] = gr
+		}
+	}
+
+	for _, gs := range groupsToLoad {
+		for _, gr := range gs {
+			user, namespace, name := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+			key := user + delim + base64.URLEncoding.EncodeToString([]byte(namespace)) + delim + base64.URLEncoding.EncodeToString([]byte(name))
+			mgr, ok := gm[key]
+			if !ok {
+				return fmt.Errorf("failed to get rule group user %s", gr.GetUser())
+			}
+			*gr = *mgr
+		}
+	}
 	return nil
 }
 

@@ -626,6 +626,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
 						}
 					}
+					chunksSize := 0
+					for _, c := range s.Chunks {
+						chunksSize += c.Size()
+					}
+					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
+						return chunkBytesLimitErr
+					}
 				}
 
 				if w := resp.GetWarning(); w != "" {

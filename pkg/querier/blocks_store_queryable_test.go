@@ -51,7 +51,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		metricNameLabel  = labels.Label{Name: labels.MetricName, Value: metricName}
 		series1Label     = labels.Label{Name: "series", Value: "1"}
 		series2Label     = labels.Label{Name: "series", Value: "2"}
-		noOpQueryLimiter = limiter.NewQueryLimiter(0)
+		noOpQueryLimiter = limiter.NewQueryLimiter(0, 0)
 	)
 
 	type valueResult struct {
@@ -507,8 +507,26 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:       &blocksStoreLimitsMock{},
-			queryLimiter: limiter.NewQueryLimiter(1),
+			queryLimiter: limiter.NewQueryLimiter(1, 0),
 			expectedErr:  validation.LimitError(fmt.Sprintf("The query hit the max number of series limit (limit: %d)", 1)),
+		},
+		"max chunk bytes per query limit hit while fetching chunks": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
+			queryLimiter: limiter.NewQueryLimiter(0, 8),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, 8)),
 		},
 	}
 

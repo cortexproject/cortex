@@ -10,7 +10,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-// GetFirstAddressOf returns the first IPv4 address of the supplied interface names.
+// GetFirstAddressOf returns the first IPv4 address of the supplied interface names, omitting any 169.254.x.x automatic private IPs if possible.
 func GetFirstAddressOf(names []string) (string, error) {
 	var ipAddr string
 	for _, name := range names {
@@ -45,7 +45,7 @@ func GetFirstAddressOf(names []string) (string, error) {
 	return ipAddr, nil
 }
 
-// filterIPs attempts to return the first non automatic private IP if possible, using the APIPA as a last resort.
+// filterIPs attempts to return the first non automatic private IP (APIPA / 169.254.x.x) if possible, only returning APIPA if available and no other valid IP is found.
 func filterIPs(addrs []net.Addr) string {
 	var ipAddr string
 	for _, addr := range addrs {

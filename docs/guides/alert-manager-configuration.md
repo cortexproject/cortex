@@ -21,7 +21,7 @@ alertmanager_storage:
     secret_access_key: <secret_access_key>
     access_key_id: <access_key_id>
 ```
-All blocks storage bucket clients and the config service are currently supported. Please note that the local and configdb storage backends are not supported.
+All blocks storage bucket clients and the config service are currently supported. If you choose to try the experimental Alertmanager resharding feature then please note that the local and configdb storage backends are not supported.
 
 When using the new configuration pattern it is important that any of the old configuration pattern flags are unset (`-alertmanager.storage`), as well as `-<prefix>.configs.url`. This is because the old pattern still takes precedence over the new one. The old configuration pattern (`-alertmanager.storage`) is marked as deprecated and will be removed by Cortex version 1.11. However this change doesn't apply to `-alertmanager.storage.path` and `-alertmanager.storage.retention`.
 

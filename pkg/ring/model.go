@@ -377,11 +377,12 @@ func resolveConflicts(normalizedIngesters map[string]InstanceDesc) {
 func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	for n, ing := range d.Ingesters {
 		if ing.State == LEFT {
-			total++
 			if limit.IsZero() || time.Unix(ing.Timestamp, 0).Before(limit) {
 				// remove it
 				delete(d.Ingesters, n)
 				removed++
+			} else {
+				total++
 			}
 		}
 	}

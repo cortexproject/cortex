@@ -234,6 +234,11 @@ func (q *distributorExemplarQuerier) Select(start, end int64, matchers ...[]*lab
 	var e exemplar.QueryResult
 	ret := make([]exemplar.QueryResult, len(allResults.Timeseries))
 	for _, ts := range allResults.Timeseries {
+		// TODO: (callum) track down why we see empty exemplars slices here
+		// but not in the distributor/ingester code.
+		if len(ts.Labels) == 0 || len(ts.Exemplars) == 0 {
+			continue
+		}
 		e.SeriesLabels = cortexpb.FromLabelAdaptersToLabels(ts.Labels)
 		e.Exemplars = cortexpb.FromExemplarProtosToExemplars(ts.Exemplars)
 		ret = append(ret, e)

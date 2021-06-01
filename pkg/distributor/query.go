@@ -264,7 +264,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 	var keys []string
 	exemplarResults := make(map[string]cortexpb.TimeSeries)
 	for _, result := range results {
-		r := result.(*ingester_client.QueryResponse)
+		r := result.(*ingester_client.ExemplarQueryResponse)
 		for _, ts := range r.Timeseries {
 			lbls := cortexpb.FromLabelAdaptersToLabels(ts.Labels).String()
 			e, ok := exemplarResults[lbls]

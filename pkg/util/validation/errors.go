@@ -11,9 +11,7 @@ import (
 )
 
 // ValidationError is an error returned by series validation.
-//
-// nolint:golint ignore stutter warning
-type ValidationError error
+type ValidationError error // nolint: golint ignore stutter warning
 
 // genericValidationError is a basic implementation of ValidationError which can be used when the
 // error format only contains the cause and the series.

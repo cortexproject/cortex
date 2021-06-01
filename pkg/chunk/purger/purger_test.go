@@ -383,9 +383,9 @@ func TestPurger_Restarts(t *testing.T) {
 }
 
 func TestPurger_Metrics(t *testing.T) {
-	deleteStore, chunkStore, storageClient, purger, registry := setupStoresAndPurger(t)
+	deleteStore, chunkStore, storageClient, purger1, _ := setupStoresAndPurger(t)
 	defer func() {
-		purger.StopAsync()
+		purger1.StopAsync()
 		chunkStore.Stop()
 	}()
 
@@ -406,22 +406,22 @@ func TestPurger_Metrics(t *testing.T) {
 	require.NoError(t, err)
 
 	// load new delete requests for processing
-	require.NoError(t, purger.pullDeleteRequestsToPlanDeletes())
+	require.NoError(t, purger1.pullDeleteRequestsToPlanDeletes())
 
 	// there must be 2 pending delete requests, oldest being 2 days old since its cancellation time is over
-	require.InDelta(t, float64(2*86400), testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
-	require.Equal(t, float64(2), testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount))
+	require.InDelta(t, float64(2*86400), testutil.ToFloat64(purger1.metrics.oldestPendingDeleteRequestAgeSeconds), 1)
+	require.Equal(t, float64(2), testutil.ToFloat64(purger1.metrics.pendingDeleteRequestsCount))
 
 	// stop the existing purger
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger))
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), purger1))
 
 	// create a new purger
-	purger, registry = setupPurger(t, deleteStore, chunkStore, storageClient)
+	purger2, registry := setupPurger(t, deleteStore, chunkStore, storageClient)
 
 	// load in process delete requests by starting the service
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), purger2))
 
-	defer purger.StopAsync()
+	defer purger2.StopAsync()
 
 	// wait until purger_delete_requests_processed_total starts to show up.
 	test.Poll(t, 2*time.Second, 1, func() interface{} {
@@ -432,17 +432,17 @@ func TestPurger_Metrics(t *testing.T) {
 
 	// wait until both the pending delete requests are processed.
 	test.Poll(t, 2*time.Second, float64(2), func() interface{} {
-		return testutil.ToFloat64(purger.metrics.deleteRequestsProcessedTotal)
+		return testutil.ToFloat64(purger2.metrics.deleteRequestsProcessedTotal)
 	})
 
 	// wait until oldest pending request age becomes 0
 	test.Poll(t, 2*time.Second, float64(0), func() interface{} {
-		return testutil.ToFloat64(purger.metrics.oldestPendingDeleteRequestAgeSeconds)
+		return testutil.ToFloat64(purger2.metrics.oldestPendingDeleteRequestAgeSeconds)
 	})
 
 	// wait until pending delete requests count becomes 0
 	test.Poll(t, 2*time.Second, float64(0), func() interface{} {
-		return testutil.ToFloat64(purger.metrics.pendingDeleteRequestsCount)
+		return testutil.ToFloat64(purger2.metrics.pendingDeleteRequestsCount)
 	})
 }
 

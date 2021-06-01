@@ -113,6 +113,7 @@ type Alertmanager struct {
 	configHashMetric prometheus.Gauge
 
 	rateLimitedNotifications *prometheus.CounterVec
+	insertAlertFailures      *prometheus.CounterVec
 }
 
 var (
@@ -166,7 +167,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Name: "alertmanager_notification_rate_limited_total",
 			Help: "Number of rate-limited notifications per integration.",
 		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
+
+		insertAlertFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_insert_alert_failures_total",
+			Help: "Number of failures to insert new alerts to in-memory alert store.",
+		}, []string{"reason"}),
 	}
+
+	am.insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
+	am.insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
 
 	am.registry = reg
 
@@ -241,7 +250,12 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, nil, am.logger)
+	var callback mem.AlertStoreCallback
+	if am.cfg.Limits != nil {
+		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, am.insertAlertFailures)
+	}
+
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -583,4 +597,118 @@ type dispatcherLimits struct {
 
 func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
 	return g.limits.AlertmanagerMaxDispatcherAggregationGroups(g.tenant)
+}
+
+var (
+	errTooManyAlerts = "too many alerts, limit: %d"
+	errAlertsTooBig  = "alerts too big, total size limit: %d bytes"
+)
+
+const (
+	insertFailureTooManyAlerts = "too_many_alerts"
+	insertFailureAlertsTooBig  = "alerts_too_big"
+)
+
+type alertsLimiter struct {
+	tenant string
+	limits Limits
+
+	failureCounter *prometheus.CounterVec
+
+	mx        sync.Mutex
+	sizes     map[model.Fingerprint]int
+	count     int
+	totalSize int
+}
+
+func newAlertsLimiter(tenant string, limits Limits, failureCounter *prometheus.CounterVec) *alertsLimiter {
+	return &alertsLimiter{
+		tenant:         tenant,
+		limits:         limits,
+		sizes:          map[model.Fingerprint]int{},
+		failureCounter: failureCounter,
+	}
+}
+
+func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
+	if alert == nil {
+		return nil
+	}
+
+	countLimit := a.limits.AlertmanagerMaxAlertsCount(a.tenant)
+	sizeLimit := a.limits.AlertmanagerMaxAlertsSizeBytes(a.tenant)
+
+	newSize := alertSize(alert.Alert)
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	if !existing {
+		if countLimit > 0 && (a.count+1) > countLimit {
+			a.failureCounter.WithLabelValues(insertFailureTooManyAlerts).Inc()
+			return fmt.Errorf(errTooManyAlerts, countLimit)
+		}
+
+		if sizeLimit > 0 && (a.totalSize+newSize) > sizeLimit {
+			a.failureCounter.WithLabelValues(insertFailureAlertsTooBig).Inc()
+			return fmt.Errorf(errAlertsTooBig, sizeLimit)
+		}
+	}
+
+	return nil
+}
+
+func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
+	if alert == nil {
+		return
+	}
+
+	newSize := alertSize(alert.Alert)
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	fp := alert.Fingerprint()
+	if existing {
+		a.totalSize -= a.sizes[fp]
+	} else {
+		a.count++
+	}
+	a.sizes[fp] = newSize
+	a.totalSize += newSize
+}
+
+func (a *alertsLimiter) PostDelete(alert *types.Alert) {
+	if alert == nil {
+		return
+	}
+
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	fp := alert.Fingerprint()
+	a.totalSize -= a.sizes[fp]
+	delete(a.sizes, fp)
+	a.count--
+}
+
+func (a *alertsLimiter) currentStats() (count, totalSize int) {
+	a.mx.Lock()
+	defer a.mx.Unlock()
+
+	return a.count, a.totalSize
+}
+
+func alertSize(alert model.Alert) int {
+	size := 0
+	for l, v := range alert.Labels {
+		size += len(l)
+		size += len(v)
+	}
+	for l, v := range alert.Annotations {
+		size += len(l)
+		size += len(v)
+	}
+	size += len(alert.GeneratorURL)
+	return size
 }

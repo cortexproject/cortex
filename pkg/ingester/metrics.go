@@ -115,8 +115,9 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Buckets: prometheus.ExponentialBuckets(10, 8, 8),
 		}),
 		queriedExemplars: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_queried_exemplars",
-			Help:    "The total number of exemplars returned from queries.",
+			Name: "cortex_ingester_queried_exemplars",
+			Help: "The total number of exemplars returned from queries.",
+			// A reasonable upper bound is around 6k - 10*(5^(5-1)) = 6250.
 			Buckets: prometheus.ExponentialBuckets(10, 5, 5),
 		}),
 		queriedSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{

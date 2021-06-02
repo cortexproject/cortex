@@ -962,10 +962,9 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 	res, err = c.Push(series4)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
-
 	_, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "max number of series limit")
+	assert.Contains(t, err.Error(), "500")
 }
 
 func TestHashCollisionHandling(t *testing.T) {

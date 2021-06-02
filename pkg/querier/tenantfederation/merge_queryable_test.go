@@ -26,9 +26,6 @@ import (
 
 const (
 	maxt, mint = 0, 10
-	// matchersNotImplemented is a message used to indicate that the MergeQueryable does not yet support filtering by matchers.
-	// This message will be removed once matchers have been implemented in the MergeQueryable.
-	matchersNotImplemented = "matchers are not implemented in the MergeQueryable"
 	// mockMatchersNotImplemented is a message used to indicate that the mockTenantQueryable used in the tests does not support filtering by matchers.
 	mockMatchersNotImplemented = "matchers are not implemented in the mockTenantQueryable"
 	// originalDefaultTenantLabel is the default tenant label with a prefix.

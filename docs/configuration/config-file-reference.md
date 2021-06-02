@@ -3981,13 +3981,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-series-per-metric
 [max_series_per_metric: <int> | default = 50000]
 
-# The maximum number of active series per user, across the cluster. 0 to
-# disable. Supported only if -distributor.shard-by-all-labels is true.
+# The maximum number of active series per user, across the cluster before
+# replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
+# is true.
 # CLI flag: -ingester.max-global-series-per-user
 [max_global_series_per_user: <int> | default = 0]
 
-# The maximum number of active series per metric name, across the cluster. 0 to
-# disable.
+# The maximum number of active series per metric name, across the cluster before
+# replication. 0 to disable.
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 

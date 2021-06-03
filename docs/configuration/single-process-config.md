@@ -104,8 +104,9 @@ frontend_worker:
 ruler:
   enable_api: true
   enable_sharding: false
-  storage:
-    type: local
-    local:
-      directory: /tmp/cortex/rules
+
+ruler_storage:
+  backend: local
+  local:
+    directory: /tmp/cortex/rules
 ```

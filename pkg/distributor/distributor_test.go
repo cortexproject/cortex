@@ -1916,7 +1916,6 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	// Use a real ring with a mock KV store to test ring RF logic.
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
-
 	for i := range ingesters {
 		addr := fmt.Sprintf("%d", i)
 		ingesterDescs[addr] = ring.InstanceDesc{
@@ -1940,6 +1939,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	)
 	require.NoError(t, err)
 
+	// Use a default replication factor of 3 if there isn't a provided replication factor.
 	rf := cfg.replicationFactor
 	if rf == 0 {
 		rf = 3

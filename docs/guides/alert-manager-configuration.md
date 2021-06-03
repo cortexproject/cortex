@@ -11,17 +11,9 @@ Cortex Alertmanager notification setup follow mostly the syntax of Prometheus Al
 
 ### Configuring the Cortex Alertmanager storage backend
 
-With the introduction of Cortex 1.8 the storage backend config option shifted to the new pattern [#3888](https://github.com/cortexproject/cortex/pull/3888). For example the new configuration pattern for the s3 backend looks like this
-```YAML
-alertmanager_storage:
-  backend: "s3"
-  s3:
-    endpoint: <endpoint>
-    bucket_name: <bucket>
-    secret_access_key: <secret_access_key>
-    access_key_id: <access_key_id>
-```
-All blocks storage bucket clients and the config service are currently supported. If you choose to try the experimental Alertmanager resharding feature then please note that the local and configdb storage backends are not supported.
+With the introduction of Cortex 1.8 the storage backend config option shifted to the new pattern [#3888](https://github.com/cortexproject/cortex/pull/3888). You can find the new configuration [here](../configuration/config-file-reference.md#alertmanager_storage_config)
+
+Note that when using `-alertmanager.sharding-enabled=true`, the following storage backends are not supported: `local`, `configdb`
 
 When using the new configuration pattern it is important that any of the old configuration pattern flags are unset (`-alertmanager.storage`), as well as `-<prefix>.configs.url`. This is because the old pattern still takes precedence over the new one. The old configuration pattern (`-alertmanager.storage`) is marked as deprecated and will be removed by Cortex version 1.11. However this change doesn't apply to `-alertmanager.storage.path` and `-alertmanager.storage.retention`.
 

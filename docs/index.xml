@@ -10280,7 +10280,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;ol>
 &lt;li>Update &lt;code>build-image/Docker&lt;/code>.&lt;/li>
 &lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer. Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
-&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/chunks-storage/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/ingesters-with-wal/</guid><description>
 &lt;p>By default, ingesters running with the chunks storage, store all their data in memory. If there is a crash, there could be loss of data. The Write-Ahead Log (WAL) helps fill this gap in reliability.&lt;/p>

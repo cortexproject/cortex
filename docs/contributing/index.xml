@@ -114,7 +114,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;ol>
 &lt;li>Update &lt;code>build-image/Docker&lt;/code>.&lt;/li>
 &lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer. Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
-&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>)&lt;/li>
+&lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>
 &lt;p>New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/#changes-in-maintainership">majority vote&lt;/a>. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p>

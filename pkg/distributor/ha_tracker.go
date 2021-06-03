@@ -118,7 +118,7 @@ type haTracker struct {
 	cleanupRuns               prometheus.Counter
 	replicasMarkedForDeletion prometheus.Counter
 	deletedReplicas           prometheus.Counter
-	markingOrDeletionsFailed  prometheus.Counter
+	markingForDeletionsFailed prometheus.Counter
 }
 
 // NewClusterTracker returns a new HA cluster tracker using either Consul
@@ -167,7 +167,7 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 			Name: "cortex_ha_tracker_replicas_cleanup_deleted_total",
 			Help: "Number of elected replicas deleted from KV store.",
 		}),
-		markingOrDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		markingForDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ha_tracker_replicas_cleanup_delete_failed_total",
 			Help: "Number of elected replicas that failed to be marked for deletion, or deleted.",
 		}),
@@ -312,7 +312,7 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 			err = c.client.Delete(ctx, key)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "cleanup: failed to delete old replica", "key", key, "err", err)
-				c.markingOrDeletionsFailed.Inc()
+				c.markingForDeletionsFailed.Inc()
 			} else {
 				level.Info(c.logger).Log("msg", "cleanup: deleted old replica", "key", key)
 				c.deletedReplicas.Inc()
@@ -333,7 +333,7 @@ func (c *haTracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 			})
 
 			if err != nil {
-				c.markingOrDeletionsFailed.Inc()
+				c.markingForDeletionsFailed.Inc()
 				level.Error(c.logger).Log("msg", "cleanup: failed to mark replica as deleted", "key", key, "err", err)
 			} else {
 				c.replicasMarkedForDeletion.Inc()

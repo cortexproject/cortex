@@ -21,7 +21,7 @@ require (
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/kit v0.10.0
 	github.com/go-openapi/strfmt v0.20.1
-	github.com/go-openapi/swag v0.19.14
+	github.com/go-openapi/swag v0.19.15
 	github.com/go-redis/redis/v8 v8.9.0
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.2
@@ -34,7 +34,7 @@ require (
 	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
-	github.com/hashicorp/memberlist v0.2.2
+	github.com/hashicorp/memberlist v0.2.3
 	github.com/json-iterator/go v1.1.11
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10
@@ -45,10 +45,10 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/alertmanager v0.21.1-0.20210422101724-8176f78a70e1
+	github.com/prometheus/alertmanager v0.22.1-0.20210603124511-8b584eb2265e
 	github.com/prometheus/client_golang v1.10.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.23.0
+	github.com/prometheus/common v0.26.1-0.20210603143733-6ef301f414bf
 	github.com/prometheus/prometheus v1.8.2-0.20210510213326-e313ffa8abf6
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
@@ -62,7 +62,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
 	go.etcd.io/etcd/server/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
 	go.uber.org/atomic v1.7.0
-	golang.org/x/net v0.0.0-20210505214959-0714010a04ed
+	golang.org/x/net v0.0.0-20210525063256-abc453219eb5
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	google.golang.org/api v0.46.0

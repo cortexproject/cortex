@@ -143,7 +143,7 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
 
 	if name == m.idLabelName {
-		var labelValues []string
+		var labelValues = make([]string, 0, len(matchedValues))
 		for _, id := range m.ids {
 			if _, matched := matchedValues[id]; matched {
 				labelValues = append(labelValues, id)

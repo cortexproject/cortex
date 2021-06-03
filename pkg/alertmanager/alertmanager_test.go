@@ -185,7 +185,7 @@ func TestAlertsLimiterWithSizeLimit(t *testing.T) {
 
 // testLimiter sends sequence of alerts to limiter, and checks if limiter updated reacted correctly.
 func testLimiter(t *testing.T, limits Limits, ops []callbackOp) {
-	counter := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user", "reason"})
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"reason"})
 
 	limiter := newAlertsLimiter("test", limits, counter)
 

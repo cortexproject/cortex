@@ -44,6 +44,7 @@
 * [BUGFIX] Ruler: Honor the evaluation delay for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
 * [BUGFIX] Fixed cache fetch error on Redis Cluster. #4056
 * [BUGFIX] Ingester: fix issue where runtime limits erroneously override default limits. #4246
+* [BUGFIX] Ruler: fix startup in single-binary mode when the new `ruler_storage` is used. #4252
 
 ## Blocksconvert
 

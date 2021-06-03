@@ -62,6 +62,8 @@ type alertmanagerMetrics struct {
 	notificationRateLimited                 *prometheus.Desc
 	dispatcherAggregationGroupsLimitReached *prometheus.Desc
 	insertAlertFailures                     *prometheus.Desc
+	alertsLimiterAlertsCount                *prometheus.Desc
+	alertsLimiterAlertsSize                 *prometheus.Desc
 }
 
 func newAlertmanagerMetrics() *alertmanagerMetrics {
@@ -219,6 +221,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_insert_alert_failures_total",
 			"Total number of failures to store alert due to hitting alertmanager limits.",
 			[]string{"user"}, nil),
+		alertsLimiterAlertsCount: prometheus.NewDesc(
+			"cortex_alertmanager_alerts_limiter_current_alerts_count",
+			"Number of alerts tracked by alerts limiter.",
+			[]string{"user"}, nil),
+		alertsLimiterAlertsSize: prometheus.NewDesc(
+			"cortex_alertmanager_alerts_limiter_current_alerts_size_bytes",
+			"Total size of alerts tracked by alerts limiter.",
+			[]string{"user"}, nil),
 	}
 }
 
@@ -271,6 +281,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.notificationRateLimited
 	out <- m.dispatcherAggregationGroupsLimitReached
 	out <- m.insertAlertFailures
+	out <- m.alertsLimiterAlertsCount
+	out <- m.alertsLimiterAlertsSize
 }
 
 func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
@@ -320,4 +332,6 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUserWithLabels(out, m.notificationRateLimited, "alertmanager_notification_rate_limited_total", "integration")
 	data.SendSumOfCountersPerUser(out, m.dispatcherAggregationGroupsLimitReached, "alertmanager_dispatcher_aggregation_group_limit_reached_total")
 	data.SendSumOfCountersPerUser(out, m.insertAlertFailures, "alertmanager_insert_alert_failures_total")
+	data.SendSumOfGaugesPerUser(out, m.alertsLimiterAlertsCount, "alertmanager_alerts_limiter_current_alerts_count")
+	data.SendSumOfGaugesPerUser(out, m.alertsLimiterAlertsSize, "alertmanager_alerts_limiter_current_alerts_size_bytes")
 }

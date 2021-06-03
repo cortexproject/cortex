@@ -274,6 +274,22 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		# HELP cortex_alertmanager_state_persist_total Number of times we have tried to persist the running state to storage.
 		# TYPE cortex_alertmanager_state_persist_total counter
 		cortex_alertmanager_state_persist_total 0
+
+		# HELP cortex_alertmanager_alerts_limiter_current_alerts_count Number of alerts tracked by alerts limiter.
+		# TYPE cortex_alertmanager_alerts_limiter_current_alerts_count gauge
+		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user1"} 10
+		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user2"} 100
+		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user3"} 1000
+		# HELP cortex_alertmanager_alerts_limiter_current_alerts_size_bytes Total size of alerts tracked by alerts limiter.
+		# TYPE cortex_alertmanager_alerts_limiter_current_alerts_size_bytes gauge
+		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
+		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
+		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user3"} 10000
+		# HELP cortex_alertmanager_insert_alert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
+		# TYPE cortex_alertmanager_insert_alert_failures_total counter
+		cortex_alertmanager_insert_alert_failures_total{user="user1"} 11
+		cortex_alertmanager_insert_alert_failures_total{user="user2"} 110
+		cortex_alertmanager_insert_alert_failures_total{user="user3"} 1100
 `))
 	require.NoError(t, err)
 }
@@ -838,6 +854,12 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	v2APIMetrics.invalid.Add(base)
 	v2APIMetrics.resolved.Add(base * 3)
 
+	lm := newLimiterMetrics(reg)
+	lm.count.Set(10 * base)
+	lm.size.Set(100 * base)
+	lm.insertFailures.WithLabelValues(insertFailureTooManyAlerts).Add(7 * base)
+	lm.insertFailures.WithLabelValues(insertFailureAlertsTooBig).Add(4 * base)
+
 	return reg
 }
 
@@ -1039,5 +1061,37 @@ func newAPIMetrics(version string, r prometheus.Registerer) *apiMetrics {
 		firing:   numReceivedAlerts.WithLabelValues("firing"),
 		resolved: numReceivedAlerts.WithLabelValues("resolved"),
 		invalid:  numInvalidAlerts,
+	}
+}
+
+type limiterMetrics struct {
+	count          prometheus.Gauge
+	size           prometheus.Gauge
+	insertFailures *prometheus.CounterVec
+}
+
+func newLimiterMetrics(r prometheus.Registerer) *limiterMetrics {
+	count := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts_count",
+		Help: "Number of alerts tracked by alerts limiter.",
+	})
+
+	size := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
+		Help: "Total size of alerts tracked by alerts limiter.",
+	})
+
+	insertAlertFailures := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "alertmanager_insert_alert_failures_total",
+		Help: "Number of failures to insert new alerts to in-memory alert store.",
+	}, []string{"reason"})
+
+	insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
+	insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
+
+	return &limiterMetrics{
+		count:          count,
+		size:           size,
+		insertFailures: insertAlertFailures,
 	}
 }

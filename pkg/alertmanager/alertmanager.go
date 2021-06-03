@@ -113,7 +113,6 @@ type Alertmanager struct {
 	configHashMetric prometheus.Gauge
 
 	rateLimitedNotifications *prometheus.CounterVec
-	insertAlertFailures      *prometheus.CounterVec
 }
 
 var (
@@ -168,14 +167,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Help: "Number of rate-limited notifications per integration.",
 		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
 
-		insertAlertFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "alertmanager_insert_alert_failures_total",
-			Help: "Number of failures to insert new alerts to in-memory alert store.",
-		}, []string{"reason"}),
 	}
-
-	am.insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
-	am.insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
 
 	am.registry = reg
 
@@ -252,7 +244,33 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	var callback mem.AlertStoreCallback
 	if am.cfg.Limits != nil {
-		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, am.insertAlertFailures)
+		insertAlertFailures := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "alertmanager_insert_alert_failures_total",
+			Help: "Number of failures to insert new alerts to in-memory alert store.",
+		}, []string{"reason"})
+
+		insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
+		insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
+
+		limiter := newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, insertAlertFailures)
+
+		promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "alertmanager_alerts_limiter_current_alerts_count",
+			Help: "Number of alerts tracked by alerts limiter.",
+		}, func() float64 {
+			c, _ := limiter.currentStats()
+			return float64(c)
+		})
+
+		promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
+			Help: "Total size of alerts tracked by alerts limiter.",
+		}, func() float64 {
+			_, s := limiter.currentStats()
+			return float64(s)
+		})
+
+		callback = limiter
 	}
 
 	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger)

@@ -409,7 +409,7 @@ github.com/opentracing/opentracing-go/mocktracer
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.22.1-0.20210601083928-f686ff3be2bf
+# github.com/prometheus/alertmanager v0.22.1-0.20210603124511-8b584eb2265e
 ## explicit
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/api/metrics

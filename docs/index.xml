@@ -10908,4 +10908,11 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>Instance limits in ingester and distributor&lt;/li>
 &lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
 &lt;li>Alertmanager: notification rate limits. (&lt;code>-alertmanager.notification-rate-limit&lt;/code> and &lt;code>-alertmanager.notification-rate-limit-per-integration&lt;/code>)&lt;/li>
+&lt;li>Querier limits:
+&lt;ul>
+&lt;li>&lt;code>-querier.max-fetched-chunks-per-query&lt;/code>&lt;/li>
+&lt;li>&lt;code>-querier.max-fetched-chunk-bytes-per-query&lt;/code>&lt;/li>
+&lt;li>&lt;code>-querier.max-fetched-series-per-query&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;/ul></description></item></channel></rss>

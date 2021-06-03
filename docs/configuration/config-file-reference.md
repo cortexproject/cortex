@@ -776,7 +776,7 @@ lifecycler:
 
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled
-[active_series_metrics_enabled: <boolean> | default = false]
+[active_series_metrics_enabled: <boolean> | default = true]
 
 # How often to update active series metrics.
 # CLI flag: -ingester.active-series-metrics-update-period

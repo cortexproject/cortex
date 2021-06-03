@@ -54,8 +54,7 @@ const (
 )
 
 var (
-	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
-	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
+	errNoStoreGatewayAddress = errors.New("no store-gateway address configured")
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -403,14 +402,11 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		resSeriesSets     = []storage.SeriesSet(nil)
 		resWarnings       = storage.Warnings(nil)
 
-		maxChunksLimit  = q.limits.MaxChunksPerQueryFromStore(q.userID)
-		leftChunksLimit = maxChunksLimit
-
 		resultMtx sync.Mutex
 	)
 
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
-		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
+		seriesSets, queriedBlocks, warnings, _, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers)
 		if err != nil {
 			return nil, err
 		}
@@ -420,11 +416,6 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 		resSeriesSets = append(resSeriesSets, seriesSets...)
 		resWarnings = append(resWarnings, warnings...)
 
-		// Given a single block is guaranteed to not be queried twice, we can safely decrease the number of
-		// chunks we can still read before hitting the limit (max == 0 means disabled).
-		if maxChunksLimit > 0 {
-			leftChunksLimit -= numChunks
-		}
 		resultMtx.Unlock()
 
 		return queriedBlocks, nil
@@ -552,8 +543,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	maxT int64,
 	matchers []*labels.Matcher,
 	convertedMatchers []storepb.LabelMatcher,
-	maxChunksLimit int,
-	leftChunksLimit int,
 ) ([]storage.SeriesSet, []ulid.ULID, storage.Warnings, int, error) {
 	var (
 		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, q.userID)
@@ -620,12 +609,10 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					}
 
 					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
-					if maxChunksLimit > 0 {
-						actual := numChunks.Add(int32(len(s.Chunks)))
-						if actual > int32(leftChunksLimit) {
-							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
-						}
+					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks), matchers); chunkLimitErr != nil {
+						return validation.LimitError(chunkLimitErr.Error())
 					}
+
 					chunksSize := 0
 					for _, c := range s.Chunks {
 						chunksSize += c.Size()

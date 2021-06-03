@@ -130,7 +130,7 @@ func (u URL) MarshalJSON() ([]byte, error) {
 	if u.URL != nil {
 		return json.Marshal(u.URL.String())
 	}
-	return nil, nil
+	return []byte("null"), nil
 }
 
 // OAuth2 is the oauth2 client configuration.
@@ -420,7 +420,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		return newRT(tlsConfig)
 	}
 
-	return newTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
+	return NewTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
 }
 
 type authorizationCredentialsRoundTripper struct {
@@ -717,7 +717,7 @@ type tlsRoundTripper struct {
 	tlsConfig  *tls.Config
 }
 
-func newTLSRoundTripper(
+func NewTLSRoundTripper(
 	cfg *tls.Config,
 	caFile string,
 	newRT func(*tls.Config) (http.RoundTripper, error),

@@ -241,7 +241,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.wg.Done()
 	}()
 
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, am.logger)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, nil, am.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -278,7 +278,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.mux.Handle(a, http.NotFoundHandler())
 	}
 
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(false, am.registry)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
@@ -382,6 +382,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		pipeline,
 		am.marker,
 		timeoutFunc,
+		nil,
 		log.With(am.logger, "component", "dispatcher"),
 		am.dispatcherMetrics,
 	)

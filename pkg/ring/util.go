@@ -73,6 +73,7 @@ func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state
 	backoff := util.NewBackoff(ctx, util.BackoffConfig{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
+		MaxRetries: 0,
 	})
 
 	for backoff.Ongoing() {

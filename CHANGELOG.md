@@ -38,7 +38,7 @@
 * [BUGFIX] Ruler: fix `/ruler/rule_groups` endpoint doesn't work when used with object store. #4182
 * [BUGFIX] Ruler: Honor the evaluation delay for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
 * [BUGFIX] Fixed cache fetch error on Redis Cluster. #4056
-* [CHANGE] Change WaitInstanceState to use MaxRetries parameter.
+* [CHANGE] Change WaitInstanceState to use MaxRetries parameter. #4262
 
 ## Blocksconvert
 

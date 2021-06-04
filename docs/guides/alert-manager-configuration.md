@@ -9,6 +9,14 @@ slug: alertmanager-configuration
 
 Cortex Alertmanager notification setup follow mostly the syntax of Prometheus Alertmanager since it is based on the same codebase.  The following is a description on how to load the configuration setup so that Alertmanager can use for notification when an alert event happened.
 
+### Configuring the Cortex Alertmanager storage backend
+
+With the introduction of Cortex 1.8 the storage backend config option shifted to the new pattern [#3888](https://github.com/cortexproject/cortex/pull/3888). You can find the new configuration [here](../configuration/config-file-reference.md#alertmanager_storage_config)
+
+Note that when using `-alertmanager.sharding-enabled=true`, the following storage backends are not supported: `local`, `configdb`.
+
+When using the new configuration pattern it is important that any of the old configuration pattern flags are unset (`-alertmanager.storage`), as well as `-<prefix>.configs.url`. This is because the old pattern still takes precedence over the new one. The old configuration pattern (`-alertmanager.storage`) is marked as deprecated and will be removed by Cortex version 1.11. However this change doesn't apply to `-alertmanager.storage.path` and `-alertmanager.storage.retention`.
+
 ### Cortex Alertmanager configuration
 
 Cortex Alertmanager can be uploaded via Cortex [Set Alertmanager  configuration API](../api/_index.md#set-alertmanager-configuration) or using Grafana Labs [Cortex Tools](https://github.com/grafana/cortex-tools).

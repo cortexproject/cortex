@@ -227,7 +227,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the initial sync we already know  the tokens
 		// assigned to this instance.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is JOINING in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING, 0); err != nil {
+		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is JOINING in the ring")
@@ -252,7 +252,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the loop it won't be detected as a ring
 		// topology change.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE, 0); err != nil {
+		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is ACTIVE in the ring")

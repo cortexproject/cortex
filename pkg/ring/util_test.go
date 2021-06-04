@@ -240,59 +240,62 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 	assert.InDelta(t, maxWaiting, elapsedTime, float64(2*time.Second))
 }
 
-func TestWaitInstanceStateExitsAfterMaxRetries(t *testing.T) {
+func TestWaitInstanceStateTimeout(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId = "test"
+		instanceId      = "test"
+		timeoutDuration = time.Duration(3)
 	)
 
-	const (
-		maxRetries = 5
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	defer cancel()
 
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(ACTIVE, nil)
 
-	WaitInstanceState(context.Background(), ring, instanceId, PENDING, maxRetries)
+	err := WaitInstanceState(ctx, ring, instanceId, PENDING)
 
-	ring.AssertNumberOfCalls(t, "GetInstanceState", maxRetries)
+	assert.Equal(t, context.DeadlineExceeded, err)
+	ring.AssertCalled(t, "GetInstanceState", instanceId)
 }
 
-func TestWaitInstanceStateDoesMaxRetriesOnError(t *testing.T) {
+func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId = "test"
+		instanceId      = "test"
+		timeoutDuration = time.Duration(3)
 	)
 
-	const (
-		maxRetries = 5
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	defer cancel()
 
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(PENDING, errors.New("instance not found in the ring"))
 
-	WaitInstanceState(context.Background(), ring, instanceId, ACTIVE, maxRetries)
+	err := WaitInstanceState(ctx, ring, instanceId, ACTIVE)
 
-	ring.AssertNumberOfCalls(t, "GetInstanceState", maxRetries)
+	assert.Equal(t, context.DeadlineExceeded, err)
+	ring.AssertCalled(t, "GetInstanceState", instanceId)
 }
 
 func TestWaitInstanceStateExitsAfterActualStateEqualsState(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId = "test"
+		instanceId      = "test"
+		timeoutDuration = time.Duration(3)
 	)
 
-	const (
-		maxRetries = 5
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	defer cancel()
 
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(ACTIVE, nil)
 
-	WaitInstanceState(context.Background(), ring, instanceId, ACTIVE, maxRetries)
+	err := WaitInstanceState(ctx, ring, instanceId, ACTIVE)
 
+	assert.Nil(t, err)
 	ring.AssertNumberOfCalls(t, "GetInstanceState", 1)
 }

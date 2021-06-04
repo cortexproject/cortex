@@ -263,7 +263,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
 			// Wait until the ring client has synced.
-			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE, 0))
+			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 
 			for instanceAddr, expectedBlocks := range testData.expectedBlocks {
 				filter := NewDefaultShardingStrategy(r, instanceAddr, log.NewNopLogger())
@@ -620,7 +620,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
 			// Wait until the ring client has synced.
-			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE, 0))
+			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 
 			// Assert on filter users.
 			for _, expected := range testData.expectedUsers {

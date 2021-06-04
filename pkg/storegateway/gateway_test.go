@@ -354,7 +354,7 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 					// A gateway is ready for the test once it sees all instances ACTIVE in the ring.
 					for _, g := range gateways {
 						for _, instanceID := range gatewayIds {
-							require.NoError(t, ring.WaitInstanceState(ctx, g.ring, instanceID, ring.ACTIVE, 0))
+							require.NoError(t, ring.WaitInstanceState(ctx, g.ring, instanceID, ring.ACTIVE))
 						}
 					}
 				}

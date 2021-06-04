@@ -38,12 +38,12 @@ import (
 const (
 	blocksMarkedForDeletionName = "cortex_compactor_blocks_marked_for_deletion_total"
 	blocksMarkedForDeletionHelp = "Total number of blocks marked for deletion in compactor."
-	MAX_RETRIES                 = 600
 )
 
 var (
-	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
-	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+	errInvalidBlockRanges            = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	RingOp                           = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+	WaitInstanceStateTimeoutDuration = time.Duration(600)
 
 	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
 		return compact.NewDefaultGrouper(
@@ -394,7 +394,10 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// users scanner depends on the ring (to check whether an user belongs
 		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE, MAX_RETRIES); err != nil {
+
+		ctx, cancel := context.WithTimeout(ctx, WaitInstanceStateTimeoutDuration*time.Second)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")

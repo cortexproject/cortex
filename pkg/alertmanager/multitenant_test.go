@@ -1163,7 +1163,7 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 				// The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
 				for _, am := range instances {
 					for _, id := range instanceIDs {
-						require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE, 0))
+						require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
 					}
 				}
 			}
@@ -1449,7 +1449,7 @@ func TestAlertmanager_ReplicasPosition(t *testing.T) {
 
 	for _, am := range instances {
 		for _, id := range instanceIDs {
-			require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE, 0))
+			require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
 		}
 	}
 
@@ -1568,7 +1568,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				// The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
 				for _, am := range instances {
 					for _, id := range instanceIDs {
-						require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE, 0))
+						require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
 					}
 				}
 			}
@@ -1757,7 +1757,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 					// The alertmanager is ready to be tested once all instances are ACTIVE and the ring settles.
 					for _, am := range instances {
 						for _, id := range instanceIDs {
-							require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE, 0))
+							require.NoError(t, ring.WaitInstanceState(ctx, am.ring, id, ring.ACTIVE))
 						}
 					}
 				}

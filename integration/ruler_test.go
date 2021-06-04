@@ -152,7 +152,7 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	user := "fake"
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
 		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 	}
@@ -210,7 +210,7 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	evaluationDelay := time.Minute * 5
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":             "2s",
 		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 		"-ruler.evaluation-delay-duration": evaluationDelay.String(),

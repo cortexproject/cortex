@@ -1013,7 +1013,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 
 	// Prepare distributors.
 	// Use replication factor of 2 to always read all the chunks from both ingesters,
-	// this prevents us from getting chunks from a slow ingester and double counting chunks in the limiter.
+	// this guarantees us to always read the same chunks and have a stable test.
 	ds, _, r, _ := prepare(t, prepConfig{
 		numIngesters:      2,
 		happyIngesters:    2,

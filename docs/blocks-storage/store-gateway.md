@@ -250,6 +250,16 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Minimum time to wait for ring stability at startup. 0 to disable.
+    # CLI flag: -store-gateway.sharding-ring.ring.wait-stability-min-duration
+    [wait_stability_min_duration: <duration> | default = 1m]
+
+    # Maximum time to wait for ring stability at startup. If the store-gateway
+    # ring keeps changing after this period of time, the store-gateway will
+    # start anyway.
+    # CLI flag: -store-gateway.sharding-ring.ring.wait-stability-max-duration
+    [wait_stability_max_duration: <duration> | default = 5m]
+
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]

@@ -398,6 +398,10 @@ func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
 	return o.getOverridesForUser(userID).MaxChunksPerQueryFromStore
 }
 
+func (o *Overrides) MaxChunksPerQuery(userID string) int {
+	return o.getOverridesForUser(userID).MaxChunksPerQuery
+}
+
 // MaxFetchedSeriesPerQuery returns the maximum number of series allowed per query when fetching
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedSeriesPerQuery(userID string) int {

@@ -314,8 +314,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 			}
 
 			// Enforce the max chunks limits.
-			matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
-			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount(), matchers); chunkLimitErr != nil {
+			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
 				return nil, validation.LimitError(chunkLimitErr.Error())
 			}
 

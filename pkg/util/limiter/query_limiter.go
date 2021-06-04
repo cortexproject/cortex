@@ -6,12 +6,10 @@ import (
 	"sync"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type queryLimiterCtxKey struct{}
@@ -20,7 +18,7 @@ var (
 	ctxKey                    = &queryLimiterCtxKey{}
 	ErrMaxSeriesHit           = "the query hit the max number of series limit (limit: %d series)"
 	ErrMaxChunkBytesHit       = "the query hit the aggregated chunks size limit (limit: %d bytes)"
-	ErrMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from ingesters for %s (limit: %d)"
+	ErrMaxChunksPerQueryLimit = "the query hit the max number of chunks limit (limit: %d chunks)"
 )
 
 type QueryLimiter struct {
@@ -100,13 +98,13 @@ func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 	return nil
 }
 
-func (ql *QueryLimiter) AddChunks(count int, matchers []*labels.Matcher) error {
+func (ql *QueryLimiter) AddChunks(count int) error {
 	if ql.maxChunksPerQuery == 0 {
 		return nil
 	}
 
 	if ql.chunkCount.Add(int64(count)) > int64(ql.maxChunksPerQuery) {
-		return fmt.Errorf(fmt.Sprintf(ErrMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), ql.maxChunksPerQuery))
+		return fmt.Errorf(fmt.Sprintf(ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery))
 	}
 	return nil
 }

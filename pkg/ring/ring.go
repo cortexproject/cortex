@@ -71,6 +71,10 @@ type ReadRing interface {
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
 
+	// GetInstanceState returns the current state of an instance or an error if the
+	// instance does not exist in the ring.
+	GetInstanceState(instanceID string) (InstanceState, error)
+
 	// ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes
 	// all instances that have been part of the identifier's shard since "now - lookbackPeriod".
 	ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing
@@ -763,8 +767,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	}
 }
 
-// GetInstanceState returns the current state of an instance or an error if the
-// instance does not exist in the ring.
+// GetInstanceState implements ReadRing.
 func (r *Ring) GetInstanceState(instanceID string) (InstanceState, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

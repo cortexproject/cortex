@@ -234,7 +234,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 
 		// In the event of a cluster cold start or scale up of 2+ store-gateway instances at the same
 		// time, we may end up in a situation where each new store-gateway instance starts at a slightly
-		// different time and thus each one starts with on a different state of the ring. It's better
+		// different time and thus each one starts with a different state of the ring. It's better
 		// to just wait the ring stability for a short time.
 		if g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
 			minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration

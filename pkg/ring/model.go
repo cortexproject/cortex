@@ -374,15 +374,19 @@ func resolveConflicts(normalizedIngesters map[string]InstanceDesc) {
 }
 
 // RemoveTombstones removes LEFT ingesters older than given time limit. If time limit is zero, remove all LEFT ingesters.
-func (d *Desc) RemoveTombstones(limit time.Time) {
-	removed := 0
+func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	for n, ing := range d.Ingesters {
-		if ing.State == LEFT && (limit.IsZero() || time.Unix(ing.Timestamp, 0).Before(limit)) {
-			// remove it
-			delete(d.Ingesters, n)
-			removed++
+		if ing.State == LEFT {
+			if limit.IsZero() || time.Unix(ing.Timestamp, 0).Before(limit) {
+				// remove it
+				delete(d.Ingesters, n)
+				removed++
+			} else {
+				total++
+			}
 		}
 	}
+	return
 }
 
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {

@@ -32,12 +32,19 @@
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
 * [ENHANCEMENT] Added zone-awareness support to alertmanager for use when sharding is enabled. When zone-awareness is enabled, alerts will be replicated across availability zones. #4204
 * [ENHANCEMENT] Added `tenant_ids` tag to tracing spans #4147
+* [ENHANCEMENT] Ring, query-frontend: Avoid using automatic private IPs (APIPA) when discovering IP address from the interface during the registration of the instance in the ring, or by query-frontend when used with query-scheduler. APIPA still used as last resort with logging indicating usage. #4032
+* [ENHANCEMENT] Memberlist: introduced new metrics to aid troubleshooting tombstone convergence: #4231
+  * `memberlist_client_kv_store_value_tombstones`
+  * `memberlist_client_kv_store_value_tombstones_removed_total`
+  * `memberlist_client_messages_to_broadcast_dropped_total`
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 * [BUGFIX] Alertmanager: fix Alertmanager status page if clustering via gossip is disabled or sharding is enabled. #4184
 * [BUGFIX] Ruler: fix `/ruler/rule_groups` endpoint doesn't work when used with object store. #4182
 * [BUGFIX] Ruler: Honor the evaluation delay for the `ALERTS` and `ALERTS_FOR_STATE` series. #4227
 * [BUGFIX] Fixed cache fetch error on Redis Cluster. #4056
+* [BUGFIX] Ingester: fix issue where runtime limits erroneously override default limits. #4246
+* [BUGFIX] Ruler: fix startup in single-binary mode when the new `ruler_storage` is used. #4252
 * [CHANGE] Change WaitInstanceState to use MaxRetries parameter. #4262
 
 ## Blocksconvert

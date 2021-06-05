@@ -160,19 +160,43 @@ func TestStateReplication(t *testing.T) {
 
 			if tt.replicationFactor > 1 {
 				assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+# HELP alertmanager_state_fetch_replica_state_failed_total Number of times we have failed to read and merge the full state from another replica.
+# TYPE alertmanager_state_fetch_replica_state_failed_total counter
+alertmanager_state_fetch_replica_state_failed_total 0
+# HELP alertmanager_state_fetch_replica_state_total Number of times we have tried to read and merge the full state from another replica.
+# TYPE alertmanager_state_fetch_replica_state_total counter
+alertmanager_state_fetch_replica_state_total 1
 # HELP alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
 # TYPE alertmanager_partial_state_merges_failed_total counter
 alertmanager_partial_state_merges_failed_total{key="nflog"} 0
 # HELP alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
 # TYPE alertmanager_partial_state_merges_total counter
 alertmanager_partial_state_merges_total{key="nflog"} 0
+# HELP alertmanager_state_initial_sync_completed_total Number of times we have completed syncing initial state for each possible outcome.
+# TYPE alertmanager_state_initial_sync_completed_total counter
+alertmanager_state_initial_sync_completed_total{outcome="failed"} 0
+alertmanager_state_initial_sync_completed_total{outcome="from-replica"} 1
+alertmanager_state_initial_sync_completed_total{outcome="from-storage"} 0
+alertmanager_state_initial_sync_completed_total{outcome="user-not-found"} 0
+# HELP alertmanager_state_initial_sync_total Number of times we have tried to sync initial state from peers or remote storage.
+# TYPE alertmanager_state_initial_sync_total counter
+alertmanager_state_initial_sync_total 1
 # HELP alertmanager_state_replication_failed_total Number of times we have failed to replicate a state to other alertmanagers.
 # TYPE alertmanager_state_replication_failed_total counter
 alertmanager_state_replication_failed_total{key="nflog"} 0
 # HELP alertmanager_state_replication_total Number of times we have tried to replicate a state to other alertmanagers.
 # TYPE alertmanager_state_replication_total counter
 alertmanager_state_replication_total{key="nflog"} 1
-	`)))
+	`),
+					"alertmanager_state_fetch_replica_state_failed_total",
+					"alertmanager_state_fetch_replica_state_total",
+					"alertmanager_partial_state_merges_failed_total",
+					"alertmanager_partial_state_merges_total",
+					"alertmanager_state_initial_sync_completed_total",
+					"alertmanager_state_initial_sync_total",
+					"alertmanager_state_replication_failed_total",
+					"alertmanager_state_replication_total",
+				))
 
 			}
 		})

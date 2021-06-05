@@ -94,7 +94,7 @@ func TestForEach(t *testing.T) {
 	assert.ElementsMatch(t, jobs, processed)
 }
 
-func TestForEach_ShouldBreakOnFirstError(t *testing.T) {
+func TestForEach_ShouldBreakOnFirstError_ContextCancellationHandled(t *testing.T) {
 	var (
 		ctx = context.Background()
 
@@ -123,6 +123,42 @@ func TestForEach_ShouldBreakOnFirstError(t *testing.T) {
 	// Since we expect the first error interrupts the workers, we should only see
 	// 1 job processed (the one which immediately returned error).
 	assert.Equal(t, int32(1), processed.Load())
+}
+
+func TestForEach_ShouldBreakOnFirstError_ContextCancellationUnhandled(t *testing.T) {
+	var (
+		ctx = context.Background()
+
+		// Keep the processed jobs count.
+		processed atomic.Int32
+	)
+
+	// waitGroup to await the start of the first two jobs
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	err := ForEach(ctx, []interface{}{"a", "b", "c"}, 2, func(ctx context.Context, job interface{}) error {
+		wg.Done()
+
+		if processed.CAS(0, 1) {
+			// wait till two jobs have been started
+			wg.Wait()
+			return errors.New("the first request is failing")
+		}
+
+		// Wait till context is cancelled to add processed jobs.
+		<-ctx.Done()
+		processed.Add(1)
+
+		return nil
+	})
+
+	require.EqualError(t, err, "the first request is failing")
+
+	// Since we expect the first error interrupts the workers, we should only
+	// see 2 job processed (the one which immediately returned error and the
+	// job with "b").
+	assert.Equal(t, int32(2), processed.Load())
 }
 
 func TestForEach_ShouldReturnImmediatelyOnNoJobsProvided(t *testing.T) {

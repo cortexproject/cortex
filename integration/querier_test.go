@@ -483,8 +483,9 @@ func testMetadataQueriesWithBlocksStorage(
 		resp   []prompb.Label
 	}
 	type labelValuesTest struct {
-		label string
-		resp  []string
+		label   string
+		matches []string
+		resp    []string
 	}
 
 	testCases := map[string]struct {
@@ -520,6 +521,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{lastSeriesInStorageName},
+				},
 			},
 			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
 		},
@@ -545,6 +556,17 @@ func testMetadataQueriesWithBlocksStorage(
 				{
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInIngesterBlocksName},
+				},
+
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{firstSeriesInIngesterHeadName},
 				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
@@ -574,6 +596,21 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 		},
@@ -601,6 +638,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 		},
@@ -620,7 +667,7 @@ func testMetadataQueriesWithBlocksStorage(
 			}
 
 			for _, lvt := range tc.labelValuesTests {
-				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to)
+				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to, lvt.matches)
 				require.NoError(t, err)
 				exp := model.LabelValues{}
 				for _, val := range lvt.resp {
@@ -840,6 +887,85 @@ func TestQuerierWithChunksStorage(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Ingester, ingester)
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, TableManager, tableManager)
+}
+
+func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period":   blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":         "1s",
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
+		"-querier.ingester-streaming":                "true",
+		"-querier.query-store-for-labels-enabled":    "true",
+		"-querier.max-fetched-series-per-query":      "3",
+	})
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	memcached := e2ecache.NewMemcached()
+	require.NoError(t, s.StartAndWaitReady(consul, minio, memcached))
+
+	// Add the memcached address to the flags.
+	flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+
+	// Start Cortex components.
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, storeGateway))
+
+	// Start the querier with configuring store-gateway addresses if sharding is disabled.
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+	})
+
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series3Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series4Timestamp := series1Timestamp.Add(blockRangePeriod * 3)
+
+	series1, _ := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
+	series3, _ := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
+	series4, _ := generateSeries("series_4", series4Timestamp, prompb.Label{Name: "series_4", Value: "series_4"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	result, err := c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series2Timestamp.Add(1*time.Hour), blockRangePeriod)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+
+	res, err = c.Push(series3)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series4)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	_, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max number of series limit")
 }
 
 func TestHashCollisionHandling(t *testing.T) {

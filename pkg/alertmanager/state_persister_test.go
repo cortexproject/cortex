@@ -87,7 +87,7 @@ func makeTestStatePersister(t *testing.T, position int, userID string) (*fakePer
 	store := &fakeStore{}
 	cfg := PersisterConfig{Interval: 1 * time.Second}
 
-	s := newStatePersister(cfg, userID, state, store, log.NewNopLogger())
+	s := newStatePersister(cfg, userID, state, store, log.NewNopLogger(), nil)
 
 	require.NoError(t, s.StartAsync(context.Background()))
 	t.Cleanup(func() {

@@ -387,13 +387,13 @@ grpc_tls_config:
 # If client sends keepalive ping more often, server will send GOAWAY and close
 # the connection.
 # CLI flag: -server.grpc.keepalive.min-time-between-pings
-[grpc_server_min_time_between_pings: <duration> | default = 5m]
+[grpc_server_min_time_between_pings: <duration> | default = 10s]
 
 # If true, server allows keepalive pings even when there are no active
 # streams(RPCs). If false, and client sends ping when there are no active
 # streams, server will send GOAWAY and close the connection.
 # CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
-[grpc_server_ping_without_stream_allowed: <boolean> | default = false]
+[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
 
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
@@ -1297,6 +1297,10 @@ storage:
     # CLI flag: -ruler.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
 
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -ruler.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
+
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
     # specified as a host, proper endpoint will be deduced. Use
@@ -1849,20 +1853,6 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
-receivers_firewall:
-  block:
-    # Comma-separated list of network CIDRs to block in Alertmanager receiver
-    # integrations.
-    # CLI flag: -alertmanager.receivers-firewall.block.cidr-networks
-    [cidr_networks: <string> | default = ""]
-
-    # True to block private and local addresses in Alertmanager receiver
-    # integrations. It blocks private addresses defined by  RFC 1918 (IPv4
-    # addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local
-    # unicast and local multicast addresses.
-    # CLI flag: -alertmanager.receivers-firewall.block.private-addresses
-    [private_addresses: <boolean> | default = false]
-
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
@@ -1917,9 +1907,19 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.replication-factor
   [replication_factor: <int> | default = 3]
 
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
 # Filename of fallback config to use if none specified for instance.
 # CLI flag: -alertmanager.configs.fallback
@@ -2004,6 +2004,10 @@ storage:
     # The duration after which the requests to GCS should be timed out.
     # CLI flag: -alertmanager.storage.gcs.request-timeout
     [request_timeout: <duration> | default = 0s]
+
+    # Enabled OpenCensus (OC) instrumentation for all requests.
+    # CLI flag: -alertmanager.storage.gcs.enable-opencensus
+    [enable_opencensus: <boolean> | default = true]
 
   s3:
     # S3 endpoint URL with escaped Key and Secret encoded. If only region is
@@ -2995,6 +2999,10 @@ gcs:
   # CLI flag: -gcs.request-timeout
   [request_timeout: <duration> | default = 0s]
 
+  # Enabled OpenCensus (OC) instrumentation for all requests.
+  # CLI flag: -gcs.enable-opencensus
+  [enable_opencensus: <boolean> | default = true]
+
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.
   # CLI flag: -cassandra.addresses
@@ -3954,7 +3962,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage.
+# ignored when running the Cortex blocks storage. When running Cortex with
+# blocks storage use -querier.max-fetched-series-per-query limit instead.
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
@@ -3972,13 +3981,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-series-per-metric
 [max_series_per_metric: <int> | default = 50000]
 
-# The maximum number of active series per user, across the cluster. 0 to
-# disable. Supported only if -distributor.shard-by-all-labels is true.
+# The maximum number of active series per user, across the cluster before
+# replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
+# is true.
 # CLI flag: -ingester.max-global-series-per-user
 [max_global_series_per_user: <int> | default = 0]
 
-# The maximum number of active series per metric name, across the cluster. 0 to
-# disable.
+# The maximum number of active series per metric name, across the cluster before
+# replication. 0 to disable.
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
@@ -4007,13 +4017,36 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Maximum number of chunks that can be fetched in a single query. This limit is
-# enforced when fetching chunks from the long-term storage. When running the
-# Cortex chunks storage, this limit is enforced in the querier, while when
-# running the Cortex blocks storage this limit is both enforced in the querier
-# and store-gateway. 0 to disable.
+# Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
+# respective YAML config option instead. Maximum number of chunks that can be
+# fetched in a single query. This limit is enforced when fetching chunks from
+# the long-term storage only. When running the Cortex chunks storage, this limit
+# is enforced in the querier and ruler, while when running the Cortex blocks
+# storage this limit is enforced in the querier, ruler and store-gateway. 0 to
+# disable.
 # CLI flag: -store.query-chunk-limit
 [max_chunks_per_query: <int> | default = 2000000]
+
+# Maximum number of chunks that can be fetched in a single query from ingesters
+# and long-term storage: the total number of actual fetched chunks could be 2x
+# the limit, being independently applied when querying ingesters and long-term
+# storage. This limit is enforced in the ingester (if chunks streaming is
+# enabled), querier, ruler and store-gateway. Takes precedence over the
+# deprecated -store.query-chunk-limit. 0 to disable.
+# CLI flag: -querier.max-fetched-chunks-per-query
+[max_fetched_chunks_per_query: <int> | default = 0]
+
+# The maximum number of unique series for which a query can fetch samples from
+# each ingesters and blocks storage. This limit is enforced in the querier only
+# when running Cortex with blocks storage. 0 to disable
+# CLI flag: -querier.max-fetched-series-per-query
+[max_fetched_series_per_query: <int> | default = 0]
+
+# The maximum size of all chunks in bytes that a query can fetch from each
+# ingester and storage. This limit is enforced in the querier and ruler only
+# when running Cortex with blocks storage. 0 to disable.
+# CLI flag: -querier.max-fetched-chunk-bytes-per-query
+[max_fetched_chunk_bytes_per_query: <int> | default = 0]
 
 # Limit how long back data (series and metadata) can be queried, up until
 # <lookback> duration ago. This limit is enforced in the query-frontend, querier
@@ -4097,6 +4130,48 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Comma-separated list of network CIDRs to block in Alertmanager receiver
+# integrations.
+# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
+[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
+
+# True to block private and local addresses in Alertmanager receiver
+# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
+# and local multicast addresses.
+# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
+[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
+
+# Per-user rate limit for sending notifications from Alertmanager in
+# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
+# are allowed.
+# CLI flag: -alertmanager.notification-rate-limit
+[alertmanager_notification_rate_limit: <float> | default = 0]
+
+# Per-integration notification rate limits. Value is a map, where each key is
+# integration name and value is a rate-limit (float). On command line, this map
+# is given in JSON format. Rate limit has the same meaning as
+# -alertmanager.notification-rate-limit, but only applies for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover.
+# CLI flag: -alertmanager.notification-rate-limit-per-integration
+[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
+
+# Maximum size of configuration file for Alertmanager that tenant can upload via
+# Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-config-size-bytes
+[alertmanager_max_config_size_bytes: <int> | default = 0]
+
+# Maximum number of templates in tenant's Alertmanager configuration uploaded
+# via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-templates-count
+[alertmanager_max_templates_count: <int> | default = 0]
+
+# Maximum size of single template in tenant's Alertmanager configuration
+# uploaded via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-template-size-bytes
+[alertmanager_max_template_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`
@@ -4565,11 +4640,6 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.sync-interval
   [sync_interval: <duration> | default = 15m]
 
-  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-  # The pool is shared across all tenants. 0 to disable the limit.
-  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-  [max_chunk_pool_bytes: <int> | default = 2147483648]
-
   # Max number of concurrent queries to execute against the long-term storage.
   # The limit is shared across all tenants.
   # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -4846,6 +4916,11 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
 
+  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+  # The pool is shared across all tenants. 0 to disable the limit.
+  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
+
   # If enabled, store-gateway will lazy load an index-header only once required
   # by a query.
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
@@ -4934,6 +5009,11 @@ tsdb:
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
 ```
 
 ### `compactor_config`

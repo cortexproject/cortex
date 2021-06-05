@@ -24,11 +24,11 @@ func TestFirewallDialer(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		cfg   FirewallDialerConfig
+		cfg   FirewallDialerConfigProvider
 		cases []testCase
 	}{
-		"should not block traffic with default config": {
-			cfg: FirewallDialerConfig{},
+		"should not block traffic with no block config": {
+			cfg: firewallCfgProvider{},
 			cases: []testCase{
 				{"localhost", false},
 				{"127.0.0.1", false},
@@ -37,8 +37,8 @@ func TestFirewallDialer(t *testing.T) {
 			},
 		},
 		"should support blocking private addresses": {
-			cfg: FirewallDialerConfig{
-				BlockPrivateAddresses: true,
+			cfg: firewallCfgProvider{
+				blockPrivateAddresses: true,
 			},
 			cases: []testCase{
 				{"localhost", true},
@@ -55,8 +55,8 @@ func TestFirewallDialer(t *testing.T) {
 			},
 		},
 		"should support blocking custom CIDRs": {
-			cfg: FirewallDialerConfig{
-				BlockCIDRNetworks: []flagext.CIDR{blockedCIDR},
+			cfg: firewallCfgProvider{
+				blockCIDRNetworks: []flagext.CIDR{blockedCIDR},
 			},
 			cases: []testCase{
 				{"localhost", false},
@@ -132,4 +132,17 @@ func TestIsPrivate(t *testing.T) {
 	for _, test := range tests {
 		assert.Equalf(t, test.expected, isPrivate(test.ip), "ip: %s", test.ip.String())
 	}
+}
+
+type firewallCfgProvider struct {
+	blockCIDRNetworks     []flagext.CIDR
+	blockPrivateAddresses bool
+}
+
+func (p firewallCfgProvider) BlockCIDRNetworks() []flagext.CIDR {
+	return p.blockCIDRNetworks
+}
+
+func (p firewallCfgProvider) BlockPrivateAddresses() bool {
+	return p.blockPrivateAddresses
 }

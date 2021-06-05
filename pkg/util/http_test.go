@@ -108,7 +108,9 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 		expectedContentType: "application/yaml",
 		value:               make(map[string]*testStruct),
 	}
-	for i := 0; i < rand.Intn(100); i++ {
+
+	// Generate some data to serialize.
+	for i := 0; i < rand.Intn(100)+1; i++ {
 		ts := testStruct{
 			Name:  "testName" + strconv.Itoa(i),
 			Value: i,
@@ -151,6 +153,7 @@ func TestParseProtoReader(t *testing.T) {
 							{Value: 20, TimestampMs: 2},
 							{Value: 30, TimestampMs: 3},
 						},
+						Exemplars: []cortexpb.Exemplar{},
 					},
 				},
 			},

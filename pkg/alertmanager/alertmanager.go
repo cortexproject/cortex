@@ -245,7 +245,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	var callback mem.AlertStoreCallback
 	if am.cfg.Limits != nil {
 		insertAlertFailures := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "alertmanager_insert_alert_failures_total",
+			Name: "alertmanager_alerts_insert_failures_total",
 			Help: "Number of failures to insert new alerts to in-memory alert store.",
 		}, []string{"reason"})
 
@@ -627,6 +627,9 @@ const (
 	insertFailureAlertsTooBig  = "alerts_too_big"
 )
 
+// alertsLimiter limits the number and size of alerts being received by the Alertmanager.
+// We consider an alert unique based on its fingerprint (a hash of its labels) and
+// its size it's determined by the sum of bytes of its labels, annotations, and generator URL.
 type alertsLimiter struct {
 	tenant string
 	limits Limits
@@ -682,11 +685,11 @@ func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
 	}
 
 	newSize := alertSize(alert.Alert)
+	fp := alert.Fingerprint()
 
 	a.mx.Lock()
 	defer a.mx.Unlock()
 
-	fp := alert.Fingerprint()
 	if existing {
 		a.totalSize -= a.sizes[fp]
 	} else {
@@ -701,10 +704,11 @@ func (a *alertsLimiter) PostDelete(alert *types.Alert) {
 		return
 	}
 
+	fp := alert.Fingerprint()
+
 	a.mx.Lock()
 	defer a.mx.Unlock()
 
-	fp := alert.Fingerprint()
 	a.totalSize -= a.sizes[fp]
 	delete(a.sizes, fp)
 	a.count--

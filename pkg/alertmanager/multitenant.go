@@ -228,7 +228,7 @@ type Limits interface {
 	AlertmanagerMaxAlertsCount(tenant string) int
 
 	// AlertmanagerMaxAlertsSizeBytes returns total max size of alerts that tenant can have active at the same time. 0 = no limit.
-	// Size of the alert is computed from alert labels and annotations.
+	// Size of the alert is computed from alert labels, annotations and generator URL.
 	AlertmanagerMaxAlertsSizeBytes(tenant string) int
 }
 

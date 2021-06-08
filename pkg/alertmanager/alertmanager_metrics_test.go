@@ -285,11 +285,11 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user3"} 10000
-		# HELP cortex_alertmanager_insert_alert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-		# TYPE cortex_alertmanager_insert_alert_failures_total counter
-		cortex_alertmanager_insert_alert_failures_total{user="user1"} 11
-		cortex_alertmanager_insert_alert_failures_total{user="user2"} 110
-		cortex_alertmanager_insert_alert_failures_total{user="user3"} 1100
+		# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
+		# TYPE cortex_alertmanager_alerts_insert_failures_total counter
+		cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
+		cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
+		cortex_alertmanager_alerts_insert_failures_total{user="user3"} 1100
 `))
 	require.NoError(t, err)
 }
@@ -584,11 +584,11 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user3"} 10000
-						# HELP cortex_alertmanager_insert_alert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-						# TYPE cortex_alertmanager_insert_alert_failures_total counter
-						cortex_alertmanager_insert_alert_failures_total{user="user1"} 11
-						cortex_alertmanager_insert_alert_failures_total{user="user2"} 110
-						cortex_alertmanager_insert_alert_failures_total{user="user3"} 1100
+						# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
+						# TYPE cortex_alertmanager_alerts_insert_failures_total counter
+						cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
+						cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
+						cortex_alertmanager_alerts_insert_failures_total{user="user3"} 1100
 
 `))
 	require.NoError(t, err)
@@ -830,10 +830,10 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 			# TYPE cortex_alertmanager_alerts_limiter_current_alerts_size_bytes gauge
 			cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 			cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
-			# HELP cortex_alertmanager_insert_alert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-			# TYPE cortex_alertmanager_insert_alert_failures_total counter
-			cortex_alertmanager_insert_alert_failures_total{user="user1"} 11
-			cortex_alertmanager_insert_alert_failures_total{user="user2"} 110
+			# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
+			# TYPE cortex_alertmanager_alerts_insert_failures_total counter
+			cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
+			cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
 `))
 	require.NoError(t, err)
 }
@@ -1112,7 +1112,7 @@ func newLimiterMetrics(r prometheus.Registerer) *limiterMetrics {
 	})
 
 	insertAlertFailures := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Name: "alertmanager_insert_alert_failures_total",
+		Name: "alertmanager_alerts_insert_failures_total",
 		Help: "Number of failures to insert new alerts to in-memory alert store.",
 	}, []string{"reason"})
 

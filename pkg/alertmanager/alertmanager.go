@@ -664,6 +664,9 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 	a.mx.Lock()
 	defer a.mx.Unlock()
 
+	// We allow existing alerts in with no checks. Alert update currently cannot change labels,
+	// annotations or generator URL. Also we want to make sure that alerts already in
+	// store can be resolved.
 	if !existing {
 		if countLimit > 0 && (a.count+1) > countLimit {
 			a.failureCounter.WithLabelValues(insertFailureTooManyAlerts).Inc()

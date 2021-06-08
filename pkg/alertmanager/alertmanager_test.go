@@ -20,21 +20,21 @@ import (
 
 func TestDispatcherGroupLimits(t *testing.T) {
 	for name, tc := range map[string]struct {
-		alerts           int
+		groups           int
 		groupsLimit      int
 		expectedFailures int
 	}{
-		"no limit":   {alerts: 5, groupsLimit: 0, expectedFailures: 0},
-		"high limit": {alerts: 5, groupsLimit: 10, expectedFailures: 0},
-		"low limit":  {alerts: 5, groupsLimit: 3, expectedFailures: 2},
+		"no limit":   {groups: 5, groupsLimit: 0, expectedFailures: 0},
+		"high limit": {groups: 5, groupsLimit: 10, expectedFailures: 0},
+		"low limit":  {groups: 5, groupsLimit: 3, expectedFailures: 4}, // 2 groups that fail, 2 alerts per group = 4 failures
 	} {
 		t.Run(name, func(t *testing.T) {
-			createAlertmanagerAndSendAlerts(t, tc.alerts, tc.groupsLimit, tc.expectedFailures)
+			createAlertmanagerAndSendAlerts(t, tc.groups, tc.groupsLimit, tc.expectedFailures)
 		})
 	}
 }
 
-func createAlertmanagerAndSendAlerts(t *testing.T, alerts, groupsLimit, expectedFailures int) {
+func createAlertmanagerAndSendAlerts(t *testing.T, alertGroups, groupsLimit, expectedFailures int) {
 	user := "test"
 
 	reg := prometheus.NewPedanticRegistry()
@@ -64,11 +64,31 @@ route:
 
 	now := time.Now()
 
-	for i := 0; i < alerts; i++ {
+	for i := 0; i < alertGroups; i++ {
+		alertName := model.LabelValue(fmt.Sprintf("Alert-%d", i))
+
 		inputAlerts := []*types.Alert{
 			{
 				Alert: model.Alert{
-					Labels:       model.LabelSet{"alertname": model.LabelValue(fmt.Sprintf("Alert-%d", i))},
+					Labels: model.LabelSet{
+						"alertname": alertName,
+						"a":         "b",
+					},
+					Annotations:  model.LabelSet{"foo": "bar"},
+					StartsAt:     now,
+					EndsAt:       now.Add(5 * time.Minute),
+					GeneratorURL: "http://example.com/prometheus",
+				},
+				UpdatedAt: now,
+				Timeout:   false,
+			},
+
+			{
+				Alert: model.Alert{
+					Labels: model.LabelSet{
+						"alertname": alertName,
+						"z":         "y",
+					},
 					Annotations:  model.LabelSet{"foo": "bar"},
 					StartsAt:     now,
 					EndsAt:       now.Add(5 * time.Minute),

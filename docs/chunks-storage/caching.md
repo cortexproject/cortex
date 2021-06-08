@@ -5,6 +5,8 @@ weight: 4
 slug: caching
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost.  Cortex can use a cache for:
 

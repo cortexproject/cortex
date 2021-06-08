@@ -5,7 +5,7 @@ weight: 10
 slug: deleting-series
 ---
 
-_This feature is currently experimental and is only supported for Chunks storage._
+_This feature is currently experimental and is only supported for Chunks storage (deprecated)._
 
 Cortex supports deletion of series using [Prometheus compatible API](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series).
 It however does not support [Prometheuses Clean Tombstones](https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones) API because Cortex uses a different mechanism to manage deletions.

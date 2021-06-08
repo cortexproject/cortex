@@ -213,10 +213,6 @@ lint:
 		./pkg/querier/... \
 		./pkg/ruler/...
 
-	# Validate Kubernetes spec files. Requires:
-	# https://kubeval.instrumenta.dev
-	kubeval ./k8s/*
-
 test:
 	go test -tags netgo -timeout 30m -race -count 1 ./...
 

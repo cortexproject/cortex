@@ -582,5 +582,5 @@ type dispatcherLimits struct {
 }
 
 func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
-	return g.limits.AlertmanagerMaxNumberOfDispatcherAggregationGroups(g.tenant)
+	return g.limits.AlertmanagerMaxDispatcherAggregationGroups(g.tenant)
 }

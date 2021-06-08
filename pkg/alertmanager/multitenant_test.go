@@ -2055,6 +2055,6 @@ func (m *mockAlertManagerLimits) NotificationBurstSize(_ string, integration str
 	return m.emailNotificationBurst
 }
 
-func (m *mockAlertManagerLimits) AlertmanagerMaxNumberOfDispatcherAggregationGroups(_ string) int {
+func (m *mockAlertManagerLimits) AlertmanagerMaxDispatcherAggregationGroups(_ string) int {
 	return m.maxDispatcherAggregationGroups
 }

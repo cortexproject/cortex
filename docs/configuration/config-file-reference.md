@@ -4178,8 +4178,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # limit is reached, dispatcher will not dispatch alerts that belong to
 # additional aggregation groups, but existing groups will keep working properly.
 # 0 = no limit.
-# CLI flag: -alertmanager.max-number-of-dispatcher-aggregation-groups
-[alertmanager_max_number_of_dispatcher_aggregation_groups: <int> | default = 0]
+# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
+[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
 ```
 
 ### `redis_config`

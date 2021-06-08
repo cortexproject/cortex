@@ -222,7 +222,7 @@ type Limits interface {
 
 	// AlertmanagerMaxNumberOfDispatcherAggregationGroups returns maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have.
 	// Each aggregation group consumes single goroutine. 0 = unlimited.
-	AlertmanagerMaxNumberOfDispatcherAggregationGroups(t string) int
+	AlertmanagerMaxDispatcherAggregationGroups(t string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

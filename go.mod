@@ -15,6 +15,7 @@ require (
 	github.com/aws/aws-sdk-go v1.38.35
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
+	github.com/coreos/go-semver v0.3.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.1

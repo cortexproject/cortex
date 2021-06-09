@@ -4,9 +4,11 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +34,27 @@ var (
 		"quay.io/cortexproject/cortex:v1.9.0": nil,
 	}
 )
+
+// Cortex before 1.10 does not support running docker images as non-root. This
+// will make sure that we run cortex version before 1.10 with a root user.
+func useRootUserForOlderImages(image string, svc *e2ecortex.CortexService) {
+
+	// find versioned image tag
+	needle := ":v"
+	pos := strings.Index(image, needle)
+
+	// return early if needle not found (most likely :latest) image, which we want to run as non-root user
+	if pos == -1 {
+		return
+	}
+
+	// if version is before 1.10 set an explicict root user
+	ver := semver.New(image[pos+len(needle):])
+	v1_10 := semver.New("1.10.0")
+	if ver.LessThan(*v1_10) {
+		svc.SetUser("root:root")
+	}
+}
 
 func preCortex14Flags(flags map[string]string) map[string]string {
 	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
@@ -101,6 +124,7 @@ func runBackwardCompatibilityTestWithChunksStorage(t *testing.T, previousImage s
 
 	// Start other Cortex components (ingester running on previous version).
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
+	useRootUserForOlderImages(previousImage, ingester1)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), ChunksStorageFlags(), "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
@@ -169,6 +193,9 @@ func runNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T, previo
 	ingester1 := e2ecortex.NewIngester("ingester-1", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
 	ingester2 := e2ecortex.NewIngester("ingester-2", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
 	ingester3 := e2ecortex.NewIngester("ingester-3", consul.NetworkHTTPEndpoint(), flagsForPreviousImage, previousImage)
+	useRootUserForOlderImages(previousImage, ingester1)
+	useRootUserForOlderImages(previousImage, ingester2)
+	useRootUserForOlderImages(previousImage, ingester3)
 	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flagsForNewImage, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1, ingester2, ingester3))
 
@@ -231,6 +258,7 @@ func checkQueries(
 		t.Run(name, func(t *testing.T) {
 			// Start query-frontend.
 			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", c.queryFrontendFlags, c.queryFrontendImage)
+			useRootUserForOlderImages(c.queryFrontendImage, queryFrontend)
 			require.NoError(t, s.Start(queryFrontend))
 			defer func() {
 				require.NoError(t, s.Stop(queryFrontend))
@@ -240,6 +268,7 @@ func checkQueries(
 			querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), e2e.MergeFlagsWithoutRemovingEmpty(c.querierFlags, map[string]string{
 				"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
 			}), c.querierImage)
+			useRootUserForOlderImages(c.querierImage, querier)
 
 			require.NoError(t, s.Start(querier))
 			defer func() {

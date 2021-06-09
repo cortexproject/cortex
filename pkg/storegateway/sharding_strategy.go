@@ -202,7 +202,7 @@ func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ul
 
 	// Keep track of the last filtered blocks.
 	a.lastBlocks = make(map[ulid.ULID]struct{}, len(metas))
-	for blockID, _ := range metas {
+	for blockID := range metas {
 		a.lastBlocks[blockID] = struct{}{}
 	}
 

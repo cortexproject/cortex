@@ -48,8 +48,8 @@ var (
 	BlocksRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
 		// Blocks can only be queried from ACTIVE instances. However, if the block belongs to
 		// a non-active instance, then we should extend the replication set and try to query it
-		// from the next ACTIVE instance in the ring (which is expected to have it because the
-		// BlocksSync operation extends the replication set too).
+		// from the next ACTIVE instance in the ring (which is expected to have it because a
+		// store-gateway keeps their previously owned blocks until new owners are ACTIVE).
 		return s != ring.ACTIVE
 	})
 )

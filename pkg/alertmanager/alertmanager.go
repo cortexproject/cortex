@@ -646,6 +646,12 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 		return nil
 	}
 
+	// We allow existing alerts in with no checks, as we want to make sure that alerts already in
+	// store can be resolved.
+	if existing {
+		return nil
+	}
+
 	countLimit := a.limits.AlertmanagerMaxAlertsCount(a.tenant)
 	sizeLimit := a.limits.AlertmanagerMaxAlertsSizeBytes(a.tenant)
 
@@ -653,12 +659,6 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 
 	a.mx.Lock()
 	defer a.mx.Unlock()
-
-	// We allow existing alerts in with no checks, as we want to make sure that alerts already in
-	// store can be resolved.
-	if existing {
-		return nil
-	}
 
 	if countLimit > 0 && (a.count+1) > countLimit {
 		a.failureCounter.Inc()

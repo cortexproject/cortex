@@ -221,11 +221,6 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 // their own blocks, regardless which store-gateway joined the ring first or last (even if starting
 // at the same time, they will join the ring at a slightly different time).
 func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
-	// Randomise the seed but log it in case we need to reproduce the test on failure.
-	seed := time.Now().UnixNano()
-	rand.Seed(seed)
-	t.Log("random generator seed:", seed)
-
 	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
@@ -298,6 +293,11 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 	for testName, testData := range tests {
 		for _, bucketIndexEnabled := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s (bucket index enabled = %v)", testName, bucketIndexEnabled), func(t *testing.T) {
+				// Randomise the seed but log it in case we need to reproduce the test on failure.
+				seed := time.Now().UnixNano()
+				rand.Seed(seed)
+				t.Log("random generator seed:", seed)
+
 				ctx := context.Background()
 				ringStore := consul.NewInMemoryClient(ring.GetCodec())
 

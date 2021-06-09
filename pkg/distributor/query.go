@@ -281,8 +281,8 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 	sort.Strings(keys)
 
 	result := make([]cortexpb.TimeSeries, len(exemplarResults))
-	for _, k := range keys {
-		result = append(result, exemplarResults[k])
+	for i, k := range keys {
+		result[i] = exemplarResults[k]
 	}
 
 	return &ingester_client.ExemplarQueryResponse{Timeseries: result}, nil

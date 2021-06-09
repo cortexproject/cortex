@@ -776,7 +776,7 @@ lifecycler:
 
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled
-[active_series_metrics_enabled: <boolean> | default = false]
+[active_series_metrics_enabled: <boolean> | default = true]
 
 # How often to update active series metrics.
 # CLI flag: -ingester.active-series-metrics-update-period
@@ -3981,13 +3981,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-series-per-metric
 [max_series_per_metric: <int> | default = 50000]
 
-# The maximum number of active series per user, across the cluster. 0 to
-# disable. Supported only if -distributor.shard-by-all-labels is true.
+# The maximum number of active series per user, across the cluster before
+# replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
+# is true.
 # CLI flag: -ingester.max-global-series-per-user
 [max_global_series_per_user: <int> | default = 0]
 
-# The maximum number of active series per metric name, across the cluster. 0 to
-# disable.
+# The maximum number of active series per metric name, across the cluster before
+# replication. 0 to disable.
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
@@ -4171,6 +4172,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # uploaded via Alertmanager API. 0 = no limit.
 # CLI flag: -alertmanager.max-template-size-bytes
 [alertmanager_max_template_size_bytes: <int> | default = 0]
+
+# Maximum number of aggregation groups in Alertmanager's dispatcher that a
+# tenant can have. Each active aggregation group uses single goroutine. When the
+# limit is reached, dispatcher will not dispatch alerts that belong to
+# additional aggregation groups, but existing groups will keep working properly.
+# 0 = no limit.
+# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
+[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
 ```
 
 ### `redis_config`

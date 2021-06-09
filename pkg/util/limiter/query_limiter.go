@@ -10,15 +10,14 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type queryLimiterCtxKey struct{}
 
 var (
 	ctxKey              = &queryLimiterCtxKey{}
-	errMaxSeriesHit     = "The query hit the max number of series limit (limit: %d)"
-	ErrMaxChunkBytesHit = "The query hit the aggregated chunks size limit (limit: %d bytes)"
+	ErrMaxSeriesHit     = "the query hit the max number of series limit (limit: %d series)"
+	ErrMaxChunkBytesHit = "the query hit the aggregated chunks size limit (limit: %d bytes)"
 )
 
 type QueryLimiter struct {
@@ -72,7 +71,7 @@ func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	ql.uniqueSeries[fingerprint] = struct{}{}
 	if len(ql.uniqueSeries) > ql.maxSeriesPerQuery {
 		// Format error with max limit
-		return validation.LimitError(fmt.Sprintf(errMaxSeriesHit, ql.maxSeriesPerQuery))
+		return fmt.Errorf(ErrMaxSeriesHit, ql.maxSeriesPerQuery)
 	}
 	return nil
 }
@@ -90,7 +89,7 @@ func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 		return nil
 	}
 	if ql.chunkBytesCount.Add(int64(chunkSizeInBytes)) > int64(ql.maxChunkBytesPerQuery) {
-		return validation.LimitError(fmt.Sprintf(ErrMaxChunkBytesHit, ql.maxChunkBytesPerQuery))
+		return fmt.Errorf(ErrMaxChunkBytesHit, ql.maxChunkBytesPerQuery)
 	}
 	return nil
 }

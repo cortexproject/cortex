@@ -2019,11 +2019,12 @@ func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, e
 }
 
 type mockAlertManagerLimits struct {
-	emailNotificationRateLimit rate.Limit
-	emailNotificationBurst     int
-	maxConfigSize              int
-	maxTemplatesCount          int
-	maxSizeOfTemplate          int
+	emailNotificationRateLimit     rate.Limit
+	emailNotificationBurst         int
+	maxConfigSize                  int
+	maxTemplatesCount              int
+	maxSizeOfTemplate              int
+	maxDispatcherAggregationGroups int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
@@ -2052,4 +2053,8 @@ func (m *mockAlertManagerLimits) NotificationRateLimit(_ string, integration str
 
 func (m *mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
 	return m.emailNotificationBurst
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxDispatcherAggregationGroups(_ string) int {
+	return m.maxDispatcherAggregationGroups
 }

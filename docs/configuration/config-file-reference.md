@@ -4172,6 +4172,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # uploaded via Alertmanager API. 0 = no limit.
 # CLI flag: -alertmanager.max-template-size-bytes
 [alertmanager_max_template_size_bytes: <int> | default = 0]
+
+# Maximum number of aggregation groups in Alertmanager's dispatcher that a
+# tenant can have. Each active aggregation group uses single goroutine. When the
+# limit is reached, dispatcher will not dispatch alerts that belong to
+# additional aggregation groups, but existing groups will keep working properly.
+# 0 = no limit.
+# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
+[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
 ```
 
 ### `redis_config`

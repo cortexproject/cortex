@@ -278,7 +278,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.mux.Handle(a, http.NotFoundHandler())
 	}
 
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(false, am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
@@ -382,7 +382,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		pipeline,
 		am.marker,
 		timeoutFunc,
-		nil,
+		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		log.With(am.logger, "component", "dispatcher"),
 		am.dispatcherMetrics,
 	)
@@ -574,4 +574,13 @@ func (t *tenantRateLimits) RateLimit() rate.Limit {
 
 func (t *tenantRateLimits) Burst() int {
 	return t.limits.NotificationBurstSize(t.tenant, t.integration)
+}
+
+type dispatcherLimits struct {
+	tenant string
+	limits Limits
+}
+
+func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
+	return g.limits.AlertmanagerMaxDispatcherAggregationGroups(g.tenant)
 }

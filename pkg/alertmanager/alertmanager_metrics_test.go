@@ -275,21 +275,21 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		# TYPE cortex_alertmanager_state_persist_total counter
 		cortex_alertmanager_state_persist_total 0
 
-		# HELP cortex_alertmanager_alerts_limiter_current_alerts_count Number of alerts tracked by alerts limiter.
-		# TYPE cortex_alertmanager_alerts_limiter_current_alerts_count gauge
-		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user1"} 10
-		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user2"} 100
-		cortex_alertmanager_alerts_limiter_current_alerts_count{user="user3"} 1000
+		# HELP cortex_alertmanager_alerts_limiter_current_alerts Number of alerts tracked by alerts limiter.
+		# TYPE cortex_alertmanager_alerts_limiter_current_alerts gauge
+		cortex_alertmanager_alerts_limiter_current_alerts{user="user1"} 10
+		cortex_alertmanager_alerts_limiter_current_alerts{user="user2"} 100
+		cortex_alertmanager_alerts_limiter_current_alerts{user="user3"} 1000
 		# HELP cortex_alertmanager_alerts_limiter_current_alerts_size_bytes Total size of alerts tracked by alerts limiter.
 		# TYPE cortex_alertmanager_alerts_limiter_current_alerts_size_bytes gauge
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
 		cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user3"} 10000
-		# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-		# TYPE cortex_alertmanager_alerts_insert_failures_total counter
-		cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
-		cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
-		cortex_alertmanager_alerts_insert_failures_total{user="user3"} 1100
+		# HELP cortex_alertmanager_alerts_insert_limited_total Total number of failures to store alert due to hitting alertmanager limits.
+		# TYPE cortex_alertmanager_alerts_insert_limited_total counter
+		cortex_alertmanager_alerts_insert_limited_total{user="user1"} 7
+		cortex_alertmanager_alerts_insert_limited_total{user="user2"} 70
+		cortex_alertmanager_alerts_insert_limited_total{user="user3"} 700
 `))
 	require.NoError(t, err)
 }
@@ -574,21 +574,21 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 						# TYPE cortex_alertmanager_state_persist_total counter
 						cortex_alertmanager_state_persist_total 0
 
-						# HELP cortex_alertmanager_alerts_limiter_current_alerts_count Number of alerts tracked by alerts limiter.
-						# TYPE cortex_alertmanager_alerts_limiter_current_alerts_count gauge
-						cortex_alertmanager_alerts_limiter_current_alerts_count{user="user1"} 10
-						cortex_alertmanager_alerts_limiter_current_alerts_count{user="user2"} 100
-						cortex_alertmanager_alerts_limiter_current_alerts_count{user="user3"} 1000
+						# HELP cortex_alertmanager_alerts_limiter_current_alerts Number of alerts tracked by alerts limiter.
+						# TYPE cortex_alertmanager_alerts_limiter_current_alerts gauge
+						cortex_alertmanager_alerts_limiter_current_alerts{user="user1"} 10
+						cortex_alertmanager_alerts_limiter_current_alerts{user="user2"} 100
+						cortex_alertmanager_alerts_limiter_current_alerts{user="user3"} 1000
 						# HELP cortex_alertmanager_alerts_limiter_current_alerts_size_bytes Total size of alerts tracked by alerts limiter.
 						# TYPE cortex_alertmanager_alerts_limiter_current_alerts_size_bytes gauge
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
 						cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user3"} 10000
-						# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-						# TYPE cortex_alertmanager_alerts_insert_failures_total counter
-						cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
-						cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
-						cortex_alertmanager_alerts_insert_failures_total{user="user3"} 1100
+						# HELP cortex_alertmanager_alerts_insert_limited_total Total number of failures to store alert due to hitting alertmanager limits.
+						# TYPE cortex_alertmanager_alerts_insert_limited_total counter
+						cortex_alertmanager_alerts_insert_limited_total{user="user1"} 7
+						cortex_alertmanager_alerts_insert_limited_total{user="user2"} 70
+						cortex_alertmanager_alerts_insert_limited_total{user="user3"} 700
 
 `))
 	require.NoError(t, err)
@@ -822,18 +822,18 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 			# TYPE cortex_alertmanager_state_persist_total counter
 			cortex_alertmanager_state_persist_total 0
 
-			# HELP cortex_alertmanager_alerts_limiter_current_alerts_count Number of alerts tracked by alerts limiter.
-			# TYPE cortex_alertmanager_alerts_limiter_current_alerts_count gauge
-			cortex_alertmanager_alerts_limiter_current_alerts_count{user="user1"} 10
-			cortex_alertmanager_alerts_limiter_current_alerts_count{user="user2"} 100
+			# HELP cortex_alertmanager_alerts_limiter_current_alerts Number of alerts tracked by alerts limiter.
+			# TYPE cortex_alertmanager_alerts_limiter_current_alerts gauge
+			cortex_alertmanager_alerts_limiter_current_alerts{user="user1"} 10
+			cortex_alertmanager_alerts_limiter_current_alerts{user="user2"} 100
 			# HELP cortex_alertmanager_alerts_limiter_current_alerts_size_bytes Total size of alerts tracked by alerts limiter.
 			# TYPE cortex_alertmanager_alerts_limiter_current_alerts_size_bytes gauge
 			cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user1"} 100
 			cortex_alertmanager_alerts_limiter_current_alerts_size_bytes{user="user2"} 1000
-			# HELP cortex_alertmanager_alerts_insert_failures_total Total number of failures to store alert due to hitting alertmanager limits.
-			# TYPE cortex_alertmanager_alerts_insert_failures_total counter
-			cortex_alertmanager_alerts_insert_failures_total{user="user1"} 11
-			cortex_alertmanager_alerts_insert_failures_total{user="user2"} 110
+			# HELP cortex_alertmanager_alerts_insert_limited_total Total number of failures to store alert due to hitting alertmanager limits.
+			# TYPE cortex_alertmanager_alerts_insert_limited_total counter
+			cortex_alertmanager_alerts_insert_limited_total{user="user1"} 7
+			cortex_alertmanager_alerts_insert_limited_total{user="user2"} 70
 `))
 	require.NoError(t, err)
 }
@@ -887,8 +887,7 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	lm := newLimiterMetrics(reg)
 	lm.count.Set(10 * base)
 	lm.size.Set(100 * base)
-	lm.insertFailures.WithLabelValues(insertFailureTooManyAlerts).Add(7 * base)
-	lm.insertFailures.WithLabelValues(insertFailureAlertsTooBig).Add(4 * base)
+	lm.insertFailures.Add(7 * base)
 
 	return reg
 }
@@ -1097,12 +1096,12 @@ func newAPIMetrics(version string, r prometheus.Registerer) *apiMetrics {
 type limiterMetrics struct {
 	count          prometheus.Gauge
 	size           prometheus.Gauge
-	insertFailures *prometheus.CounterVec
+	insertFailures prometheus.Counter
 }
 
 func newLimiterMetrics(r prometheus.Registerer) *limiterMetrics {
 	count := promauto.With(r).NewGauge(prometheus.GaugeOpts{
-		Name: "alertmanager_alerts_limiter_current_alerts_count",
+		Name: "alertmanager_alerts_limiter_current_alerts",
 		Help: "Number of alerts tracked by alerts limiter.",
 	})
 
@@ -1111,13 +1110,10 @@ func newLimiterMetrics(r prometheus.Registerer) *limiterMetrics {
 		Help: "Total size of alerts tracked by alerts limiter.",
 	})
 
-	insertAlertFailures := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-		Name: "alertmanager_alerts_insert_failures_total",
+	insertAlertFailures := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "alertmanager_alerts_insert_limited_total",
 		Help: "Number of failures to insert new alerts to in-memory alert store.",
-	}, []string{"reason"})
-
-	insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
-	insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
+	})
 
 	return &limiterMetrics{
 		count:          count,

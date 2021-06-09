@@ -244,33 +244,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	var callback mem.AlertStoreCallback
 	if am.cfg.Limits != nil {
-		insertAlertFailures := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "alertmanager_alerts_insert_failures_total",
-			Help: "Number of failures to insert new alerts to in-memory alert store.",
-		}, []string{"reason"})
-
-		insertAlertFailures.WithLabelValues(insertFailureTooManyAlerts)
-		insertAlertFailures.WithLabelValues(insertFailureAlertsTooBig)
-
-		limiter := newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, insertAlertFailures)
-
-		promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "alertmanager_alerts_limiter_current_alerts_count",
-			Help: "Number of alerts tracked by alerts limiter.",
-		}, func() float64 {
-			c, _ := limiter.currentStats()
-			return float64(c)
-		})
-
-		promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
-			Help: "Total size of alerts tracked by alerts limiter.",
-		}, func() float64 {
-			_, s := limiter.currentStats()
-			return float64(s)
-		})
-
-		callback = limiter
+		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
 
 	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger)
@@ -622,11 +596,6 @@ var (
 	errAlertsTooBig  = "alerts too big, total size limit: %d bytes"
 )
 
-const (
-	insertFailureTooManyAlerts = "too_many_alerts"
-	insertFailureAlertsTooBig  = "alerts_too_big"
-)
-
 // alertsLimiter limits the number and size of alerts being received by the Alertmanager.
 // We consider an alert unique based on its fingerprint (a hash of its labels) and
 // its size it's determined by the sum of bytes of its labels, annotations, and generator URL.
@@ -634,7 +603,7 @@ type alertsLimiter struct {
 	tenant string
 	limits Limits
 
-	failureCounter *prometheus.CounterVec
+	failureCounter prometheus.Counter
 
 	mx        sync.Mutex
 	sizes     map[model.Fingerprint]int
@@ -642,13 +611,34 @@ type alertsLimiter struct {
 	totalSize int
 }
 
-func newAlertsLimiter(tenant string, limits Limits, failureCounter *prometheus.CounterVec) *alertsLimiter {
-	return &alertsLimiter{
-		tenant:         tenant,
-		limits:         limits,
-		sizes:          map[model.Fingerprint]int{},
-		failureCounter: failureCounter,
+func newAlertsLimiter(tenant string, limits Limits, reg prometheus.Registerer) *alertsLimiter {
+	limiter := &alertsLimiter{
+		tenant: tenant,
+		limits: limits,
+		sizes:  map[model.Fingerprint]int{},
+		failureCounter: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "alertmanager_alerts_insert_limited_total",
+			Help: "Number of failures to insert new alerts to in-memory alert store.",
+		}),
 	}
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts",
+		Help: "Number of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		c, _ := limiter.currentStats()
+		return float64(c)
+	})
+
+	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "alertmanager_alerts_limiter_current_alerts_size_bytes",
+		Help: "Total size of alerts tracked by alerts limiter.",
+	}, func() float64 {
+		_, s := limiter.currentStats()
+		return float64(s)
+	})
+
+	return limiter
 }
 
 func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
@@ -664,19 +654,20 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 	a.mx.Lock()
 	defer a.mx.Unlock()
 
-	// We allow existing alerts in with no checks. Alert update currently cannot change labels,
-	// annotations or generator URL. Also we want to make sure that alerts already in
+	// We allow existing alerts in with no checks, as we want to make sure that alerts already in
 	// store can be resolved.
-	if !existing {
-		if countLimit > 0 && (a.count+1) > countLimit {
-			a.failureCounter.WithLabelValues(insertFailureTooManyAlerts).Inc()
-			return fmt.Errorf(errTooManyAlerts, countLimit)
-		}
+	if existing {
+		return nil
+	}
 
-		if sizeLimit > 0 && (a.totalSize+newSize) > sizeLimit {
-			a.failureCounter.WithLabelValues(insertFailureAlertsTooBig).Inc()
-			return fmt.Errorf(errAlertsTooBig, sizeLimit)
-		}
+	if countLimit > 0 && (a.count+1) > countLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errTooManyAlerts, countLimit)
+	}
+
+	if sizeLimit > 0 && (a.totalSize+newSize) > sizeLimit {
+		a.failureCounter.Inc()
+		return fmt.Errorf(errAlertsTooBig, sizeLimit)
 	}
 
 	return nil

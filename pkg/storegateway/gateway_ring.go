@@ -41,7 +41,13 @@ var (
 	})
 
 	// BlocksRead is the operation run by the querier to query blocks via the store-gateway.
-	BlocksRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+	BlocksRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
+		// Blocks can only be queried from ACTIVE instances. However, if the block belongs to
+		// a non-active instance, then we should extend the replication set and try to query it
+		// from the next ACTIVE instance in the ring (which is expected to have it because the
+		// BlocksSync operation extends the replication set too).
+		return s != ring.ACTIVE
+	})
 )
 
 // RingConfig masks the ring lifecycler config which contains

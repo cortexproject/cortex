@@ -139,8 +139,10 @@ func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[
 			delete(metas, blockID)
 
 			continue
-		} else if set.Includes(instanceAddr) {
-			// Keep the block.
+		}
+
+		// Keep the block if it is owned by the store-gateway.
+		if set.Includes(instanceAddr) {
 			continue
 		}
 

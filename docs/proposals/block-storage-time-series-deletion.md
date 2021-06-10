@@ -16,7 +16,7 @@ Currently, Cortex only implements a time series deletion API for chunk storage. 
 
 This can be very important for users to have as confidential or accidental data might have been incorrectly pushed and needs to be removed. 
 
-## Related Works
+## Related works
 
 As previously mentioned, the deletion feature is already implemented with chunk storage. The main functionality is implemented through the purger service. It accepts requests for deletion and processes them.  At first, when a deletion request is made, a tombstone is created. This is used to filter out the data for queries. After some time, a deletion plan is executed where the data is permanently removed from chunk storage. 
 
@@ -27,7 +27,7 @@ Can find more info here:
 
 
 
-## Background
+## Background on current storage
 
 With a block-storage configuration, Cortex stores data that could be potentially deleted by a user in:
 
@@ -111,7 +111,7 @@ From the purger service, the existing TombstonesLoader will periodically check f
 Similar to the chunk storage deletion implementation, the initial filtering of the deleted data will be done inside the Querier. This will allow filtering the data read from both the store gateway and the ingestor. This functionality already exists for the chunk storage implementation. By implementing it in the querier, this would mean that the ruler can also utilize this to filter out the various metrics for the alert manager (read from the store gateway).  
 
 
-#### Storing Tombstones in Object Store 
+#### Storing tombstones in object store 
 
 
 The Purger will store the tombstone entries in a separate folder called “series_deletion” in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as the current status and some meta-data such as the creation date of the request.  The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone.  
@@ -124,7 +124,8 @@ The tombstone will be stored in a single file per request:
 The schema of the JSON file is:
 
 
-```{
+```
+{
   "requestId": <string>,
   "startTime": <int>,
   "endTime": <int>,
@@ -151,7 +152,7 @@ Cons:
 - Negative impact on query performance when there are active tombstones. As in the chunk storage implementation, all the queries made will have to be compared to the matchers contained in the active tombstone files. The impact on performance should be the same as the deletion would have with chunk storage.
 
 
-#### Invalidating Cache
+#### Invalidating cache
 
 Using block store, the different caches available are:
 - Index cache
@@ -233,7 +234,7 @@ Once all the applicable blocks have been rewritten without the deleted data, the
 
 
 
-##### Handling failed/unfinished delete jobs:
+#### Handling failed/unfinished delete jobs:
 
 Deletions will be completed and the tombstones will be deleted only when the Purger iterates over all blocks that match the time interval and confirms that they have been re-written without the deleted data.  Otherwise, it will keep creating the markers indicating which blocks are remaining for deletion. In case of any failure that causes the deletion to stop, any unfinished deletions will be resumed once the service is restarted. The series deletion markers will remain in the bucket until the new blocks are created without the deleted data. Meaning that the compactor will continue to process the blocks for deletion that are remaining according to the deletion markers. 
 

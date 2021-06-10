@@ -4180,6 +4180,17 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # 0 = no limit.
 # CLI flag: -alertmanager.max-dispatcher-aggregation-groups
 [alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
+
+# Maximum number of alerts that a single user can have. Inserting more alerts
+# will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-count
+[alertmanager_max_alerts_count: <int> | default = 0]
+
+# Maximum total size of alerts that a single user can have, alert size is the
+# sum of the bytes of its labels, annotations and generatorURL. Inserting more
+# alerts will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-size-bytes
+[alertmanager_max_alerts_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`

@@ -5261,13 +5261,13 @@ sharding_ring:
   [zone_awareness_enabled: <boolean> | default = false]
 
   # Minimum time to wait for ring stability at startup. 0 to disable.
-  # CLI flag: -store-gateway.sharding-ring.ring.wait-stability-min-duration
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
   [wait_stability_min_duration: <duration> | default = 1m]
 
   # Maximum time to wait for ring stability at startup. If the store-gateway
   # ring keeps changing after this period of time, the store-gateway will start
   # anyway.
-  # CLI flag: -store-gateway.sharding-ring.ring.wait-stability-max-duration
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
 
   # Name of network interface to read address from.

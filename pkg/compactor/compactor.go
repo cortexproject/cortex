@@ -62,7 +62,6 @@ var (
 			return nil, nil, err
 		}
 
-		// planner := compact.NewTSDBBasedPlanner(logger, cfg.BlockRanges.ToMilliseconds())
 		planner, _ := NewPlanner(logger, cfg.BlockRanges.ToMilliseconds(), "default")
 		return compactor, planner, nil
 	}

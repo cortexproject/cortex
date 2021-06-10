@@ -155,12 +155,18 @@ func TestAlertsLimiterWithNoLimits(t *testing.T) {
 }
 
 func TestAlertsLimiterWithCountLimit(t *testing.T) {
+	alert2WithMoreAnnotations := alert2
+	alert2WithMoreAnnotations.Annotations = model.LabelSet{"job": "test", "cluster": "prod", "new": "super-long-annotation"}
+	alert2WithMoreAnnotationsSize := alertSize(alert2WithMoreAnnotations)
+
 	ops := []callbackOp{
 		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errTooManyAlerts, 1), expectedCount: 1, expectedTotalSize: alert1Size},
 		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		// Update of existing alert works -- doesn't change count.
+		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
 		{alert: &types.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
@@ -168,9 +174,13 @@ func TestAlertsLimiterWithCountLimit(t *testing.T) {
 }
 
 func TestAlertsLimiterWithSizeLimit(t *testing.T) {
+	alert2WithMoreAnnotations := alert2
+	alert2WithMoreAnnotations.Annotations = model.LabelSet{"job": "test", "cluster": "prod", "new": "super-long-annotation"}
+
 	ops := []callbackOp{
 		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
 		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
@@ -181,6 +191,25 @@ func TestAlertsLimiterWithSizeLimit(t *testing.T) {
 	require.True(t, alert2Size > alert1Size)
 
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, ops)
+}
+
+func TestAlertsLimiterWithSizeLimitAndAnnotationUpdate(t *testing.T) {
+	alert2WithMoreAnnotations := alert2
+	alert2WithMoreAnnotations.Annotations = model.LabelSet{"job": "test", "cluster": "prod", "new": "super-long-annotation"}
+	alert2WithMoreAnnotationsSize := alertSize(alert2WithMoreAnnotations)
+
+	// Updating alert with larger annotation that goes over the size limit fails.
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, []callbackOp{
+		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert2Size},
+	})
+
+	// Updating alert with larger annotations in the limit works fine.
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2WithMoreAnnotationsSize}, []callbackOp{
+		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
+		{alert: &types.Alert{Alert: alert2}, existing: true, expectedCount: 1, expectedTotalSize: alert2Size},
+	})
 }
 
 // testLimiter sends sequence of alerts to limiter, and checks if limiter updated reacted correctly.

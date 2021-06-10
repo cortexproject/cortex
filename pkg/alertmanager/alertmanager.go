@@ -646,26 +646,26 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 		return nil
 	}
 
-	// We allow existing alerts in with no checks, as we want to make sure that alerts already in
-	// store can be resolved.
-	if existing {
-		return nil
-	}
+	fp := alert.Fingerprint()
 
 	countLimit := a.limits.AlertmanagerMaxAlertsCount(a.tenant)
 	sizeLimit := a.limits.AlertmanagerMaxAlertsSizeBytes(a.tenant)
 
-	newSize := alertSize(alert.Alert)
+	sizeDiff := alertSize(alert.Alert)
 
 	a.mx.Lock()
 	defer a.mx.Unlock()
 
-	if countLimit > 0 && (a.count+1) > countLimit {
+	if !existing && countLimit > 0 && (a.count+1) > countLimit {
 		a.failureCounter.Inc()
 		return fmt.Errorf(errTooManyAlerts, countLimit)
 	}
 
-	if sizeLimit > 0 && (a.totalSize+newSize) > sizeLimit {
+	if existing {
+		sizeDiff -= a.sizes[fp]
+	}
+
+	if sizeLimit > 0 && (a.totalSize+sizeDiff) > sizeLimit {
 		a.failureCounter.Inc()
 		return fmt.Errorf(errAlertsTooBig, sizeLimit)
 	}

@@ -561,9 +561,6 @@ func TestMultipleClients(t *testing.T) {
 	})
 	cancel() // make linter happy
 
-	// Let clients exchange messages for a while
-	close(stop)
-
 	t.Logf("Ring updates observed: %d", updates)
 
 	if updates < members {
@@ -615,6 +612,9 @@ func TestMultipleClients(t *testing.T) {
 			}
 		}
 	}
+
+	// We cannot shutdown the KV until now in order for Get() to work reliably.
+	close(stop)
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {

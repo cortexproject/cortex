@@ -129,14 +129,20 @@ func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[
 	for blockID := range metas {
 		key := cortex_tsdb.HashBlockID(blockID)
 
-		// A block needs to be always loaded if is owned by the store-gateway itself.
+		// Check if the block is owned by the store-gateway
 		set, err := r.Get(key, BlocksOwnerSync, bufDescs, bufHosts, bufZones)
-		if err != nil {
-			level.Warn(logger).Log("msg", "excluded block because failed to get replication set", "block", blockID.String(), "err", err)
 
-			// Skip the block.
-			synced.WithLabelValues(shardExcludedMeta).Inc()
-			delete(metas, blockID)
+		// If an error occurs while checking the ring, we keep the previously loaded blocks.
+		if err != nil {
+			if _, ok := loaded[blockID]; ok {
+				level.Warn(logger).Log("msg", "failed to check block owner but block is kept because was previously loaded", "block", blockID.String(), "err", err)
+			} else {
+				level.Warn(logger).Log("msg", "failed to check block owner and block has been excluded because was not previously loaded", "block", blockID.String(), "err", err)
+
+				// Skip the block.
+				synced.WithLabelValues(shardExcludedMeta).Inc()
+				delete(metas, blockID)
+			}
 
 			continue
 		}

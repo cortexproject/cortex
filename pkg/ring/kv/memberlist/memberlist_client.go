@@ -415,7 +415,7 @@ func (m *KV) starting(_ context.Context) error {
 	m.memberlist = list
 	m.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       list.NumMembers,
-		RetransmitMult: m.cfg.RetransmitMult,
+		RetransmitMult: mlCfg.RetransmitMult,
 	}
 	m.initWG.Done()
 

@@ -33,15 +33,17 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	// We don't care for storage part too much here. Both Cortex instances will write new blocks to /tmp, but that's fine.
 	flags := map[string]string{
 		// decrease timeouts to make test faster. should still be fine with two instances only
-		"-ingester.join-after":                       "0s", // join quickly
-		"-ingester.observe-period":                   "5s", // to avoid conflicts in tokens
-		"-blocks-storage.bucket-store.sync-interval": "1s", // sync continuously
-		"-blocks-storage.backend":                    "s3",
-		"-blocks-storage.s3.bucket-name":             bucketName,
-		"-blocks-storage.s3.access-key-id":           e2edb.MinioAccessKey,
-		"-blocks-storage.s3.secret-access-key":       e2edb.MinioSecretKey,
-		"-blocks-storage.s3.endpoint":                fmt.Sprintf("%s-minio-9000:9000", networkName),
-		"-blocks-storage.s3.insecure":                "true",
+		"-ingester.join-after":                                     "0s", // join quickly
+		"-ingester.observe-period":                                 "5s", // to avoid conflicts in tokens
+		"-blocks-storage.bucket-store.sync-interval":               "1s", // sync continuously
+		"-blocks-storage.backend":                                  "s3",
+		"-blocks-storage.s3.bucket-name":                           bucketName,
+		"-blocks-storage.s3.access-key-id":                         e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key":                     e2edb.MinioSecretKey,
+		"-blocks-storage.s3.endpoint":                              fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":                              "true",
+		"-store-gateway.sharding-ring.wait-stability-min-duration": "0", // start quickly
+		"-store-gateway.sharding-ring.wait-stability-max-duration": "0", // start quickly
 	}
 
 	// This cortex will fail to join the cluster configured in yaml file. That's fine.

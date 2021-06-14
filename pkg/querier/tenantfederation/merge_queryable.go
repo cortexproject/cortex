@@ -209,7 +209,7 @@ type stringSliceFuncJob struct {
 	warnings storage.Warnings
 }
 
-// mergeDistinctStringSliceWithLabelValues aggregates stringSlinceFunc call
+// mergeDistinctStringSliceWithLabelValues aggregates stringSliceFunc call
 // results from queriers whose ids match the labelValues. If a nil map is
 // provided, all queriers are used. It removes duplicates and sorts the result.
 // It doesn't require the output of the stringSliceFunc to be sorted, as results

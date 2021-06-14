@@ -168,7 +168,7 @@ The compactor’s _DeletedSeriesCleaner_ will apply this logic on individual blo
 
 While deleting the data permanently from the block storage, the `meta.json` files will be used to keep track of the deletion progress. Inside each `meta.json` file, we will add a new field called `tombstonesFiltered`. This will store an array of deletion request id's that were used to create this block. Once the rewrite logic is applied to a block, the new block's `meta.json` file will append the deletion request id(s) used for the rewrite operation inside this field. This will let the DeletedSeriesCleaner know that this block has already processed the particular deletions requests listed in this field. Assuming that the deletion requests are quite rare, the size of the meta.json files should remain small. 
 
-The DeletedSeriesCleaner can iterate through all the blocks that the deletion request could apply to. If the deletion request ID isn't inside the meta.json `tombstonesFiltered` field, then the compactor can apply the rewrite logic to this block. If there are multiple tombstones in the `Deleting` state that apply to a particular block, then the DeletedSeriesCleaner will process both at the same time to prevent additional blocks from being created. For each deletion request, once all the applicable blocks contain a meta.json file with the deletion request ID inside the `tombstonesFiltered` field, then the `Deleting` state is complete. 
+The DeletedSeriesCleaner can iterate through all the blocks that the deletion request could apply to. For each of these block, if the deletion request ID isn't inside the meta.json `tombstonesFiltered` field, then the compactor can apply the rewrite logic to this block. If there are multiple tombstones in the `Deleting` state that apply to a particular block, then the DeletedSeriesCleaner will process both at the same time to prevent additional blocks from being created. If after iterating through all blocks, it doesn’t find any such blocks, then the `Deleting` state is complete.
 
 One important thing to note regarding this rewrite tool is that it should not be used at the same time as when another compactor is touching a block. If the tool is run at the same time as compaction on a particular block, it can cause overlap and the data marked for deletion can already be part of the compacted block. To mitigate such issues, these are some of the proposed solutions:
 
@@ -193,9 +193,7 @@ Cons:
 - Added coupling between the compaction and the DeletedSeriesCleaner. 
 - Might block compaction for a short time while doing the deletion. 
 
-In the newly created block without the deleted time series data, the information about the deletion is added to the meta.json file. This will indicate which deletion requests have been filtered out of this new block. This is necessary because it will let the Purger service know that this block doesn’t need to be rewritten again. 
 
-To determine when a deletion request is complete, the purger will iterate through all the applicable blocks that might have data to be deleted. If there are any blocks that don’t have the tombstone ID in the meta.json of the block indicating the deletion has been complete, then the purger will add the series deletion markers to those blocks (if it doesn’t already exist). If after iterating through all blocks, it doesn’t find any such blocks, then that means the compactor has finished executing.
 
 Once all the applicable blocks have been rewritten without the deleted data, the deletion request state moves to `Syncing`. Once the syncing time period is over, the state will advance to `Processed` state and the tombstone will no longer be used.  
 
@@ -203,7 +201,7 @@ Once all the applicable blocks have been rewritten without the deleted data, the
 
 #### Handling failed/unfinished delete jobs:
 
-Deletions will be completed and the tombstones will be deleted only when the Purger iterates over all blocks that match the time interval and confirms that they have been re-written without the deleted data.  Otherwise, it will keep creating the markers indicating which blocks are remaining for deletion. In case of any failure that causes the deletion to stop, any unfinished deletions will be resumed once the service is restarted. The series deletion markers will remain in the bucket until the new blocks are created without the deleted data. Meaning that the compactor will continue to process the blocks for deletion that are remaining according to the deletion markers. 
+Deletions will be completed and the tombstones will be deleted only when the DeletedSeriesCleaner iterates over all blocks that match the time interval and confirms that they have been re-written without the deleted data.  Otherwise, it will keep creating the markers indicating which blocks are remaining for deletion. In case of any failure that causes the deletion to stop, any unfinished deletions will be resumed once the service is restarted. The series deletion markers will remain in the bucket until the new blocks are created without the deleted data. Meaning that the compactor will continue to process the blocks for deletion that are remaining according to the deletion markers. 
 
 
 #### Tenant Deletion API

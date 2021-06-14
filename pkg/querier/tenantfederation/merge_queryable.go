@@ -140,12 +140,12 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 	log, _ := spanlogger.New(m.ctx, "mergeQuerier.LabelValues")
 	defer log.Span.Finish()
 
-	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
+	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, m.ids, matchers...)
 
 	if name == m.idLabelName {
-		var labelValues = make([]string, 0, len(matchedValues))
+		var labelValues = make([]string, 0, len(matchedTenants))
 		for _, id := range m.ids {
-			if _, matched := matchedValues[id]; matched {
+			if _, matched := matchedTenants[id]; matched {
 				labelValues = append(labelValues, id)
 			}
 		}
@@ -158,9 +158,9 @@ func (m *mergeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		name = m.idLabelName
 	}
 
-	return m.mergeDistinctStringSliceWithLabelValues(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
+	return m.mergeDistinctStringSliceWithTenants(func(ctx context.Context, q storage.Querier) ([]string, storage.Warnings, error) {
 		return q.LabelValues(name, filteredMatchers...)
-	}, matchedValues)
+	}, matchedTenants)
 }
 
 // LabelNames returns all the unique label names present in the underlying
@@ -209,21 +209,25 @@ type stringSliceFuncJob struct {
 	warnings storage.Warnings
 }
 
-// mergeDistinctStringSliceWithLabelValues aggregates stringSliceFunc call
-// results from queriers whose ids match the labelValues. If a nil map is
+// mergeDistinctStringSliceWithTenants aggregates stringSliceFunc call
+// results from queriers whose tenant ids match the tenants map. If a nil map is
 // provided, all queriers are used. It removes duplicates and sorts the result.
 // It doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
-func (m *mergeQuerier) mergeDistinctStringSliceWithLabelValues(f stringSliceFunc, labelValues map[string]struct{}) ([]string, storage.Warnings, error) {
+func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(f stringSliceFunc, tenants map[string]struct{}) ([]string, storage.Warnings, error) {
 	var jobs []interface{}
 
 	for pos, id := range m.ids {
-		if _, matched := labelValues[id]; matched || labelValues == nil {
-			jobs = append(jobs, &stringSliceFuncJob{
-				querier: m.queriers[pos],
-				id:      m.ids[pos],
-			})
+		if tenants != nil {
+			if _, matched := tenants[id]; !matched {
+				continue
+			}
 		}
+
+		jobs = append(jobs, &stringSliceFuncJob{
+			querier: m.queriers[pos],
+			id:      m.ids[pos],
+		})
 	}
 
 	run := func(ctx context.Context, jobIntf interface{}) error {
@@ -275,7 +279,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithLabelValues(f stringSliceFunc
 // mergeDistinctStringSlice aggregates results from all stringSliceFunc calls
 // for all queriers, in parallel.
 func (m *mergeQuerier) mergeDistinctStringSlice(f stringSliceFunc) ([]string, storage.Warnings, error) {
-	return m.mergeDistinctStringSliceWithLabelValues(f, nil)
+	return m.mergeDistinctStringSliceWithTenants(f, nil)
 }
 
 // Close releases the resources of the Querier.

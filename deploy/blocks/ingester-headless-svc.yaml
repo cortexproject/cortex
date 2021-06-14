@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingester-headless
+  labels:
+    app: ingester
+spec:
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 80
+  - name: grpc-ingester
+    port: 9095
+  selector:
+    app: ingester

@@ -1,0 +1,258 @@
+auth_enabled: true
+http_prefix: /api/prom
+api:
+  response_compression_enabled: true
+  alertmanager_http_prefix: /alertmanager
+  prometheus_http_prefix: /prometheus
+server:
+  http_listen_port: 80
+  http_listen_conn_limit: 0
+  grpc_listen_port: 9095
+  grpc_listen_conn_limit: 0
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_keepalive_time: 2h
+  grpc_server_keepalive_timeout: 20s
+  grpc_server_min_time_between_pings: 10s
+  grpc_server_ping_without_stream_allowed: true
+  log_format: logfmt
+  log_level: info
+distributor:
+  ha_tracker:
+    enable_ha_tracker: true
+    kvstore:
+      store: consul # Note: Memberlist is not supported. https://cortexmetrics.io/docs/architecture/#high-availability-tracker
+      prefix: prom_ha/
+      consul:
+        host: consul-headless.cortex-monitoring-system.svc.cluster.local:8500
+  sharding_strategy: shuffle-sharding
+  shard_by_all_labels: true
+  ring:
+    kvstore:
+      store: memberlist
+querier:
+  query_ingesters_within: 8h
+  query_store_for_labels_enabled: true
+  at_modifier_enabled: true
+  query_store_after: 7h
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: snappy
+ingester:
+  walconfig:
+    wal_enabled: true
+    recover_from_wal: true
+    wal_dir: /data/wal_data
+    flush_on_shutdown_with_wal_enabled: false
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+      zone_awareness_enabled: false
+    num_tokens: 512
+    observe_period: 10s
+    join_after: 10s
+    tokens_file_path: /data/tokens
+  active_series_metrics_enabled: true
+storage:
+  engine: blocks
+  index_queries_cache_config:
+    memcached:
+      expiration: 1h
+    memcached_client:
+      addresses: dnssrvnoa+_tcp-memcached._tcp.memcached-headless.cortex-monitoring-system.svc.cluster.local:11211
+      timeout: 1s
+limits:
+  ingestion_rate: 2500000
+  ingestion_rate_strategy: global
+  ingestion_burst_size: 22500000
+  accept_ha_samples: true
+  ha_cluster_label: cluster
+  ha_replica_label: prometheus_replica
+  drop_labels: []
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  max_metadata_length: 1024
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  enforce_metadata_metric_name: true
+  enforce_metric_name: true
+  ingestion_tenant_shard_size: 1
+  max_series_per_query: 100000
+  max_samples_per_query: 3000000
+  max_series_per_user: 0
+  max_series_per_metric: 0
+  max_global_series_per_user: 16000000
+  max_global_series_per_metric: 1600000
+  min_chunk_length: 0
+  max_metadata_per_user: 8000
+  max_metadata_per_metric: 10
+  max_global_metadata_per_user: 0
+  max_global_metadata_per_metric: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 768h
+  max_query_parallelism: 14
+  cardinality_limit: 100000
+  max_cache_freshness: 1m
+  max_queriers_per_tenant: 0
+  ruler_evaluation_delay_duration: 10s
+  ruler_tenant_shard_size: 1
+  ruler_max_rules_per_rule_group: 0
+  ruler_max_rule_groups_per_tenant: 0
+  store_gateway_tenant_shard_size: 1
+  compactor_blocks_retention_period: 0s
+frontend_worker:
+  scheduler_address: query-scheduler-headless:9095
+  match_max_concurrent: true
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: snappy
+frontend:
+  log_queries_longer_than: 10s
+  query_stats_enabled: true
+  max_outstanding_per_tenant: 1000
+  scheduler_address: query-scheduler-headless:9095
+  scheduler_worker_concurrency: 5
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: snappy
+query_range:
+  split_queries_by_interval: 24h
+  align_queries_with_step: true
+  # https://github.com/cortexproject/cortex-helm-chart/blob/0e1b724bb8aa364d6aba8ea9a4902e24d1a88cdf/values.yaml#L154
+  results_cache:
+    cache:
+      memcached:
+        expiration: 1h
+      memcached_client:
+        addresses: dnssrvnoa+_tcp-memcached._tcp.memcached-headless.cortex-monitoring-system.svc.cluster.local:11211
+        timeout: 1s
+  cache_results: true
+blocks_storage:
+  backend: s3
+  s3:
+    endpoint: s3.cortex-monitoring-system.svc.cluster.local:9000
+    bucket_name: cortex-tsdb
+    secret_access_key: supersecret
+    access_key_id: cortex
+    insecure: true
+    http:
+      insecure_skip_verify: true
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+    index_cache:
+      backend: memcached
+      memcached:
+        addresses: dnssrvnoa+_tcp-memcached._tcp.memcached-headless.cortex-monitoring-system.svc.cluster.local:11211
+        max_async_buffer_size: 25000
+        timeout: 1s
+    chunks_cache:
+      backend: memcached
+      memcached:
+        addresses: dnssrvnoa+_tcp-memcached._tcp.memcached-headless.cortex-monitoring-system.svc.cluster.local:11211
+        max_async_buffer_size: 25000
+        timeout: 1s
+    metadata_cache:
+      backend: memcached
+      memcached:
+        addresses: dnssrvnoa+_tcp-memcached._tcp.memcached-headless.cortex-monitoring-system.svc.cluster.local:11211
+        max_async_buffer_size: 25000
+        timeout: 1s
+    ignore_deletion_mark_delay: 3h
+    bucket_index:
+      enabled: true
+    index_header_lazy_loading_enabled: true
+    index_header_lazy_loading_idle_timeout: 60m
+  tsdb:
+    dir: /data/tsdb
+    retention_period: 6h
+    wal_compression_enabled: true
+    flush_blocks_on_shutdown: false
+compactor:
+  block_deletion_marks_migration_enabled: true
+  data_dir: /data
+  sharding_enabled: true
+  sharding_ring:
+    kvstore:
+      store: memberlist
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    kvstore:
+      store: memberlist
+    replication_factor: 1
+  sharding_strategy: shuffle-sharding
+tenant_federation:
+  enabled: true
+ruler:
+  external_url: http://alertmanager-headless.cortex-monitoring-system.svc.cluster.local
+  ruler_client:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: snappy
+  alertmanager_url: http://alertmanager-headless.cortex-monitoring-system.svc/api/prom/alertmanager
+  enable_alertmanager_discovery: false
+  enable_alertmanager_v2: false
+  alertmanager_client:
+    tls_insecure_skip_verify: false
+    basic_auth_username: ""
+    basic_auth_password: ""
+  enable_sharding: true
+  sharding_strategy: shuffle-sharding
+  ring:
+    kvstore:
+      store: memberlist
+  enable_api: true
+ruler_storage:
+  backend: s3
+  s3:
+    endpoint: s3.cortex-monitoring-system.svc.cluster.local:9000
+    bucket_name: cortex-rules
+    secret_access_key: supersecret
+    access_key_id: cortex
+    insecure: true
+    http:
+      insecure_skip_verify: true
+alertmanager:
+  external_url: /api/prom/alertmanager
+  sharding_enabled: true
+  sharding_ring:
+    kvstore:
+      store: memberlist
+    replication_factor: 1
+  auto_webhook_root: ""
+  cluster:
+    listen_address: 0.0.0.0:9094
+    peers: "alertmanager-0.alertmanager-headless.cortex-monitoring-system.svc.cluster.local:9094"
+  enable_api: true
+alertmanager_storage:
+  backend: s3
+  s3:
+    endpoint: s3.cortex-monitoring-system.svc.cluster.local:9000
+    bucket_name: cortex-rules
+    secret_access_key: supersecret
+    access_key_id: cortex
+    insecure: true
+    http:
+      insecure_skip_verify: true
+runtime_config:
+  period: 10s
+  file: /var/cortex/runtime.yaml
+memberlist:
+  join_members: ["dns+gossip-ring-headless:7946"]
+  abort_if_cluster_join_fails: false
+  bind_addr: []
+  bind_port: 7946
+query_scheduler:
+  max_outstanding_requests_per_tenant: 100
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: snappy

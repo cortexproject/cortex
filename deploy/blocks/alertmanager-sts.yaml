@@ -1,0 +1,68 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  serviceName: alertmanager-headless
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        gossip_ring_member: "true"
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "80"
+    spec:
+      containers:
+      - name: alertmanager
+        image: quay.io/cortexproject/cortex:v1.9.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        args:
+        - -target=alertmanager
+        - -config.file=/etc/cortex/cortex.yaml
+        - -log.level=info
+        - -alertmanager.cluster.advertise-address=$(POD_IP):9094
+        - -memberlist.bind-addr=$(POD_IP)
+        ports:
+        - containerPort: 80
+          protocol: TCP
+          name: http-metrics
+        - containerPort: 9093
+          protocol: TCP
+          name: http-web
+        - containerPort: 9094
+          protocol: TCP
+          name: tcp-cluster
+        - containerPort: 9094
+          protocol: UDP
+          name: ucp-cluster
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+          initialDelaySeconds: 45
+        volumeMounts:
+        - mountPath: /etc/cortex
+          name: cortex-config
+        - mountPath: /var/cortex
+          name: runtime-config
+      terminationGracePeriodSeconds: 60
+      volumes:
+      - name: cortex-config
+        secret:
+          secretName: cortex-config
+      - name: runtime-config
+        configMap:
+          name: runtime-config

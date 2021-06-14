@@ -1,0 +1,13 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3
+  labels:
+    app: s3
+spec:
+  ports:
+  - port: 9000
+    name: http-metrics
+  selector:
+    app: s3

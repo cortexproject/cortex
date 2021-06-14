@@ -1,0 +1,63 @@
+# ----------------------------------------------------
+# apiVersion and kind of Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cortex-monitoring-system
+
+resources:
+- alertmanager-sts.yaml
+- alertmanager-headless-svc.yaml
+- compactor-sts.yaml
+- compactor-headless-svc.yaml
+- consul-sts.yaml
+- consul-headless-svc.yaml
+- distributor-dep.yaml
+- distributor-svc.yaml
+- distributor-headless-svc.yaml
+- ingester-sts.yaml
+- ingester-headless-svc.yaml
+- memcached-sts.yaml
+- memcached-headless-svc.yaml
+- minio-s3-dep.yaml
+- minio-s3-svc.yaml
+- namespace.yaml
+- nginx-dep.yaml
+- nginx-svc.yaml
+- querier-dep.yaml
+- querier-svc.yaml
+- query-frontend-dep.yaml
+- query-frontend-headless-svc.yaml
+- query-frontend-svc.yaml
+- query-scheduler-dep.yaml
+- query-scheduler-headless-svc.yaml
+- ruler-dep.yaml
+- ruler-svc.yaml
+- store-gateway-sts.yaml
+- store-gateway-headless-svc.yaml
+- gossip-ring-headless-svc.yaml
+
+images:
+- name: quay.io/cortexproject/cortex
+  newTag: v1.9.0
+- name: consul
+  newTag: 1.9.4
+- name: minio/minio
+  newTag: RELEASE.2021-04-22T15-44-28Z
+- name: memcached
+  newTag: 1.6.9
+- name: prom/memcached-exporter
+  newTag: v0.9.0
+
+secretGenerator:
+- name: cortex-config
+  files:
+  - configs/cortex.yaml
+
+configMapGenerator:
+- name: runtime-config
+  files:
+  - configs/runtime.yaml
+- name: nginx
+  files:
+  - configs/nginx.conf

@@ -1,0 +1,45 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul-headless
+  labels:
+    app: consul-server
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - name: http
+    port: 8500
+    protocol: TCP
+    targetPort: 8500
+  - name: tcp-serflan
+    port: 8301
+    protocol: TCP
+    targetPort: 8301
+  - name: udp-serflan
+    port: 8301
+    protocol: UDP
+    targetPort: 8301
+  - name: tcp-serfwan
+    port: 8302
+    protocol: TCP
+    targetPort: 8302
+  - name: udp-serfwan
+    port: 8302
+    protocol: UDP
+    targetPort: 8302
+  - name: tcp-server
+    port: 8300
+    protocol: TCP
+    targetPort: 8300
+  - name: tcp-dns
+    port: 8600
+    protocol: TCP
+    targetPort: 8600
+  - name: udp-dns
+    port: 8600
+    protocol: UDP
+    targetPort: 8600
+  selector:
+    app: consul-server

@@ -1,0 +1,65 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruler
+  labels:
+    app: ruler
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: ruler
+  template:
+    metadata:
+      labels:
+        app: ruler
+        gossip_ring_member: "true"
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "80"
+    spec:
+      containers:
+      - name: ruler
+        image: quay.io/cortexproject/cortex:v1.9.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        args:
+        - -target=ruler
+        - -config.file=/etc/cortex/cortex.yaml
+        - -log.level=info
+        - -memberlist.bind-addr=$(POD_IP)
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+          initialDelaySeconds: 45
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        volumeMounts:
+        - mountPath: /etc/cortex
+          name: cortex-config
+        - mountPath: /var/cortex
+          name: runtime-config
+        - mountPath: /rules
+          name: rule-path
+      terminationGracePeriodSeconds: 180
+      volumes:
+      - name: cortex-config
+        secret:
+          secretName: cortex-config
+      - name: runtime-config
+        configMap:
+          name: runtime-config
+      - name: rule-path
+        emptyDir: {}

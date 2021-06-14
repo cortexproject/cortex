@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: querier
+  labels:
+    app: querier
+spec:
+  ports:
+  - port: 80
+    name: http-metrics
+  - port: 9095
+    name: grpc-querier
+  selector:
+    app: querier

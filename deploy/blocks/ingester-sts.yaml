@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ingester
+  labels:
+    app: ingester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingester
+  serviceName: ingester-headless
+  template:
+    metadata:
+      labels:
+        app: ingester
+        gossip_ring_member: "true"
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "80"
+    spec:
+      containers:
+      - name: ingester
+        image: quay.io/cortexproject/cortex:v1.9.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        args:
+        - -target=ingester
+        - -config.file=/etc/cortex/cortex.yaml
+        - -log.level=info
+        - -memberlist.bind-addr=$(POD_IP)
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+          initialDelaySeconds: 60
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        - containerPort: 9095
+          name: grpc-ingester
+        volumeMounts:
+        - mountPath: /etc/cortex
+          name: cortex-config
+        - mountPath: /var/cortex
+          name: runtime-config
+      terminationGracePeriodSeconds: 240
+      volumes:
+      - name: cortex-config
+        secret:
+          secretName: cortex-config
+      - name: runtime-config
+        configMap:
+          name: runtime-config

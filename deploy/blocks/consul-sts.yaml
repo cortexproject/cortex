@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: consul-server
+  labels:
+    app: consul-server
+spec:
+  podManagementPolicy: Parallel
+  replicas: 3
+  selector:
+    matchLabels:
+      app: consul-server
+  serviceName: consul-headless
+  template:
+    metadata:
+      labels:
+        app: consul-server
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "8500"
+        prometheus.io.path: "/v1/agent/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: consul
+        image: consul:1.9.4
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - consul leave
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          CONSUL_FULLNAME="consul-server"
+
+          exec /bin/consul agent \
+          -advertise="${POD_IP}" \
+          -bind=0.0.0.0 \
+          -bootstrap-expect=3 \
+          -client=0.0.0.0 \
+          -datacenter=dc1 \
+          -data-dir=/consul/data \
+          -domain=cluster.local \
+          -hcl='connect { enabled = true }' \
+          -hcl='telemetry { prometheus_retention_time="6h" disable_hostname=true }' \
+          -ui \
+          -retry-join=${CONSUL_FULLNAME}-0.consul-headless.${NAMESPACE}.svc.cluster.local \
+          -retry-join=${CONSUL_FULLNAME}-1.consul-headless.${NAMESPACE}.svc.cluster.local \
+          -retry-join=${CONSUL_FULLNAME}-2.consul-headless.${NAMESPACE}.svc.cluster.local \
+          -server
+        ports:
+        - name: http
+          containerPort: 8500
+        - name: serflan
+          containerPort: 8301
+        - name: serfwan
+          containerPort: 8302
+        - name: tcp-server
+          containerPort: 8300
+        - name: tcp-dns
+          containerPort: 8600
+          protocol: TCP
+        - name: udp-dns
+          containerPort: 8600
+          protocol: UDP
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - |
+              curl http://127.0.0.1:8500/v1/status/leader \
+              2>/dev/null | grep -E '".+"'
+          failureThreshold: 2
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          successThreshold: 1
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /consul/data
+          name: consul-data
+      volumes:
+      - name: consul-data
+        emptyDir: {}
+#  volumeClaimTemplates:
+#  - metadata:
+#      name: consul-data
+#    spec:
+#      accessModes:
+#      - ReadWriteOnce
+#      resources:
+#        requests:
+#          storage: 10Gi

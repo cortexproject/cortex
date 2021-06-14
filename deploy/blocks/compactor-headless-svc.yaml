@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compactor-headless
+  labels:
+    app: compactor
+spec:
+  # clusterIP: None gives a "headless" service so DNS returns all endpoints.
+  clusterIP: None
+  ports:
+  - port: 80
+    name: http-metrics
+  selector:
+    app: compactor

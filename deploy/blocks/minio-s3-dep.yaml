@@ -1,0 +1,37 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3
+  labels:
+    app: s3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: s3
+  template:
+    metadata:
+      labels:
+        app: s3
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "9000"
+        prometheus.io.path: "/minio/prometheus/metrics"
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio
+        # Create the "cortex-tsdb" and "cortex-rules" bucket before starting minio server.
+        command: [ "sh", "-c", "mkdir -p /storage/cortex-tsdb && mkdir -p /storage/cortex-rules && minio server /storage"]
+        env:
+        - name: MINIO_PROMETHEUS_AUTH_TYPE
+          value: "public"
+        - name: MINIO_ACCESS_KEY
+          value: "cortex"
+        - name: MINIO_SECRET_KEY
+          value: "supersecret"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9000
+          name: http-metrics

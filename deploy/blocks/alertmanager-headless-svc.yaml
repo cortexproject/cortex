@@ -1,0 +1,28 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-headless
+  labels:
+    app: alertmanager
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+  - port: 80
+    protocol: TCP
+    name: http-metrics
+  - port: 9093
+    protocol: TCP
+    name: http-web
+  - port: 9094
+    protocol: TCP
+    name: tcp-cluster
+  - port: 9094
+    protocol: UDP
+    name: udp-cluster
+  - port: 9095
+    protocol: TCP
+    name: grpc-am
+  selector:
+    app: alertmanager

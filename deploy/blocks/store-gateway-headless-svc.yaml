@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-gateway-headless
+  labels:
+    app: store-gateway
+spec:
+  # clusterIP: None gives a "headless" service so DNS returns all endpoints.
+  clusterIP: None
+  ports:
+  - port: 80
+    name: http-metrics
+  - port: 9095
+    name: grpc-store-gw
+  selector:
+    app: store-gateway

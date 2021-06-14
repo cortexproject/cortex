@@ -1,0 +1,45 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: query-scheduler
+  labels:
+    app: query-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: query-scheduler
+  template:
+    metadata:
+      labels:
+        app: query-scheduler
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "80"
+    spec:
+      containers:
+      - name: query-scheduler
+        image: quay.io/cortexproject/cortex:v1.9.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - -target=query-scheduler
+        - -config.file=/etc/cortex/cortex.yaml
+        - -log.level=info
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        - containerPort: 9095
+          name: grpc-scheduler
+        volumeMounts:
+        - mountPath: /etc/cortex
+          name: cortex-config
+        - mountPath: /var/cortex
+          name: runtime-config
+      volumes:
+      - name: cortex-config
+        secret:
+          secretName: cortex-config
+      - name: runtime-config
+        configMap:
+          name: runtime-config

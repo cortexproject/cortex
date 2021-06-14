@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memcached-headless
+  labels:
+    app: memcached
+spec:
+  # The memcache client uses DNS to get a list of memcached servers and then
+  # uses a consistent hash of the key to determine which server to pick.
+  clusterIP: None
+  ports:
+  - name: tcp-memcached # https://istio.io/latest/docs/ops/configuration/traffic-management/protocol-selection/
+    port: 11211
+  - name: http-metrics
+    port: 9150
+  selector:
+    app: memcached

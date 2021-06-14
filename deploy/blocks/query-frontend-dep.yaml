@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: query-frontend
+  labels:
+    app: query-frontend
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: query-frontend
+  template:
+    metadata:
+      labels:
+        app: query-frontend
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "80"
+    spec:
+      containers:
+      - name: query-frontend
+        image: quay.io/cortexproject/cortex:v1.9.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - -target=query-frontend
+        - -config.file=/etc/cortex/cortex.yaml
+        - -log.level=info
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http-metrics
+          initialDelaySeconds: 45
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        - containerPort: 9095
+          name: grpc-frontend
+        volumeMounts:
+        - mountPath: /etc/cortex
+          name: cortex-config
+        - mountPath: /var/cortex
+          name: runtime-config
+      terminationGracePeriodSeconds: 180
+      volumes:
+      - name: cortex-config
+        secret:
+          secretName: cortex-config
+      - name: runtime-config
+        configMap:
+          name: runtime-config

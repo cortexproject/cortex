@@ -1,0 +1,41 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: memcached
+  labels:
+    app: memcached
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memcached
+  serviceName: memcached-headless
+  template:
+    metadata:
+      labels:
+        app: memcached
+      annotations:
+        prometheus.io.scrape: "true"
+        prometheus.io.port: "9150"
+    spec:
+      containers:
+      - name: memcached
+        image: memcached:1.6.9
+        imagePullPolicy: IfNotPresent
+        args:
+        - -m 1024 # Maximum memory to use, in megabytes. 64MB is default.
+        - -p 11211 # Default port, but being explicit is nice.
+        - -v
+        ports:
+        - name: tcp-memcached
+          containerPort: 11211
+      - name: expose-memcached-metrics
+        image: prom/memcached-exporter:v0.9.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --memcached.address=localhost:11211
+        - --web.listen-address=0.0.0.0:9150
+        ports:
+        - name: http-metrics
+          containerPort: 9150

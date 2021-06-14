@@ -4180,6 +4180,17 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # 0 = no limit.
 # CLI flag: -alertmanager.max-dispatcher-aggregation-groups
 [alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
+
+# Maximum number of alerts that a single user can have. Inserting more alerts
+# will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-count
+[alertmanager_max_alerts_count: <int> | default = 0]
+
+# Maximum total size of alerts that a single user can have, alert size is the
+# sum of the bytes of its labels, annotations and generatorURL. Inserting more
+# alerts will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-size-bytes
+[alertmanager_max_alerts_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`
@@ -5164,7 +5175,7 @@ sharding_ring:
   [wait_stability_min_duration: <duration> | default = 1m]
 
   # Maximum time to wait for ring stability at startup. If the compactor ring
-  # keep changing after this period of time, the compactor will start anyway.
+  # keeps changing after this period of time, the compactor will start anyway.
   # CLI flag: -compactor.ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
 
@@ -5248,6 +5259,16 @@ sharding_ring:
   # availability zones.
   # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Minimum time to wait for ring stability at startup. 0 to disable.
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
+  [wait_stability_min_duration: <duration> | default = 1m]
+
+  # Maximum time to wait for ring stability at startup. If the store-gateway
+  # ring keeps changing after this period of time, the store-gateway will start
+  # anyway.
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
+  [wait_stability_max_duration: <duration> | default = 5m]
 
   # Name of network interface to read address from.
   # CLI flag: -store-gateway.sharding-ring.instance-interface-names

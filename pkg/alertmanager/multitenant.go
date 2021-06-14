@@ -220,9 +220,16 @@ type Limits interface {
 	// AlertmanagerMaxTemplateSize returns max size of individual template. 0 = no limit.
 	AlertmanagerMaxTemplateSize(tenant string) int
 
-	// AlertmanagerMaxNumberOfDispatcherAggregationGroups returns maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have.
+	// AlertmanagerMaxDispatcherAggregationGroups returns maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have.
 	// Each aggregation group consumes single goroutine. 0 = unlimited.
 	AlertmanagerMaxDispatcherAggregationGroups(t string) int
+
+	// AlertmanagerMaxAlertsCount returns max number of alerts that tenant can have active at the same time. 0 = no limit.
+	AlertmanagerMaxAlertsCount(tenant string) int
+
+	// AlertmanagerMaxAlertsSizeBytes returns total max size of alerts that tenant can have active at the same time. 0 = no limit.
+	// Size of the alert is computed from alert labels, annotations and generator URL.
+	AlertmanagerMaxAlertsSizeBytes(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple

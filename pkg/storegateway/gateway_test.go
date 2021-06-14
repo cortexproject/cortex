@@ -3,6 +3,8 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
 	"net/http"
 
 	"io/ioutil"
@@ -128,8 +130,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
-			storageCfg, cleanup := mockStorageConfig(t)
-			defer cleanup()
+			storageCfg := mockStorageConfig(t)
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			bucketClient := &bucket.ClientMock{}
 
@@ -177,8 +178,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = false
-	storageCfg, cleanup := mockStorageConfig(t)
-	defer cleanup()
+	storageCfg := mockStorageConfig(t)
 	bucketClient := &bucket.ClientMock{}
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
@@ -199,8 +199,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = true
-	storageCfg, cleanup := mockStorageConfig(t)
-	defer cleanup()
+	storageCfg := mockStorageConfig(t)
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	bucketClient := &bucket.ClientMock{}
 
@@ -218,7 +217,11 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	assert.False(t, g.ringLifecycler.IsRegistered())
 }
 
-func TestStoreGateway_BlocksSharding(t *testing.T) {
+// TestStoreGateway_InitialSyncWithWaitRingStability tests the store-gateway cold start case.
+// When several store-gateways start up at once, we expect each store-gateway to only load
+// their own blocks, regardless which store-gateway joined the ring first or last (even if starting
+// at the same time, they will join the ring at a slightly different time).
+func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
@@ -235,22 +238,12 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		shardingStrategy     string // Empty string means disabled.
-		tenantShardSize      int    // Used only when the sharding strategy is shuffle-sharding.
+		shardingStrategy     string
+		tenantShardSize      int // Used only when the sharding strategy is shuffle-sharding.
 		replicationFactor    int
 		numGateways          int
 		expectedBlocksLoaded int
 	}{
-		"sharding disabled, 1 gateway": {
-			shardingStrategy:     "",
-			numGateways:          1,
-			expectedBlocksLoaded: numBlocks,
-		},
-		"sharding disabled, 2 gateways": {
-			shardingStrategy:     "",
-			numGateways:          2,
-			expectedBlocksLoaded: 2 * numBlocks, // each gateway loads all the blocks
-		},
 		"default sharding strategy, 1 gateway, RF = 1": {
 			shardingStrategy:     util.ShardingStrategyDefault,
 			replicationFactor:    1,
@@ -301,35 +294,36 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 	for testName, testData := range tests {
 		for _, bucketIndexEnabled := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s (bucket index enabled = %v)", testName, bucketIndexEnabled), func(t *testing.T) {
+				// Randomise the seed but log it in case we need to reproduce the test on failure.
+				seed := time.Now().UnixNano()
+				rand.Seed(seed)
+				t.Log("random generator seed:", seed)
+
 				ctx := context.Background()
-				storageCfg, cleanup := mockStorageConfig(t)
-				storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test (we explicitly sync stores).
-				storageCfg.BucketStore.BucketIndex.Enabled = bucketIndexEnabled
-				defer cleanup()
 				ringStore := consul.NewInMemoryClient(ring.GetCodec())
 
-				// Start the configure number of gateways.
+				// Create the configured number of gateways.
 				var gateways []*StoreGateway
-				var gatewayIds []string
 				registries := util.NewUserRegistries()
 
 				for i := 1; i <= testData.numGateways; i++ {
 					instanceID := fmt.Sprintf("gateway-%d", i)
+
+					storageCfg := mockStorageConfig(t)
+					storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test. We want the initial sync only.
+					storageCfg.BucketStore.BucketIndex.Enabled = bucketIndexEnabled
 
 					limits := defaultLimitsConfig()
 					gatewayCfg := mockGatewayConfig()
 					gatewayCfg.ShardingRing.ReplicationFactor = testData.replicationFactor
 					gatewayCfg.ShardingRing.InstanceID = instanceID
 					gatewayCfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
-					gatewayCfg.ShardingRing.RingCheckPeriod = time.Hour // Do not check the ring topology changes in this test (we explicitly sync stores).
-
-					if testData.shardingStrategy == "" {
-						gatewayCfg.ShardingEnabled = false
-					} else {
-						gatewayCfg.ShardingEnabled = true
-						gatewayCfg.ShardingStrategy = testData.shardingStrategy
-						limits.StoreGatewayTenantShardSize = testData.tenantShardSize
-					}
+					gatewayCfg.ShardingRing.RingCheckPeriod = time.Hour // Do not check the ring topology changes in this test. We want the initial sync only.
+					gatewayCfg.ShardingRing.WaitStabilityMinDuration = 2 * time.Second
+					gatewayCfg.ShardingRing.WaitStabilityMaxDuration = 30 * time.Second
+					gatewayCfg.ShardingEnabled = true
+					gatewayCfg.ShardingStrategy = testData.shardingStrategy
+					limits.StoreGatewayTenantShardSize = testData.tenantShardSize
 
 					overrides, err := validation.NewOverrides(limits, nil)
 					require.NoError(t, err)
@@ -339,33 +333,23 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 					require.NoError(t, err)
 					defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
-					require.NoError(t, services.StartAndAwaitRunning(ctx, g))
-
 					gateways = append(gateways, g)
-					gatewayIds = append(gatewayIds, instanceID)
 					registries.AddUserRegistry(instanceID, reg)
 				}
 
-				// Wait until the ring client of each gateway has synced (to avoid flaky tests on subsequent assertions).
-				if testData.shardingStrategy != "" {
-					ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-					defer cancel()
-
-					// A gateway is ready for the test once it sees all instances ACTIVE in the ring.
-					for _, g := range gateways {
-						for _, instanceID := range gatewayIds {
-							require.NoError(t, ring.WaitInstanceState(ctx, g.ring, instanceID, ring.ACTIVE))
-						}
-					}
-				}
-
-				// Re-sync the stores because the ring topology has changed in the meanwhile
-				// (when the 1st gateway has synched the 2nd gateway didn't run yet).
+				// Start all gateways concurrently.
 				for _, g := range gateways {
-					g.syncStores(ctx, syncReasonRingChange)
+					require.NoError(t, g.StartAsync(ctx))
 				}
 
-				// Assert on the number of blocks loaded extracting this information from metrics.
+				// Wait until all gateways are running.
+				for _, g := range gateways {
+					require.NoError(t, g.AwaitRunning(ctx))
+				}
+
+				// At this point we expect that all gateways have done the initial sync and
+				// they have synched only their own blocks, because they waited for a stable
+				// ring before starting the initial sync.
 				metrics := registries.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(testData.expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
 				assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
@@ -377,9 +361,170 @@ func TestStoreGateway_BlocksSharding(t *testing.T) {
 					assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
 					assert.Equal(t, float64(testData.numGateways*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
 				}
+
+				// We expect that all gateways have only run the initial sync and not the periodic one.
+				assert.Equal(t, float64(testData.numGateways), metrics.GetSumOfCounters("cortex_storegateway_bucket_sync_total"))
 			})
 		}
 	}
+}
+
+func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScaleUp(t *testing.T) {
+	const (
+		numUsers             = 2
+		numBlocks            = numUsers * 12
+		shardingStrategy     = util.ShardingStrategyDefault
+		replicationFactor    = 3
+		numInitialGateways   = 4
+		numScaleUpGateways   = 6
+		expectedBlocksLoaded = 3 * numBlocks // blocks are replicated 3 times
+	)
+
+	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
+	// 2 users = total (24 / 12) * 2 = 24 blocks.
+	now := time.Now()
+	mockTSDB(t, path.Join(storageDir, "user-1"), 24, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
+	mockTSDB(t, path.Join(storageDir, "user-2"), 24, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
+
+	// Write the bucket index.
+	for _, userID := range []string{"user-1", "user-2"} {
+		createBucketIndex(t, bucketClient, userID)
+	}
+
+	// Randomise the seed but log it in case we need to reproduce the test on failure.
+	seed := time.Now().UnixNano()
+	rand.Seed(seed)
+	t.Log("random generator seed:", seed)
+
+	ctx := context.Background()
+	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+
+	// Create the configured number of gateways.
+	var initialGateways []*StoreGateway
+	initialRegistries := util.NewUserRegistries()
+	allRegistries := util.NewUserRegistries()
+
+	createStoreGateway := func(id int, waitStabilityMin time.Duration) (*StoreGateway, string, *prometheus.Registry) {
+		instanceID := fmt.Sprintf("gateway-%d", id)
+
+		storageCfg := mockStorageConfig(t)
+		storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test. We want it to be triggered by ring topology changed.
+		storageCfg.BucketStore.BucketIndex.Enabled = true
+
+		limits := defaultLimitsConfig()
+		gatewayCfg := mockGatewayConfig()
+		gatewayCfg.ShardingRing.ReplicationFactor = replicationFactor
+		gatewayCfg.ShardingRing.InstanceID = instanceID
+		gatewayCfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", id)
+		gatewayCfg.ShardingRing.RingCheckPeriod = 100 * time.Millisecond // Check it continuously. Topology will change on scale up.
+		gatewayCfg.ShardingRing.WaitStabilityMinDuration = waitStabilityMin
+		gatewayCfg.ShardingRing.WaitStabilityMaxDuration = 30 * time.Second
+		gatewayCfg.ShardingEnabled = true
+		gatewayCfg.ShardingStrategy = shardingStrategy
+
+		overrides, err := validation.NewOverrides(limits, nil)
+		require.NoError(t, err)
+
+		reg := prometheus.NewPedanticRegistry()
+		g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, overrides, mockLoggingLevel(), log.NewNopLogger(), reg)
+		require.NoError(t, err)
+
+		return g, instanceID, reg
+	}
+
+	for i := 1; i <= numInitialGateways; i++ {
+		g, instanceID, reg := createStoreGateway(i, 2*time.Second)
+		initialGateways = append(initialGateways, g)
+		initialRegistries.AddUserRegistry(instanceID, reg)
+		allRegistries.AddUserRegistry(instanceID, reg)
+	}
+
+	// Start all gateways concurrently.
+	for _, g := range initialGateways {
+		require.NoError(t, g.StartAsync(ctx))
+		defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+	}
+
+	// Wait until all gateways are running.
+	for _, g := range initialGateways {
+		require.NoError(t, g.AwaitRunning(ctx))
+	}
+
+	// At this point we expect that all gateways have done the initial sync and
+	// they have synched only their own blocks.
+	metrics := initialRegistries.BuildMetricFamiliesPerUser()
+	assert.Equal(t, float64(expectedBlocksLoaded), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+	assert.Equal(t, float64(2*numInitialGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
+
+	assert.Equal(t, float64(numInitialGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+	assert.Equal(t, float64(numInitialGateways*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
+
+	// Scale up store-gateways.
+	var scaleUpGateways []*StoreGateway
+	scaleUpRegistries := util.NewUserRegistries()
+	numAllGateways := numInitialGateways + numScaleUpGateways
+
+	for i := numInitialGateways + 1; i <= numAllGateways; i++ {
+		g, instanceID, reg := createStoreGateway(i, 10*time.Second) // Intentionally high "wait stability min duration".
+		scaleUpGateways = append(scaleUpGateways, g)
+		scaleUpRegistries.AddUserRegistry(instanceID, reg)
+		allRegistries.AddUserRegistry(instanceID, reg)
+	}
+
+	// Start all new gateways concurrently.
+	for _, g := range scaleUpGateways {
+		require.NoError(t, g.StartAsync(ctx))
+		defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+	}
+
+	// Since we configured the new store-gateways with an high "wait stability min duration", we expect
+	// them to join the ring at start up (with JOINING state) but then wait at least the min duration
+	// before syncing blocks and becoming ACTIVE. This give us enough time to check how the initial
+	// store-gateways behaves with regards to blocks syncing while other replicas are JOINING.
+
+	// Wait until all the initial store-gateways sees all new store-gateways too.
+	test.Poll(t, 5*time.Second, float64(numAllGateways*numInitialGateways), func() interface{} {
+		metrics := initialRegistries.BuildMetricFamiliesPerUser()
+		return metrics.GetSumOfGauges("cortex_ring_members")
+	})
+
+	// We expect each block to be available for querying on at least 1 initial store-gateway.
+	for _, userID := range []string{"user-1", "user-2"} {
+		idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, log.NewNopLogger())
+		require.NoError(t, err)
+
+		for _, block := range idx.Blocks {
+			queried := false
+
+			for _, g := range initialGateways {
+				req := &storepb.SeriesRequest{MinTime: math.MinInt64, MaxTime: math.MaxInt64}
+				srv := newBucketStoreSeriesServer(setUserIDToGRPCContext(ctx, userID))
+				require.NoError(t, g.Series(req, srv))
+
+				for _, b := range srv.Hints.QueriedBlocks {
+					if b.Id == block.ID.String() {
+						queried = true
+					}
+				}
+			}
+
+			assert.True(t, queried, "block %s has been successfully queried on initial store-gateways", block.ID.String())
+		}
+	}
+
+	// Wait until all new gateways are running.
+	for _, g := range scaleUpGateways {
+		require.NoError(t, g.AwaitRunning(ctx))
+	}
+
+	// At this point the new store-gateways are expected to be ACTIVE in the ring and all the initial
+	// store-gateways should unload blocks they don't own anymore.
+	test.Poll(t, 5*time.Second, float64(expectedBlocksLoaded), func() interface{} {
+		metrics := allRegistries.BuildMetricFamiliesPerUser()
+		return metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded")
+	})
 }
 
 func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
@@ -415,8 +560,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 			gatewayCfg.ShardingEnabled = true
 			gatewayCfg.ShardingRing.TokensFilePath = tokensFile.Name()
 
-			storageCfg, cleanup := mockStorageConfig(t)
-			defer cleanup()
+			storageCfg := mockStorageConfig(t)
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
@@ -538,9 +682,8 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			gatewayCfg.ShardingEnabled = true
 			gatewayCfg.ShardingRing.RingCheckPeriod = 100 * time.Millisecond
 
-			storageCfg, cleanup := mockStorageConfig(t)
+			storageCfg := mockStorageConfig(t)
 			storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test.
-			defer cleanup()
 
 			reg := prometheus.NewPedanticRegistry()
 			ringStore := consul.NewInMemoryClient(ring.GetCodec())
@@ -600,8 +743,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	gatewayCfg.ShardingRing.HeartbeatPeriod = 100 * time.Millisecond
 	gatewayCfg.ShardingRing.HeartbeatTimeout = heartbeatTimeout
 
-	storageCfg, cleanup := mockStorageConfig(t)
-	defer cleanup()
+	storageCfg := mockStorageConfig(t)
 
 	ringStore := consul.NewInMemoryClient(ring.GetCodec())
 	bucketClient := &bucket.ClientMock{}
@@ -688,9 +830,8 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 			// Create a store-gateway used to query back the series from the blocks.
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = false
-			storageCfg, cleanup := mockStorageConfig(t)
+			storageCfg := mockStorageConfig(t)
 			storageCfg.BucketStore.BucketIndex.Enabled = bucketIndexEnabled
-			defer cleanup()
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), logger, nil)
 			require.NoError(t, err)
@@ -769,12 +910,6 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 	bucketClient, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	// Create a store-gateway used to query back the series from the blocks.
-	gatewayCfg := mockGatewayConfig()
-	gatewayCfg.ShardingEnabled = false
-	storageCfg, cleanup := mockStorageConfig(t)
-	defer cleanup()
-
 	// Prepare the request to query back all series (1 chunk per series in this test).
 	req := &storepb.SeriesRequest{
 		MinTime: minT,
@@ -791,6 +926,11 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 			limits.MaxChunksPerQueryFromStore = testData.limit
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
+
+			// Create a store-gateway used to query back the series from the blocks.
+			gatewayCfg := mockGatewayConfig()
+			gatewayCfg.ShardingEnabled = false
+			storageCfg := mockStorageConfig(t)
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, overrides, mockLoggingLevel(), logger, nil)
 			require.NoError(t, err)
@@ -825,13 +965,18 @@ func mockGatewayConfig() Config {
 
 	cfg.ShardingRing.InstanceID = "test"
 	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
+	cfg.ShardingRing.WaitStabilityMinDuration = 0
+	cfg.ShardingRing.WaitStabilityMaxDuration = 0
 
 	return cfg
 }
 
-func mockStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
+func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	tmpDir, err := ioutil.TempDir(os.TempDir(), "store-gateway-test-*")
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(tmpDir))
+	})
 
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
@@ -839,11 +984,7 @@ func mockStorageConfig(t *testing.T) (cortex_tsdb.BlocksStorageConfig, func()) {
 	cfg.BucketStore.ConsistencyDelay = 0
 	cfg.BucketStore.SyncDir = tmpDir
 
-	cleanup := func() {
-		require.NoError(t, os.RemoveAll(tmpDir))
-	}
-
-	return cfg, cleanup
+	return cfg
 }
 
 // mockTSDB create 1+ TSDB blocks storing numSeries of series, each series
@@ -962,8 +1103,8 @@ func (m *mockShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 	return args.Get(0).([]string)
 }
 
-func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
-	args := m.Called(ctx, userID, metas, synced)
+func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
+	args := m.Called(ctx, userID, metas, loaded, synced)
 	return args.Error(0)
 }
 

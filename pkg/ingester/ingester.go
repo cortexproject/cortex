@@ -885,6 +885,19 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	return err
 }
 
+// Query implements service.IngesterServer
+func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
+	}
+
+	if !i.cfg.BlocksStorageEnabled {
+		return nil, errors.New("not supported")
+	}
+
+	return i.v2QueryExemplars(ctx, req)
+}
+
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	if err := i.checkRunningOrStopping(); err != nil {

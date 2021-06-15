@@ -69,14 +69,15 @@ func TestIngester_v2Push(t *testing.T) {
 	userID := "test"
 
 	tests := map[string]struct {
-		reqs                     []*cortexpb.WriteRequest
-		expectedErr              error
-		expectedIngested         []cortexpb.TimeSeries
-		expectedMetadataIngested []*cortexpb.MetricMetadata
-		expectedMetrics          string
-		additionalMetrics        []string
-		disableActiveSeries      bool
-		maxExemplars             int
+		reqs                      []*cortexpb.WriteRequest
+		expectedErr               error
+		expectedIngested          []cortexpb.TimeSeries
+		expectedMetadataIngested  []*cortexpb.MetricMetadata
+		expectedExemplarsIngested []cortexpb.TimeSeries
+		expectedMetrics           string
+		additionalMetrics         []string
+		disableActiveSeries       bool
+		maxExemplars              int
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*cortexpb.WriteRequest{
@@ -180,6 +181,23 @@ func TestIngester_v2Push(t *testing.T) {
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 9}}},
+			},
+			expectedExemplarsIngested: []cortexpb.TimeSeries{
+				{
+					Labels: metricLabelAdapters,
+					Exemplars: []cortexpb.Exemplar{
+						{
+							Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+							TimestampMs: 1000,
+							Value:       1000,
+						},
+						{
+							Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "456"}},
+							TimestampMs: 1001,
+							Value:       1001,
+						},
+					},
+				},
 			},
 			expectedMetadataIngested: nil,
 			additionalMetrics: []string{
@@ -530,6 +548,19 @@ func TestIngester_v2Push(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, res)
 			assert.Equal(t, testData.expectedIngested, res.Timeseries)
+
+			// Read back samples to see what has been really ingested
+			exemplarRes, err := i.v2QueryExemplars(ctx, &client.ExemplarQueryRequest{
+				StartTimestampMs: math.MinInt64,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers: []*client.LabelMatchers{
+					{Matchers: []*client.LabelMatcher{{Type: client.REGEX_MATCH, Name: labels.MetricName, Value: ".*"}}},
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, exemplarRes)
+			assert.Equal(t, testData.expectedExemplarsIngested, exemplarRes.Timeseries)
 
 			// Read back metadata to see what has been really ingested.
 			mres, err := i.MetricsMetadata(ctx, &client.MetricsMetadataRequest{})

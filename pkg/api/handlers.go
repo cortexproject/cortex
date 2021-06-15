@@ -158,6 +158,7 @@ func DefaultConfigHandler(actualCfg interface{}, defaultCfg interface{}) http.Ha
 func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
+	exemplarQueryable storage.ExemplarQueryable,
 	engine *promql.Engine,
 	distributor *distributor.Distributor,
 	tombstonesLoader *purger.TombstonesLoader,
@@ -196,7 +197,7 @@ func NewQuerierHandler(
 		engine,
 		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
 		nil,                                // No remote write support.
-		nil,                                // No exemplars support.
+		exemplarQueryable,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -249,6 +250,7 @@ func NewQuerierHandler(
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(promRouter)
@@ -261,6 +263,7 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)

@@ -29,7 +29,7 @@
   * `cortex_alertmanager_state_initial_sync_duration_seconds`
   * `cortex_alertmanager_state_persist_total`
   * `cortex_alertmanager_state_persist_failed_total`
-* [ENHANCEMENT] Blocks storage: support ingesting exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124
+* [ENHANCEMENT] Blocks storage: support ingesting exemplars and querying of exemplars.  Enabled by setting new CLI flag `-blocks-storage.tsdb.max-exemplars=<n>` or config option `blocks_storage.tsdb.max_exemplars` to positive value. #4124 #4181
 * [ENHANCEMENT] Distributor: Added distributors ring status section in the admin page. #4151
 * [ENHANCEMENT] Added zone-awareness support to alertmanager for use when sharding is enabled. When zone-awareness is enabled, alerts will be replicated across availability zones. #4204
 * [ENHANCEMENT] Added `tenant_ids` tag to tracing spans #4147

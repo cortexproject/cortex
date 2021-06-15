@@ -14,7 +14,7 @@ slug: block-storage-time-series-deletion
 Currently, Cortex only implements a time series deletion API for chunk storage.  We present a design for implementing time series deletion with block storage. We would like to have the same API for deleting series as currently implemented in Prometheus and in Cortex with chunk storage. 
 
 
-This can be very important for users to have as confidential or accidental data might have been incorrectly pushed and needs to be removed. As well as potentially removing high cardinality data that is causing ineffecient queries. 
+This can be very important for users to have as confidential or accidental data might have been incorrectly pushed and needs to be removed. As well as potentially removing high cardinality data that is causing inefficient queries. 
 
 ## Related works
 
@@ -87,11 +87,11 @@ The amount of time for the request to move from `Received` to `Deleting` is depe
 
 ### Filtering data during queries while not yet deleted:
 
-This will be done during the first 3 parts of the deletion lifecycle until the tombstone is deleted and the request's status becomes `Processed`.
+This will be done during the first 3 states of the deletion lifecycle until the tombstone is deleted and the request's status becomes `Processed`.
 
 Once a deletion request is received, a tombstone entry will be created. The object store such as S3, GCS, Azure storage, can be used to store all the deletion requests. See the section below for more detail on how the tombstones will be stored. Using the tombstones, the querier will be able to filter the to-be-deleted data initially. In addition, the existing cache will be invalidated using cache generation numbers, which are described in the later sections. 
 
-The compactor will scan for new tombstone files and will update the bucket-index with the tombstone information regarding the deletion requests. This will enable the querier to priodically check the bucket index if there are any new tombstone files that are required for filtering. One drawback of this approach is the time it could take to start filtering the data. Since the compactor will update the bucket index with the new tombstones every `-compactor.cleanup-interval` (default 15 min). Then the cached bucket index is refreshed in the querier every `-blocks-storage.bucket-store.sync-interval` (default 15 min). Potentially could take almost 30 min for queriers to start filtering deleted data when using the default values. If the information requested for deletion is confidential/classified, the time delay is something that the user should be aware of, in addition to the time that the data has already been in Cortex.
+The compactor will scan for new tombstone files and will update the bucket-index with the tombstone information regarding the deletion requests. This will enable the querier to periodically check the bucket index if there are any new tombstone files that are required to be used for filtering. One drawback of this approach is the time it could take to start filtering the data. Since the compactor will update the bucket index with the new tombstones every `-compactor.cleanup-interval` (default 15 min). Then the cached bucket index is refreshed in the querier every `-blocks-storage.bucket-store.sync-interval` (default 15 min). Potentially could take almost 30 min for queriers to start filtering deleted data when using the default values. If the information requested for deletion is confidential/classified, the time delay is something that the user should be aware of, in addition to the time that the data has already been in Cortex.
 
 An additional thing to consider is that this would mean that the bucket-index would have to be enabled for this API to work. Since the plan is to make to the bucket-index mandatory in the future for block storage, this shouldn't be an issue.  
 
@@ -100,7 +100,7 @@ Similar to the chunk storage deletion implementation, the initial filtering of t
 #### Storing tombstones in object store 
 
 
-The Purger will store the tombstone entries in a separate folder called `tombstones` in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as some meta-data such as the creation date of the request.  The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone. To keep track of the request state, filename extensions can be used. This will allow the tombstone files to be immutable. The 4 different file extensions will be `received, deleting, syncing, processed`.
+The Purger will write the new tombstone entries in a separate folder called `tombstones` in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as some meta-data such as the creation date of the file.  The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone. To keep track of the request state, filename extensions can be used. This will allow the tombstone files to be immutable. The 4 different file extensions will be `received, deleting, syncing, processed`. Each time the deletion request moves to a new state, a new file will be added with the same content but a different extension to indicate the new state. The file containing the previous state will be deleted once the new one is created. 
 
 The tombstone will be stored in a single JSON file per request and state: 
 
@@ -128,15 +128,13 @@ The schema of the JSON file is:
 
 
 Pros:
-
-- Design is similar to the existing chunk storage deletion 
-    - Lots of code can be reused inside the purger component. 
 - Allows deletion and un-delete to be done in a single operation. 
 
 Cons:
 
 - Negative impact on query performance when there are active tombstones. As in the chunk storage implementation, all the series will have to be compared to the matchers contained in the active tombstone files. The impact on performance should be the same as the deletion would have with chunk storage.
 
+- Potential 30 minute wait for the data to begin filtering if using the default configuration. 
 
 #### Invalidating cache
 
@@ -146,11 +144,11 @@ Using block store, the different caches available are:
 - Chunks cache (stores the potentially to be deleted chunks of data) 
 - Query results cache (stores the potentially to be deleted data) 
 
-Using the tombstones, the queriers filter out the data received from the ingesters and store-gateway. The cache not being processed through the querier needs to be invalidated to prevent deleted data from coming up in queries. There are two potential caches that could contain deleted data, the chunks cache, and the query results cache. 
+There are two potential caches that could contain deleted data, the chunks cache, and the query results cache. Using the tombstones, the queriers filter out the data received from the ingesters and store-gateway. The cache not being processed through the querier needs to be invalidated to prevent deleted data from coming up in queries. 
 
-Firstly, the query results cache needs to be invalidated for each new delete request. This can be done using the same mechanism currently used for chunk storage by utilizing the cache generation numbers. For each tenant, their cache is prefixed with a cache generation number. This is already implemented into the middleware and would be easy to use for invalidating the cache. When the cache needs to be invalidated due to a delete or cancel delete request, the cache generation numbers would be increased (to the current timestamp), which would invalidate all the cache entries for a given tenant. The cache generation numbers are currently being stored in an Index table  (e.g. DynamoDB or Bigtable). One option for block store is to store a per tenant key using the KV-store with the ring backend and propogate it using a Compare-And-Set/Swap (CAS) operation. If the current cache generation number is older than the KV-store is older or it is empty, then the cache is invalidated and the current timestamp becomes the cache generation number. 
+Firstly, the query results cache needs to be invalidated for each new delete request. This can be done using the same mechanism currently used for chunk storage by utilizing the cache generation numbers. For each tenant, their cache is prefixed with a cache generation number. This is already implemented into the middleware and would be easy to use for invalidating the cache. When the cache needs to be invalidated due to a delete or cancel delete request, the cache generation numbers would be increased (to the current timestamp), which would invalidate all the cache entries for a given tenant. With chunk store, the cache generation numbers are currently being stored in an Index table  (e.g. DynamoDB or Bigtable). One option for block store is to save a per tenant key using the KV-store with the ring backend and propagate it using a Compare-And-Set/Swap (CAS) operation. If the current cache generation number is older than the KV-store is older or it is empty, then the cache is invalidated and the current timestamp becomes the cache generation number. 
 
-Furthermore, since the chunks cache  is retrieved from the store gateway and passed to the querier, it will be filtered out like the rest of the time series data in the querier using the tombstones, with the mechanism described in the previous section. However, some issues may arise if the tombstone is deleted but the data to-be-deleted still exists in the chunks cache. To prevent this, we add another state to the deletion process called `syncing`. The tombstones will need to continue filtering the data until the store-gateway picks up the new blocks and the chunks cache is able to be refreshed with the new blocks without the deleted data. The `syncing` state will begin as soon as all the requested data has been permentantly deleted from the block store. This state will last `-compactor.deletion-delay + -compactor.cleanup-interval +  -blocks-storage.bucket-store.sync-interval`. Once that time period has passed, the chunks cache should not have any of the deleted data. The tombstone will move to the `processed` state and will no longer be used for query time filtering. 
+Furthermore, since the chunks cache  is retrieved from the store gateway and passed to the querier, it will be filtered out like the rest of the time series data in the querier using the tombstones, with the mechanism described in the previous section. However, some issues may arise if the tombstone is deleted but the data to-be-deleted still exists in the chunks cache. To prevent this, we add another state to the deletion process called `syncing`. The tombstones will need to continue filtering the data until the store-gateway picks up the new blocks and the chunks cache is able to be refreshed with the new blocks without the deleted data. The `syncing` state will begin as soon as all the requested data has been permanently deleted from the block store. This state will last `-compactor.deletion-delay + -compactor.cleanup-interval +  -blocks-storage.bucket-store.sync-interval`. Once that time period has passed, the chunks cache should not have any of the deleted data. Then the tombstone will move to the `processed` state and will no longer be used for query time filtering. 
 
 ### Permanently deleting the data
 
@@ -166,9 +164,9 @@ To delete the data from the blocks, the same logic as the [Bucket Rewrite Tool](
 
 The compactor’s _DeletedSeriesCleaner_ will apply this logic on individual blocks and each time it is run, it creates a new block without the data that matched the deletion request. The original individual blocks containing the data that was requested to be deleted, need to be marked for deletion by the compactor. 
 
-While deleting the data permanently from the block storage, the `meta.json` files will be used to keep track of the deletion progress. Inside each `meta.json` file, we will add a new field called `tombstonesFiltered`. This will store an array of deletion request id's that were used to create this block. Once the rewrite logic is applied to a block, the new block's `meta.json` file will append the deletion request id(s) used for the rewrite operation inside this field. This will let the DeletedSeriesCleaner know that this block has already processed the particular deletions requests listed in this field. Assuming that the deletion requests are quite rare, the size of the meta.json files should remain small. 
+While deleting the data permanently from the block storage, the `meta.json` files will be used to keep track of the deletion progress. Inside each `meta.json` file, we will add a new field called `tombstonesFiltered`. This will store an array of deletion request id's that were used to create this block. Once the rewrite logic is applied to a block, the new block's `meta.json` file will append the deletion request id(s) used for the rewrite operation inside this field. This will let the _DeletedSeriesCleaner_ know that this block has already processed the particular deletions requests listed in this field. Assuming that the deletion requests are quite rare, the size of the meta.json files should remain small. 
 
-The DeletedSeriesCleaner can iterate through all the blocks that the deletion request could apply to. For each of these block, if the deletion request ID isn't inside the meta.json `tombstonesFiltered` field, then the compactor can apply the rewrite logic to this block. If there are multiple tombstones in the `Deleting` state that apply to a particular block, then the DeletedSeriesCleaner will process both at the same time to prevent additional blocks from being created. If after iterating through all blocks, it doesn’t find any such blocks, then the `Deleting` state is complete.
+The _DeletedSeriesCleaner_ can iterate through all the blocks that the deletion request could apply to. For each of these blocks, if the deletion request ID isn't inside the meta.json `tombstonesFiltered` field, then the compactor can apply the rewrite logic to this block. If there are multiple tombstones in the `Deleting` state that apply to a particular block, then the _DeletedSeriesCleaner_ will process both at the same time to prevent additional blocks from being created. If after iterating through all the blocks, it doesn’t find any such blocks requiring deletion, then the `Deleting` state is complete and the request progresses to the `Syncing` state.
 
 One important thing to note regarding this rewrite tool is that it should not be used at the same time as when another compactor is touching a block. If the tool is run at the same time as compaction on a particular block, it can cause overlap and the data marked for deletion can already be part of the compacted block. To mitigate such issues, these are some of the proposed solutions:
 
@@ -213,7 +211,7 @@ If a request is made to delete a tenant, then all the tombstones will be deleted
 ## Current Open Questions:
 
 - If the start and end time is very far apart, it might result in a lot of the data being re-written. Since we create a new block without the deleted data and mark the old one for deletion, there may be a period of time with lots of extra blocks and space used for large deletion queries. 
-- There will be a delay between the deletion request and the deleted data being filtered during queires. 
+- There will be a delay between the deletion request and the deleted data being filtered during queries. 
     - In Prometheus, there is no delay. 
     - One way to filter out Immediately is to load the tombstones during query time but this will cause a negative performance impact. 
 - Adding limits to the API such as:
@@ -228,7 +226,7 @@ If a request is made to delete a tenant, then all the tombstones will be deleted
 
 The process of permanently deleting the data can be separated into 2 stages, preprocessing and processing. 
 
-This will happen after a grace period has passed once the API request has been made. The deletion request will move to a new state called `BuildingPlan`. The compactor will outline all the blocks that may contain data to be deleted. For each separate block that the deletion may be applicable to, the compactor will begin the process by adding a series deletion marker inside the series-deletion-marker.json file. The JSON file will contain an array of deletion request id's that need to be applied to the block, which allows the ability to handle the situation when there are multiple tombstones that could be applicable to a particular block. Then during the processing step, instead of checking the meta.json file, we only need to check if a marker file exists with a specific deletion request id. If the marker file exists, then we apply the rewrite logic.
+Pre-processing will begin after the `-purger.delete-request-cancel-period` has passed since the API request has been made. The deletion request will move to a new state called `BuildingPlan`. The compactor will outline all the blocks that may contain data to be deleted. For each separate block that the deletion may be applicable to, the compactor will begin the process by adding a series deletion marker inside the series-deletion-marker.json file. The JSON file will contain an array of deletion request id's that need to be applied to the block, which allows the ability to handle the situation when there are multiple tombstones that could be applicable to a particular block. Then during the processing step, instead of checking the meta.json file, we only need to check if a marker file exists with a specific deletion request id. If the marker file exists, then we apply the rewrite logic.
 
 #### Alternative Permanent Deletion Processing
 

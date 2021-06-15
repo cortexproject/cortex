@@ -13,7 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// TranslateToPromqlApiError converts error to one of promql.Errors for consumption in PromQL API.
+// TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.
 // PromQL API only recognizes few errors, and converts everything else to HTTP status code 422.
 //
 // Specifically, it supports:
@@ -28,7 +28,7 @@ import (
 // Details:
 // - vendor/github.com/prometheus/prometheus/web/api/v1/api.go, respondError function only accepts *apiError types.
 // - translation of error to *apiError happens in vendor/github.com/prometheus/prometheus/web/api/v1/api.go, returnAPIError method.
-func TranslateToPromqlApiError(err error) error {
+func TranslateToPromqlAPIError(err error) error {
 	if err == nil {
 		return err
 	}
@@ -79,12 +79,12 @@ type errorTranslateQueryable struct {
 
 func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	q, err := e.q.Querier(ctx, mint, maxt)
-	return errorTranslateQuerier{q: q}, TranslateToPromqlApiError(err)
+	return errorTranslateQuerier{q: q}, TranslateToPromqlAPIError(err)
 }
 
 func (e errorTranslateQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
 	q, err := e.q.ChunkQuerier(ctx, mint, maxt)
-	return errorTranslateChunkQuerier{q: q}, TranslateToPromqlApiError(err)
+	return errorTranslateChunkQuerier{q: q}, TranslateToPromqlAPIError(err)
 }
 
 type errorTranslateQuerier struct {
@@ -93,16 +93,16 @@ type errorTranslateQuerier struct {
 
 func (e errorTranslateQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelValues(name, matchers...)
-	return values, warnings, TranslateToPromqlApiError(err)
+	return values, warnings, TranslateToPromqlAPIError(err)
 }
 
 func (e errorTranslateQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelNames()
-	return values, warnings, TranslateToPromqlApiError(err)
+	return values, warnings, TranslateToPromqlAPIError(err)
 }
 
 func (e errorTranslateQuerier) Close() error {
-	return TranslateToPromqlApiError(e.q.Close())
+	return TranslateToPromqlAPIError(e.q.Close())
 }
 
 func (e errorTranslateQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
@@ -116,16 +116,16 @@ type errorTranslateChunkQuerier struct {
 
 func (e errorTranslateChunkQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelValues(name, matchers...)
-	return values, warnings, TranslateToPromqlApiError(err)
+	return values, warnings, TranslateToPromqlAPIError(err)
 }
 
 func (e errorTranslateChunkQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	values, warnings, err := e.q.LabelNames()
-	return values, warnings, TranslateToPromqlApiError(err)
+	return values, warnings, TranslateToPromqlAPIError(err)
 }
 
 func (e errorTranslateChunkQuerier) Close() error {
-	return TranslateToPromqlApiError(e.q.Close())
+	return TranslateToPromqlAPIError(e.q.Close())
 }
 
 func (e errorTranslateChunkQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.ChunkSeriesSet {
@@ -146,7 +146,7 @@ func (e errorTranslateSeriesSet) At() storage.Series {
 }
 
 func (e errorTranslateSeriesSet) Err() error {
-	return TranslateToPromqlApiError(e.s.Err())
+	return TranslateToPromqlAPIError(e.s.Err())
 }
 
 func (e errorTranslateSeriesSet) Warnings() storage.Warnings {
@@ -166,7 +166,7 @@ func (e errorTranslateChunkSeriesSet) At() storage.ChunkSeries {
 }
 
 func (e errorTranslateChunkSeriesSet) Err() error {
-	return TranslateToPromqlApiError(e.s.Err())
+	return TranslateToPromqlAPIError(e.s.Err())
 }
 
 func (e errorTranslateChunkSeriesSet) Warnings() storage.Warnings {

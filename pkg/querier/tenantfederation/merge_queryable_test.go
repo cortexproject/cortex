@@ -304,8 +304,6 @@ type labelValuesTestCase struct {
 	expectedWarnings []string
 	// expectedQueryErr is the error expected when querying.
 	expectedQueryErr error
-	// skipReason is a reason that the test case should be skipped. An empty reason, represented by an empty string will mean that a test case is not skipped.
-	skipReason string
 }
 
 // labelValuesScenario tests a call to LabelValues over a range of test cases in a specific scenario.
@@ -720,9 +718,6 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 
 			for _, tc := range scenario.labelValuesTestCases {
 				t.Run(tc.name, func(t *testing.T) {
-					if tc.skipReason != "" {
-						t.Skip(tc.skipReason)
-					}
 					actLabelValues, warnings, err := querier.LabelValues(tc.labelName, tc.matchers...)
 					if tc.expectedQueryErr != nil {
 						require.EqualError(t, err, tc.expectedQueryErr.Error())

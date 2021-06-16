@@ -132,6 +132,7 @@
 * [BUGFIX] Compactor: Increment `cortex_compactor_runs_failed_total` if compactor failed compact a single tenant. #4094
 * [BUGFIX] Tracing: hot fix to avoid the Jaeger tracing client to indefinitely block the Cortex process shutdown in case the HTTP connection to the tracing backend is blocked. #4134
 * [BUGFIX] Forward proper EndsAt from ruler to Alertmanager inline with Prometheus behaviour. #4017
+* [BUGFIX] Querier: support filtering LabelValues with matchers when using tenant federation. #4277
 
 ## Blocksconvert
 

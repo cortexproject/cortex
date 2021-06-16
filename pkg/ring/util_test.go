@@ -244,7 +244,7 @@ func TestWaitInstanceStateTimeout(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId      = "test"
+		instanceID      = "test"
 		timeoutDuration = time.Duration(3)
 	)
 
@@ -254,17 +254,17 @@ func TestWaitInstanceStateTimeout(t *testing.T) {
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(ACTIVE, nil)
 
-	err := WaitInstanceState(ctx, ring, instanceId, PENDING)
+	err := WaitInstanceState(ctx, ring, instanceID, PENDING)
 
 	assert.Equal(t, context.DeadlineExceeded, err)
-	ring.AssertCalled(t, "GetInstanceState", instanceId)
+	ring.AssertCalled(t, "GetInstanceState", instanceID)
 }
 
 func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId      = "test"
+		instanceID      = "test"
 		timeoutDuration = time.Duration(3)
 	)
 
@@ -274,17 +274,17 @@ func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(PENDING, errors.New("instance not found in the ring"))
 
-	err := WaitInstanceState(ctx, ring, instanceId, ACTIVE)
+	err := WaitInstanceState(ctx, ring, instanceID, ACTIVE)
 
 	assert.Equal(t, context.DeadlineExceeded, err)
-	ring.AssertCalled(t, "GetInstanceState", instanceId)
+	ring.AssertCalled(t, "GetInstanceState", instanceID)
 }
 
 func TestWaitInstanceStateExitsAfterActualStateEqualsState(t *testing.T) {
 	t.Parallel()
 
 	const (
-		instanceId      = "test"
+		instanceID      = "test"
 		timeoutDuration = time.Duration(3)
 	)
 
@@ -294,7 +294,7 @@ func TestWaitInstanceStateExitsAfterActualStateEqualsState(t *testing.T) {
 	ring := &RingMock{}
 	ring.On("GetInstanceState", mock.Anything, mock.Anything).Return(ACTIVE, nil)
 
-	err := WaitInstanceState(ctx, ring, instanceId, ACTIVE)
+	err := WaitInstanceState(ctx, ring, instanceID, ACTIVE)
 
 	assert.Nil(t, err)
 	ring.AssertNumberOfCalls(t, "GetInstanceState", 1)

@@ -144,7 +144,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -157,6 +157,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		}
 	}
 	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
+	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
 		querier, err := queryable.Querier(ctx, mint, maxt)
@@ -178,7 +179,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
-	return NewSampleAndChunkQueryable(lazyQueryable), engine
+	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, engine
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a

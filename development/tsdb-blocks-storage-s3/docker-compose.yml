@@ -22,8 +22,8 @@ services:
     image: memcached:1.6
 
   prometheus:
-    image: prom/prometheus:v2.16.0
-    command: ["--config.file=/etc/prometheus/prometheus.yaml"]
+    image: prom/prometheus:v2.27.1
+    command: ["--config.file=/etc/prometheus/prometheus.yaml", "--enable-feature=exemplar-storage"]
     volumes:
       - ./config:/etc/prometheus
     ports:

@@ -83,13 +83,21 @@ func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
 
 // Seek implements storage.SeriesIterator.
 func (a *iteratorAdapter) Seek(t int64) bool {
-	// Optimisation: see if the seek is within the current batch.
-	if a.curr.Length > 0 && t >= a.curr.Timestamps[0] && t <= a.curr.Timestamps[a.curr.Length-1] {
-		a.curr.Index = 0
-		for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
-			a.curr.Index++
+
+	// Optimisation: fulfill the seek using current batch if possible.
+	if a.curr.Length > 0 && a.curr.Index < a.curr.Length {
+		if t <= a.curr.Timestamps[a.curr.Index] {
+			//In this case, the interface's requirement is met, so state of this
+			//iterator does not need any change.
+			return true
+		} else if t <= a.curr.Timestamps[a.curr.Length-1] {
+			//In this case, some timestamp between current sample and end of batch can fulfill
+			//the seek. Let's find it.
+			for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
+				a.curr.Index++
+			}
+			return true
 		}
-		return true
 	}
 
 	a.curr.Length = -1

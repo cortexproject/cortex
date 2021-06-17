@@ -90,7 +90,7 @@ func TestRingReplicationStrategy(t *testing.T) {
 
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			strategy := NewDefaultReplicationStrategy()
-			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.replicationFactor, 100*time.Second, false)
+			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.replicationFactor, 100*time.Second, []string{})
 			if tc.expectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.liveIngesters, len(liveIngesters))
@@ -152,7 +152,7 @@ func TestIgnoreUnhealthyInstancesReplicationStrategy(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 			strategy := NewIgnoreUnhealthyInstancesReplicationStrategy()
-			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, 3, 100*time.Second, false)
+			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, 3, 100*time.Second, []string{})
 			if tc.expectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.liveIngesters, len(liveIngesters))

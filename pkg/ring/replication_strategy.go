@@ -5,13 +5,15 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type ReplicationStrategy interface {
 	// Filter out unhealthy instances and checks if there're enough instances
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
-	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []InstanceDesc, maxFailures int, err error)
+	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, distinctZones []string) (healthy []InstanceDesc, maxFailures int, err error)
 }
 
 type defaultReplicationStrategy struct{}
@@ -26,7 +28,20 @@ func NewDefaultReplicationStrategy() ReplicationStrategy {
 // - Filters out unhealthy instances so the one doesn't even try to write to them.
 // - Checks there are enough instances for an operation to succeed.
 // The instances argument may be overwritten.
-func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]InstanceDesc, int, error) {
+func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, distinctZones []string) ([]InstanceDesc, int, error) {
+	now := time.Now()
+
+	// filter out instances from zones without any live replicas
+	if len(distinctZones) > 0 {
+		for i := 0; i < len(instances); {
+			if !util.StringsContain(distinctZones, instances[i].Zone) {
+				instances = append(instances[:i], instances[i+1:]...)
+			} else {
+				i++
+			}
+		}
+	}
+
 	// We need a response from a quorum of instances, which is n/2 + 1.  In the
 	// case of a node joining/leaving, the actual replica set might be bigger
 	// than the replication factor, so use the bigger or the two.
@@ -35,7 +50,6 @@ func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operati
 	}
 
 	minSuccess := (replicationFactor / 2) + 1
-	now := time.Now()
 
 	// Skip those that have not heartbeated in a while. NB these are still
 	// included in the calculation of minSuccess, so if too many failed instances
@@ -53,7 +67,7 @@ func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operati
 	if len(instances) < minSuccess {
 		var err error
 
-		if zoneAwarenessEnabled {
+		if len(distinctZones) > 0 {
 			err = fmt.Errorf("at least %d live replicas required across different availability zones, could only find %d", minSuccess, len(instances))
 		} else {
 			err = fmt.Errorf("at least %d live replicas required, could only find %d", minSuccess, len(instances))
@@ -71,7 +85,7 @@ func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
 	return &ignoreUnhealthyInstancesReplicationStrategy{}
 }
 
-func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []InstanceDesc, maxFailures int, err error) {
+func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ []string) (healthy []InstanceDesc, maxFailures int, err error) {
 	now := time.Now()
 	// Filter out unhealthy instances.
 	for i := 0; i < len(instances); {

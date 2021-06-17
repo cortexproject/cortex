@@ -2,13 +2,20 @@ package ruler
 
 import (
 	"context"
+	"errors"
 	"math"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/value"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
@@ -16,19 +23,17 @@ import (
 type fakePusher struct {
 	request  *cortexpb.WriteRequest
 	response *cortexpb.WriteResponse
+	err      error
 }
 
 func (p *fakePusher) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	p.request = r
-	return p.response, nil
+	return p.response, p.err
 }
 
 func TestPusherAppendable(t *testing.T) {
 	pusher := &fakePusher{}
-	pa := &PusherAppendable{
-		pusher: pusher,
-		userID: "user-1",
-	}
+	pa := NewPusherAppendable(pusher, "user-1", nil, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{}))
 
 	for _, tc := range []struct {
 		name       string
@@ -107,6 +112,132 @@ func TestPusherAppendable(t *testing.T) {
 
 			require.Equal(t, tc.expectedTS, pusher.request.Timeseries[0].Samples[0].TimestampMs)
 
+		})
+	}
+}
+
+func TestPusherErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		returnedError    error
+		expectedWrites   int
+		expectedFailures int
+	}{
+		"no error": {
+			expectedWrites:   1,
+			expectedFailures: 0,
+		},
+
+		"400 error": {
+			returnedError:    httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedWrites:   1,
+			expectedFailures: 0, // 400 errors not reported as failures.
+		},
+
+		"500 error": {
+			returnedError:    httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedWrites:   1,
+			expectedFailures: 1, // 500 errors are failures
+		},
+
+		"unknown error": {
+			returnedError:    errors.New("test error"),
+			expectedWrites:   1,
+			expectedFailures: 1, // unknown errors are not 400, so they are reported.
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			pusher := &fakePusher{err: tc.returnedError, response: &cortexpb.WriteResponse{}}
+
+			writes := prometheus.NewCounter(prometheus.CounterOpts{})
+			failures := prometheus.NewCounter(prometheus.CounterOpts{})
+
+			pa := NewPusherAppendable(pusher, "user-1", ruleLimits{evalDelay: 10 * time.Second}, writes, failures)
+
+			lbls, err := parser.ParseMetric("foo_bar")
+			require.NoError(t, err)
+
+			a := pa.Appender(ctx)
+			_, err = a.Append(0, lbls, int64(model.Now()), 123456)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.returnedError, a.Commit())
+
+			require.Equal(t, tc.expectedWrites, int(testutil.ToFloat64(writes)))
+			require.Equal(t, tc.expectedFailures, int(testutil.ToFloat64(failures)))
+		})
+	}
+}
+
+func TestMetricsQueryFuncErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		returnedError         error
+		expectedQueries       int
+		expectedFailedQueries int
+	}{
+		"no error": {
+			expectedQueries:       1,
+			expectedFailedQueries: 0,
+		},
+
+		"400 error": {
+			returnedError:         httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 0, // 400 errors not reported as failures.
+		},
+
+		"500 error": {
+			returnedError:         httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 1, // 500 errors are failures
+		},
+
+		"promql.ErrStorage": {
+			returnedError:         promql.ErrStorage{Err: errors.New("test error")},
+			expectedQueries:       1,
+			expectedFailedQueries: 1,
+		},
+
+		"promql.ErrQueryCanceled": {
+			returnedError:         promql.ErrQueryCanceled("test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 0, // Not interesting.
+		},
+
+		"promql.ErrQueryTimeout": {
+			returnedError:         promql.ErrQueryTimeout("test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 0, // Not interesting.
+		},
+
+		"promql.ErrTooManySamples": {
+			returnedError:         promql.ErrTooManySamples("test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 0, // Not interesting.
+		},
+
+		"unknown error": {
+			returnedError:         errors.New("test error"),
+			expectedQueries:       1,
+			expectedFailedQueries: 1, // unknown errors are not 400, so they are reported.
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			queries := prometheus.NewCounter(prometheus.CounterOpts{})
+			failures := prometheus.NewCounter(prometheus.CounterOpts{})
+
+			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+				return promql.Vector{}, tc.returnedError
+			}
+
+			qf := metricsQueryFunc(mockFunc, queries, failures)
+
+			_, err := qf(context.Background(), "test", time.Now())
+			require.Equal(t, tc.returnedError, err)
+
+			require.Equal(t, tc.expectedQueries, int(testutil.ToFloat64(queries)))
+			require.Equal(t, tc.expectedFailedQueries, int(testutil.ToFloat64(failures)))
 		})
 	}
 }

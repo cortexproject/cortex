@@ -123,7 +123,7 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
 	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides), prometheus.NewRegistry(), logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides, nil), prometheus.NewRegistry(), logger)
 	require.NoError(t, err)
 
 	return manager, cleanup
@@ -135,7 +135,7 @@ func newRuler(t *testing.T, cfg Config) (*Ruler, func()) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewRegistry()
-	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides)
+	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides, reg)
 	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 

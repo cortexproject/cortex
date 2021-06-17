@@ -1,4 +1,4 @@
-package api
+package querier
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
@@ -22,8 +23,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/querier"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -109,9 +108,9 @@ func TestApiStatusCodes(t *testing.T) {
 		},
 	} {
 		for k, q := range map[string]storage.SampleAndChunkQueryable{
-			"error from queryable": testQueryable{err: tc.err},
-			"error from querier":   testQueryable{q: testQuerier{err: tc.err}},
-			"error from seriesset": testQueryable{q: testQuerier{s: testSeriesSet{err: tc.err}}},
+			"error from queryable": errorTestQueryable{err: tc.err},
+			"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
+			"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
 		} {
 			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
 				r := createPrometheusAPI(errorTranslateQueryable{q: q})
@@ -131,7 +130,7 @@ func TestApiStatusCodes(t *testing.T) {
 
 func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
+		Logger:             log.NewNopLogger(),
 		Reg:                nil,
 		ActiveQueryTracker: nil,
 		MaxSamples:         100,
@@ -143,8 +142,8 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		q,
 		nil,
 		nil,
-		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
-		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
+		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
+		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
 		v1.GlobalURLOptions{},
@@ -152,8 +151,8 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
-		util_log.Logger,
-		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
+		log.NewNopLogger(),
+		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
@@ -168,62 +167,62 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 	return promRouter
 }
 
-type testQueryable struct {
+type errorTestQueryable struct {
 	q   storage.Querier
 	err error
 }
 
-func (t testQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+func (t errorTestQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
 	return nil, t.err
 }
 
-func (t testQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (t errorTestQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 	if t.q != nil {
 		return t.q, nil
 	}
 	return nil, t.err
 }
 
-type testQuerier struct {
+type errorTestQuerier struct {
 	s   storage.SeriesSet
 	err error
 }
 
-func (t testQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (t errorTestQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, t.err
 }
 
-func (t testQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (t errorTestQuerier) LabelNames() ([]string, storage.Warnings, error) {
 	return nil, nil, t.err
 }
 
-func (t testQuerier) Close() error {
+func (t errorTestQuerier) Close() error {
 	return nil
 }
 
-func (t testQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (t errorTestQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if t.s != nil {
 		return t.s
 	}
 	return storage.ErrSeriesSet(t.err)
 }
 
-type testSeriesSet struct {
+type errorTestSeriesSet struct {
 	err error
 }
 
-func (t testSeriesSet) Next() bool {
+func (t errorTestSeriesSet) Next() bool {
 	return false
 }
 
-func (t testSeriesSet) At() storage.Series {
+func (t errorTestSeriesSet) At() storage.Series {
 	return nil
 }
 
-func (t testSeriesSet) Err() error {
+func (t errorTestSeriesSet) Err() error {
 	return t.err
 }
 
-func (t testSeriesSet) Warnings() storage.Warnings {
+func (t errorTestSeriesSet) Warnings() storage.Warnings {
 	return nil
 }

@@ -73,14 +73,8 @@ func (a *pusherAppender) Commit() error {
 	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
 
 	if err != nil {
-		reportError := true
-
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && resp.Code/100 == 4 {
-			// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
-			reportError = false
-		}
-
-		if reportError {
+		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
 			a.failedWrites.Inc()
 		}
 	}
@@ -187,21 +181,21 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, globalReg prometheus.Registerer) ManagerFactory {
-	totalWrites := promauto.With(globalReg).NewCounter(prometheus.CounterOpts{
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
+	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_total",
 		Help: "Number of write requests to ingesters.",
 	})
-	failedWrites := promauto.With(globalReg).NewCounter(prometheus.CounterOpts{
+	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_failed_total",
 		Help: "Number of failed write requests to ingesters.",
 	})
 
-	totalQueries := promauto.With(globalReg).NewCounter(prometheus.CounterOpts{
+	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_total",
 		Help: "Number of queries executed by ruler.",
 	})
-	failedQueries := promauto.With(globalReg).NewCounter(prometheus.CounterOpts{
+	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
 	})

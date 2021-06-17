@@ -113,6 +113,7 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 
 	// Push a series for each user to Cortex.
 	now := time.Now()
+	userID := "e2e-user"
 
 	distClient, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
 	require.NoError(t, err)

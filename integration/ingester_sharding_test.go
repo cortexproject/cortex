@@ -80,6 +80,7 @@ func TestIngesterSharding(t *testing.T) {
 
 			// Push series.
 			now := time.Now()
+			userID := "e2e-user"
 			expectedVectors := map[string]model.Vector{}
 
 			client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)

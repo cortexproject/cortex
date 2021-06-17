@@ -80,6 +80,7 @@ func TestIngesterGlobalLimits(t *testing.T) {
 			time.Sleep(2 * time.Second)
 
 			now := time.Now()
+			userID := "e2e-user"
 			client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
 			require.NoError(t, err)
 

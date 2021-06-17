@@ -62,6 +62,7 @@ func TestZoneAwareReplication(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
 		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
+	userID := "e2e-user"
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 	require.NoError(t, err)
 

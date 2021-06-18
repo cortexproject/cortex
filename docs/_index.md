@@ -21,7 +21,7 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 - **Highly available:** When run in a cluster, Cortex can replicate data between machines. This allows you to survive machine failure without gaps in your graphs.
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
-- **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3 and GCS for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
+- **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data. This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
 Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, exposing a Prometheus-compatible query API.
@@ -33,7 +33,7 @@ project. Before deploying Cortex with a permanent storage backend you
 should read:
 
 1. [An overview of Cortex's architecture](architecture.md)
-1. [A guide to running Cortex chunks storage](chunks-storage/running-chunks-storage-in-production.md)
+1. [Getting started with Cortex](getting-started/_index.md)
 1. [Information regarding configuring Cortex](configuration/_index.md)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](contributing/).

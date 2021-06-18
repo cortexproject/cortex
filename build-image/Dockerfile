@@ -40,11 +40,6 @@ RUN GO111MODULE=on go get \
 		github.com/campoy/embedmd@v1.0.0 \
 	&& rm -rf /go/pkg /go/src /root/.cache
 
-# Cannot get it to run together in above go get.
-RUN GO111MODULE=on go get  \
-		github.com/instrumenta/kubeval@v0.16.1 \
-	&& rm -rf /go/pkg /go/src /root/.cache
-
 ENV NODE_PATH=/usr/lib/node_modules
 COPY build.sh /
 ENV GOCACHE=/go/cache

@@ -5,6 +5,8 @@ weight: 1
 slug: getting-started-chunks-storage
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.

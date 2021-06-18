@@ -19,6 +19,7 @@ type storeConfig struct {
 }
 
 const (
+	userID                 = "e2e-user"
 	defaultNetworkName     = "e2e-cortex-test"
 	bucketName             = "cortex"
 	rulestoreBucketName    = "cortex-rules"

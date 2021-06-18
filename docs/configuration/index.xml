@@ -5176,7 +5176,7 @@ If using the query frontend, this should be set to at least (&lt;code>-querier.w
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.query-parallelism&lt;/code>&lt;/p>
-&lt;p>This refers to database queries against the store (e.g. Bigtable or DynamoDB). This is the max subqueries run in parallel per higher-level query.&lt;/p>
+&lt;p>This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB). This is the max subqueries run in parallel per higher-level query.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.timeout&lt;/code>&lt;/p>

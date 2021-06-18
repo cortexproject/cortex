@@ -334,7 +334,7 @@ __replica__: replica2
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
-&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage (deprecated).&lt;/em>&lt;/p>
 &lt;p>Cortex supports deletion of series using &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a>.
 It however does not support &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">Prometheuses Clean Tombstones&lt;/a> API because Cortex uses a different mechanism to manage deletions.&lt;/p>
 &lt;h3 id="how-it-works">How it works&lt;/h3>
@@ -394,7 +394,7 @@ PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;g
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="chunks-storage">Chunks storage&lt;/h3>
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h3>
 &lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> S3 server-side encryption can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p>
 &lt;h3 id="ruler">Ruler&lt;/h3>
 &lt;p>The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-ruler-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
@@ -413,7 +413,7 @@ S3 server-side encryption KMS encryption context. If unset and the key ID overri
 &lt;/ul>
 &lt;h2 id="other-storages">Other storages&lt;/h2>
 &lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
-&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage.&lt;/em>&lt;/p>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage (deprecated).&lt;/em>&lt;/p>
 &lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
 For example, if you&amp;rsquo;re deploying your Cortex cluster on Kubernetes, the plugin would run as a sidecar container of your Cortex pods and the Cortex&amp;rsquo;s &lt;code>-grpc-store.server-address&lt;/code> should be configured to the endpoint exposed by the sidecar plugin (eg. &lt;code>localhost:&amp;lt;port&amp;gt;&lt;/code>).&lt;/p>
@@ -456,7 +456,7 @@ When an ingester shutdowns, because of a rolling update or maintenance, the in-m
 &lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
 The new ingester, which is expected to reuse the same disk of the leaving one, will replay the TSDB WAL on startup in order to load back in memory the time series that have not been compacted into a block yet.&lt;/p>
 &lt;p>&lt;em>The blocks storage doesn&amp;rsquo;t support the series &lt;a href="#chunks-storage-with-wal-disabled-hand-over">hand-over&lt;/a>.&lt;/em>&lt;/p>
-&lt;h2 id="chunks-storage">Chunks storage&lt;/h2>
+&lt;h2 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h2>
 &lt;p>The Cortex chunks storage optionally supports a write-ahead log (WAL).
 The rolling update procedure for a Cortex cluster running the chunks storage depends whether the WAL is enabled or not.&lt;/p>
 &lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
@@ -896,8 +896,9 @@ even if you plan to use the default values.&lt;/p></description></item><item><ti
 &lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
 &lt;p>The blocks storage is a Cortex storage engine based on Prometheus TSDB, which only requires an object store (eg. AWS S3, Google GCS, &amp;hellip;) as backend storage.&lt;/p>
 &lt;p>For more information, please refer to the &lt;a href="/docs/blocks-storage/">Cortex blocks storage&lt;/a> documentation.&lt;/p>
-&lt;h3 id="chunks-storage">Chunks storage&lt;/h3>
+&lt;h3 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h3>
 &lt;p>The chunks storage is a Cortex storage engine which requires both an index store (eg. AWS DynamoDB, Google BigTable, Cassandra, &amp;hellip;) and an object store (eg. AWS S3, Google GCS, &amp;hellip;) as backend storage.&lt;/p>
+&lt;p>The chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="#blocks-storage">blocks storage&lt;/a> instead.&lt;/p>
 &lt;h3 id="chunk">Chunk&lt;/h3>
 &lt;p>A chunk is an object containing compressed timestamp-value pairs.&lt;/p>
 &lt;p>When running Cortex with the chunks storage, a single chunk object contains timestamp-value pairs for a single series, while when running Cortex with the &lt;a href="#blocks-storage">blocks storage&lt;/a> a single chunk contains timestamp-value pairs for several series.&lt;/p>

@@ -5611,6 +5611,7 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;li>Extend the module manager to allow specifying multiple targets as opposed to a single target name supported currently.&lt;/li>
 &lt;li>Factor out &lt;code>Run()&lt;/code> method to make it independent of Cortex. This will help reduce replicated code in the Loki project as well as help manage &lt;code>modules.Manager&lt;/code> outside of the Cortex struct.&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Getting started with chunks storage</title><link>/docs/chunks-storage/getting-started-chunks-storage/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/getting-started-chunks-storage/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
@@ -5980,6 +5981,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;h3 id="implementation">Implementation&lt;/h3>
 &lt;p>A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block &lt;code>maxTime&lt;/code> and blocks that match &lt;code>maxTime &amp;lt; now - retention&lt;/code> will be marked for delete.&lt;/p>
 &lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/chunks-storage/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/running-chunks-storage-in-production/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>This document builds on the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and specifies the steps needed to get Cortex &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> into production.
 Ensure you have completed all the steps in the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and read about &lt;a href="/docs/architecture/">the Cortex architecture&lt;/a> before you start this one.&lt;/p>
 &lt;h2 id="1-pick-a-storage-backend">1. Pick a storage backend&lt;/h2>
@@ -6664,11 +6666,11 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;h2 id="storage">Storage&lt;/h2>
 &lt;p>Cortex currently supports two storage engines to store and query the time series:&lt;/p>
 &lt;ul>
-&lt;li>Chunks (default)&lt;/li>
+&lt;li>Chunks (deprecated)&lt;/li>
 &lt;li>Blocks&lt;/li>
 &lt;/ul>
 &lt;p>The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.&lt;/p>
-&lt;h3 id="chunks-storage-default">Chunks storage (default)&lt;/h3>
+&lt;h3 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h3>
 &lt;p>The chunks storage stores each single time series into a separate object called &lt;em>Chunk&lt;/em>. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.&lt;/p>
 &lt;p>For this reason, the chunks storage consists of:&lt;/p>
 &lt;ul>
@@ -6862,7 +6864,7 @@ If using the query frontend, this should be set to at least (&lt;code>-querier.w
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.query-parallelism&lt;/code>&lt;/p>
-&lt;p>This refers to database queries against the store (e.g. Bigtable or DynamoDB). This is the max subqueries run in parallel per higher-level query.&lt;/p>
+&lt;p>This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB). This is the max subqueries run in parallel per higher-level query.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.timeout&lt;/code>&lt;/p>
@@ -8320,6 +8322,7 @@ The key selling point, he adds, was Cortex’s multi-tenant support, which also 
 &lt;p>The in-development Cortex Blocks storage engine is also interesting to the team as a solution for the bottleneck it has around a small BigTable cluster. “We just run three BigTable nodes, and the BigTable read latency sometimes peaks at one second, which is also the upper bucket limit in the histogram,” he says. “This happens if users open Grafana dashboards querying a long time range with many panels. Our hope is that switching from BigTable to the new storage engine would fix this as the object store (GCS) scales on-demand.”&lt;/p>
 &lt;p>The REWE digital team has built and open sourced its own &lt;a href="https://github.com/rewe-digital/cortex-gateway">Cortex gateway&lt;/a>, which is on the project roadmap. “This might be a chance for us to contribute,” says Schneppenheim.&lt;/p>
 &lt;p>Schneppenheim is also hopeful that the positive results REWE digital has seen with Cortex may lead to its further adoption throughout the greater REWE Group organization. “We&amp;rsquo;re just a small company within the REWE group,” he says, but “we might offer it as internal software as a service for other parts of the Group. They can trust our solution.”&lt;/p></description></item><item><title>Docs: Running Cortex chunks storage with Cassandra</title><link>/docs/chunks-storage/running-chunks-storage-with-cassandra/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/running-chunks-storage-with-cassandra/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>This guide covers how to run a single local Cortex instance - with the &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> engine - storing time series chunks and index in Cassandra.&lt;/p>
 &lt;p>In this guide we&amp;rsquo;re going to:&lt;/p>
 &lt;ol>
@@ -8434,6 +8437,7 @@ For details about table options, see the official document of storage you are us
 &lt;pre>&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
 &lt;/code>&lt;/pre>&lt;p>Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code>http://localhost:9009/prometheus&lt;/code>.&lt;/p>
 &lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. If you&amp;rsquo;re looking for ready to use dashboards, you can take a look at Grafana&amp;rsquo;s &lt;a href="https://github.com/grafana/cortex-jsonnet/">Cortex dashboards and alerts&lt;/a> (Jsonnet) or Weaveworks&amp;rsquo;s &lt;a href="https://github.com/weaveworks/cortex-dashboards">Cortex dashboards&lt;/a> (Python).&lt;/p></description></item><item><title>Docs: Schema Configuration</title><link>/docs/chunks-storage/schema-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/schema-configuration/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>Cortex chunks storage stores indexes and chunks in table-based data storages. When such a storage type is used, multiple tables are created over the time: each table - also called periodic table - contains the data for a specific time range. The table-based storage layout is configured through a configuration file called &lt;strong>schema config&lt;/strong>.&lt;/p>
 &lt;p>&lt;em>The schema config is used only by the chunks storage, while it&amp;rsquo;s &lt;strong>not&lt;/strong> used by the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> engine.&lt;/em>&lt;/p>
 &lt;h2 id="design">Design&lt;/h2>
@@ -9598,6 +9602,7 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.tsdb.max-exemplars&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_exemplars&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Table-manager</title><link>/docs/chunks-storage/table-manager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/table-manager/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>The table-manager is the Cortex service responsible for creating the &lt;a href="/docs/chunks-storage/schema-configuration/">periodic tables&lt;/a> used to store index and chunks, and deleting them once their data time range exceeds the retention period (if retention is enabled).&lt;/p>
 &lt;p>&lt;em>For more information about the schema config and periodic tables, please refer to the &lt;a href="/docs/chunks-storage/schema-configuration/">Schema config&lt;/a> documentation.&lt;/em>&lt;/p>
 &lt;h2 id="table-creation">Table creation&lt;/h2>
@@ -9663,6 +9668,7 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_write_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_read_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Caching</title><link>/docs/chunks-storage/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/caching/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost. Cortex can use a cache for:&lt;/p>
 &lt;ul>
@@ -10334,6 +10340,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Ingesters with WAL</title><link>/docs/chunks-storage/ingesters-with-wal/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/ingesters-with-wal/</guid><description>
+&lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>By default, ingesters running with the chunks storage, store all their data in memory. If there is a crash, there could be loss of data. The Write-Ahead Log (WAL) helps fill this gap in reliability.&lt;/p>
 &lt;p>To use WAL, there are some changes that needs to be made in the deployment.&lt;/p>
 &lt;p>&lt;em>This documentation refers to Cortex chunks storage engine. To understand Blocks storage please go &lt;a href="/docs/blocks-storage/">here&lt;/a>.&lt;/em>&lt;/p>

@@ -388,7 +388,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		instances = append(instances, instance)
 	}
 
-	if r.cfg.ZoneAwarenessEnabled && len(distinctZones) < r.cfg.ReplicationFactor / 2 {
+	if r.cfg.ZoneAwarenessEnabled && len(distinctZones) < r.cfg.ReplicationFactor/2 {
 		return ReplicationSet{}, fmt.Errorf("not enough available zones with live replicas")
 	}
 

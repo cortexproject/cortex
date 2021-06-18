@@ -11,6 +11,8 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
+**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 ## Querier
 
 - `-querier.max-concurrent`

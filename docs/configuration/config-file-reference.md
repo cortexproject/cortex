@@ -2708,7 +2708,7 @@ chunk_tables_provisioning:
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
 
 ```yaml
-# The storage engine to use: chunks or blocks.
+# The storage engine to use: chunks (deprecated) or blocks.
 # CLI flag: -store.engine
 [engine: <string> | default = "chunks"]
 

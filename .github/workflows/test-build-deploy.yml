@@ -5,6 +5,8 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
   pull_request:
+env:
+  CORTEX_CHECKOUT_PATH: /go/src/github.com/cortexproject/cortex
 
 jobs:
   lint:
@@ -18,8 +20,8 @@ jobs:
         # Symlink ensures paths specified in previous commands don’t break
       - name: Sym Link Expected Path to Workspace
         run: |
-          mkdir -p /go/src/github.com/cortexproject/cortex
-          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Lint
         run: make BUILD_IN_CONTAINER=false lint
       - name: Check Vendor Directory
@@ -47,8 +49,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Sym Link Expected Path to Workspace
         run: |
-          mkdir -p /go/src/github.com/cortexproject/cortex
-          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Run Tests
         run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
 
@@ -63,8 +65,8 @@ jobs:
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
-          mkdir -p /go/src/github.com/cortexproject/cortex
-          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Build Image
         run: |
           touch build-image/.uptodate
@@ -109,8 +111,8 @@ jobs:
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
-          sudo mkdir -p /go/src/github.com/cortexproject/cortex
-          sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          sudo mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          sudo ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Download Docker Images Artifacts
         uses: actions/download-artifact@v2
         with:
@@ -149,7 +151,7 @@ jobs:
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
           export IMAGE_TAG=$(make image-tag)
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG"
-          export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
+          export CORTEX_CHECKOUT_DIR="${{ env.CORTEX_CHECKOUT_PATH }}"
           echo "Running integration tests with image: $CORTEX_IMAGE"
           go test -tags=requires_docker -timeout 2400s -v -count=1 ./integration/...
         env:
@@ -190,8 +192,8 @@ jobs:
           ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
       - name: Sym Link Expected Path to Workspace
         run: |
-          mkdir -p /go/src/github.com/cortexproject/cortex
-          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Download Website Artifact
         uses: actions/download-artifact@v2
         with:
@@ -226,8 +228,8 @@ jobs:
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym link Expected Path to Workspace
         run: |
-          mkdir -p /go/src/github.com/cortexproject/cortex
-          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p ${{ env.CORTEX_CHECKOUT_PATH }}
+          ln -s $GITHUB_WORKSPACE/* ${{ env.CORTEX_CHECKOUT_PATH }}
       - name: Download Docker Images Artifact
         uses: actions/download-artifact@v2
         with:

@@ -10,12 +10,12 @@ This document will focus on using local storage.
 Local storage is explicitly not production ready at this time.
 Cortex can also make use of external memcacheds for caching and although these are not mandatory, they should be used in production.&lt;/p>
 &lt;h2 id="single-instance-single-process">Single instance, single process&lt;/h2>
-&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a &lt;a href="/docs/configuration/single-process-config/">single process&lt;/a> with no dependencies:&lt;/p>
+&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a single process.&lt;/p>
 &lt;p>Clone and build Cortex&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ git clone https://github.com/cortexproject/cortex.git
 $ &lt;span style="color:#204a87">cd&lt;/span> cortex
 $ go build ./cmd/cortex
-$ ./cortex -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./docs/configuration/single-process-config.yaml
+$ ./cortex -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./docs/chunks-storage/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code>/tmp/cortex&lt;/code>.
 It is not intended for production use.&lt;/p>
 &lt;p>Clone and build prometheus&lt;/p>
@@ -43,14 +43,14 @@ $ docker network create cortex
 $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -e &lt;span style="color:#000">CONSUL_BIND_INTERFACE&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>eth0 consul
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>Next we&amp;rsquo;ll run a couple of Cortex instances pointed at that Consul. You&amp;rsquo;ll note the Cortex configuration can be specified in either a config file or overridden on the command line. See &lt;a href="/docs/configuration/arguments/">the arguments documentation&lt;/a> for more information about Cortex configuration options.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500
 $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
@@ -79,7 +79,7 @@ $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span
 $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -p 3000:3000 grafana/grafana
 &lt;/code>&lt;/pre>&lt;/div>&lt;p>Then, launch 3 Cortex nodes with replication factor 3:&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
@@ -87,7 +87,7 @@ $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
 $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
@@ -95,7 +95,7 @@ $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
 $ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex3 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9003:9009 &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
 &lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\

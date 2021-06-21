@@ -363,7 +363,7 @@ type metricCounter struct {
 	limiter *Limiter
 	shards  []metricCounterShard
 
-	ignoredMetricsForSeriesCount map[string]struct{}
+	ignoredMetrics map[string]struct{}
 }
 
 func newMetricCounter(limiter *Limiter, ignoredMetricsForSeriesCount map[string]struct{}) *metricCounter {
@@ -377,7 +377,7 @@ func newMetricCounter(limiter *Limiter, ignoredMetricsForSeriesCount map[string]
 		limiter: limiter,
 		shards:  shards,
 
-		ignoredMetricsForSeriesCount: ignoredMetricsForSeriesCount,
+		ignoredMetrics: ignoredMetricsForSeriesCount,
 	}
 }
 
@@ -398,7 +398,7 @@ func (m *metricCounter) getShard(metricName string) *metricCounterShard {
 }
 
 func (m *metricCounter) canAddSeriesFor(userID, metric string) error {
-	if _, ok := m.ignoredMetricsForSeriesCount[metric]; ok {
+	if _, ok := m.ignoredMetrics[metric]; ok {
 		return nil
 	}
 

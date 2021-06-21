@@ -80,8 +80,12 @@ type instrumentedTransport struct {
 func (i instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 	resp, err := i.next.RoundTrip(req)
+	var status string
 	if err == nil {
-		i.observer.WithLabelValues(req.Method, strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
+		status = strconv.Itoa(resp.StatusCode)
+	} else {
+		status = "500"
 	}
+	i.observer.WithLabelValues(req.Method, status).Observe(time.Since(start).Seconds())
 	return resp, err
 }

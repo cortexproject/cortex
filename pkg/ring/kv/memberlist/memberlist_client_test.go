@@ -506,14 +506,9 @@ func TestMultipleClients(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.NodeName = id
 
-		// some useful parameters when playing with higher number of members
-		// cfg.RetransmitMult = 2
 		cfg.GossipInterval = 100 * time.Millisecond
 		cfg.GossipNodes = 3
 		cfg.PushPullInterval = 5 * time.Second
-		// cfg.PacketDialTimeout = 5 * time.Second
-		// cfg.StreamTimeout = 5 * time.Second
-		// cfg.PacketWriteTimeout = 2 * time.Second
 
 		cfg.TCPTransport = TCPTransportConfig{
 			BindAddrs: []string{"localhost"},

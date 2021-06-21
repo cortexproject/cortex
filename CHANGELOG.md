@@ -21,10 +21,10 @@
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The folowing are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`
-  - `-memberlist.pull_push_interval`
-  - `-memberlist.gossip_interval`
-  - `-memberlist.gossip_nodes`
-  - `-memberlist.gossip_to_dead_nodes_time`
+  - `-memberlist.pull-push-interval`
+  - `-memberlist.gossip-interval`
+  - `-memberlist.gossip-nodes`
+  - `-memberlist.gossip-to-dead-nodes-time`
 * [FEATURE] Querier: Added new `-querier.max-fetched-series-per-query` flag. When Cortex is running with blocks storage, the max series per query limit is enforced in the querier and applies to unique series received from ingesters and store-gateway (long-term storage). #4179
 * [FEATURE] Querier/Ruler: Added new `-querier.max-fetched-chunk-bytes-per-query` flag. When Cortex is running with blocks storage, the max chunk bytes limit is enforced in the querier and ruler and limits the size of all aggregated chunks returned from ingesters and storage as bytes for a query. #4216
 * [FEATURE] Alertmanager: support negative matchers, time-based muting - [upstream release notes](https://github.com/prometheus/alertmanager/releases/tag/v0.22.0). #4237

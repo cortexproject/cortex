@@ -810,6 +810,13 @@ instance_limits:
   # tenants). Additional requests will be rejected. 0 = unlimited.
   # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+# Comma-separated list of metric names, for which
+# -ingester.max-series-per-metric and -ingester.max-global-series-per-metric
+# limits will be ignored. Does not affect max-series-per-user or
+# max-global-series-per-metric limits.
+# CLI flag: -ingester.ignore-series-limit-for-metric-names
+[ignore_series_limit_for_metric_names: <string> | default = ""]
 ```
 
 ### `querier_config`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -98,6 +99,8 @@ type Config struct {
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
+	IgnoreSeriesLimitForMetricNames string `yaml:"ignore_series_limit_for_metric_names"`
+
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 }
@@ -131,6 +134,29 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
+
+	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
+}
+
+func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
+	if cfg.IgnoreSeriesLimitForMetricNames == "" {
+		return nil
+	}
+
+	result := map[string]struct{}{}
+
+	for _, s := range strings.Split(cfg.IgnoreSeriesLimitForMetricNames, ",") {
+		tr := strings.TrimSpace(s)
+		if tr != "" {
+			result[tr] = struct{}{}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
 }
 
 // Ingester deals with "in flight" chunks.  Based on Prometheus 1.x

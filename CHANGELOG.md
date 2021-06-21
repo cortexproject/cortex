@@ -49,6 +49,7 @@
   * `cortex_ruler_write_requests_failed_total`
   * `cortex_ruler_queries_total`
   * `cortex_ruler_queries_failed_total`
+* [ENHANCEMENT] Ingester: Added option `-ingester.ignore-series-limit-for-metric-names` with comma-separated list of metric names that will be ignored in max series per metric limit. #4302
 * [BUGFIX] Purger: fix `Invalid null value in condition for column range` caused by `nil` value in range for WriteBatch query. #4128
 * [BUGFIX] Ingester: fixed infrequent panic caused by a race condition between TSDB mmap-ed head chunks truncation and queries. #4176
 * [BUGFIX] Alertmanager: fix Alertmanager status page if clustering via gossip is disabled or sharding is enabled. #4184

@@ -257,7 +257,6 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	go run ./tools/doc-generator ./docs/guides/encryption-at-rest.template           > ./docs/guides/encryption-at-rest.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
-	embedmd -w docs/configuration/single-process-config.md
 	embedmd -w docs/guides/overrides-exporter.md
 
 endif
@@ -360,7 +359,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/deb/control/prerm \
 			--package dist/cortex-$(VERSION)_$$arch.deb \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/deb/default/cortex=/etc/default/cortex \
 			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 		$(FPM_OPTS) -t rpm  \
@@ -369,7 +368,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/rpm/control/preun \
 			--package dist/cortex-$(VERSION)_$$arch.rpm \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
 			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 	done

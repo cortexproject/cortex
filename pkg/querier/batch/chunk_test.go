@@ -24,8 +24,11 @@ func TestChunkIter(t *testing.T) {
 	forEncodings(t, func(t *testing.T, enc promchunk.Encoding) {
 		chunk := mkGenericChunk(t, 0, 100, enc)
 		iter := &chunkIterator{}
+
 		iter.reset(chunk)
 		testIter(t, 100, newIteratorAdapter(iter))
+
+		iter.reset(chunk)
 		testSeek(t, 100, newIteratorAdapter(iter))
 	})
 }
@@ -56,7 +59,7 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 		require.Nil(t, npc)
 		ts = ts.Add(step)
 	}
-	return chunk.NewChunk(userID, fp, metric, pc, model.Time(0), ts)
+	return chunk.NewChunk(userID, fp, metric, pc, from, ts)
 }
 
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {

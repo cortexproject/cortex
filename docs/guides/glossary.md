@@ -11,9 +11,11 @@ The blocks storage is a Cortex storage engine based on Prometheus TSDB, which on
 
 For more information, please refer to the [Cortex blocks storage](../blocks-storage/_index.md) documentation.
 
-### Chunks storage
+### Chunks storage (deprecated)
 
 The chunks storage is a Cortex storage engine which requires both an index store (eg. AWS DynamoDB, Google BigTable, Cassandra, ...) and an object store (eg. AWS S3, Google GCS, ...) as backend storage.
+
+The chunks storage is deprecated. You're encouraged to use the [blocks storage](#blocks-storage) instead.
 
 ### Chunk
 

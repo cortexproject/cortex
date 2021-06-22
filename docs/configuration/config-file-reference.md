@@ -810,6 +810,13 @@ instance_limits:
   # tenants). Additional requests will be rejected. 0 = unlimited.
   # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+# Comma-separated list of metric names, for which
+# -ingester.max-series-per-metric and -ingester.max-global-series-per-metric
+# limits will be ignored. Does not affect max-series-per-user or
+# max-global-series-per-metric limits.
+# CLI flag: -ingester.ignore-series-limit-for-metric-names
+[ignore_series_limit_for_metric_names: <string> | default = ""]
 ```
 
 ### `querier_config`
@@ -2708,7 +2715,7 @@ chunk_tables_provisioning:
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
 
 ```yaml
-# The storage engine to use: chunks or blocks.
+# The storage engine to use: chunks (deprecated) or blocks.
 # CLI flag: -store.engine
 [engine: <string> | default = "chunks"]
 
@@ -3689,6 +3696,14 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # Skip validating server certificate.
 # CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Etcd username.
+# CLI flag: -<prefix>.etcd.username
+[username: <string> | default = ""]
+
+# Etcd password.
+# CLI flag: -<prefix>.etcd.password
+[password: <string> | default = ""]
 ```
 
 ### `consul_config`

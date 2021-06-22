@@ -5,6 +5,8 @@ weight: 3
 slug: table-manager
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 The table-manager is the Cortex service responsible for creating the [periodic tables](./schema-config.md) used to store index and chunks, and deleting them once their data time range exceeds the retention period (if retention is enabled).
 
 _For more information about the schema config and periodic tables, please refer to the [Schema config](./schema-config.md) documentation._

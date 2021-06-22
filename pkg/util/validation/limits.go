@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -229,7 +230,10 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	}
 
 	type plain Limits
-	return json.Unmarshal(data, (*plain)(l))
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+
+	return dec.Decode((*plain)(l))
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {

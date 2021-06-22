@@ -300,7 +300,10 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 				t.Log("random generator seed:", seed)
 
 				ctx := context.Background()
-				ringStore := consul.NewInMemoryClient(ring.GetCodec())
+				ringStore := consul.NewInMemoryClientWithConfig(ring.GetCodec(), consul.Config{
+					MaxCasRetries: 20,
+					CasRetryDelay: 500 * time.Millisecond,
+				})
 
 				// Create the configured number of gateways.
 				var gateways []*StoreGateway

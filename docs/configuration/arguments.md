@@ -11,6 +11,8 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
+**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 ## Querier
 
 - `-querier.max-concurrent`
@@ -20,7 +22,7 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 
 - `-querier.query-parallelism`
 
-   This refers to database queries against the store (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
+   This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
 
 - `-querier.timeout`
 

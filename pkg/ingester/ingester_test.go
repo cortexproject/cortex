@@ -1044,3 +1044,15 @@ func TestIngesterActiveSeries(t *testing.T) {
 		})
 	}
 }
+
+func TestGetIgnoreSeriesLimitForMetricNamesMap(t *testing.T) {
+	cfg := Config{}
+
+	require.Nil(t, cfg.getIgnoreSeriesLimitForMetricNamesMap())
+
+	cfg.IgnoreSeriesLimitForMetricNames = ", ,,,"
+	require.Nil(t, cfg.getIgnoreSeriesLimitForMetricNamesMap())
+
+	cfg.IgnoreSeriesLimitForMetricNames = "foo, bar, ,"
+	require.Equal(t, map[string]struct{}{"foo": {}, "bar": {}}, cfg.getIgnoreSeriesLimitForMetricNamesMap())
+}

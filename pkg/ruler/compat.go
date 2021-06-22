@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -14,9 +15,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -25,6 +28,9 @@ type Pusher interface {
 }
 
 type pusherAppender struct {
+	failedWrites prometheus.Counter
+	totalWrites  prometheus.Counter
+
 	ctx             context.Context
 	pusher          Pusher
 	labels          []labels.Labels
@@ -60,9 +66,19 @@ func (a *pusherAppender) AppendExemplar(_ uint64, _ labels.Labels, _ exemplar.Ex
 }
 
 func (a *pusherAppender) Commit() error {
+	a.totalWrites.Inc()
+
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
 	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
+
+	if err != nil {
+		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
+			a.failedWrites.Inc()
+		}
+	}
+
 	a.labels = nil
 	a.samples = nil
 	return err
@@ -79,11 +95,27 @@ type PusherAppendable struct {
 	pusher      Pusher
 	userID      string
 	rulesLimits RulesLimits
+
+	totalWrites  prometheus.Counter
+	failedWrites prometheus.Counter
+}
+
+func NewPusherAppendable(pusher Pusher, userID string, limits RulesLimits, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
+	return &PusherAppendable{
+		pusher:       pusher,
+		userID:       userID,
+		rulesLimits:  limits,
+		totalWrites:  totalWrites,
+		failedWrites: failedWrites,
+	}
 }
 
 // Appender returns a storage.Appender
 func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	return &pusherAppender{
+		failedWrites: t.failedWrites,
+		totalWrites:  t.totalWrites,
+
 		ctx:             ctx,
 		pusher:          t.pusher,
 		userID:          t.userID,
@@ -111,6 +143,26 @@ func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 	}
 }
 
+func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		queries.Inc()
+
+		result, err := qf(ctx, qs, t)
+
+		// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
+		// It returns promql.ErrStorage, if error should be reported back as 500.
+		// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
+		// or various user-errors (limits, duplicate samples, etc. ... also not failures).
+		//
+		// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
+		// but we only want internal errors here.
+		if _, ok := querier.TranslateToPromqlAPIError(err).(promql.ErrStorage); ok {
+			failedQueries.Inc()
+		}
+		return result, err
+	}
+}
+
 // This interface mimicks rules.Manager API. Interface is used to simplify tests.
 type RulesManager interface {
 	// Starts rules manager. Blocks until Stop is called.
@@ -129,12 +181,30 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
+	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ruler_write_requests_total",
+		Help: "Number of write requests to ingesters.",
+	})
+	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ruler_write_requests_failed_total",
+		Help: "Number of failed write requests to ingesters.",
+	})
+
+	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ruler_queries_total",
+		Help: "Number of queries executed by ruler.",
+	})
+	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_ruler_queries_failed_total",
+		Help: "Number of failed queries by ruler.",
+	})
+
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      &PusherAppendable{pusher: p, userID: userID, rulesLimits: overrides},
+			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       engineQueryFunc(engine, q, overrides, userID),
+			QueryFunc:       metricsQueryFunc(engineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

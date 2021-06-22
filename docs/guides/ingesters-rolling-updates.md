@@ -26,7 +26,7 @@ The new ingester, which is expected to reuse the same disk of the leaving one, w
 
 _The blocks storage doesn't support the series [hand-over](#chunks-storage-with-wal-disabled-hand-over)._
 
-## Chunks storage
+## Chunks storage (deprecated)
 
 The Cortex chunks storage optionally supports a write-ahead log (WAL).
 The rolling update procedure for a Cortex cluster running the chunks storage depends whether the WAL is enabled or not.

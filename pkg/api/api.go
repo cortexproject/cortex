@@ -351,11 +351,16 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
 }
 
+type Distributor interface {
+	querier.Distributor
+	UserStatsHandler(w http.ResponseWriter, r *http.Request)
+}
+
 // RegisterQueryable registers the the default routes associated with the querier
 // module.
 func (a *API) RegisterQueryable(
 	queryable storage.SampleAndChunkQueryable,
-	distributor *distributor.Distributor,
+	distributor Distributor,
 ) {
 	// these routes are always registered to the default server
 	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")

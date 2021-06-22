@@ -21,12 +21,12 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex currently supports two storage engines to store and query the time series:
 
-- Chunks (default)
+- Chunks (deprecated)
 - Blocks
 
 The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
 
-### Chunks storage (default)
+### Chunks storage (deprecated)
 
 The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
 

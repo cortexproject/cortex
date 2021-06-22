@@ -39,9 +39,10 @@ var inmemoryStore Client
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul consul.Config `yaml:"consul"`
-	Etcd   etcd.Config   `yaml:"etcd"`
-	Multi  MultiConfig   `yaml:"multi"`
+	Consul  consul.Config `yaml:"consul"`
+	Etcd    etcd.Config   `yaml:"etcd"`
+	Multi   MultiConfig   `yaml:"multi"`
+	Sharded ShardedConfig `yaml:"sharded"`
 
 	// Function that returns memberlist.KV store to use. By using a function, we can delay
 	// initialization of memberlist.KV until it is actually required.
@@ -153,6 +154,9 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 
 	case "multi":
 		client, err = buildMultiClient(cfg, codec, reg)
+
+	case "sharded":
+		client, err = buildShardedClient(cfg.Sharded, codec, reg)
 
 	// This case is for testing. The mock KV client does not do anything internally.
 	case "mock":

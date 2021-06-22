@@ -408,9 +408,9 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 			level.Info(c.logger).Log("msg", "waiting until compactor ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
 			if err := ring.WaitRingStability(ctx, c.ring, RingOp, minWaiting, maxWaiting); err != nil {
-				level.Warn(c.logger).Log("msg", "compactor is ring topology is not stable after the max waiting time, proceeding anyway")
+				level.Warn(c.logger).Log("msg", "compactor ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
-				level.Info(c.logger).Log("msg", "compactor is ring topology is stable")
+				level.Info(c.logger).Log("msg", "compactor ring topology is stable")
 			}
 		}
 	}

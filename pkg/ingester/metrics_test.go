@@ -139,6 +139,13 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_active_appenders gauge
 			cortex_ingester_tsdb_head_active_appenders 1982620
 
+			# HELP cortex_ingester_tsdb_head_series Total number of series in the TSDB head block.
+			# TYPE cortex_ingester_tsdb_head_series gauge
+			# 20 * (12345 and 85787 and 999 respectively)
+			cortex_ingester_tsdb_head_series{user="user1"} 246900
+			cortex_ingester_tsdb_head_series{user="user2"} 1715740
+			cortex_ingester_tsdb_head_series{user="user3"} 19980
+
 			# HELP cortex_ingester_tsdb_head_series_not_found_total Total number of TSDB requests for series that were not found.
 			# TYPE cortex_ingester_tsdb_head_series_not_found_total counter
 			cortex_ingester_tsdb_head_series_not_found_total 2081751
@@ -351,6 +358,12 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_active_appenders gauge
 			cortex_ingester_tsdb_head_active_appenders 1962640
 
+			# HELP cortex_ingester_tsdb_head_series Total number of series in the TSDB head block.
+			# TYPE cortex_ingester_tsdb_head_series gauge
+			# 20 * (12345 and 85787 and 999 respectively)
+			cortex_ingester_tsdb_head_series{user="user1"} 246900
+			cortex_ingester_tsdb_head_series{user="user2"} 1715740
+
 			# HELP cortex_ingester_tsdb_head_series_not_found_total Total number of TSDB requests for series that were not found.
 			# TYPE cortex_ingester_tsdb_head_series_not_found_total counter
 			cortex_ingester_tsdb_head_series_not_found_total 2081751
@@ -541,6 +554,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of checkpoint creations attempted.",
 	})
 	checkpointCreationTotal.Add(19 * base)
+
+	series := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_series",
+		Help: "Total number of series in the head block.",
+	})
+	series.Set(20 * base)
 
 	activeAppenders := promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "prometheus_tsdb_head_active_appenders",

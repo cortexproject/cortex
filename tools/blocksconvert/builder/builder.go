@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -38,10 +39,11 @@ type Config struct {
 	OutputDirectory string
 	Concurrency     int
 
-	ChunkCacheConfig cache.Config
-	UploadBlock      bool
-	DeleteLocalBlock bool
-	SeriesBatchSize  int
+	ChunkCacheConfig   cache.Config
+	UploadBlock        bool
+	DeleteLocalBlock   bool
+	SeriesBatchSize    int
+	TimestampTolerance time.Duration
 
 	PlanProcessorConfig planprocessor.Config
 }
@@ -55,6 +57,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
 	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
 	f.IntVar(&cfg.SeriesBatchSize, "builder.series-batch-size", defaultSeriesBatchSize, "Number of series to keep in memory before batch-write to temp file. Lower to decrease memory usage during the block building.")
+	f.DurationVar(&cfg.TimestampTolerance, "builder.timestamp-tolerance", 0, "Adjust sample timestamps by up to this to align them to an exact number of seconds apart.")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (services.Service, error) {
@@ -195,7 +198,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 		return "", errors.Wrap(err, "failed to create chunk fetcher")
 	}
 
-	tsdbBuilder, err := newTsdbBuilder(p.builder.cfg.OutputDirectory, p.dayStart, p.dayEnd, p.builder.cfg.SeriesBatchSize, p.log,
+	tsdbBuilder, err := newTsdbBuilder(p.builder.cfg.OutputDirectory, p.dayStart, p.dayEnd, p.builder.cfg.TimestampTolerance, p.builder.cfg.SeriesBatchSize, p.log,
 		p.builder.processedSeries, p.builder.writtenSamples, p.builder.seriesInMemory)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create TSDB builder")
@@ -259,7 +262,7 @@ func uploadBlock(ctx context.Context, planLog log.Logger, userBucket objstore.Bu
 	})
 
 	for boff.Ongoing() {
-		err := block.Upload(ctx, planLog, userBucket, blockDir)
+		err := block.Upload(ctx, planLog, userBucket, blockDir, metadata.NoneFunc)
 		if err == nil {
 			return nil
 		}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -53,6 +54,22 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
+	chunkOne := mkChunk(t, model.Time(1*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
+	chunkTwo := mkChunk(t, model.Time(10*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
+	chunks := []chunk.Chunk{chunkOne, chunkTwo}
+
+	sut := NewChunkMergeIterator(chunks, 0, 0)
+
+	// Following calls mimics Prometheus's query engine behaviour for VectorSelector.
+	require.True(t, sut.Next())
+	require.True(t, sut.Seek(0))
+
+	actual, val := sut.At()
+	require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since mkChunk use ts as value.
+	require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
 }
 
 func createChunks(b *testing.B, numChunks, numSamplesPerChunk, duplicationFactor int, enc promchunk.Encoding) []chunk.Chunk {

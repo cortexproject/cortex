@@ -19,6 +19,7 @@ type storeConfig struct {
 }
 
 const (
+	userID                 = "e2e-user"
 	defaultNetworkName     = "e2e-cortex-test"
 	bucketName             = "cortex"
 	rulestoreBucketName    = "cortex-rules"
@@ -111,6 +112,12 @@ var (
 			"-alertmanager.sharding-ring.store":              "consul",
 			"-alertmanager.sharding-ring.consul.hostname":    consulAddress,
 			"-alertmanager.sharding-ring.replication-factor": strconv.Itoa(replicationFactor),
+		}
+	}
+
+	AlertmanagerPersisterFlags = func(interval string) map[string]string {
+		return map[string]string{
+			"-alertmanager.persist-interval": interval,
 		}
 	}
 

@@ -89,6 +89,9 @@ ruler:
     kvstore:
       store: memberlist
 
+  alertmanager_url: http://alertmanager:8010/alertmanager
+  enable_alertmanager_v2: false
+
 ruler_storage:
   backend: s3
   s3:

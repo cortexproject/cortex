@@ -54,13 +54,14 @@ func TestRulerAPI(t *testing.T) {
 			defer s.Close()
 
 			// Start dependencies.
+			consul := e2edb.NewConsul()
 			dynamo := e2edb.NewDynamoDB()
 			minio := e2edb.NewMinio(9000, rulestoreBucketName)
-			require.NoError(t, s.StartAndWaitReady(minio, dynamo))
+			require.NoError(t, s.StartAndWaitReady(consul, minio, dynamo))
 
 			// Start Cortex components.
 			require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-			ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(testCfg.legacyRuleStore)), "")
+			ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), RulerFlags(testCfg.legacyRuleStore)), "")
 			require.NoError(t, s.StartAndWaitReady(ruler))
 
 			// Create a client with the ruler address configured
@@ -123,6 +124,12 @@ func TestRulerAPI(t *testing.T) {
 			require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
 			require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
 
+			// Get the rule group and ensure it returns a 404
+			resp, err := c.GetRuleGroup(namespaceOne, ruleGroup.Name)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
 			// Wait until the users manager has been terminated
 			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
 
@@ -145,13 +152,13 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	user := "fake"
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
 		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 	}
 
 	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
 	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerUserConfigYaml)))
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
@@ -203,14 +210,14 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	evaluationDelay := time.Minute * 5
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":             "2s",
 		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 		"-ruler.evaluation-delay-duration": evaluationDelay.String(),
 	}
 
 	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
 	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerEvalStaleNanConfigYaml)))
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
@@ -354,8 +361,8 @@ func TestRulerSharding(t *testing.T) {
 	)
 
 	// Start rulers.
-	ruler1 := e2ecortex.NewRuler("ruler-1", rulerFlags, "")
-	ruler2 := e2ecortex.NewRuler("ruler-2", rulerFlags, "")
+	ruler1 := e2ecortex.NewRuler("ruler-1", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler2 := e2ecortex.NewRuler("ruler-2", consul.NetworkHTTPEndpoint(), rulerFlags, "")
 	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2)
 	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2))
 
@@ -395,9 +402,10 @@ func TestRulerAlertmanager(t *testing.T) {
 	defer s.Close()
 
 	// Start dependencies.
+	consul := e2edb.NewConsul()
 	dynamo := e2edb.NewDynamoDB()
 	minio := e2edb.NewMinio(9000, rulestoreBucketName)
-	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
+	require.NoError(t, s.StartAndWaitReady(consul, minio, dynamo))
 
 	// Have at least one alertmanager configuration.
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
@@ -418,7 +426,7 @@ func TestRulerAlertmanager(t *testing.T) {
 
 	// Start Ruler.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(false), configOverrides), "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), RulerFlags(false), configOverrides), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured
@@ -444,9 +452,10 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 	defer s.Close()
 
 	// Start dependencies.
+	consul := e2edb.NewConsul()
 	dynamo := e2edb.NewDynamoDB()
 	minio := e2edb.NewMinio(9000, rulestoreBucketName)
-	require.NoError(t, s.StartAndWaitReady(minio, dynamo))
+	require.NoError(t, s.StartAndWaitReady(consul, minio, dynamo))
 
 	// set the ca
 	cert := ca.New("Ruler/Alertmanager Test")
@@ -497,7 +506,7 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 
 	// Start Ruler.
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	ruler := e2ecortex.NewRuler("ruler", mergeFlags(ChunksStorageFlags(), RulerFlags(false), configOverrides), "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(ChunksStorageFlags(), RulerFlags(false), configOverrides), "")
 	require.NoError(t, s.StartAndWaitReady(ruler))
 
 	// Create a client with the ruler address configured

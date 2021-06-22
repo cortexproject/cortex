@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -42,8 +43,8 @@ type userState struct {
 	fpToSeries          *seriesMap
 	mapper              *fpMapper
 	index               *index.InvertedIndex
-	ingestedAPISamples  *ewmaRate
-	ingestedRuleSamples *ewmaRate
+	ingestedAPISamples  *util_math.EwmaRate
+	ingestedRuleSamples *util_math.EwmaRate
 	activeSeries        *ActiveSeries
 	logger              log.Logger
 
@@ -98,8 +99,8 @@ func (us *userStates) gc() {
 func (us *userStates) updateRates() {
 	us.states.Range(func(key, value interface{}) bool {
 		state := value.(*userState)
-		state.ingestedAPISamples.tick()
-		state.ingestedRuleSamples.tick()
+		state.ingestedAPISamples.Tick()
+		state.ingestedRuleSamples.Tick()
 		return true
 	})
 }
@@ -142,9 +143,9 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			fpToSeries:          newSeriesMap(),
 			fpLocker:            newFingerprintLocker(16 * 1024),
 			index:               index.New(),
-			ingestedAPISamples:  newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			ingestedRuleSamples: newEWMARate(0.2, us.cfg.RateUpdatePeriod),
-			seriesInMetric:      newMetricCounter(us.limiter),
+			ingestedAPISamples:  util_math.NewEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			ingestedRuleSamples: util_math.NewEWMARate(0.2, us.cfg.RateUpdatePeriod),
+			seriesInMetric:      newMetricCounter(us.limiter, us.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 			logger:              logger,
 
 			memSeries:             us.metrics.memSeries,
@@ -361,9 +362,11 @@ type metricCounterShard struct {
 type metricCounter struct {
 	limiter *Limiter
 	shards  []metricCounterShard
+
+	ignoredMetrics map[string]struct{}
 }
 
-func newMetricCounter(limiter *Limiter) *metricCounter {
+func newMetricCounter(limiter *Limiter, ignoredMetricsForSeriesCount map[string]struct{}) *metricCounter {
 	shards := make([]metricCounterShard, 0, numMetricCounterShards)
 	for i := 0; i < numMetricCounterShards; i++ {
 		shards = append(shards, metricCounterShard{
@@ -373,6 +376,8 @@ func newMetricCounter(limiter *Limiter) *metricCounter {
 	return &metricCounter{
 		limiter: limiter,
 		shards:  shards,
+
+		ignoredMetrics: ignoredMetricsForSeriesCount,
 	}
 }
 
@@ -393,6 +398,10 @@ func (m *metricCounter) getShard(metricName string) *metricCounterShard {
 }
 
 func (m *metricCounter) canAddSeriesFor(userID, metric string) error {
+	if _, ok := m.ignoredMetrics[metric]; ok {
+		return nil
+	}
+
 	shard := m.getShard(metric)
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()

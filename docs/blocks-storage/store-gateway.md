@@ -81,6 +81,14 @@ The store-gateway replication optionally supports [zone-awareness](../guides/zon
 2. Enable blocks zone-aware replication via the `-store-gateway.sharding-ring.zone-awareness-enabled` CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to store-gateways, queriers and rulers.
 3. Rollout store-gateways, queriers and rulers to apply the new configuration
 
+### Waiting for stable ring at startup
+
+In the event of a cluster cold start or scale up of 2+ store-gateway instances at the same time we may end up in a situation where each new store-gateway instance starts at a slightly different time and thus each one runs the initial blocks sync based on a different state of the ring. For example, in case of a cold start, the first store-gateway joining the ring may load all blocks since the sharding logic runs based on the current state of the ring, which is 1 single store-gateway.
+
+To reduce the likelihood this could happen, the store-gateway waits for a stable ring at startup. A ring is considered stable if no instance is added/removed to the ring for at least `-store-gateway.sharding-ring.wait-stability-min-duration`. If the ring keep getting changed after `-store-gateway.sharding-ring.wait-stability-max-duration`, the store-gateway will stop waiting for a stable ring and will proceed starting up normally.
+
+To disable this waiting logic, you can start the store-gateway with `-store-gateway.sharding-ring.wait-stability-min-duration=0`.
+
 ## Blocks index-header
 
 The [index-header](./binary-index-header.md) is a subset of the block index which the store-gateway downloads from the object storage and keeps on the local disk in order to speed up queries.
@@ -249,6 +257,16 @@ store_gateway:
     # availability zones.
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
+
+    # Minimum time to wait for ring stability at startup. 0 to disable.
+    # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
+    [wait_stability_min_duration: <duration> | default = 1m]
+
+    # Maximum time to wait for ring stability at startup. If the store-gateway
+    # ring keeps changing after this period of time, the store-gateway will
+    # start anyway.
+    # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
+    [wait_stability_max_duration: <duration> | default = 5m]
 
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
@@ -481,11 +499,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 15m]
 
-    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-    # The pool is shared across all tenants. 0 to disable the limit.
-    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-    [max_chunk_pool_bytes: <int> | default = 2147483648]
-
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -562,11 +575,6 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
-
-      # Deprecated: compress postings before storing them to postings cache.
-      # This option is unused and postings compression is always enabled.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-      [postings_compression_enabled: <boolean> | default = false]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -768,6 +776,11 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
 
+    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+    # The pool is shared across all tenants. 0 to disable the limit.
+    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+    [max_chunk_pool_bytes: <int> | default = 2147483648]
+
     # If enabled, store-gateway will lazy load an index-header only once
     # required by a query.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
@@ -857,4 +870,9 @@ blocks_storage:
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+    # Enables support for exemplars in TSDB and sets the maximum number that
+    # will be stored. 0 or less means disabled.
+    # CLI flag: -blocks-storage.tsdb.max-exemplars
+    [max_exemplars: <int> | default = 0]
 ```

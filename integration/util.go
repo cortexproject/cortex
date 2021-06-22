@@ -3,27 +3,33 @@
 package integration
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/pkg/errors"
 
 	"github.com/cortexproject/cortex/integration/e2e"
-	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 )
 
 var (
 	// Expose some utilities from the framework so that we don't have to prefix them
 	// with the package name in tests.
-	mergeFlags      = e2e.MergeFlags
-	newDynamoClient = e2edb.NewDynamoClient
-	generateSeries  = e2e.GenerateSeries
+	mergeFlags     = e2e.MergeFlags
+	generateSeries = e2e.GenerateSeries
 )
 
 func getCortexProjectDir() string {
 	if dir := os.Getenv("CORTEX_CHECKOUT_DIR"); dir != "" {
 		return dir
+	}
+
+	// use the git path if available
+	dir, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err == nil {
+		return string(bytes.TrimSpace(dir))
 	}
 
 	return os.Getenv("GOPATH") + "/src/github.com/cortexproject/cortex"

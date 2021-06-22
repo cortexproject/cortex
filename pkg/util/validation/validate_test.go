@@ -69,17 +69,20 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errMissingMetricName),
+			newNoMetricNameError(),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errInvalidMetricName, " "),
+			newInvalidMetricNameError(" "),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errInvalidLabel, "foo ", `valid{foo ="bar"}`),
+			newInvalidLabelError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "valid"},
+				{Name: "foo ", Value: "bar"},
+			}, "foo "),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"},
@@ -89,17 +92,27 @@ func TestValidateLabels(t *testing.T) {
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelName", "this_is_a_really_really_long_name_that_should_cause_an_error": "test_value_please_ignore"},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errLabelNameTooLong, "this_is_a_really_really_long_name_that_should_cause_an_error", `badLabelName{this_is_a_really_really_long_name_that_should_cause_an_error="test_value_please_ignore"}`),
+			newLabelNameTooLongError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "badLabelName"},
+				{Name: "this_is_a_really_really_long_name_that_should_cause_an_error", Value: "test_value_please_ignore"},
+			}, "this_is_a_really_really_long_name_that_should_cause_an_error"),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errLabelValueTooLong, "test_value_please_ignore_no_really_nothing_to_see_here", `badLabelValue{much_shorter_name="test_value_please_ignore_no_really_nothing_to_see_here"}`),
+			newLabelValueTooLongError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "badLabelValue"},
+				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
+			}, "test_value_please_ignore_no_really_nothing_to_see_here"),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
 			false,
-			httpgrpc.Errorf(http.StatusBadRequest, errTooManyLabels, 3, 2, `foo{bar="baz", blip="blop"}`),
+			newTooManyLabelsError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "blip", Value: "blop"},
+			}, 2),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"},
@@ -107,7 +120,6 @@ func TestValidateLabels(t *testing.T) {
 			nil,
 		},
 	} {
-
 		err := ValidateLabels(cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
@@ -134,6 +146,51 @@ func TestValidateLabels(t *testing.T) {
 			# TYPE cortex_discarded_samples_total counter
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
+}
+
+func TestValidateExemplars(t *testing.T) {
+	userID := "testUser"
+
+	invalidExemplars := []cortexpb.Exemplar{
+		{
+			// Missing labels
+			Labels: nil,
+		},
+		{
+			// Invalid timestamp
+			Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+		},
+		{
+			// Combined labelset too long
+			Labels:      []cortexpb.LabelAdapter{{Name: "foo", Value: strings.Repeat("0", 126)}},
+			TimestampMs: 1000,
+		},
+	}
+
+	for _, ie := range invalidExemplars {
+		err := ValidateExemplar(userID, []cortexpb.LabelAdapter{}, ie)
+		assert.NotNil(t, err)
+	}
+
+	DiscardedExemplars.WithLabelValues("random reason", "different user").Inc()
+
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
+			# TYPE cortex_discarded_exemplars_total counter
+			cortex_discarded_exemplars_total{reason="exemplar_labels_missing",user="testUser"} 1
+			cortex_discarded_exemplars_total{reason="exemplar_labels_too_long",user="testUser"} 1
+			cortex_discarded_exemplars_total{reason="exemplar_timestamp_invalid",user="testUser"} 1
+
+			cortex_discarded_exemplars_total{reason="random reason",user="different user"} 1
+		`), "cortex_discarded_exemplars_total"))
+
+	// Delete test user and verify only different remaining
+	DeletePerUserValidationMetrics(userID, util_log.Logger)
+	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
+			# TYPE cortex_discarded_exemplars_total counter
+			cortex_discarded_exemplars_total{reason="random reason",user="different user"} 1
+	`), "cortex_discarded_exemplars_total"))
 }
 
 func TestValidateMetadata(t *testing.T) {
@@ -209,12 +266,17 @@ func TestValidateLabelOrder(t *testing.T) {
 
 	userID := "testUser"
 
-	err := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
 	}, false)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errLabelsNotSorted, "a", `m{b="b", a="a"}`), err)
+	expected := newLabelsNotSortedError([]cortexpb.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "m"},
+		{Name: "b", Value: "b"},
+		{Name: "a", Value: "a"},
+	}, "a")
+	assert.Equal(t, expected, actual)
 }
 
 func TestValidateLabelDuplication(t *testing.T) {
@@ -225,16 +287,25 @@ func TestValidateLabelDuplication(t *testing.T) {
 
 	userID := "testUser"
 
-	err := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
 	}, false)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "__name__", `a{__name__="b"}`), err)
+	expected := newDuplicatedLabelError([]cortexpb.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "a"},
+		{Name: model.MetricNameLabel, Value: "b"},
+	}, model.MetricNameLabel)
+	assert.Equal(t, expected, actual)
 
-	err = ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual = ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
 	}, false)
-	assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, errDuplicateLabelName, "a", `a{a="a", a="a"}`), err)
+	expected = newDuplicatedLabelError([]cortexpb.LabelAdapter{
+		{Name: model.MetricNameLabel, Value: "a"},
+		{Name: "a", Value: "a"},
+		{Name: "a", Value: "a"},
+	}, "a")
+	assert.Equal(t, expected, actual)
 }

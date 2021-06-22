@@ -11,6 +11,8 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
+**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 ## Querier
 
 - `-querier.max-concurrent`
@@ -20,7 +22,7 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 
 - `-querier.query-parallelism`
 
-   This refers to database queries against the store (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
+   This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
 
 - `-querier.timeout`
 
@@ -483,14 +485,17 @@ Valid per-tenant limits are (with their corresponding flags for default values):
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
 
 - `max_series_per_query` / `-ingester.max-series-per-query`
+
 - `max_samples_per_query` / `-ingester.max-samples-per-query`
 
   Limits on the number of timeseries and samples returns by a single ingester during a query.
 
 - `max_metadata_per_user` / `-ingester.max-metadata-per-user`
 - `max_metadata_per_metric` / `-ingester.max-metadata-per-metric`
-
   Enforced by the ingesters; limits the number of active metadata a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of metadata a metric can have 'globally', as all metadata for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
+
+- `max_fetched_series_per_query` / `querier.max-fetched-series-per-query`
+  When running Cortex with blocks storage this limit is enforced in the queriers on unique series fetched from ingesters and store-gateways (long-term storage).
 
 - `max_global_metadata_per_user` / `-ingester.max-global-metadata-per-user`
 - `max_global_metadata_per_metric` / `-ingester.max-global-metadata-per-metric`

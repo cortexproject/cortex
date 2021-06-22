@@ -106,7 +106,7 @@ func (u URL) MarshalJSON() ([]byte, error) {
 	if u.URL != nil {
 		return json.Marshal(u.URL.String())
 	}
-	return nil, nil
+	return []byte("null"), nil
 }
 
 // UnmarshalJSON implements the json.Marshaler interface for URL.
@@ -301,6 +301,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		*c.Global = DefaultGlobalConfig()
 	}
 
+	if c.Global.SlackAPIURL != nil && len(c.Global.SlackAPIURLFile) > 0 {
+		return fmt.Errorf("at most one of slack_api_url & slack_api_url_file must be configured")
+	}
+
 	names := map[string]struct{}{}
 
 	for _, rcv := range c.Receivers {
@@ -349,11 +353,12 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			if sc.HTTPConfig == nil {
 				sc.HTTPConfig = c.Global.HTTPConfig
 			}
-			if sc.APIURL == nil {
-				if c.Global.SlackAPIURL == nil {
-					return fmt.Errorf("no global Slack API URL set")
+			if sc.APIURL == nil && len(sc.APIURLFile) == 0 {
+				if c.Global.SlackAPIURL == nil && len(c.Global.SlackAPIURLFile) == 0 {
+					return fmt.Errorf("no global Slack API URL set either inline or in a file")
 				}
 				sc.APIURL = c.Global.SlackAPIURL
+				sc.APIURLFile = c.Global.SlackAPIURLFile
 			}
 		}
 		for _, poc := range rcv.PushoverConfigs {
@@ -632,6 +637,7 @@ type GlobalConfig struct {
 	SMTPAuthIdentity string     `yaml:"smtp_auth_identity,omitempty" json:"smtp_auth_identity,omitempty"`
 	SMTPRequireTLS   bool       `yaml:"smtp_require_tls" json:"smtp_require_tls,omitempty"`
 	SlackAPIURL      *SecretURL `yaml:"slack_api_url,omitempty" json:"slack_api_url,omitempty"`
+	SlackAPIURLFile  string     `yaml:"slack_api_url_file,omitempty" json:"slack_api_url_file,omitempty"`
 	PagerdutyURL     *URL       `yaml:"pagerduty_url,omitempty" json:"pagerduty_url,omitempty"`
 	OpsGenieAPIURL   *URL       `yaml:"opsgenie_api_url,omitempty" json:"opsgenie_api_url,omitempty"`
 	OpsGenieAPIKey   Secret     `yaml:"opsgenie_api_key,omitempty" json:"opsgenie_api_key,omitempty"`
@@ -861,7 +867,7 @@ func (re Regexp) MarshalJSON() ([]byte, error) {
 	if re.original != "" {
 		return json.Marshal(re.original)
 	}
-	return nil, nil
+	return []byte("null"), nil
 }
 
 // Matchers is label.Matchers with an added UnmarshalYAML method to implement the yaml.Unmarshaler interface
@@ -914,7 +920,7 @@ func (m *Matchers) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements the json.Marshaler interface for Matchers.
 func (m Matchers) MarshalJSON() ([]byte, error) {
 	if len(m) == 0 {
-		return nil, nil
+		return []byte("[]"), nil
 	}
 	result := make([]string, len(m))
 	for i, matcher := range m {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -483,8 +482,9 @@ func testMetadataQueriesWithBlocksStorage(
 		resp   []prompb.Label
 	}
 	type labelValuesTest struct {
-		label string
-		resp  []string
+		label   string
+		matches []string
+		resp    []string
 	}
 
 	testCases := map[string]struct {
@@ -520,6 +520,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{lastSeriesInStorageName},
+				},
 			},
 			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
 		},
@@ -545,6 +555,17 @@ func testMetadataQueriesWithBlocksStorage(
 				{
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInIngesterBlocksName},
+				},
+
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{},
+					matches: []string{firstSeriesInIngesterHeadName},
 				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
@@ -574,6 +595,21 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInIngesterBlocksName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+					matches: []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
 		},
@@ -601,6 +637,16 @@ func testMetadataQueriesWithBlocksStorage(
 					label: labels.MetricName,
 					resp:  []string{lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{lastSeriesInStorageName},
+					matches: []string{lastSeriesInStorageName},
+				},
+				{
+					label:   labels.MetricName,
+					resp:    []string{firstSeriesInIngesterHeadName},
+					matches: []string{firstSeriesInIngesterHeadName},
+				},
 			},
 			labelNames: []string{labels.MetricName, lastSeriesInStorageName, firstSeriesInIngesterHeadName},
 		},
@@ -620,7 +666,7 @@ func testMetadataQueriesWithBlocksStorage(
 			}
 
 			for _, lvt := range tc.labelValuesTests {
-				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to)
+				labelsRes, err := c.LabelValues(lvt.label, tc.from, tc.to, lvt.matches)
 				require.NoError(t, err)
 				exp := model.LabelValues{}
 				for _, val := range lvt.resp {
@@ -722,124 +768,83 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	assert.Contains(t, err.Error(), "500")
 }
 
-func TestQuerierWithChunksStorage(t *testing.T) {
-	const numUsers = 10
-	const numQueriesPerUser = 10
+func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
 
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	flags := ChunksStorageFlags()
-
-	// Start dependencies.
-	dynamo := e2edb.NewDynamoDB()
-
-	consul := e2edb.NewConsul()
-	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
-
-	tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
-	require.NoError(t, s.StartAndWaitReady(tableManager))
-
-	// Wait until the first table-manager sync has completed, so that we're
-	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
-
-	// Start Cortex components for the write path.
-	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
-	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
-	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
-
-	// Wait until the distributor has updated the ring.
-	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-
-	// Push a series for each user to Cortex.
-	now := time.Now()
-	expectedVectors := make([]model.Vector, numUsers)
-
-	for u := 0; u < numUsers; u++ {
-		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", fmt.Sprintf("user-%d", u))
-		require.NoError(t, err)
-
-		var series []prompb.TimeSeries
-		series, expectedVectors[u] = generateSeries("series_1", now)
-
-		res, err := c.Push(series)
-		require.NoError(t, err)
-		require.Equal(t, 200, res.StatusCode)
-	}
-
-	// Add 2 memcache instances to test for: https://github.com/cortexproject/cortex/issues/2302
-	// Note these are not running but added to trigger the behaviour.
-	querierFlags := mergeFlags(flags, map[string]string{
-		"-store.index-cache-read.memcached.addresses":  "dns+memcached0:11211",
-		"-store.index-cache-write.memcached.addresses": "dns+memcached1:11211",
-		"-store.max-query-length":                      "240h",
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period":   blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":         "1s",
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
+		"-querier.ingester-streaming":                "true",
+		"-querier.query-store-for-labels-enabled":    "true",
+		"-querier.max-fetched-series-per-query":      "3",
 	})
 
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), querierFlags, "")
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	memcached := e2ecache.NewMemcached()
+	require.NoError(t, s.StartAndWaitReady(consul, minio, memcached))
+
+	// Add the memcached address to the flags.
+	flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+
+	// Start Cortex components.
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, storeGateway))
+
+	// Start the querier with configuring store-gateway addresses if sharding is disabled.
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+	})
+
+	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
-	// Wait until the querier has updated the ring.
-	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-
-	// Query the series for each user in parallel.
-	wg := sync.WaitGroup{}
-	wg.Add(numUsers * numQueriesPerUser)
-
-	for u := 0; u < numUsers; u++ {
-		userID := u
-
-		c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
-		require.NoError(t, err)
-
-		if userID == 0 { // No need to repeat this test for each user.
-			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
-			require.NoError(t, err)
-			require.Equal(t, 422, res.StatusCode)
-			require.Contains(t, string(body), "query must contain metric name")
-		}
-
-		for q := 0; q < numQueriesPerUser; q++ {
-			go func() {
-				defer wg.Done()
-
-				result, err := c.Query("series_1", now)
-				require.NoError(t, err)
-				require.Equal(t, model.ValVector, result.Type())
-				assert.Equal(t, expectedVectors[userID], result.(model.Vector))
-			}()
-		}
-	}
-
-	wg.Wait()
-
-	c, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-0")
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	// Ensure limit errors on ranged queries don't return 500s.
-	start := now.Add(-264 * time.Hour)
-	end := now
-	step := 264 * time.Hour
+	// Push some series to Cortex.
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series3Timestamp := series1Timestamp.Add(blockRangePeriod * 2)
+	series4Timestamp := series1Timestamp.Add(blockRangePeriod * 3)
 
-	r, body, err := c.QueryRangeRaw("series_1", start, end, step)
+	series1, _ := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
+	series3, _ := generateSeries("series_3", series3Timestamp, prompb.Label{Name: "series_3", Value: "series_3"})
+	series4, _ := generateSeries("series_4", series4Timestamp, prompb.Label{Name: "series_4", Value: "series_4"})
+
+	res, err := c.Push(series1)
 	require.NoError(t, err)
-	require.Equal(t, 422, r.StatusCode)
-	expected := `
-	{
-		"error":"expanding series: the query time range exceeds the limit (query length: 264h5m0s, limit: 240h0m0s)",
-		"errorType":"execution",
-		"status":"error"
-	}
-	`
-	require.JSONEq(t, expected, string(body))
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
 
-	// Ensure no service-specific metrics prefix is used by the wrong service.
-	assertServiceMetricsPrefixes(t, Distributor, distributor)
-	assertServiceMetricsPrefixes(t, Ingester, ingester)
-	assertServiceMetricsPrefixes(t, Querier, querier)
-	assertServiceMetricsPrefixes(t, TableManager, tableManager)
+	result, err := c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series2Timestamp.Add(1*time.Hour), blockRangePeriod)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result.Type())
+
+	res, err = c.Push(series3)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series4)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	_, err = c.QueryRange("{__name__=~\"series_.+\"}", series1Timestamp, series4Timestamp.Add(1*time.Hour), blockRangePeriod)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max number of series limit")
 }
 
 func TestHashCollisionHandling(t *testing.T) {

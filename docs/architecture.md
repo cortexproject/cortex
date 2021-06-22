@@ -21,12 +21,12 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex currently supports two storage engines to store and query the time series:
 
-- Chunks (default)
+- Chunks (deprecated)
 - Blocks
 
 The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
 
-### Chunks storage (default)
+### Chunks storage (deprecated)
 
 The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
 
@@ -162,7 +162,7 @@ Ingesters contain a **lifecycler** which manages the lifecycle of an ingester an
 - **`UNHEALTHY`**<br />
   The ingester has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
 
-_The ingester states are interally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
+_The ingester states are internally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
 
 Ingesters are **semi-stateful**.
 

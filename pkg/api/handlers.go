@@ -23,7 +23,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -111,7 +110,14 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	}
 }
 
-func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+func (cfg *Config) configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+	if cfg.CustomConfigHandler != nil {
+		return cfg.CustomConfigHandler(actualCfg, defaultCfg)
+	}
+	return DefaultConfigHandler(actualCfg, defaultCfg)
+}
+
+func DefaultConfigHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var output interface{}
 		switch r.URL.Query().Get("mode") {
@@ -151,8 +157,9 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
+	exemplarQueryable storage.ExemplarQueryable,
 	engine *promql.Engine,
-	distributor *distributor.Distributor,
+	distributor Distributor,
 	tombstonesLoader *purger.TombstonesLoader,
 	reg prometheus.Registerer,
 	logger log.Logger,
@@ -187,9 +194,9 @@ func NewQuerierHandler(
 
 	api := v1.NewAPI(
 		engine,
-		errorTranslateQueryable{queryable}, // Translate errors to errors expected by API.
-		nil,                                // No remote write support.
-		nil,                                // No exemplars support.
+		querier.NewErrorTranslateQueryable(queryable), // Translate errors to errors expected by API.
+		nil, // No remote write support.
+		exemplarQueryable,
 		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
@@ -226,38 +233,40 @@ func NewQuerierHandler(
 	router.Use(middlewares.Wrap)
 
 	// Define the prefixes for all routes
-	prefix := cfg.ServerPrefix + cfg.PrometheusHTTPPrefix
-	legacyPrefix := cfg.ServerPrefix + cfg.LegacyHTTPPrefix
+	prefix := path.Join(cfg.ServerPrefix, cfg.PrometheusHTTPPrefix)
+	legacyPrefix := path.Join(cfg.ServerPrefix, cfg.LegacyHTTPPrefix)
 
-	promRouter := route.New().WithPrefix(prefix + "/api/v1")
+	promRouter := route.New().WithPrefix(path.Join(prefix, "/api/v1"))
 	api.Register(promRouter)
 
-	legacyPromRouter := route.New().WithPrefix(legacyPrefix + "/api/v1")
+	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	api.Register(legacyPromRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(prefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(prefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(prefix + "/api/v1/read").Methods("POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/query_range").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix+"/api/v1/labels").Methods("GET", "POST").Handler(promRouter)
-	router.Path(prefix + "/api/v1/label/{name}/values").Methods("GET").Handler(promRouter)
-	router.Path(prefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(promRouter)
-	router.Path(prefix + "/api/v1/metadata").Methods("GET").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
+	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
+	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/metadata")).Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
-	router.Path(legacyPrefix + "/api/v1/metadata").Handler(querier.MetadataHandler(distributor))
-	router.Path(legacyPrefix + "/api/v1/read").Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(legacyPrefix + "/api/v1/read").Methods("POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/query_range").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/labels").Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(legacyPrefix + "/api/v1/label/{name}/values").Methods("GET").Handler(legacyPromRouter)
-	router.Path(legacyPrefix+"/api/v1/series").Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
-	router.Path(legacyPrefix + "/api/v1/metadata").Methods("GET").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
+	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
+	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Methods("GET").Handler(legacyPromRouter)
 
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)

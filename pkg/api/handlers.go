@@ -23,7 +23,6 @@ import (
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -160,7 +159,7 @@ func NewQuerierHandler(
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
 	engine *promql.Engine,
-	distributor *distributor.Distributor,
+	distributor Distributor,
 	tombstonesLoader *purger.TombstonesLoader,
 	reg prometheus.Registerer,
 	logger log.Logger,

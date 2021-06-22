@@ -6,8 +6,9 @@ import (
 	"sync"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/cespare/xxhash"
 	"github.com/facette/natsort"
+
+	"github.com/cortexproject/cortex/pkg/util/jump"
 )
 
 // MemcachedJumpHashSelector implements the memcache.ServerSelector
@@ -83,24 +84,6 @@ func (s *MemcachedJumpHashSelector) SetServers(servers ...string) error {
 	return nil
 }
 
-// jumpHash consistently chooses a hash bucket number in the range [0, numBuckets) for the given key.
-// numBuckets must be >= 1.
-//
-// Copied from github.com/dgryski/go-jump/blob/master/jump.go
-func jumpHash(key uint64, numBuckets int) int32 {
-
-	var b int64 = -1
-	var j int64
-
-	for j < int64(numBuckets) {
-		b = j
-		key = key*2862933555777941757 + 1
-		j = int64(float64(b+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
-	}
-
-	return int32(b)
-}
-
 // PickServer returns the server address that a given item
 // should be shared onto.
 func (s *MemcachedJumpHashSelector) PickServer(key string) (net.Addr, error) {
@@ -111,8 +94,7 @@ func (s *MemcachedJumpHashSelector) PickServer(key string) (net.Addr, error) {
 	} else if len(s.addrs) == 1 {
 		return s.addrs[0], nil
 	}
-	cs := xxhash.Sum64String(key)
-	idx := jumpHash(cs, len(s.addrs))
+	idx := jump.Hash(key, len(s.addrs))
 	return s.addrs[idx], nil
 }
 

@@ -59,7 +59,8 @@ const (
 )
 
 var (
-	errExemplarRef = errors.New("exemplars not ingested because series not already present")
+	errExemplarRef    = errors.New("exemplars not ingested because series not already present")
+	errAllTSDBClosing = errors.New("TSDB's are closing and cannot be accessed")
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -415,6 +416,9 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	idleTsdbChecks         *prometheus.CounterVec
+
+	closed bool // protected by userStatesMtx
+
 }
 
 type requestWithUsersAndCallback struct {
@@ -677,6 +681,12 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.ingestionRate.Tick()
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
+
+			if i.TSDBState.closed {
+				i.userStatesMtx.RUnlock()
+				return errAllTSDBClosing
+			}
+
 			for _, db := range i.TSDBState.dbs {
 				db.ingestedAPISamples.Tick()
 				db.ingestedRuleSamples.Tick()
@@ -1236,6 +1246,10 @@ func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequ
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
+	if i.TSDBState.closed {
+		return nil, errAllTSDBClosing
+	}
+
 	users := i.TSDBState.dbs
 
 	response := &client.UsersStatsResponse{
@@ -1483,6 +1497,10 @@ func (i *Ingester) v2QueryStreamChunks(ctx context.Context, db *userTSDB, from, 
 func (i *Ingester) getTSDB(userID string) *userTSDB {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
+	if i.TSDBState.closed {
+		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
+		return nil
+	}
 	db := i.TSDBState.dbs[userID]
 	return db
 }
@@ -1492,6 +1510,11 @@ func (i *Ingester) getTSDB(userID string) *userTSDB {
 func (i *Ingester) getTSDBUsers() []string {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
+
+	if i.TSDBState.closed {
+		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
+		return []string{}
+	}
 
 	ids := make([]string, 0, len(i.TSDBState.dbs))
 	for userID := range i.TSDBState.dbs {
@@ -1510,10 +1533,10 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 
-	// Check again for DB in the event it was created in-between locks
+	// Check again for DB in the event it was created or closed in-between locks
 	var ok bool
 	db, ok = i.TSDBState.dbs[userID]
-	if ok {
+	if ok && !i.TSDBState.closed {
 		return db, nil
 	}
 
@@ -1534,6 +1557,11 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 		}
 	}
 
+	// If all the TSDB's are in the process of closing, then should not proceed to creating a new TSDB
+	if i.TSDBState.closed && !force {
+		return nil, errAllTSDBClosing
+	}
+
 	// Create the database and a shipper for a user
 	db, err := i.createTSDB(userID)
 	if err != nil {
@@ -1549,6 +1577,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 
 // createTSDB creates a TSDB for a given userID, and returns the created db.
 func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
+
 	tsdbPromReg := prometheus.NewRegistry()
 	udir := i.cfg.BlocksStorageConfig.TSDB.BlocksDir(userID)
 	userLogger := logutil.WithUserID(userID, i.logger)
@@ -1646,7 +1675,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 }
 
 func (i *Ingester) closeAllTSDB() {
+
 	i.userStatesMtx.Lock()
+
+	// Set to true, to prevent any read occurring on TSDBs once this function has been called
+	i.TSDBState.closed = true
 
 	wg := &sync.WaitGroup{}
 	wg.Add(len(i.TSDBState.dbs))
@@ -1673,11 +1706,13 @@ func (i *Ingester) closeAllTSDB() {
 
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
+
 		}(userDB)
 	}
 
 	// Wait until all Close() completed
 	i.userStatesMtx.Unlock()
+
 	wg.Wait()
 }
 
@@ -1785,8 +1820,14 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 func (i *Ingester) getMemorySeriesMetric() float64 {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-
 	count := uint64(0)
+
+	// If the TSDB is in the processes of closing, then return 0
+	if i.TSDBState.closed {
+		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
+		return float64(count)
+	}
+
 	for _, db := range i.TSDBState.dbs {
 		count += db.Head().NumSeries()
 	}

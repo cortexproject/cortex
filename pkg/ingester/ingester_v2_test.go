@@ -3880,3 +3880,49 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 
 	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
 }
+
+func TestIngester_PreventTSDBsReadOnShutdown(t *testing.T) {
+	cfg := defaultIngesterTestConfig()
+	cfg.LifecyclerConfig.JoinAfter = 0
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), i)
+	})
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some data.
+	pushSingleSampleWithMetadata(t, i)
+
+	db := i.getTSDB(userID)
+	require.NotNil(t, db)
+
+	// Verify that the TSDBState is not closed before calling the close function
+	assert.Equal(t, i.TSDBState.closed, false)
+
+	// Close all the TSDB
+	i.closeAllTSDB()
+
+	// Verify that the TSDBState is closed
+	assert.Equal(t, i.TSDBState.closed, true)
+
+	// Verify that DB is no longer in memory, but was closed
+	db = i.getTSDB(userID)
+	require.Nil(t, db)
+
+	// Trying to create a TSDB after closing should return an error
+	expectedErr := errAllTSDBClosing.Error()
+
+	db, err = i.getOrCreateTSDB(userID, false)
+	verifyErrorString(t, err, expectedErr)
+	require.Nil(t, db)
+
+}

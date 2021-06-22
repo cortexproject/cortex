@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
+* [BUGFIX] Ingester: Prevent any reads on TSDBs when the ingester is stopping. #4304
 
 ## 1.10.0-rc.0 / 2021-06-28
 

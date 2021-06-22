@@ -56,7 +56,7 @@ func (c *ShardedClient) List(ctx context.Context, prefix string) ([]string, erro
 		})
 	}
 	go func() {
-		g.Wait()
+		_ = g.Wait()
 		close(rss)
 	}()
 

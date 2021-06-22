@@ -20,7 +20,7 @@ func TestHash(t *testing.T) {
 	for i := 0; i <= 100; i++ {
 		key := fmt.Sprintf("%064x", r.Int63())
 		j := Hash(string(key), 10)
-		counts[j] += 1
+		counts[j]++
 	}
 
 	for i := int32(0); i < 10; i++ {

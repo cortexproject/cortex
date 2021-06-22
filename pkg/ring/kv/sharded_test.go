@@ -32,7 +32,7 @@ func TestSharded(t *testing.T) {
 		shards: shards,
 	}
 
-	// Put three keys, selected to has to 3 different shards.
+	// Put three keys, selected to hash to 3 different shards.
 	keys := []string{"fooo", "bar", "baz"}
 	for _, key := range keys {
 		require.NoError(t, sharded.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -52,7 +52,7 @@ func TestSharded(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, keys, actual)
 
-	// Make sure each shared got one key.
+	// Make sure each shard got one key.
 	for _, shard := range shards {
 		keys, err := shard.List(context.Background(), "")
 		require.NoError(t, err)

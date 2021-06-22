@@ -767,7 +767,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	}
 }
 
-// GetInstanceState implements ReadRing.
+// GetInstanceState returns the current state of an instance or an error if the
+// instance does not exist in the ring.
 func (r *Ring) GetInstanceState(instanceID string) (InstanceState, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

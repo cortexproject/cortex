@@ -41,9 +41,8 @@ const (
 )
 
 var (
-	errInvalidBlockRanges            = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
-	RingOp                           = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
-	WaitInstanceStateTimeoutDuration = time.Duration(600)
+	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
 		return compact.NewDefaultGrouper(
@@ -395,9 +394,10 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
 
-		ctx, cancel := context.WithTimeout(ctx, WaitInstanceStateTimeoutDuration*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, c.compactorCfg.ShardingRing.StartingTimeout)
 		defer cancel()
 		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+			level.Error(c.logger).Log("msg", "compactor failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")

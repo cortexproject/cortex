@@ -59,8 +59,7 @@ const (
 )
 
 var (
-	errExemplarRef    = errors.New("exemplars not ingested because series not already present")
-	errAllTSDBClosing = errors.New("TSDB's are closing and cannot be accessed")
+	errExemplarRef = errors.New("exemplars not ingested because series not already present")
 )
 
 // Shipper interface is used to have an easy way to mock it in tests.

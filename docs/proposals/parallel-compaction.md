@@ -26,13 +26,13 @@ We accept the fact that a single compaction can potentially take more than 2 hou
 
 ### Parallelize Work
 
-This proposal builds heavily on top of the [GrafanaLabs approach of introducing parallelism via time intervals](https://github.com/cortexproject/cortex/pull/2616). The difference being that a single tenant is now sharded across multiple compactors instead of just a single compactor. The initial approach will be to work on distinct time intervals, but the compactor planner can be later extended to introduce parallelism within a time interval as well. The
+This proposal builds heavily on top of the [GrafanaLabs approach of introducing parallelism via time intervals](https://github.com/cortexproject/cortex/pull/2616). The difference being that a single tenant is now sharded across multiple compactors instead of just a single compactor. The initial approach will be to work on distinct time intervals, but the compactor planner can be later extended to introduce parallelism within a time interval as well.
 
 The following is an example of parallelize work at each level:
 
 ![Parallel Compaction Grouping](/images/proposals/parallel-compaction-grouping.png)
 
-Compactors are shuffle-sharded, meaning that 1 tenant can belong to multiple compactors, and these subset of compactors determine which blocks should be compacted together. Compactors determine amongst themselves the responsibility of the compaction blocks, by using a hash on time interval and the block ids.
+Compactors are shuffle-sharded, meaning that 1 tenant can belong to multiple compactors, and these subset of compactors determine which blocks should be compacted together. Compactors determine amongst themselves the responsibility of the compaction blocks, by using a hash of time interval and tenant id, and putting it on the sharding ring.
 
 The benefit of this approach is that this aligns with what Cortex currently does in Ruler. The downside is that a compaction job can only be assigned to a single compactor, rather than all of the compactors sharded for the tenant. If a compaction job takes forever, other tenants sharded to the same compactor will be blocked until the issue is resolved. With the scheduler approach, any compactor assigned to a given tenant can pick up any work required.
 
@@ -63,6 +63,3 @@ On resharding of compactor schedulers, a tenant might move to a different schedu
 
 ### Contribute to Thanos for a more scalable compactor
 Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a [proposal to make compactor more scalable](https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/), and a [PR](https://github.com/thanos-io/thanos/pull/3807). Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.
-
-### Create a Kubernetes job for each of the compaction plans
-The compactor schedules creates kubernetes jobs for each of the compaction jobs that can be done, instead of pushing the job to compactor. Kubernetes is responsible for spinning up a compactor pod for each of the job scheduled. This way, we avoid the coordination between compaction scheduler and compactor. Also, the compaction scheduler coordinates with the Kubernetes API server, instead of amongst each other during resharding. The downside of this approach is that we cannot control the concurrency, and Cortex requires a tighter integration with Kubernetes.

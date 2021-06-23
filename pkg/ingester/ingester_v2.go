@@ -416,9 +416,6 @@ type TSDBState struct {
 	appenderAddDuration    prometheus.Histogram
 	appenderCommitDuration prometheus.Histogram
 	idleTsdbChecks         *prometheus.CounterVec
-
-	closed bool // protected by userStatesMtx
-
 }
 
 type requestWithUsersAndCallback struct {
@@ -681,7 +678,6 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.ingestionRate.Tick()
 		case <-rateUpdateTicker.C:
 			i.userStatesMtx.RLock()
-
 			for _, db := range i.TSDBState.dbs {
 				db.ingestedAPISamples.Tick()
 				db.ingestedRuleSamples.Tick()
@@ -1555,7 +1551,7 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 	i.userStatesMtx.Lock()
 	defer i.userStatesMtx.Unlock()
 
-	// Check again for DB in the event it was created or closed in-between locks
+	// Check again for DB in the event it was created in-between locks
 	var ok bool
 	db, ok = i.TSDBState.dbs[userID]
 	if ok {

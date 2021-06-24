@@ -166,6 +166,11 @@ compactor:
   # CLI flag: -compactor.disabled-tenants
   [disabled_tenants: <string> | default = ""]
 
+  # Enable planner filter which will filter groups of blocks within the Cortex 
+  # compactor instead of using the Thanos to group blocks.
+  # CLI flag: -compactor.planner-filter-enabled
+  [planner_filter_enabled: <boolean> | default = false]
+
   # Shard tenants across multiple compactor instances. Sharding is required if
   # you run multiple compactor instances, in order to coordinate compactions and
   # avoid race conditions leading to the same tenant blocks simultaneously

@@ -232,7 +232,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 				return promql.Vector{}, tc.returnedError
 			}
 
-			qf := metricsQueryFunc(mockFunc, queries, failures, queryTime, "user")
+			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "user")
 
 			_, err := qf(context.Background(), "test", time.Now())
 			require.Equal(t, tc.returnedError, err)

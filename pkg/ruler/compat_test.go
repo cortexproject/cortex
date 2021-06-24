@@ -231,8 +231,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
 				return promql.Vector{}, tc.returnedError
 			}
-
-			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "user")
+			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "userID")
 
 			_, err := qf(context.Background(), "test", time.Now())
 			require.Equal(t, tc.returnedError, err)
@@ -241,4 +240,22 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			require.Equal(t, tc.expectedFailedQueries, int(testutil.ToFloat64(failures)))
 		})
 	}
+}
+
+func TestMetricsQueryFuncMetrics(t *testing.T) {
+	queries := prometheus.NewCounter(prometheus.CounterOpts{})
+	failures := prometheus.NewCounter(prometheus.CounterOpts{})
+	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
+
+	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+		time.Sleep(1 * time.Millisecond)
+		return promql.Vector{}, nil
+	}
+	qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "userID")
+
+	_, _ = qf(context.Background(), "test", time.Now())
+
+	require.Equal(t, 1, int(testutil.ToFloat64(queries)))
+	require.Equal(t, 0, int(testutil.ToFloat64(failures)))
+	require.LessOrEqual(t, float64(1*time.Millisecond), testutil.ToFloat64(queryTime.WithLabelValues("userID")))
 }

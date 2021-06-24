@@ -151,7 +151,7 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 		// If we've been passed a counter vec we want to record the wall time spent executing this request.
 		if queryTime != nil {
 			startTime = time.Now()
-			defer queryTime.WithLabelValues(userID).Add(float64(time.Since(startTime)))
+			defer func() { queryTime.WithLabelValues(userID).Add(float64(time.Since(startTime))) }()
 		}
 
 		result, err := qf(ctx, qs, t)

@@ -26,7 +26,7 @@ type PlannerFilter struct {
 	compactorCfg   Config
 	metaSyncDir    string
 
-	plans []*blocksGroup
+	plans []blocksGroup
 }
 
 func NewPlannerFilter(ctx context.Context, userID string, ulogger log.Logger, bucket objstore.InstrumentedBucket, fetcherFilters []block.MetadataFilter, compactorCfg Config, metaSyncDir string) (*PlannerFilter, error) {
@@ -66,7 +66,7 @@ func (f *PlannerFilter) getUserBlocks(ctx context.Context) (map[ulid.ULID]*metad
 	return metas, nil
 }
 
-// Fetches blocks and generates plans that can be parallized and saves them
+// Fetches blocks and generates plans that can be parallized and saves them in the PlannerFilter struct.
 func (f *PlannerFilter) fetchBlocksAndGeneratePlans(ctx context.Context) error {
 	// Get blocks
 	blocks, err := f.getUserBlocks(ctx)
@@ -87,20 +87,20 @@ func (f *PlannerFilter) generatePlans(ctx context.Context, blocks map[ulid.ULID]
 		mainGroups[key] = append(mainGroups[key], b)
 	}
 
-	var plans []*blocksGroup
+	var plans []blocksGroup
 
-	for _, mainBlocks := range mainGroups {
-		for i, plan := range groupBlocksByCompactableRanges(mainBlocks, f.compactorCfg.BlockRanges.ToMilliseconds()) {
+	for k, mainBlocks := range mainGroups {
+		for i, plan := range groupBlocksByCompactableRanges(mainBlocks, f.compactorCfg.BlockRanges.ToMilliseconds(), f.ulogger) {
 			// Nothing to do if we don't have at least 2 blocks.
 			if len(plan.blocks) < 2 {
 				continue
 			}
 
-			plan.key = i
-
 			level.Info(f.ulogger).Log("msg", "Found plan for user", "user", f.userID, "plan", plan.String())
 
-			plans = append(plans, &plan)
+			plan.key = fmt.Sprintf("%v_%v", k, i)
+
+			plans = append(plans, plan)
 		}
 	}
 
@@ -152,7 +152,7 @@ type blocksGroup struct {
 	rangeStart int64 // Included.
 	rangeEnd   int64 // Excluded.
 	blocks     []*metadata.Meta
-	key        int
+	key        string
 }
 
 // overlaps returns whether the group range overlaps with the input group.
@@ -166,7 +166,7 @@ func (g blocksGroup) overlaps(other blocksGroup) bool {
 
 func (g blocksGroup) String() string {
 	out := strings.Builder{}
-	out.WriteString(fmt.Sprintf("Group range start: %d, range end: %d, blocks: ", g.rangeStart, g.rangeEnd))
+	out.WriteString(fmt.Sprintf("Group range start: %d, range end: %d, key %v, blocks: ", g.rangeStart, g.rangeEnd, g.key))
 
 	for i, b := range g.blocks {
 		if i > 0 {

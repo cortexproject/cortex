@@ -1,12 +1,131 @@
 package compactor
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/go-kit/kit/log"
+	"github.com/oklog/ulid"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
+
+func TestPlannerFilterPlanGeneration(t *testing.T) {
+	block1ulid := ulid.MustNew(1, nil)
+	block2ulid := ulid.MustNew(2, nil)
+	block3ulid := ulid.MustNew(3, nil)
+	block4ulid := ulid.MustNew(4, nil)
+	block5ulid := ulid.MustNew(5, nil)
+	block6ulid := ulid.MustNew(6, nil)
+	block7ulid := ulid.MustNew(7, nil)
+	block8ulid := ulid.MustNew(8, nil)
+	block9ulid := ulid.MustNew(9, nil)
+	block10ulid := ulid.MustNew(10, nil)
+	block11ulid := ulid.MustNew(11, nil)
+
+	blocks :=
+		map[ulid.ULID]*metadata.Meta{
+			block1ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block2ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 3 * time.Hour.Milliseconds(), MaxTime: 4 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block3ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block3ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block4ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block4ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block5ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block5ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
+			},
+			block6ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block6ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
+			},
+			block7ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block7ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block8ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block8ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
+			},
+			block9ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block9ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "3"}},
+			},
+			block10ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block10ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
+			},
+			block11ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block11ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
+			},
+		}
+
+	tests := map[string]struct {
+		ranges        cortex_tsdb.DurationList
+		blocks        map[ulid.ULID]*metadata.Meta
+		expectedPlans []blocksGroup
+	}{
+		"test basic planning": {
+			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block1ulid: blocks[block1ulid], block2ulid: blocks[block2ulid], block3ulid: blocks[block3ulid], block4ulid: blocks[block4ulid], block5ulid: blocks[block5ulid], block6ulid: blocks[block6ulid]},
+			expectedPlans: []blocksGroup{
+				{rangeStart: 0, rangeEnd: 7200000, blocks: []*metadata.Meta{blocks[block6ulid], blocks[block5ulid]}, key: "0@14088339200549387484_0"},
+				{rangeStart: 0, rangeEnd: 7200000, blocks: []*metadata.Meta{blocks[block3ulid], blocks[block1ulid]}, key: "0@6043952821095826047_0"},
+				{rangeStart: 7200000, rangeEnd: 14400000, blocks: []*metadata.Meta{blocks[block4ulid], blocks[block2ulid]}, key: "0@6043952821095826047_1"},
+			},
+		},
+		"test no compaction": {
+			ranges:        []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks:        map[ulid.ULID]*metadata.Meta{block7ulid: blocks[block7ulid], block8ulid: blocks[block8ulid], block9ulid: blocks[block9ulid]},
+			expectedPlans: []blocksGroup{},
+		},
+		"test smallest range first": {
+			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block1ulid: blocks[block1ulid], block2ulid: blocks[block2ulid], block3ulid: blocks[block3ulid], block4ulid: blocks[block4ulid], block10ulid: blocks[block10ulid], block11ulid: blocks[block11ulid]},
+			expectedPlans: []blocksGroup{
+				{rangeStart: 0, rangeEnd: 7200000, blocks: []*metadata.Meta{blocks[block3ulid], blocks[block1ulid]}, key: "0@6043952821095826047_0"},
+				{rangeStart: 7200000, rangeEnd: 14400000, blocks: []*metadata.Meta{blocks[block4ulid], blocks[block2ulid]}, key: "0@6043952821095826047_1"},
+				{rangeStart: 14400000, rangeEnd: 28800000, blocks: []*metadata.Meta{blocks[block10ulid], blocks[block11ulid]}, key: "0@14088339200549387484_0"},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			compactorCfg := Config{}
+			flagext.DefaultValues(&compactorCfg)
+			compactorCfg.BlockRanges = testData.ranges
+			f := &PlannerFilter{
+				userID:       "test-user",
+				compactorCfg: compactorCfg,
+				ulogger:      log.NewNopLogger(),
+			}
+			err := f.generatePlans(context.Background(), testData.blocks)
+			require.NoError(t, err)
+			actualPlans := f.plans
+			require.Len(t, actualPlans, len(testData.expectedPlans))
+			for i, expectedPlan := range testData.expectedPlans {
+				assert.Equal(t, expectedPlan, actualPlans[i])
+			}
+		})
+	}
+}
 
 func TestGroupBlocksByCompactableRanges(t *testing.T) {
 	tests := map[string]struct {

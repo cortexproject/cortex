@@ -1828,10 +1828,9 @@ func (i *Ingester) getMemorySeriesMetric() float64 {
 
 	count := uint64(0)
 
-	// If the TSDB is in the processes of closing, then return 0
 	if i.State() == services.Stopping {
 		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
-		return float64(count)
+		return 0
 	}
 
 	for _, db := range i.TSDBState.dbs {

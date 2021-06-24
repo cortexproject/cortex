@@ -173,6 +173,11 @@ compactor:
   # CLI flag: -compactor.sharding-enabled
   [sharding_enabled: <boolean> | default = false]
 
+  # Enable planner filter which will filter groups of blocks within the Cortex 
+  # compactor instead of using the Thanos to group blocks.
+  # CLI flag: -compactor.planner-filter-enabled
+  [planner_filter_enabled: <boolean> | default = false]
+
   sharding_ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,

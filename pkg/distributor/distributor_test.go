@@ -1012,12 +1012,15 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	flagext.DefaultValues(limits)
 
 	// Prepare distributors.
+	// Use replication factor of 2 to always read all the chunks from both ingesters,
+	// this guarantees us to always read the same chunks and have a stable test.
 	ds, _, r, _ := prepare(t, prepConfig{
-		numIngesters:     3,
-		happyIngesters:   3,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           limits,
+		numIngesters:      2,
+		happyIngesters:    2,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		limits:            limits,
+		replicationFactor: 2,
 	})
 	defer stopAll(ds, r)
 
@@ -1893,6 +1896,7 @@ type prepConfig struct {
 	skipLabelNameValidation      bool
 	maxInflightRequests          int
 	maxIngestionRate             float64
+	replicationFactor            int
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring, []*prometheus.Registry) {
@@ -1935,12 +1939,18 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	)
 	require.NoError(t, err)
 
+	// Use a default replication factor of 3 if there isn't a provided replication factor.
+	rf := cfg.replicationFactor
+	if rf == 0 {
+		rf = 3
+	}
+
 	ingestersRing, err := ring.New(ring.Config{
 		KVStore: kv.Config{
 			Mock: kvStore,
 		},
 		HeartbeatTimeout:  60 * time.Minute,
-		ReplicationFactor: 3,
+		ReplicationFactor: rf,
 	}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))

@@ -242,9 +242,9 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 
 			level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
 			if err := ring.WaitRingStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
-				level.Warn(g.logger).Log("msg", "store-gateway is ring topology is not stable after the max waiting time, proceeding anyway")
+				level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway")
 			} else {
-				level.Info(g.logger).Log("msg", "store-gateway is ring topology is stable")
+				level.Info(g.logger).Log("msg", "store-gateway ring topology is stable")
 			}
 		}
 	}

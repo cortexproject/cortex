@@ -248,7 +248,7 @@ func TestMetricsQueryFuncMetrics(t *testing.T) {
 	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
 
 	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
 	qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "userID")
@@ -257,5 +257,5 @@ func TestMetricsQueryFuncMetrics(t *testing.T) {
 
 	require.Equal(t, 1, int(testutil.ToFloat64(queries)))
 	require.Equal(t, 0, int(testutil.ToFloat64(failures)))
-	require.LessOrEqual(t, float64(1*time.Millisecond), testutil.ToFloat64(queryTime.WithLabelValues("userID")))
+	require.LessOrEqual(t, float64(1), testutil.ToFloat64(queryTime.WithLabelValues("userID")))
 }

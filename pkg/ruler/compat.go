@@ -143,9 +143,16 @@ func engineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 	}
 }
 
-func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
+func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter, queryTime *prometheus.CounterVec, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
+
+		var startTime time.Time
+		// If we've been passed a counter vec we want to record the wall time spent executing this request.
+		if queryTime != nil {
+			startTime = time.Now()
+			defer queryTime.WithLabelValues(userID).Add(float64(time.Since(startTime)))
+		}
 
 		result, err := qf(ctx, qs, t)
 
@@ -199,12 +206,20 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
 	})
+	var rulerQuerySeconds *prometheus.CounterVec
+	if cfg.RulerEnableQueryStats {
+		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_query_seconds_total",
+			Help: "Total amount of wall clock time spend processing queries by the ruler.",
+		}, []string{"user"})
+	}
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       metricsQueryFunc(engineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries),
+			QueryFunc:       metricsQueryFunc(engineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries, rulerQuerySeconds, userID),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

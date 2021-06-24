@@ -21,6 +21,7 @@
   * Ensure that a ring store is configured using `-alertmanager.sharding-ring.store`, and set the flags relevant to the chosen store type.
   * Enable the feature using `-alertmanager.sharding-enabled`.
   * Note the prior addition of a new configuration option `-alertmanager.persist-interval`. This sets the interval between persisting the current alertmanager state (notification log and silences) to object storage. See the [configuration file reference](https://cortexmetrics.io/docs/configuration/configuration-file/#alertmanager_config) for more information.
+* [FEATURE] Ruler: Add new `-ruler.enable-query-stats` which when enabled will report the `cortex_ruler_query_seconds_total` metric that tracks the sum of the wall time of executing queries in the ruler. #XXXX
 * [ENHANCEMENT] Alertmanager: Cleanup persisted state objects from remote storage when a tenant configuration is deleted. #4167
 * [ENHANCEMENT] Storage: Added the ability to disable Open Census within GCS client (e.g `-gcs.enable-opencensus=false`). #4219
 * [ENHANCEMENT] Etcd: Added username and password to etcd config. #4205

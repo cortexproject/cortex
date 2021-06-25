@@ -60,6 +60,8 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
+	querySeries  *prometheus.SummaryVec
+	queryBytes   *prometheus.SummaryVec
 	activeUsers  *util.ActiveUsersCleanupService
 }
 
@@ -77,8 +79,27 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
+		// Empty objectives for these summaries on purpose since they can't be aggregate
+		// and so we are just using them for the convenience of sum and count metrics. No
+		// histograms here since the cardinality from the number of buckets required to
+		// understand query responses is prohibitively expensive.
+
+		h.querySeries = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
+			Name:    "cortex_query_series",
+			Help:    "Number of series returned by successful queries.",
+			Objectives: map[float64]float64{},
+		}, []string{"user"})
+
+		h.queryBytes = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
+			Name: "cortex_query_bytes",
+			Help: "Number of bytes returned by successful queries.",
+			Objectives: map[float64]float64{},
+		}, []string{"user"})
+
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
+			h.querySeries.DeleteLabelValues(user)
+			h.queryBytes.DeleteLabelValues(user)
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -165,9 +186,14 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		return
 	}
 	userID := tenant.JoinTenantIDs(tenantIDs)
+	wallTime := stats.LoadWallTime()
+	numSeries := stats.LoadSeries()
+	numBytes := stats.LoadBytes()
 
 	// Track stats.
-	f.querySeconds.WithLabelValues(userID).Add(stats.LoadWallTime().Seconds())
+	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
+	f.querySeries.WithLabelValues(userID).Observe(float64(numSeries))
+	f.queryBytes.WithLabelValues(userID).Observe(float64(numBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
@@ -177,7 +203,9 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"method", r.Method,
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
-		"query_wall_time_seconds", stats.LoadWallTime().Seconds(),
+		"query_wall_time_seconds", wallTime.Seconds(),
+		"query_series", numSeries,
+		"query_bytes", numBytes,
 	}, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

@@ -54,6 +54,38 @@ func (s *Stats) LoadWallTime() time.Duration {
 	return time.Duration(atomic.LoadInt64((*int64)(&s.WallTime)))
 }
 
+func (s *Stats) AddSeries(series uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.NumSeries, series)
+}
+
+func (s *Stats) LoadSeries() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.NumSeries)
+}
+
+func (s *Stats) AddBytes(bytes uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.NumBytes, bytes)
+}
+
+func (s *Stats) LoadBytes() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.NumBytes)
+}
+
 // Merge the provide Stats into this one.
 func (s *Stats) Merge(other *Stats) {
 	if s == nil || other == nil {
@@ -61,6 +93,8 @@ func (s *Stats) Merge(other *Stats) {
 	}
 
 	s.AddWallTime(other.LoadWallTime())
+	s.AddSeries(other.LoadSeries())
+	s.AddBytes(other.LoadBytes())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

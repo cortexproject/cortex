@@ -147,11 +147,10 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
 
-		var startTime time.Time
 		// If we've been passed a counter vec we want to record the wall time spent executing this request.
 		if queryTime != nil {
-			startTime = time.Now()
-			defer func() { queryTime.WithLabelValues(userID).Add(time.Since(startTime).Seconds()) }()
+			timer := prometheus.NewTimer(nil)
+			defer func() { queryTime.WithLabelValues(userID).Add(timer.ObserveDuration().Seconds()) }()
 		}
 
 		result, err := qf(ctx, qs, t)
@@ -207,10 +206,10 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		Help: "Number of failed queries by ruler.",
 	})
 	var rulerQuerySeconds *prometheus.CounterVec
-	if cfg.RulerEnableQueryStats {
+	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spend processing queries by the ruler.",
+			Help: "Total amount of wall clock time spent processing queries by the ruler.",
 		}, []string{"user"})
 	}
 

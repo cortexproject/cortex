@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
@@ -330,7 +331,7 @@ func (s *Scanner) findTablesToProcess(ctx context.Context, indexReader chunk.Ind
 	var result []tableToProcess
 
 	for _, t := range tables {
-		if !strings.HasPrefix(t, tablesConfig.Prefix) {
+		if !util.HasPrefixAndRandomNumberOnly(t, tablesConfig.Prefix) {
 			continue
 		}
 

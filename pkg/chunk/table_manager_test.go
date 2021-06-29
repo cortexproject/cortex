@@ -14,9 +14,9 @@ import (
 const (
 	baseTableName     = "cortex_base"
 	tablePrefix       = "cortex_"
-	table2Prefix      = "cortex2_"
+	table2Prefix      = "cortex_2_"
 	chunkTablePrefix  = "chunks_"
-	chunkTable2Prefix = "chunks2_"
+	chunkTable2Prefix = "chunks_2_"
 	tableRetention    = 2 * 7 * 24 * time.Hour
 	tablePeriod       = 7 * 24 * time.Hour
 	gracePeriod       = 15 * time.Minute

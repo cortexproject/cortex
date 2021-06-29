@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"flag"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
@@ -20,6 +21,14 @@ type ShardedClient struct {
 	cfg ShardedConfig
 
 	shards []Client
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet.
+// If prefix is an empty string we will register consul flags with no prefix and the
+// store flag with the prefix ring, so ring.store. For everything else we pass the prefix
+// to the Consul flags.
+// If prefix is not an empty string it should end with a period.
+func (cfg *ShardedClient) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f *flag.FlagSet) {
 }
 
 func buildShardedClient(cfg ShardedConfig, codec codec.Codec, reg prometheus.Registerer) (*ShardedClient, error) {

@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -203,6 +204,11 @@ var (
 			name:       "s3_sse_config",
 			structType: reflect.TypeOf(s3.SSEConfig{}),
 			desc:       "The s3_sse_config configures the S3 server-side encryption.",
+		},
+		{
+			name:       "kv_config",
+			structType: reflect.TypeOf(kv.Config{}),
+			desc:       "The kv_config configures a KV store client.",
 		},
 	}
 )

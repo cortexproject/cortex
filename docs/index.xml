@@ -6753,7 +6753,7 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;li>Hash the metric name and tenant ID (default)&lt;/li>
 &lt;li>Hash the metric name, labels and tenant ID (enabled with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>)&lt;/li>
 &lt;/ol>
-&lt;p>The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.&lt;/p>
+&lt;p>The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to all ingesters since a metric could be spread across multiple ingesters given different label sets.&lt;/p>
 &lt;h4 id="the-hash-ring">The hash ring&lt;/h4>
 &lt;p>A hash ring (stored in a key-value store) is used to achieve consistent hashing for the series sharding and replication across the ingesters. All &lt;a href="#ingester">ingesters&lt;/a> register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is &lt;a href="#hashing">hashed&lt;/a> in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.&lt;/p>
 &lt;p>To do the hash lookup, distributors find the smallest appropriate token whose value is larger than the &lt;a href="#hashing">hash of the series&lt;/a>. When the replication factor is larger than 1, the next subsequent tokens (clockwise in the ring) that belong to different ingesters will also be included in the result.&lt;/p>

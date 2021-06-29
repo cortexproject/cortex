@@ -1618,8 +1618,8 @@ ring:
 [disabled_tenants: <string> | default = ""]
 
 # Report the wall time for ruler queries to complete as a metric.
-# CLI flag: -ruler.enable-query-stats
-[enable_query_stats: <boolean> | default = false]
+# CLI flag: -ruler.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`

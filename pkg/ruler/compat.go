@@ -143,18 +143,17 @@ func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 	}
 }
 
-func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter, queryTime *prometheus.CounterVec, userID string) rules.QueryFunc {
+func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter, queryTime prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
 
 		// If we've been passed a counter vec we want to record the wall time spent executing this request.
 		if queryTime != nil {
 			timer := prometheus.NewTimer(nil)
-			defer func() { queryTime.WithLabelValues(userID).Add(timer.ObserveDuration().Seconds()) }()
+			defer func() { queryTime.Add(timer.ObserveDuration().Seconds()) }()
 		}
 
 		result, err := qf(ctx, qs, t)
-
 		// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
 		// It returns promql.ErrStorage, if error should be reported back as 500.
 		// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
@@ -214,11 +213,15 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	}
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+		var queryTime prometheus.Counter = nil
+		if rulerQuerySeconds != nil {
+			queryTime = rulerQuerySeconds.WithLabelValues(userID)
+		}
 
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries, rulerQuerySeconds, userID),
+			QueryFunc:       MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries, queryTime),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

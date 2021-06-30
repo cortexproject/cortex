@@ -231,7 +231,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
 				return promql.Vector{}, tc.returnedError
 			}
-			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "userID")
+			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime.WithLabelValues("userID"))
 
 			_, err := qf(context.Background(), "test", time.Now())
 			require.Equal(t, tc.returnedError, err)
@@ -251,7 +251,7 @@ func TestMetricsQueryFuncMetrics(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime, "userID")
+	qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime.WithLabelValues("userID"))
 
 	_, _ = qf(context.Background(), "test", time.Now())
 

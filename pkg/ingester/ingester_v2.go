@@ -993,7 +993,7 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 	i.metrics.queries.Inc()
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.QueryResponse{}, nil
 	}
 
@@ -1054,7 +1054,7 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 	i.metrics.queries.Inc()
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.ExemplarQueryResponse{}, nil
 	}
 
@@ -1104,7 +1104,7 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 	}
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.LabelValuesResponse{}, nil
 	}
 
@@ -1141,7 +1141,7 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 	}
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.LabelNamesResponse{}, nil
 	}
 
@@ -1178,7 +1178,7 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.MetricsForLabelMatchersResponse{}, nil
 	}
 
@@ -1250,7 +1250,7 @@ func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest
 	}
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return &client.UserStatsResponse{}, nil
 	}
 
@@ -1267,7 +1267,7 @@ func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequ
 	defer i.userStatesMtx.RUnlock()
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
 		return &client.UsersStatsResponse{}, nil
 	}
 
@@ -1316,7 +1316,7 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	i.metrics.queries.Inc()
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of stopping and closing all TSBD")
 		return nil
 	}
 
@@ -1829,7 +1829,7 @@ func (i *Ingester) getMemorySeriesMetric() float64 {
 	count := uint64(0)
 
 	if i.State() == services.Stopping {
-		level.Warn(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
+		level.Debug(i.logger).Log("Cannot retrieve TSDB, as the Ingester is in the process of closing all TSBD")
 		return 0
 	}
 

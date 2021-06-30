@@ -912,6 +912,8 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 		shardByAllLabels: true,
 		limits:           limits,
 	})
+
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, maxChunksLimit))
 	defer stopAll(ds, r)
 
 	// Push a number of series below the max chunks limit. Each series has 1 sample,
@@ -957,7 +959,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	ctx := user.InjectOrgID(context.Background(), "user")
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0, 0))
 
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
@@ -1012,12 +1014,15 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	flagext.DefaultValues(limits)
 
 	// Prepare distributors.
+	// Use replication factor of 2 to always read all the chunks from both ingesters,
+	// this guarantees us to always read the same chunks and have a stable test.
 	ds, _, r, _ := prepare(t, prepConfig{
-		numIngesters:     3,
-		happyIngesters:   3,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           limits,
+		numIngesters:      2,
+		happyIngesters:    2,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		limits:            limits,
+		replicationFactor: 2,
 	})
 	defer stopAll(ds, r)
 
@@ -1040,7 +1045,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	var maxBytesLimit = (seriesToAdd) * responseChunkSize
 
 	// Update the limiter with the calculated limits.
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit, 0))
 
 	// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
 	writeReq = makeWriteRequest(0, seriesToAdd-1, 0)
@@ -1893,6 +1898,7 @@ type prepConfig struct {
 	skipLabelNameValidation      bool
 	maxInflightRequests          int
 	maxIngestionRate             float64
+	replicationFactor            int
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring, []*prometheus.Registry) {
@@ -1935,12 +1941,18 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	)
 	require.NoError(t, err)
 
+	// Use a default replication factor of 3 if there isn't a provided replication factor.
+	rf := cfg.replicationFactor
+	if rf == 0 {
+		rf = 3
+	}
+
 	ingestersRing, err := ring.New(ring.Config{
 		KVStore: kv.Config{
 			Mock: kvStore,
 		},
 		HeartbeatTimeout:  60 * time.Minute,
-		ReplicationFactor: 3,
+		ReplicationFactor: rf,
 	}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))

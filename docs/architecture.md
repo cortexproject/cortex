@@ -117,7 +117,7 @@ Cortex supports two hashing strategies:
 1. Hash the metric name and tenant ID (default)
 2. Hash the metric name, labels and tenant ID (enabled with `-distributor.shard-by-all-labels=true`)
 
-The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.
+The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to all ingesters since a metric could be spread across multiple ingesters given different label sets.
 
 #### The hash ring
 

@@ -4043,11 +4043,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_chunks_per_query: <int> | default = 2000000]
 
 # Maximum number of chunks that can be fetched in a single query from ingesters
-# and long-term storage: the total number of actual fetched chunks could be 2x
-# the limit, being independently applied when querying ingesters and long-term
-# storage. This limit is enforced in the ingester (if chunks streaming is
-# enabled), querier, ruler and store-gateway. Takes precedence over the
-# deprecated -store.query-chunk-limit. 0 to disable.
+# and long-term storage. This limit is enforced in the querier, ruler and
+# store-gateway. Takes precedence over the deprecated -store.query-chunk-limit.
+# 0 to disable.
 # CLI flag: -querier.max-fetched-chunks-per-query
 [max_fetched_chunks_per_query: <int> | default = 0]
 

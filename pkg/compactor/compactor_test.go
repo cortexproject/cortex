@@ -1093,7 +1093,7 @@ func prepareConfig() Config {
 	compactorCfg.ShardingRing.WaitStabilityMaxDuration = 0
 
 	// Set lower timeout for waiting on compactor to become ACTIVE in the ring for unit tests
-	compactorCfg.ShardingRing.StartingTimeout = 5 * time.Second
+	compactorCfg.ShardingRing.WaitActiveInstanceTimeout = 5 * time.Second
 
 	return compactorCfg
 }
@@ -1288,19 +1288,23 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 
 	// Mock the bucket
 	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{}, nil)
 
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
-	cfg.ShardingRing.KVStore.Mock = consul.NewBadInMemoryClient(ring.GetCodec())
+	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
+
+	// Set ObservePeriod to longer than the timeout period to mock a timeout while waiting on ring to become ACTIVE
+	cfg.ShardingRing.ObservePeriod = time.Second * 10
 
 	c, _, _, logs, _ := prepare(t, cfg, bucketClient)
 
 	// Try to start the compactor with a bad consul kv-store. The
 	err := services.StartAndAwaitRunning(context.Background(), c)
 
-	// Assert that the compactor timesout
+	// Assert that the compactor timed out
 	assert.Equal(t, context.DeadlineExceeded, err)
 
 	assert.ElementsMatch(t, []string{

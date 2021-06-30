@@ -1,7 +1,6 @@
 package consul
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -228,39 +227,4 @@ func mockedMaxWaitTime(queryWaitTime time.Duration) time.Duration {
 	}
 
 	return queryWaitTime
-}
-
-type mockBadKV struct {
-	mockKV
-}
-
-// NewBadInMemoryClient makes a new mock consul client.
-func NewBadInMemoryClient(codec codec.Codec) *Client {
-	test := mockBadKV{}
-	test.kvps = nil
-	return NewBadInMemoryClientWithConfig(codec, Config{})
-}
-
-// NewBadInMemoryClientWithConfig makes a new mock consul client with supplied Config
-// and a failing CAS method for tests.
-func NewBadInMemoryClientWithConfig(codec codec.Codec, cfg Config) *Client {
-	m := mockBadKV{
-		mockKV: mockKV{
-			kvps: map[string]*consul.KVPair{},
-			// Always start from 1, we NEVER want to report back index 0 in the responses.
-			// This is in line with Consul, and our new checks for index return value in client.go.
-			current: 1,
-		},
-	}
-	m.cond = sync.NewCond(&m.mtx)
-	go m.loop()
-	return &Client{
-		kv:    &m,
-		codec: codec,
-		cfg:   cfg,
-	}
-}
-
-func (m *mockBadKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
-	return false, nil, errors.New("CAS Error")
 }

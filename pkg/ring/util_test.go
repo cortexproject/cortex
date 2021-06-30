@@ -245,10 +245,10 @@ func TestWaitInstanceStateTimeout(t *testing.T) {
 
 	const (
 		instanceID      = "test"
-		timeoutDuration = time.Duration(3)
+		timeoutDuration = time.Second
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
 	ring := &RingMock{}
@@ -265,10 +265,10 @@ func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
 
 	const (
 		instanceID      = "test"
-		timeoutDuration = time.Duration(3)
+		timeoutDuration = time.Second
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
 	ring := &RingMock{}
@@ -285,10 +285,10 @@ func TestWaitInstanceStateExitsAfterActualStateEqualsState(t *testing.T) {
 
 	const (
 		instanceID      = "test"
-		timeoutDuration = time.Duration(3)
+		timeoutDuration = time.Second
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
 	ring := &RingMock{}

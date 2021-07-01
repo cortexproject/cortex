@@ -231,7 +231,7 @@ compactor:
     # CLI flag: -compactor.ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-    # Timeout for compactor to become ACTIVE in the ring 
+    # Timeout for waiting on compactor to become ACTIVE in the ring.
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
 ```

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -226,12 +227,11 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queries := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
-			queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
 
 			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
 				return promql.Vector{}, tc.returnedError
 			}
-			qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime.WithLabelValues("userID"))
+			qf := MetricsQueryFunc(mockFunc, queries, failures)
 
 			_, err := qf(context.Background(), "test", time.Now())
 			require.Equal(t, tc.returnedError, err)
@@ -251,7 +251,7 @@ func TestMetricsQueryFuncMetrics(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := MetricsQueryFunc(mockFunc, queries, failures, queryTime.WithLabelValues("userID"))
+	qf := RecordAndReportRuleQueryMetrics(MetricsQueryFunc(mockFunc, queries, failures), queryTime.WithLabelValues("userID"), log.NewNopLogger())
 
 	_, _ = qf(context.Background(), "test", time.Now())
 

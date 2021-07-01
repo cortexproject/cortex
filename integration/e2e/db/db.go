@@ -14,18 +14,22 @@ const (
 )
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(port int, bktName string) *e2e.HTTPService {
+func NewMinio(port int, bktNames ...string) *e2e.HTTPService {
 	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
 	commands := []string{
-		"curl -sSL --tlsv1.2 -O '%s/root.key'	-O '%s/root.cert'",
-		"mkdir -p /data/%s && minio server --address :%v --quiet /data",
+		fmt.Sprintf("curl -sSL --tlsv1.2 -O '%s/root.key' -O '%s/root.cert'", minioKESGithubContent, minioKESGithubContent),
 	}
+
+	for _, bkt := range bktNames {
+		commands = append(commands, fmt.Sprintf("mkdir -p /data/%s", bkt))
+	}
+	commands = append(commands, fmt.Sprintf("minio server --address :%v --quiet /data", port))
 
 	m := e2e.NewHTTPService(
 		fmt.Sprintf("minio-%v", port),
 		images.Minio,
 		// Create the "cortex" bucket before starting minio
-		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(strings.Join(commands, " && "), minioKESGithubContent, minioKESGithubContent, bktName, port)),
+		e2e.NewCommandWithoutEntrypoint("sh", "-c", strings.Join(commands, " && ")),
 		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200, 200),
 		port,
 	)

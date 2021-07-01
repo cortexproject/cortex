@@ -26,7 +26,22 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+func wrapper(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
+	return errorTranslateSampleAndChunkQueryable{q: q}
+}
+
 func TestApiStatusCodes(t *testing.T) {
+	testWithWrapperFunc(t, wrapper)
+}
+
+// Make sure that error-translation is idempotent.
+func TestApiStatusCodesDoubleWrapper(t *testing.T) {
+	testWithWrapperFunc(t, func(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
+		return wrapper(wrapper(q))
+	})
+}
+
+func testWithWrapperFunc(t *testing.T, wrapperFn func(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable) {
 	for ix, tc := range []struct {
 		err            error
 		expectedString string
@@ -113,7 +128,7 @@ func TestApiStatusCodes(t *testing.T) {
 			"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
 		} {
 			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
-				r := createPrometheusAPI(errorTranslateQueryable{q: q})
+				r := createPrometheusAPI(wrapperFn(q))
 				rec := httptest.NewRecorder()
 
 				req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)

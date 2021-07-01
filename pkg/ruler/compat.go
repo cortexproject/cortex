@@ -234,6 +234,11 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		}, []string{"user"})
 	}
 
+	// Make sure that queryable reports errors as expected by our MetricsQueryFunc.
+	// Note that if queryable is already wrapped into ErrorTranslateQueryable, wrapping it again
+	// is fine (see TestApiStatusCodesDoubleWrapper in querier package).
+	q = querier.NewErrorTranslateQueryable(q)
+
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter = nil
 		if rulerQuerySeconds != nil {

@@ -523,6 +523,80 @@ func TestRulerAlertmanagerTLS(t *testing.T) {
 	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_notifications_alertmanagers_discovered"}, e2e.WaitMissingMetrics))
 }
 
+func TestRulerMetricsForInvalidQueries(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Prepare rule group with invalid rule.
+	var recordNode = yaml.Node{}
+	var exprNode = yaml.Node{}
+
+	recordNode.SetString("invalid_rule")
+	exprNode.SetString(`label_replace(metric, "foo", "$1", "service", "[")`) // Syntactically correct expression (passes check in ruler), but it fails because of invalid regex.
+
+	ruleGroup := rulefmt.RuleGroup{
+		Name:     "group_with_invalid_rule",
+		Interval: 10,
+		Rules: []rulefmt.RuleNode{{
+			Record: recordNode,
+			Expr:   exprNode,
+		}},
+	}
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components.
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks.yaml", cortexConfigFile))
+
+	// Configure the ruler.
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(false),
+		map[string]string{
+			// Since we're not going to run any rule (our only rule is invalid), we don't need the
+			// store-gateway to be configured to a valid address.
+			"-querier.store-gateway-addresses": "localhost:12345",
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+		},
+	)
+
+	// Start ruler.
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, flags, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "user")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: "bar"})
+
+	res, err := c.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Upload rule group to the ruler.
+	require.NoError(t, err)
+	require.NoError(t, c.SetRuleGroup(ruleGroup, "test"))
+
+	// Wait until ruler has loaded the group.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	// Wait until rule group has tried to evaluate few times.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WaitMissingMetrics))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_total"}, e2e.WaitMissingMetrics))
+
+	// We want to verify that ruler doesn't report evaluation failure as "queries failed", but only as "evaluation failures".
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WaitMissingMetrics))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_queries_failed_total"))
+}
+
 func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {
 	t.Helper()
 

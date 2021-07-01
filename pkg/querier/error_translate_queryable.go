@@ -69,12 +69,16 @@ func TranslateToPromqlAPIError(err error) error {
 	}
 }
 
-func NewErrorTranslateQueryable(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
+func NewErrorTranslateQueryable(q storage.Queryable) storage.Queryable {
 	return errorTranslateQueryable{q}
 }
 
+func NewErrorTranslateSampleAndChunkQueryable(q storage.SampleAndChunkQueryable) storage.SampleAndChunkQueryable {
+	return errorTranslateSampleAndChunkQueryable{q}
+}
+
 type errorTranslateQueryable struct {
-	q storage.SampleAndChunkQueryable
+	q storage.Queryable
 }
 
 func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
@@ -82,7 +86,16 @@ func (e errorTranslateQueryable) Querier(ctx context.Context, mint, maxt int64) 
 	return errorTranslateQuerier{q: q}, TranslateToPromqlAPIError(err)
 }
 
-func (e errorTranslateQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+type errorTranslateSampleAndChunkQueryable struct {
+	q storage.SampleAndChunkQueryable
+}
+
+func (e errorTranslateSampleAndChunkQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	q, err := e.q.Querier(ctx, mint, maxt)
+	return errorTranslateQuerier{q: q}, TranslateToPromqlAPIError(err)
+}
+
+func (e errorTranslateSampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
 	q, err := e.q.ChunkQuerier(ctx, mint, maxt)
 	return errorTranslateChunkQuerier{q: q}, TranslateToPromqlAPIError(err)
 }

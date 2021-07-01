@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-* [FEATURE] Ruler: Add new `-ruler.query-stats-enabled` which when enabled will report the `cortex_ruler_query_seconds_total` metric that tracks the sum of the wall time of executing queries in the ruler in seconds. #4317
+* [FEATURE] Ruler: Add new `-ruler.query-stats-enabled` which when enabled will report the `cortex_ruler_query_seconds_total` as a per-user metric that tracks the sum of the wall time of executing queries in the ruler in seconds. #4317
 
 ## 1.10.0-rc.0 / 2021-06-28
 

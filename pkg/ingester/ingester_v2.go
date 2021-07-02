@@ -992,10 +992,6 @@ func (i *Ingester) v2Query(ctx context.Context, req *client.QueryRequest) (*clie
 
 	i.metrics.queries.Inc()
 
-	if i.checkIfAllTSDBClosing() {
-		return &client.QueryResponse{}, nil
-	}
-
 	db := i.getTSDB(userID)
 	if db == nil {
 		return &client.QueryResponse{}, nil
@@ -1052,10 +1048,6 @@ func (i *Ingester) v2QueryExemplars(ctx context.Context, req *client.ExemplarQue
 
 	i.metrics.queries.Inc()
 
-	if i.checkIfAllTSDBClosing() {
-		return &client.ExemplarQueryResponse{}, nil
-	}
-
 	db := i.getTSDB(userID)
 	if db == nil {
 		return &client.ExemplarQueryResponse{}, nil
@@ -1101,10 +1093,6 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 		return nil, err
 	}
 
-	if i.checkIfAllTSDBClosing() {
-		return &client.LabelValuesResponse{}, nil
-	}
-
 	db := i.getTSDB(userID)
 	if db == nil {
 		return &client.LabelValuesResponse{}, nil
@@ -1137,10 +1125,6 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 		return nil, err
 	}
 
-	if i.checkIfAllTSDBClosing() {
-		return &client.LabelNamesResponse{}, nil
-	}
-
 	db := i.getTSDB(userID)
 	if db == nil {
 		return &client.LabelNamesResponse{}, nil
@@ -1171,10 +1155,6 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	if i.checkIfAllTSDBClosing() {
-		return &client.MetricsForLabelMatchersResponse{}, nil
 	}
 
 	db := i.getTSDB(userID)
@@ -1244,10 +1224,6 @@ func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest
 		return nil, err
 	}
 
-	if i.checkIfAllTSDBClosing() {
-		return &client.UserStatsResponse{}, nil
-	}
-
 	db := i.getTSDB(userID)
 	if db == nil {
 		return &client.UserStatsResponse{}, nil
@@ -1259,10 +1235,6 @@ func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest
 func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
-
-	if i.checkIfAllTSDBClosing() {
-		return &client.UsersStatsResponse{}, nil
-	}
 
 	users := i.TSDBState.dbs
 
@@ -1307,10 +1279,6 @@ func (i *Ingester) v2QueryStream(req *client.QueryRequest, stream client.Ingeste
 	}
 
 	i.metrics.queries.Inc()
-
-	if i.checkIfAllTSDBClosing() {
-		return nil
-	}
 
 	db := i.getTSDB(userID)
 	if db == nil {
@@ -1815,15 +1783,14 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 // getMemorySeriesMetric returns the total number of in-memory series across all open TSDBs.
 func (i *Ingester) getMemorySeriesMetric() float64 {
+	if err := i.checkRunning(); err != nil {
+		return 0
+	}
+
 	i.userStatesMtx.RLock()
 	defer i.userStatesMtx.RUnlock()
 
 	count := uint64(0)
-
-	if i.checkIfAllTSDBClosing() {
-		return 0
-	}
-
 	for _, db := range i.TSDBState.dbs {
 		count += db.Head().NumSeries()
 	}
@@ -2281,12 +2248,4 @@ func (i *Ingester) getInstanceLimits() *InstanceLimits {
 	}
 
 	return l
-}
-
-func (i *Ingester) checkIfAllTSDBClosing() bool {
-	if i.State() == services.Stopping {
-		level.Debug(i.logger).Log("msg", "TSDB is unavailable, as the Ingester is in the process of stopping and closing all TSDB")
-		return true
-	}
-	return false
 }

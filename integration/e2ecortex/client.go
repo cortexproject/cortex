@@ -318,6 +318,11 @@ func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) err
 	}
 
 	defer res.Body.Close()
+
+	if res.StatusCode != 202 {
+		return fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
 	return nil
 }
 

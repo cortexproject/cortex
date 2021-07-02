@@ -528,29 +528,10 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	// Prepare rule group with invalid rule.
-	var recordNode = yaml.Node{}
-	var exprNode = yaml.Node{}
-
-	recordNode.SetString("invalid_rule")
-	exprNode.SetString(`label_replace(metric, "foo", "$1", "service", "[")`) // Syntactically correct expression (passes check in ruler), but it fails because of invalid regex.
-
-	ruleGroup := rulefmt.RuleGroup{
-		Name:     "group_with_invalid_rule",
-		Interval: 10,
-		Rules: []rulefmt.RuleNode{{
-			Record: recordNode,
-			Expr:   exprNode,
-		}},
-	}
-
 	// Start dependencies.
 	consul := e2edb.NewConsul()
 	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
-
-	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks.yaml", cortexConfigFile))
 
 	// Configure the ruler.
 	flags := mergeFlags(
@@ -564,37 +545,142 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
+			"-ruler.poll-interval":       "2s",
+			// No delay
+			"-ruler.evaluation-delay-duration": "0",
+
+			"-blocks-storage.tsdb.block-ranges-period":   "1h",
+			"-blocks-storage.bucket-store.sync-interval": "1s",
+			"-blocks-storage.tsdb.retention-period":      "2h",
+
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+
+			// Very low limit so that ruler hits it.
+			"-querier.max-fetched-chunks-per-query": "5",
+			// We need this to make limit work.
+			"-ingester.stream-chunks-when-using-blocks": "true",
 		},
 	)
 
-	// Start ruler.
-	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, flags, "", 9009, 9095)
-	require.NoError(t, s.StartAndWaitReady(cortex))
+	const namespace = "test"
+	const user = "user"
 
-	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", cortex.HTTPEndpoint(), "user")
+	distributor := e2ecortex.NewDistributor("distributor", consul.NetworkHTTPEndpoint(), flags, "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler))
+
+	// Wait until both the distributor and ruler have updated the ring. The querier will also watch
+	// the store-gateway ring if blocks sharding is enabled.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
 	require.NoError(t, err)
 
-	// Push some series to Cortex.
-	series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: "bar"})
+	// Push some series to Cortex -- enough so that we can hit some limits.
+	for i := 0; i < 10; i++ {
+		series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: fmt.Sprintf("%d", i)})
 
-	res, err := c.Push(series)
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	totalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"})
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
 
-	// Upload rule group to the ruler.
-	require.NoError(t, err)
-	require.NoError(t, c.SetRuleGroup(ruleGroup, "test"))
+	// Verify that user-failures don't increase cortex_ruler_queries_failed_total
+	for groupName, expression := range map[string]string{
+		// Syntactically correct expression (passes check in ruler), but failing because of invalid regex. This fails in PromQL engine.
+		"invalid_group": `label_replace(metric, "foo", "$1", "service", "[")`,
 
-	// Wait until ruler has loaded the group.
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+		// This one fails in querier code, because of limits.
+		"too_many_chunks_group": `sum(metric)`,
+	} {
+		t.Run(groupName, func(t *testing.T) {
+			require.NoError(t, c.SetRuleGroup(ruleGroupWithRule(groupName, "rule", expression), namespace))
+			m := ruleGroupMatcher(user, namespace, groupName)
 
-	// Wait until rule group has tried to evaluate few times.
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WaitMissingMetrics))
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_total"}, e2e.WaitMissingMetrics))
+			// Wait until ruler has loaded the group.
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 
-	// We want to verify that ruler doesn't report evaluation failure as "queries failed", but only as "evaluation failures".
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WaitMissingMetrics))
-	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_queries_failed_total"))
+			// Wait until rule group has tried to evaluate the rule.
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+			// Verify that evaluation of the rule failed.
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+			// But these failures were not reported as "failed queries"
+			sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"})
+			require.NoError(t, err)
+			require.Equal(t, float64(0), sum[0])
+
+			// Delete rule before checkin "cortex_ruler_queries_total", as we want to reuse value for next test.
+			require.NoError(t, c.DeleteRuleGroup(namespace, groupName))
+
+			// Wait until ruler has unloaded the group. We don't use any matcher, so there should be no groups (in fact, metric disappears).
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_group_rules"}, e2e.SkipMissingMetrics))
+
+			// Check that cortex_ruler_queries_total went up since last test.
+			newTotalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"})
+			require.NoError(t, err)
+			require.Greater(t, newTotalQueries[0], totalQueries[0])
+
+			// Remember totalQueries for next test.
+			totalQueries = newTotalQueries
+		})
+	}
+
+	// Now let's upload a non-failing rule, and make sure that it works.
+	t.Run("real_error", func(t *testing.T) {
+		const groupName = "good_rule"
+		const expression = `sum(metric{foo=~"1|2"})`
+
+		require.NoError(t, c.SetRuleGroup(ruleGroupWithRule(groupName, "rule", expression), namespace))
+		m := ruleGroupMatcher(user, namespace, groupName)
+
+		// Wait until ruler has loaded the group.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+		// Wait until rule group has tried to evaluate the rule, and succeeded.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+		// Still no failures.
+		sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"})
+		require.NoError(t, err)
+		require.Equal(t, float64(0), sum[0])
+
+		// Now let's stop ingester, and recheck metrics. This should increase cortex_ruler_queries_failed_total failures.
+		require.NoError(t, s.Stop(ingester))
+
+		// We should start getting "real" failures now.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_failed_total"}))
+	})
+}
+
+func ruleGroupMatcher(user, namespace, groupName string) *labels.Matcher {
+	return labels.MustNewMatcher(labels.MatchEqual, "rule_group", fmt.Sprintf("/rules/%s/%s;%s", user, namespace, groupName))
+}
+
+func ruleGroupWithRule(groupName string, ruleName string, expression string) rulefmt.RuleGroup {
+	// Prepare rule group with invalid rule.
+	var recordNode = yaml.Node{}
+	var exprNode = yaml.Node{}
+
+	recordNode.SetString(ruleName)
+	exprNode.SetString(expression)
+
+	return rulefmt.RuleGroup{
+		Name:     groupName,
+		Interval: 10,
+		Rules: []rulefmt.RuleNode{{
+			Record: recordNode,
+			Expr:   exprNode,
+		}},
+	}
 }
 
 func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {

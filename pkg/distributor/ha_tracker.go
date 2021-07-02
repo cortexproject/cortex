@@ -226,8 +226,13 @@ func (c *haTracker) loop(ctx context.Context) error {
 			delete(c.elected, key)
 			c.electedReplicaChanges.DeleteLabelValues(user, cluster)
 			c.electedReplicaTimestamp.DeleteLabelValues(user, cluster)
-			if c.clusters[user] != nil {
-				delete(c.clusters[user], cluster)
+
+			userClusters := c.clusters[user]
+			if userClusters != nil {
+				delete(userClusters, cluster)
+				if len(userClusters) == 0 {
+					delete(c.clusters, user)
+				}
 			}
 			return true
 		}

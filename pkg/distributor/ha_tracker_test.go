@@ -564,6 +564,16 @@ func TestHAClustersLimit(t *testing.T) {
 
 	// But yet another cluster doesn't.
 	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "a", "a2", now), "too many HA clusters (limit: 2)")
+
+	now = now.Add(5 * time.Second)
+
+	// clean all replicas
+	t1.cleanupOldReplicas(context.Background(), now)
+	waitForClustersUpdate(t, 0, t1, userID)
+
+	// Now "a" works again.
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "a", "a1", now))
+	waitForClustersUpdate(t, 1, t1, userID)
 }
 
 func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID string) {

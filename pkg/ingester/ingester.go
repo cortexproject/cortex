@@ -493,13 +493,11 @@ func (i *Ingester) checkRunning() error {
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := i.checkRunningOrStopping(); err != nil {
-			return nil, err
-		}
+		return i.v2Push(ctx, req)
+	}
+
+	if err := i.checkRunningOrStopping(); err != nil {
+		return nil, err
 	}
 
 	// We will report *this* request in the error too.
@@ -511,10 +509,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if inflight > gl.MaxInflightPushRequests {
 			return nil, errTooManyInflightPushRequests
 		}
-	}
-
-	if i.cfg.BlocksStorageEnabled {
-		return i.v2Push(ctx, req)
 	}
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not
@@ -779,9 +773,6 @@ func (i *Ingester) purgeUserMetricsMetadata() {
 // Query implements service.IngesterServer
 func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client.QueryResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2Query(ctx, req)
 	}
 
@@ -849,9 +840,6 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 // QueryStream implements service.IngesterServer
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) error {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return err
-		}
 		return i.v2QueryStream(req, stream)
 	}
 
@@ -935,10 +923,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // Query implements service.IngesterServer
 func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
-	if err := i.checkRunningOrStopping(); err != nil {
-		return nil, err
-	}
-
 	if !i.cfg.BlocksStorageEnabled {
 		return nil, errors.New("not supported")
 	}
@@ -949,9 +933,6 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2LabelValues(ctx, req)
 	}
 
@@ -977,9 +958,6 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2LabelNames(ctx, req)
 	}
 
@@ -1005,9 +983,6 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2MetricsForLabelMatchers(ctx, req)
 	}
 
@@ -1078,9 +1053,6 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 // UserStats returns ingestion statistics for the current user.
 func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2UserStats(ctx, req)
 	}
 
@@ -1110,9 +1082,6 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
 func (i *Ingester) AllUserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UsersStatsResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
-		if err := i.checkRunning(); err != nil {
-			return nil, err
-		}
 		return i.v2AllUserStats(ctx, req)
 	}
 

@@ -393,7 +393,11 @@ func (c *Compactor) starting(ctx context.Context) error {
 		// users scanner depends on the ring (to check whether an user belongs
 		// to this shard or not).
 		level.Info(c.logger).Log("msg", "waiting until compactor is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, c.compactorCfg.ShardingRing.WaitActiveInstanceTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, c.ring, c.ringLifecycler.ID, ring.ACTIVE); err != nil {
+			level.Error(c.logger).Log("msg", "compactor failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(c.logger).Log("msg", "compactor is ACTIVE in the ring")

@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
+* [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [BUGFIX] HA Tracker: when cleaning up obsolete elected replicas from KV store, tracker didn't update number of cluster per user correctly. #4336
 
 ## 1.10.0-rc.0 / 2021-06-28

@@ -34,6 +34,10 @@ type RingConfig struct {
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
+
+	WaitActiveInstanceTimeout time.Duration `yaml:"wait_active_instance_timeout"`
+
+	ObservePeriod time.Duration `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -59,6 +63,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, "compactor.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "compactor.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "compactor.ring.instance-id", hostname, "Instance ID to register in the ring.")
+
+	// Timeout durations
+	f.DurationVar(&cfg.WaitActiveInstanceTimeout, "compactor.ring.wait-active-instance-timeout", 10*time.Minute, "Timeout for waiting on compactor to become ACTIVE in the ring.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the compactor
@@ -87,7 +94,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	lc.InfNames = cfg.InstanceInterfaceNames
 	lc.UnregisterOnShutdown = true
 	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
-	lc.ObservePeriod = 0
+	lc.ObservePeriod = cfg.ObservePeriod
 	lc.JoinAfter = 0
 	lc.MinReadyDuration = 0
 	lc.FinalSleep = 0

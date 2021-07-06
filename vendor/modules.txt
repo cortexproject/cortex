@@ -108,6 +108,8 @@ github.com/aws/aws-sdk-go/service/sts
 github.com/aws/aws-sdk-go/service/sts/stsiface
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
+# github.com/blang/semver/v4 v4.0.0
+github.com/blang/semver/v4
 # github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 ## explicit
 github.com/bradfitz/gomemcache/memcache
@@ -290,11 +292,11 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.1
 ## explicit
 github.com/hashicorp/go-cleanhttp
-# github.com/hashicorp/go-hclog v0.12.2
+# github.com/hashicorp/go-hclog v0.12.0
 github.com/hashicorp/go-hclog
-# github.com/hashicorp/go-immutable-radix v1.2.0
+# github.com/hashicorp/go-immutable-radix v1.0.0
 github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-msgpack v0.5.5
+# github.com/hashicorp/go-msgpack v0.5.3
 github.com/hashicorp/go-msgpack/codec
 # github.com/hashicorp/go-multierror v1.1.0
 github.com/hashicorp/go-multierror
@@ -332,8 +334,10 @@ github.com/julienschmidt/httprouter
 # github.com/klauspost/cpuid v1.3.1
 github.com/klauspost/cpuid
 # github.com/lann/builder v0.0.0-20180802200727-47ae307949d0
+## explicit
 github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
+## explicit
 github.com/lann/ps
 # github.com/lib/pq v1.3.0
 ## explicit
@@ -346,7 +350,7 @@ github.com/mailru/easyjson/jlexer
 github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.6
 github.com/mattn/go-colorable
-# github.com/mattn/go-ieproxy v0.0.0-20191113090002-7c0f6868bffe
+# github.com/mattn/go-ieproxy v0.0.0-20190702010315-6dee0af9227d
 github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.12
 github.com/mattn/go-isatty
@@ -478,7 +482,7 @@ github.com/prometheus/node_exporter/https
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v1.8.2-0.20210510213326-e313ffa8abf6
+# github.com/prometheus/prometheus v1.8.2-0.20210519120135-d95b0972505f
 ## explicit
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -532,7 +536,7 @@ github.com/sean-/seed
 # github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 ## explicit
 github.com/segmentio/fasthash/fnv1a
-# github.com/sercand/kuberesolver v2.4.0+incompatible
+# github.com/sercand/kuberesolver v2.1.0+incompatible
 github.com/sercand/kuberesolver
 # github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 github.com/shurcooL/httpfs/filter
@@ -560,7 +564,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.19.1-0.20210427154226-d5bd651319d2
+# github.com/thanos-io/thanos v0.19.1-0.20210427154226-d5bd651319d2 => github.com/Oghenebrume50/thanos v0.13.1-0.20210704215112-03ccac2cf15a
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1045,3 +1049,4 @@ sigs.k8s.io/yaml
 # k8s.io/api => k8s.io/api v0.20.4
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+# github.com/thanos-io/thanos => github.com/Oghenebrume50/thanos v0.13.1-0.20210704215112-03ccac2cf15a

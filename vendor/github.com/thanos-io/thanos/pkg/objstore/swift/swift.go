@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -46,7 +47,7 @@ type Config struct {
 	UserDomainName         string         `yaml:"user_domain_name"`
 	UserDomainID           string         `yaml:"user_domain_id"`
 	UserId                 string         `yaml:"user_id"`
-	Password               string         `yaml:"password"`
+	Password               config.Secret  `yaml:"password"`
 	DomainId               string         `yaml:"domain_id"`
 	DomainName             string         `yaml:"domain_name"`
 	ProjectID              string         `yaml:"project_id"`
@@ -78,7 +79,7 @@ func configFromEnv() (*Config, error) {
 	config := Config{
 		AuthVersion:            c.AuthVersion,
 		AuthUrl:                c.AuthUrl,
-		Password:               c.ApiKey,
+		Password:               config.Secret(c.ApiKey),
 		Username:               c.UserName,
 		UserId:                 c.UserId,
 		DomainId:               c.DomainId,
@@ -115,7 +116,7 @@ func connectionFromConfig(sc *Config) *swift.Connection {
 		DomainId:       sc.DomainId,
 		UserName:       sc.Username,
 		UserId:         sc.UserId,
-		ApiKey:         sc.Password,
+		ApiKey:         string(sc.Password),
 		AuthUrl:        sc.AuthUrl,
 		Retries:        sc.Retries,
 		Region:         sc.RegionName,
@@ -282,7 +283,7 @@ func (c *Container) IsObjNotFoundErr(err error) bool {
 }
 
 // Upload writes the contents of the reader as an object into the container.
-func (c *Container) Upload(_ context.Context, name string, r io.Reader) error {
+func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err error) {
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "could not guess file size, using large object to avoid issues if the file is larger than limit", "name", name, "err", err)
@@ -312,7 +313,7 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) error {
 			return errors.Wrap(err, "create file")
 		}
 	}
-	defer runutil.CloseWithLogOnErr(c.logger, file, "upload object close")
+	defer runutil.CloseWithErrCapture(&err, file, "upload object close")
 	if _, err := io.Copy(file, r); err != nil {
 		return errors.Wrap(err, "uploading object")
 	}

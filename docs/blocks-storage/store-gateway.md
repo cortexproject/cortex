@@ -272,6 +272,10 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]
 
+    # Type of IP address to advertise in the ring.
+    # CLI flag: -store-gateway.sharding-ring.instance-addr-protocol
+    [instance_addr_protocol: <string> | default = "ipv4"]
+
     # The availability zone where this instance is running. Required if
     # zone-awareness is enabled.
     # CLI flag: -store-gateway.sharding-ring.instance-availability-zone

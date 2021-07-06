@@ -231,6 +231,10 @@ compactor:
     # CLI flag: -compactor.ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]
 
+    # Type of IP address to advertise in the ring.
+    # CLI flag: -compactor.instance-addr-protocol
+    [instance_addr_protocol: <string> | default = "ipv4"]
+
     # Timeout for waiting on compactor to become ACTIVE in the ring.
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]

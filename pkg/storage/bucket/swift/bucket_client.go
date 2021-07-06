@@ -2,6 +2,7 @@ package swift
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/swift"
@@ -17,7 +18,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		UserDomainName:    cfg.UserDomainName,
 		UserDomainID:      cfg.UserDomainID,
 		UserId:            cfg.UserID,
-		Password:          cfg.Password,
+		Password:          config.Secret(cfg.Password),
 		DomainId:          cfg.DomainID,
 		DomainName:        cfg.DomainName,
 		ProjectID:         cfg.ProjectID,

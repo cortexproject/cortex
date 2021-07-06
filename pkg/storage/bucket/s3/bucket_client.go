@@ -2,6 +2,7 @@ package s3
 
 import (
 	"github.com/go-kit/kit/log"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
@@ -38,7 +39,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		Endpoint:  cfg.Endpoint,
 		Region:    cfg.Region,
 		AccessKey: cfg.AccessKeyID,
-		SecretKey: cfg.SecretAccessKey.Value,
+		SecretKey: config.Secret(cfg.SecretAccessKey.Value),
 		Insecure:  cfg.Insecure,
 		SSEConfig: sseCfg,
 		HTTPConfig: s3.HTTPConfig{

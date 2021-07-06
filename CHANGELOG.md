@@ -3,6 +3,16 @@
 ## master / unreleased
 
 * [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
+* [FEATURE] Add configuration options in order to register an instance's IPv6 address in the ring instead of IPv4. IPv4 still remains the default option. #4339
+  * New flags added:
+    * `-compactor.instance-addr-protocol`
+    * `-store-gateway.sharding-ring.instance-addr-protocol`
+    * `-ingester.lifecycler.protocol`
+    * `-frontend.instance-addr-protocol`
+    * `-ruler.instance-addr-protocol`
+    * `-alertmanager.sharding-ring.instance-addr-protocol`
+    * `-compactor.instance-addr-protocol`
+    * `-store-gateway.sharding-ring.instance-addr-protocol`
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [BUGFIX] HA Tracker: when cleaning up obsolete elected replicas from KV store, tracker didn't update number of cluster per user correctly. #4336
 

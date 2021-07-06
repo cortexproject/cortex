@@ -47,7 +47,7 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 	case cfg.FrontendV2.SchedulerAddress != "":
 		// If query-scheduler address is configured, use Frontend.
 		if cfg.FrontendV2.Addr == "" {
-			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames)
+			addr, err := util.GetFirstAddressOf(cfg.FrontendV2.InfNames, cfg.FrontendV2.InstanceAddrProtocol)
 			if err != nil {
 				return nil, nil, nil, errors.Wrap(err, "failed to get frontend address")
 			}

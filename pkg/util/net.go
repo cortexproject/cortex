@@ -10,8 +10,8 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-// GetFirstAddressOf returns the first IPv4 address of the supplied interface names, omitting any 169.254.x.x automatic private IPs if possible.
-func GetFirstAddressOf(names []string) (string, error) {
+// GetFirstAddressOf returns the first IPv4/IPv6 address of the supplied interface names, omitting any 169.254.x.x automatic private IPs if possible.
+func GetFirstAddressOf(names []string, protocol string) (string, error) {
 	var ipAddr string
 	for _, name := range names {
 		inf, err := net.InterfaceByName(name)
@@ -27,6 +27,18 @@ func GetFirstAddressOf(names []string) (string, error) {
 		if len(addrs) <= 0 {
 			level.Warn(util_log.Logger).Log("msg", "no addresses found for interface", "inf", name, "err", err)
 			continue
+		}
+		if protocol == "ipv6" {
+			for _, addr := range addrs {
+				ip, _, err := net.ParseCIDR(addr.String())
+				if err != nil {
+					continue
+				}
+
+				if ip.To16() != nil {
+					return "[" + ip.String() + "]", nil
+				}
+			}
 		}
 		if ip := filterIPs(addrs); ip != "" {
 			ipAddr = ip

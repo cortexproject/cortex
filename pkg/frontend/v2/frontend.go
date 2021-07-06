@@ -35,7 +35,8 @@ type Config struct {
 	GRPCClientConfig  grpcclient.Config `yaml:"grpc_client_config"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
-	InfNames []string `yaml:"instance_interface_names"`
+	InfNames             []string `yaml:"instance_interface_names"`
+	InstanceAddrProtocol string   `yaml:"instance_addr_protocol"`
 
 	// If set, address is not computed from interfaces.
 	Addr string `yaml:"address" doc:"hidden"`
@@ -49,6 +50,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	cfg.InfNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InfNames), "frontend.instance-interface-names", "Name of network interface to read address from. This address is sent to query-scheduler and querier, which uses it to send the query response back to query-frontend.")
+	f.StringVar(&cfg.InstanceAddrProtocol, "frontend.instance-addr-protocol", "ipv4", "Type of IP address to advertise in the ring.")
 	f.StringVar(&cfg.Addr, "frontend.instance-addr", "", "IP address to advertise to querier (via scheduler) (resolved via interfaces by default).")
 	f.IntVar(&cfg.Port, "frontend.instance-port", 0, "Port to advertise to querier (via scheduler) (defaults to server.grpc-listen-port).")
 

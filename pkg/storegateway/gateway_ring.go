@@ -73,6 +73,7 @@ type RingConfig struct {
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
+	InstanceAddrProtocol   string   `yaml:"instance_addr_protocol"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 	InstanceZone           string   `yaml:"instance_availability_zone"`
@@ -107,6 +108,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InstanceInterfaceNames), ringFlagsPrefix+"instance-interface-names", "Name of network interface to read address from.")
+	f.StringVar(&cfg.InstanceAddrProtocol, ringFlagsPrefix+"instance-addr-protocol", "ipv4", "Type of IP address to advertise in the ring.")
 	f.StringVar(&cfg.InstanceAddr, ringFlagsPrefix+"instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, ringFlagsPrefix+"instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, ringFlagsPrefix+"instance-id", hostname, "Instance ID to register in the ring.")
@@ -130,7 +132,7 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 }
 
 func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) {
-	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames)
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceAddrProtocol, cfg.InstanceInterfaceNames)
 	if err != nil {
 		return ring.BasicLifecyclerConfig{}, err
 	}

@@ -164,22 +164,24 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 }
 
 func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Counter, logger log.Logger) rules.QueryFunc {
+	if queryTime == nil {
+		return qf
+	}
+
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// If we've been passed a counter we want to record the wall time spent executing this request.
-		if queryTime != nil {
-			timer := prometheus.NewTimer(nil)
-			defer func() {
-				querySeconds := timer.ObserveDuration().Seconds()
-				queryTime.Add(querySeconds)
+		timer := prometheus.NewTimer(nil)
+		defer func() {
+			querySeconds := timer.ObserveDuration().Seconds()
+			queryTime.Add(querySeconds)
 
-				// Log ruler query stats.
-				logMessage := append([]interface{}{
-					"msg", "ruler query stats",
-					"cortex_ruler_query_seconds_total", querySeconds,
-				}, qs)
-				level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
-			}()
-		}
+			// Log ruler query stats.
+			logMessage := append([]interface{}{
+				"msg", "ruler query stats",
+				"cortex_ruler_query_seconds_total", querySeconds,
+			}, qs)
+			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
+		}()
 
 		result, err := qf(ctx, qs, t)
 		return result, err

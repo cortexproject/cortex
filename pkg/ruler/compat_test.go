@@ -242,7 +242,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 	}
 }
 
-func TestMetricsQueryFuncMetrics(t *testing.T) {
+func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 	queries := prometheus.NewCounter(prometheus.CounterOpts{})
 	failures := prometheus.NewCounter(prometheus.CounterOpts{})
 	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
@@ -257,5 +257,5 @@ func TestMetricsQueryFuncMetrics(t *testing.T) {
 
 	require.Equal(t, 1, int(testutil.ToFloat64(queries)))
 	require.Equal(t, 0, int(testutil.ToFloat64(failures)))
-	require.LessOrEqual(t, float64(1), testutil.ToFloat64(queryTime.WithLabelValues("userID")))
+	require.GreaterOrEqual(t, testutil.ToFloat64(queryTime.WithLabelValues("userID")), float64(1))
 }

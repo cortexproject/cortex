@@ -3761,33 +3761,32 @@ The `memberlist_config` configures the Gossip memberlist.
 [randomize_node_name: <boolean> | default = true]
 
 # The timeout for establishing a connection with a remote node, and for
-# read/write operations. Uses memberlist LAN defaults if 0.
+# read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 0s]
+[stream_timeout: <duration> | default = 10s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
-[retransmit_factor: <int> | default = 0]
+[retransmit_factor: <int> | default = 4]
 
-# How often to use pull/push sync. Uses memberlist LAN defaults if 0.
+# How often to use pull/push sync.
 # CLI flag: -memberlist.pullpush-interval
-[pull_push_interval: <duration> | default = 0s]
+[pull_push_interval: <duration> | default = 30s]
 
-# How often to gossip. Uses memberlist LAN defaults if 0.
+# How often to gossip.
 # CLI flag: -memberlist.gossip-interval
-[gossip_interval: <duration> | default = 0s]
+[gossip_interval: <duration> | default = 200ms]
 
-# How many nodes to gossip to. Uses memberlist LAN defaults if 0.
+# How many nodes to gossip to.
 # CLI flag: -memberlist.gossip-nodes
-[gossip_nodes: <int> | default = 0]
+[gossip_nodes: <int> | default = 3]
 
 # How long to keep gossiping to dead nodes, to give them chance to refute their
-# death. Uses memberlist LAN defaults if 0.
+# death.
 # CLI flag: -memberlist.gossip-to-dead-nodes-time
-[gossip_to_dead_nodes_time: <duration> | default = 0s]
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
 
-# How soon can dead node's name be reclaimed with new address. Defaults to 0,
-# which is disabled.
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 

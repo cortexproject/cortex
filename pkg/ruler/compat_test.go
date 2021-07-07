@@ -243,19 +243,14 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 }
 
 func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
-	queries := prometheus.NewCounter(prometheus.CounterOpts{})
-	failures := prometheus.NewCounter(prometheus.CounterOpts{})
 	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
 
 	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := RecordAndReportRuleQueryMetrics(MetricsQueryFunc(mockFunc, queries, failures), queryTime.WithLabelValues("userID"), log.NewNopLogger())
-
+	qf := RecordAndReportRuleQueryMetrics(mockFunc, queryTime.WithLabelValues("userID"), log.NewNopLogger())
 	_, _ = qf(context.Background(), "test", time.Now())
 
-	require.Equal(t, 1, int(testutil.ToFloat64(queries)))
-	require.Equal(t, 0, int(testutil.ToFloat64(failures)))
 	require.GreaterOrEqual(t, testutil.ToFloat64(queryTime.WithLabelValues("userID")), float64(1))
 }

@@ -177,9 +177,11 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 
 			// Log ruler query stats.
 			logMessage := append([]interface{}{
-				"msg", "ruler query stats",
+				"msg", "query stats",
+				"component", "ruler",
 				"cortex_ruler_query_seconds_total", querySeconds,
-			}, qs)
+				"query", qs,
+			})
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
 		}()
 

@@ -165,12 +165,14 @@ type KVConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	mlDefaults := defaultMemberlistConfig()
+
 	// "Defaults to hostname" -- memberlist sets it to hostname by default.
 	f.StringVar(&cfg.NodeName, prefix+"memberlist.nodename", "", "Name of the node in memberlist cluster. Defaults to hostname.") // memberlist.DefaultLANConfig will put hostname here.
 	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
-	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", 0, "The timeout for establishing a connection with a remote node, and for read/write operations. Uses memberlist LAN defaults if 0.")
-	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", 0, "Multiplication factor used when sending out messages (factor * log(N+1)).")
+	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", mlDefaults.TCPTimeout, "The timeout for establishing a connection with a remote node, and for read/write operations.")
+	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", mlDefaults.RetransmitMult, "Multiplication factor used when sending out messages (factor * log(N+1)).")
 	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format (see https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery for more details).")
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
@@ -179,14 +181,18 @@ func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 5*time.Second, "Timeout for leaving memberlist cluster.")
-	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", 0, "How often to gossip. Uses memberlist LAN defaults if 0.")
-	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", 0, "How many nodes to gossip to. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", 0, "How often to use pull/push sync. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", 0, "How long to keep gossiping to dead nodes, to give them chance to refute their death. Uses memberlist LAN defaults if 0.")
-	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", 0, "How soon can dead node's name be reclaimed with new address. Defaults to 0, which is disabled.")
+	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", mlDefaults.GossipInterval, "How often to gossip.")
+	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", mlDefaults.GossipNodes, "How many nodes to gossip to.")
+	f.DurationVar(&cfg.PushPullInterval, prefix+"memberlist.pullpush-interval", mlDefaults.PushPullInterval, "How often to use pull/push sync.")
+	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", mlDefaults.GossipToTheDeadTime, "How long to keep gossiping to dead nodes, to give them chance to refute their death.")
+	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
+}
+
+func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix(f, "")
 }
 
 func generateRandomSuffix() string {
@@ -345,36 +351,27 @@ func NewKV(cfg KVConfig, logger log.Logger) *KV {
 	return mlkv
 }
 
+func defaultMemberlistConfig() *memberlist.Config {
+	return memberlist.DefaultLANConfig()
+}
+
 func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	tr, err := NewTCPTransport(m.cfg.TCPTransport, m.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transport: %v", err)
 	}
 
-	mlCfg := memberlist.DefaultLANConfig()
+	mlCfg := defaultMemberlistConfig()
 	mlCfg.Delegate = m
 
-	if m.cfg.StreamTimeout != 0 {
-		mlCfg.TCPTimeout = m.cfg.StreamTimeout
-	}
-	if m.cfg.RetransmitMult != 0 {
-		mlCfg.RetransmitMult = m.cfg.RetransmitMult
-	}
-	if m.cfg.PushPullInterval != 0 {
-		mlCfg.PushPullInterval = m.cfg.PushPullInterval
-	}
-	if m.cfg.GossipInterval != 0 {
-		mlCfg.GossipInterval = m.cfg.GossipInterval
-	}
-	if m.cfg.GossipNodes != 0 {
-		mlCfg.GossipNodes = m.cfg.GossipNodes
-	}
-	if m.cfg.GossipToTheDeadTime > 0 {
-		mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
-	}
-	if m.cfg.DeadNodeReclaimTime > 0 {
-		mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
-	}
+	mlCfg.TCPTimeout = m.cfg.StreamTimeout
+	mlCfg.RetransmitMult = m.cfg.RetransmitMult
+	mlCfg.PushPullInterval = m.cfg.PushPullInterval
+	mlCfg.GossipInterval = m.cfg.GossipInterval
+	mlCfg.GossipNodes = m.cfg.GossipNodes
+	mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
+	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
+
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName
 	}

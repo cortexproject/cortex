@@ -439,21 +439,6 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 		},
-		"should succeed on instances with zero timestamp but heartbeat timeout disabled": {
-			ringInstances: map[string]InstanceDesc{
-				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: 0, Tokens: GenerateTokens(128, nil)},
-				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: 0, Tokens: GenerateTokens(128, nil)},
-				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: 0, Tokens: GenerateTokens(128, nil)},
-				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: 0, Tokens: GenerateTokens(128, nil)},
-				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: 0, Tokens: GenerateTokens(128, nil)},
-			},
-			ringHeartbeatTimeout:    0,
-			ringReplicationFactor:   1,
-			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
-			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
-			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
-		},
-
 		"should fail on 1 unhealthy instance and RF=1": {
 			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},

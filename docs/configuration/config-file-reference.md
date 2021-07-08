@@ -3798,8 +3798,8 @@ The `memberlist_config` configures the Gossip memberlist.
 
 # Enable message compression. This can be used to reduce bandwidth usage at the
 # cost of slightly more CPU utilization.
-# CLI flag: -memberlist.enable-compression
-[enable_compression: <boolean> | default = true]
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
 
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format (see

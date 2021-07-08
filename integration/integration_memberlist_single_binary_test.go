@@ -32,7 +32,7 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 
 	t.Run("compression-disabled", func(t *testing.T) {
 		testSingleBinaryEnv(t, false, map[string]string{
-			"-memberlist.enable-compression": "false",
+			"-memberlist.compression-enabled": "false",
 		})
 	})
 }

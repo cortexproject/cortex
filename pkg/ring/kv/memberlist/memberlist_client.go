@@ -1052,7 +1052,7 @@ func (m *KV) LocalState(join bool) []byte {
 
 		encoded, err := codec.Encode(val.value)
 		if err != nil {
-			level.Error(m.logger).Log("msg", "failed to encode", "err", err)
+			level.Error(m.logger).Log("msg", "failed to encode remote state", "err", err)
 			continue
 		}
 

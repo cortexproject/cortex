@@ -223,9 +223,9 @@ If a request is made to delete a tenant, then all the tombstones will be deleted
     - In Prometheus, there is no delay.
     - One way to filter out immediately is to load the tombstones during query time but this will cause a negative performance impact.
 - Adding limits to the API such as:
-    - The number of deletion requests per day,
-    - Number of requests allowed at a time
-    - How wide apart the start and end time can be.
+    - Max number of deletion requests allowed in the last 24 hours for a given tenent. 
+    - Max number of pending tombstones for a given tenant.
+
 
 ## Alternatives Considered
 

@@ -89,6 +89,26 @@ func (d *data) RemoveTombstones(limit time.Time) (_, _ int) {
 	return
 }
 
+func (m member) clone() member {
+	out := member{
+		Timestamp: m.Timestamp,
+		Tokens:    make([]uint32, len(m.Tokens)),
+		State:     m.State,
+	}
+	copy(out.Tokens, m.Tokens)
+	return out
+}
+
+func (d *data) Clone() Mergeable {
+	out := &data{
+		Members: make(map[string]member, len(d.Members)),
+	}
+	for k, v := range d.Members {
+		out.Members[k] = v.clone()
+	}
+	return out
+}
+
 func (d *data) getAllTokens() []uint32 {
 	out := []uint32(nil)
 	for _, m := range d.Members {
@@ -870,6 +890,14 @@ func (dc distributedCounter) MergeContent() []string {
 func (dc distributedCounter) RemoveTombstones(limit time.Time) (_, _ int) {
 	// nothing to do
 	return
+}
+
+func (dc distributedCounter) Clone() Mergeable {
+	out := make(distributedCounter, len(dc))
+	for k, v := range dc {
+		out[k] = v
+	}
+	return out
 }
 
 type distributedCounterCodec struct{}

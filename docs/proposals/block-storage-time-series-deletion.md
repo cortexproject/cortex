@@ -75,11 +75,11 @@ Prometheus also implements a [clean_tombstones](https://prometheus.io/docs/prome
 
 ### Deletion Lifecycle
 
-The deletion request lifecycle can follow these 2 states:
+The deletion request lifecycle can follow these 3 states:
 
-1. Pending - Tombstone file is created. During this state, the queriers will be performing query time filtering. The initial time period configured by `-purger.delete-request-cancel-period`, no data will be deleted.  This will allow the user some time to cancel the deletion request if it was made by mistake. Once this period is over, permanent deletion processing will begin and the request is no longer cancellable.
+1. Pending - Tombstone file is created. During this state, the queriers will be performing query time filtering. The initial time period configured by `-purger.delete-request-cancel-period`, no data will be deleted. Once this period is over, permanent deletion processing will begin and the request is no longer cancellable.
 2. Processed - All requested data has been deleted. Initially, will still need to do query time filtering while waiting for the bucket index and store-gateway to pick up the new blocks. Once that period has passed, will no longer require any query time filtering.
-
+3. Deleted - The deletion request was cancelled. A grace period configured by `-purger.delete-request-cancel-period` will allow the user some time to cancel the deletion request if it was made by mistake. The request is no longer cancelable after this period has passed. 
 
 
 
@@ -96,10 +96,9 @@ Similar to the chunk storage deletion implementation, the initial filtering of t
 #### Storing tombstones in object store
 
 
-The Purger will write the new tombstone entries in a separate folder called `tombstones` in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as some meta-data such as the creation date of the file.  The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone. To keep track of the request state, filename extensions can be used. This will allow the tombstone files to be immutable. The 2 different file extensions will be `pending, processed`. Each time the deletion request moves to a new state, a new file will be added with the same content but a different extension to indicate the new state. The file containing the previous state will be deleted once the new one is created.
+The Purger will write the new tombstone entries in a separate folder called `tombstones` in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as some meta-data such as the creation date of the file.  The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone. To keep track of the request state, filename extensions can be used. This will allow the tombstone files to be immutable. The 3 different file extensions will be `pending, processed, deleted`. Each time the deletion request moves to a new state, a new file will be added with the same deletion information but a different extension to indicate the new state. The file containing the previous state will be deleted once the new one is created. If a deletion request is cancelled, then a tombstone file with the `.deleted` filename extension will be created. 
 
-
- When it is determined that the request should move to the next state, then it will first write a new file containing the tombstone information to the object store. The information inside the file will be the same except the `creationTime`, which is replaced with the current timestamp. The extension of the new file will be different to reflect the new state. If the new file is successfully written, the file with the previous state is deleted. If the write of the new file fails, then the previous file is not going to be deleted. Next time the service runs to check the state of each tombstone, it will retry creating the new file with the updated state. If the write is successful but the deletion of the old file is unsuccessful then there will be 2 tombstone files with the same filename but different extension. When `BlocksCleaner` writes the tombstones to the bucket index, the compactor will check for duplicate tombstone files but with different extensions. It will use the tombstone with the most recently updated state and try to delete the file with the older state. Since there are only two states, there could be a scenario where there are 2 files with the same request ID but the extensions: `.pending` and `.processed`. In this case, the `.processed` file will be selected as it is always the later state.
+When it is determined that the request should move to the next state, then it will first write a new file containing the tombstone information to the object store. The information inside the file will be the same except the `stateCreationTime`, which is replaced with the current timestamp. The extension of the new file will be different to reflect the new state. If the new file is successfully written, the file with the previous state is deleted. If the write of the new file fails, then the previous file is not going to be deleted. Next time the service runs to check the state of each tombstone, it will retry creating the new file with the updated state. If the write is successful but the deletion of the old file is unsuccessful then there will be 2 tombstone files with the same filename but different extension. When `BlocksCleaner` writes the tombstones to the bucket index, the compactor will check for duplicate tombstone files but with different extensions. It will use the tombstone with the most recently updated state and try to delete the file with the older state. There could be a scenario where there are two files with the same request ID but different extensions: {`.pending`, `.processed`} or {`.pending`, `.deleted`}. In this case, the `.processed` or `.deleted ` file will be selected as it is always the later state compared to the `pending` state.
 
 The tombstone will be stored in a single JSON file per request and state:
 
@@ -114,7 +113,8 @@ The schema of the JSON file is:
   "requestId": <string>,
   "startTime": <int>,
   "endTime": <int>,
-  "creationTime": <int>,
+  "requestCreationTime": <int>,
+  "stateCreationTime": <int>,
   "matchers": [
     "<string matcher 1>",
     ..,
@@ -148,10 +148,11 @@ There are two potential caches that could contain deleted data, the chunks cache
 Firstly, the query results cache needs to be invalidated for each new delete request or a cancellation of one. This can be accomplished by utilizing cache generation numbers. For each tenant, their cache is prefixed with a cache generation number. When the query front-end discovers a cache generation number that is greater than the previous generation number, then it knows to invalidate the query results cache. However, the cache can only be invalidated once the queriers have loaded the tombstones from the bucket index and have begun filtering the data. Otherwise, to-be deleted data might show up in queries and be cached again. One of the way to guarantee that all the queriers are using the new tombstones is to wait until the bucket index staleness period has passed from the time the tombstones have been written to the bucket index. The staleness period can be configured using the following flag: `-blocks-storage.bucket-store.bucket-index.max-stale-period`. We can use the bucket index staleness period as the delay to wait before the cache generation number is increased. A query will fail inside the querier, if the bucket index last update is older the staleness period. Once this period is over, all the queriers should have the updated tombstones and the query results cache can be invalidated.  Here is the proposed method for accomplishing this:
 
 
-- The cache generation number will be a timestamp. It will also serve as the time of when it becomes valid and the query front-end can use it.
+- The cache generation number will be a timestamp. The default value will be 0. 
 - The bucket index will store the cache generation number.  The query front-end will periodically fetch the bucket index.
-- Inside the compactor, it will load the tombstones from object store and update the bucket index accordingly. If a deletion request is made or cancelled, the compactor will discover this and increment the cache generation number in the bucket index. The cache generation number will be the current timestamp + the max stale period of the bucket index.  The compactor can discover if there have been any changes to the tombstones by comparing the newly loaded tombstones to the one's currently in the bucket index.
-- The query front-end will fetch the cache generation number from the bucket index. If the current timestamp is less than the cache generation number, it will simply not do anything as the generation number is not yet valid. If the query front-end discovers that the current time has passed the cache generation timestamp from the bucket index, then it is valid and can be used. The query front end will compare it to the current cache generation number stored in the front-end. If the cache generation number from the front-end is less than the one from bucket index, then the cache is invalidated.
+- Inside the compactor, the _BlocksCleaner_ will load the tombstones from object store and update the bucket index accordingly. It will calculate the cache generation number by iterating through all the tombstones and their respective times (next bullet point) and selecting the maximum timestamp that is less than (current time minus  `-blocks-storage.bucket-store.bucket-index.max-stale-period`). This would mean that if a deletion request is made or cancelled, the compactor will only update the cache generation number once the staleness period is over, ensuring that all queriers have the updated tombstones. 
+- For requests in a pending or processed state, the `requestCreationTime` will be used when comparing the maximum timestamps. If a request is in a deleted state, it will use the `stateCreationTime` for comparing the timestamps. This means that the cache gets invalidated only once it has been created or deleted, and the bucket index staleness period has passed. The cache will not be invalidated when a request advances from pending to processed state. 
+- The query front-end will fetch the cache generation number from the bucket index. The query front end will compare it to the current cache generation number stored in the front-end. If the cache generation number from the front-end is less than the one from bucket index, then the cache is invalidated.
 
 In regards to the chunks cache, since it is retrieved from the store gateway and passed to the querier, it will be filtered out like the rest of the time series data in the querier using the tombstones, with the mechanism described in the previous section.
 
@@ -201,6 +202,10 @@ Cons:
 Once all the applicable blocks have been rewritten without the deleted data, the deletion request state moves to the `Processed` state. Once in this state, the queriers will still have to perform query time filtering using the tombstones until the old blocks that were marked for deletion are no longer queried by the queriers. This will mean that the query time filtering will last for an additional length of `-compactor.deletion-delay + -compactor.cleanup-interval +  -blocks-storage.bucket-store.sync-interval` in the `Processed` state. Once that time period has passed, the queriers should no longer be querying any of the old blocks that were marked for deletion. The tombstone will no longer be used after this.
 
 
+#### Cancelled Delete Requests
+
+If a request was successfully cancelled, then a tombstone file a `.deleted` extension is created. This is done to help ensure that the cache generation number is updated and the query results cache is invalidated. The compactor's blocks cleaner can take care of cleaning up `.deleted` tombstones after a period of time of when they are no longer required for cache invalidation. This can be done after 10 times the bucket index max staleness time period has passed. Before removing the file from the object store, the current cache generation number must greater than or equal to when the tombstone was cancelled. 
+
 #### Handling failed/unfinished delete jobs:
 
 Deletions will be completed and the tombstones will be deleted only when the DeletedSeriesCleaner iterates over all blocks that match the time interval and confirms that they have been re-written without the deleted data.  Otherwise, it will keep iterating over the blocks and process the blocks that haven't been rewritten according to the information in the `meta.json` file. In case of any failure that causes the deletion to stop, any unfinished deletions will be resumed once the service is restarted. If the block rewrite was not completed on a particular block, then the original block will not be marked for deletion. The compactor will continue to iterate over the blocks and process the block again.
@@ -209,7 +214,6 @@ Deletions will be completed and the tombstones will be deleted only when the Del
 #### Tenant Deletion API
 
 If a request is made to delete a tenant, then all the tombstones will be deleted for that user.
-
 
 
 ## Current Open Questions:

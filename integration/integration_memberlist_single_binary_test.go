@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -184,14 +183,12 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 
 	// Scale down as fast as possible but cleanly, in order to send out tombstones.
 
-	stop := errgroup.Group{}
 	for len(instances) > minCortex {
 		i := len(instances) - 1
 		c := instances[i]
 		instances = instances[:i]
-		stop.Go(func() error { return s.Stop(c) })
+		require.NoError(t, s.Stop(c))
 	}
-	require.NoError(t, stop.Wait())
 
 	// If all is working as expected, then tombstones should have propagated easily within this time period.
 	// The logging is mildly spammy, but it has proven extremely useful for debugging convergence cases.

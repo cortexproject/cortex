@@ -390,11 +390,11 @@ func TestRing_GetAllHealthy(t *testing.T) {
 }
 
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
-	const heartbeatTimeout = time.Minute
 	now := time.Now()
 
 	tests := map[string]struct {
 		ringInstances           map[string]InstanceDesc
+		ringHeartbeatTimeout    time.Duration
 		ringReplicationFactor   int
 		expectedErrForRead      error
 		expectedSetForRead      []string
@@ -405,6 +405,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	}{
 		"should return error on empty ring": {
 			ringInstances:           nil,
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
 			expectedErrForRead:      ErrEmptyRing,
 			expectedErrForWrite:     ErrEmptyRing,
@@ -418,6 +419,21 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   1,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+		},
+		"should succeed on instances with old timestamps but heartbeat timeout disabled": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringHeartbeatTimeout:    0,
 			ringReplicationFactor:   1,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
@@ -431,6 +447,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
@@ -444,6 +461,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
@@ -457,6 +475,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
@@ -474,7 +493,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 
 			ring := Ring{
 				cfg: Config{
-					HeartbeatTimeout:  heartbeatTimeout,
+					HeartbeatTimeout:  testData.ringHeartbeatTimeout,
 					ReplicationFactor: testData.ringReplicationFactor,
 				},
 				ringDesc:            ringDesc,

@@ -23,15 +23,21 @@ import (
 
 func TestSingleBinaryWithMemberlist(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
-		testSingleBinaryEnv(t, false)
+		testSingleBinaryEnv(t, false, nil)
 	})
 
 	t.Run("tls", func(t *testing.T) {
-		testSingleBinaryEnv(t, true)
+		testSingleBinaryEnv(t, true, nil)
+	})
+
+	t.Run("compression-disabled", func(t *testing.T) {
+		testSingleBinaryEnv(t, false, map[string]string{
+			"-memberlist.compression-enabled": "false",
+		})
 	})
 }
 
-func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
+func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -65,13 +71,13 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
 			filepath.Join(s.SharedDir(), clientKeyFile),
 		))
 
-		cortex1 = newSingleBinary("cortex-1", memberlistDNS, "")
-		cortex2 = newSingleBinary("cortex-2", memberlistDNS, networkName+"-cortex-1:8000")
-		cortex3 = newSingleBinary("cortex-3", memberlistDNS, networkName+"-cortex-1:8000")
+		cortex1 = newSingleBinary("cortex-1", memberlistDNS, "", flags)
+		cortex2 = newSingleBinary("cortex-2", memberlistDNS, networkName+"-cortex-1:8000", flags)
+		cortex3 = newSingleBinary("cortex-3", memberlistDNS, networkName+"-cortex-1:8000", flags)
 	} else {
-		cortex1 = newSingleBinary("cortex-1", "", "")
-		cortex2 = newSingleBinary("cortex-2", "", networkName+"-cortex-1:8000")
-		cortex3 = newSingleBinary("cortex-3", "", networkName+"-cortex-1:8000")
+		cortex1 = newSingleBinary("cortex-1", "", "", flags)
+		cortex2 = newSingleBinary("cortex-2", "", networkName+"-cortex-1:8000", flags)
+		cortex3 = newSingleBinary("cortex-3", "", networkName+"-cortex-1:8000", flags)
 	}
 
 	// start cortex-1 first, as cortex-2 and cortex-3 both connect to cortex-1
@@ -109,7 +115,7 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool) {
 	require.NoError(t, s.Stop(cortex3))
 }
 
-func newSingleBinary(name string, servername string, join string) *e2ecortex.CortexService {
+func newSingleBinary(name string, servername string, join string, testFlags map[string]string) *e2ecortex.CortexService {
 	flags := map[string]string{
 		"-ingester.final-sleep":              "0s",
 		"-ingester.join-after":               "0s", // join quickly
@@ -132,6 +138,7 @@ func newSingleBinary(name string, servername string, join string) *e2ecortex.Cor
 		mergeFlags(
 			ChunksStorageFlags(),
 			flags,
+			testFlags,
 			getTLSFlagsWithPrefix("memberlist", servername, servername == ""),
 		),
 		"",
@@ -170,7 +177,7 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 		if i > 0 {
 			join = e2e.NetworkContainerHostPort(networkName, "cortex-1", 8000)
 		}
-		c := newSingleBinary(name, "", join)
+		c := newSingleBinary(name, "", join, nil)
 		require.NoError(t, s.StartAndWaitReady(c))
 		instances = append(instances, c)
 	}

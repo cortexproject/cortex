@@ -136,6 +136,7 @@ type KVConfig struct {
 	GossipNodes         int           `yaml:"gossip_nodes"`
 	GossipToTheDeadTime time.Duration `yaml:"gossip_to_dead_nodes_time"`
 	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
+	EnableCompression   bool          `yaml:"compression_enabled"`
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -187,6 +188,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.GossipToTheDeadTime, prefix+"memberlist.gossip-to-dead-nodes-time", mlDefaults.GossipToTheDeadTime, "How long to keep gossiping to dead nodes, to give them chance to refute their death.")
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
+	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }
@@ -380,6 +382,7 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.GossipNodes = m.cfg.GossipNodes
 	mlCfg.GossipToTheDeadTime = m.cfg.GossipToTheDeadTime
 	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
+	mlCfg.EnableCompression = m.cfg.EnableCompression
 
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName

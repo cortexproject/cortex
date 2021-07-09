@@ -42,7 +42,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Ring flags
 	cfg.KVStore.RegisterFlagsWithPrefix("distributor.ring.", "collectors/", f)
-	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring.")
+	f.DurationVar(&cfg.HeartbeatPeriod, "distributor.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "distributor.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which distributors are considered unhealthy within the ring. 0 = never (timeout disabled).")
 
 	// Instance flags

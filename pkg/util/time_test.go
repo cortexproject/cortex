@@ -103,3 +103,31 @@ func TestParseTime(t *testing.T) {
 		assert.Equal(t, TimeToMillis(test.result), ts)
 	}
 }
+
+func TestNewDisableableTicker_Enabled(t *testing.T) {
+	stop, ch := NewDisableableTicker(10 * time.Millisecond)
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-ch:
+		break
+	default:
+		t.Error("ticker should have ticked when enabled")
+	}
+}
+
+func TestNewDisableableTicker_Disabled(t *testing.T) {
+	stop, ch := NewDisableableTicker(0)
+	defer stop()
+
+	time.Sleep(100 * time.Millisecond)
+
+	select {
+	case <-ch:
+		t.Error("ticker should not have ticked when disabled")
+	default:
+		break
+	}
+}

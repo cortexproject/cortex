@@ -398,6 +398,11 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 	return
 }
 
+// Clone returns a deep copy of the ring state.
+func (d *Desc) Clone() memberlist.Mergeable {
+	return proto.Clone(d).(*Desc)
+}
+
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 	out := map[uint32]instanceInfo{}
 

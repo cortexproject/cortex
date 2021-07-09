@@ -117,11 +117,6 @@ func (m *KV) createAndRegisterMetrics() {
 		"Number of values in KV Store",
 		nil, nil)
 
-	m.storeSizesDesc = prometheus.NewDesc(
-		prometheus.BuildFQName(m.cfg.MetricsNamespace, subsystem, "kv_store_value_bytes"), // gauge
-		"Sizes of values in KV Store in bytes",
-		[]string{"key"}, nil)
-
 	m.storeTombstones = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,
@@ -222,7 +217,6 @@ func (m *KV) createAndRegisterMetrics() {
 // Describe returns prometheus descriptions via supplied channel
 func (m *KV) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.storeValuesDesc
-	ch <- m.storeSizesDesc
 }
 
 // Collect returns extra metrics via supplied channel
@@ -231,8 +225,4 @@ func (m *KV) Collect(ch chan<- prometheus.Metric) {
 	defer m.storeMu.Unlock()
 
 	ch <- prometheus.MustNewConstMetric(m.storeValuesDesc, prometheus.GaugeValue, float64(len(m.store)))
-
-	for k, v := range m.store {
-		ch <- prometheus.MustNewConstMetric(m.storeSizesDesc, prometheus.GaugeValue, float64(len(v.value)), k)
-	}
 }

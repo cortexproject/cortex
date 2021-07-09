@@ -563,7 +563,7 @@ ring:
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -679,7 +679,7 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul.
+  # Period at which to heartbeat to consul. 0 = disabled.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -1581,7 +1581,7 @@ ring:
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -1907,7 +1907,7 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -alertmanager.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -5179,7 +5179,7 @@ sharding_ring:
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -5257,7 +5257,7 @@ sharding_ring:
       # CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 

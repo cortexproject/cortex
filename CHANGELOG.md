@@ -14,6 +14,13 @@
   * `-alertmanager.sharding-ring.heartbeat-timeout`
   * `-compactor.ring.heartbeat-timeout`
   * `-store-gateway.sharding-ring.heartbeat-timeout`
+* [ENHANCEMENT] Ring: allow heartbeats to be explicitly disabled by setting the interval to zero. This is considered experimental. This applies to the following configuration options: #4344
+  * `-distributor.ring.heartbeat-period`
+  * `-ingester.heartbeat-period`
+  * `-ruler.ring.heartbeat-period`
+  * `-alertmanager.sharding-ring.heartbeat-period`
+  * `-compactor.ring.heartbeat-period`
+  * `-store-gateway.sharding-ring.heartbeat-period`
 * [ENHANCEMENT] Memberlist: optimized receive path for processing ring state updates, to help reduce CPU utilization in large clusters. #4345
 * [BUGFIX] HA Tracker: when cleaning up obsolete elected replicas from KV store, tracker didn't update number of cluster per user correctly. #4336
 

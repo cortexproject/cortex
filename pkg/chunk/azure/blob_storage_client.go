@@ -12,6 +12,8 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure/auth"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
@@ -192,8 +194,42 @@ func (b *BlobStorage) buildContainerURL() (azblob.ContainerURL, error) {
 	return azblob.NewContainerURL(*u, azPipeline), nil
 }
 
+func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, error) {
+	env, err := auth.GetSettingsFromEnvironment()
+	if err != nil {
+		return nil, err
+	}
+	conf, err := env.GetClientCredentials()
+	if err == nil {
+		token, err := conf.ServicePrincipalToken()
+		if err == nil {
+			return token, nil
+		}
+	}
+
+	msi := env.GetMSI()
+	msi.Resource = "https://storage.azure.com/"
+	return msi.ServicePrincipalToken()
+}
+
+func (b *BlobStorage) getCredential() (azblob.Credential, error) {
+	if b.cfg.AccountKey.Value != "" {
+		return azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+	} else {
+		token, err := b.getServicePrincipalToken()
+		if err != nil {
+			return nil, err
+		}
+		if err := token.RefreshWithContext(context.Background()); err != nil {
+			return nil, err
+		}
+		credential := azblob.NewTokenCredential(token.OAuthToken(), nil)
+		return credential, nil
+	}
+}
+
 func (b *BlobStorage) newPipeline() (pipeline.Pipeline, error) {
-	credential, err := azblob.NewSharedKeyCredential(b.cfg.AccountName, b.cfg.AccountKey.Value)
+	credential, err := b.getCredential()
 	if err != nil {
 		return nil, err
 	}

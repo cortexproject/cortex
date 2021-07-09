@@ -568,7 +568,7 @@ ring:
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which distributors are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -662,6 +662,7 @@ lifecycler:
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
+    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1585,7 +1586,7 @@ ring:
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which rulers are considered unhealthy within the
-  # ring.
+  # ring. 0 = never (timeout disabled).
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1906,7 +1907,7 @@ sharding_ring:
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which alertmanagers are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -5178,7 +5179,7 @@ sharding_ring:
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring.
+  # the ring. 0 = never (timeout disabled).
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -5256,8 +5257,8 @@ sharding_ring:
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. This option needs be set both on the store-gateway and
-  # querier when running in microservices mode.
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 

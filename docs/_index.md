@@ -36,6 +36,9 @@ should read:
 1. [Getting started with Cortex](getting-started/_index.md)
 1. [Information regarding configuring Cortex](configuration/_index.md)
 
+There are also individual [guides](guides/_index.md) to many tasks.
+Please review the important [security advice](guides/security.md) before deploying.
+
 For a guide to contributing to Cortex, see the [contributor guidelines](contributing/).
 
 ## Further reading

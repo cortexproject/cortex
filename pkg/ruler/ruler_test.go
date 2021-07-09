@@ -60,6 +60,7 @@ func defaultRulerConfig(store rulestore.RuleStore) (Config, func()) {
 	cfg.Ring.ListenPort = 0
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
+	cfg.EnableQueryStats = false
 
 	// Create a cleanup function that will be called at the end of the test
 	cleanup := func() {

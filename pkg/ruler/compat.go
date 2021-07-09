@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -146,9 +148,7 @@ func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
-
 		result, err := qf(ctx, qs, t)
-
 		// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
 		// It returns promql.ErrStorage, if error should be reported back as 500.
 		// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
@@ -159,6 +159,33 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 		if _, ok := querier.TranslateToPromqlAPIError(err).(promql.ErrStorage); ok {
 			failedQueries.Inc()
 		}
+		return result, err
+	}
+}
+
+func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Counter, logger log.Logger) rules.QueryFunc {
+	if queryTime == nil {
+		return qf
+	}
+
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// If we've been passed a counter we want to record the wall time spent executing this request.
+		timer := prometheus.NewTimer(nil)
+		defer func() {
+			querySeconds := timer.ObserveDuration().Seconds()
+			queryTime.Add(querySeconds)
+
+			// Log ruler query stats.
+			logMessage := []interface{}{
+				"msg", "query stats",
+				"component", "ruler",
+				"cortex_ruler_query_seconds_total", querySeconds,
+				"query", qs,
+			}
+			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
+		}()
+
+		result, err := qf(ctx, qs, t)
 		return result, err
 	}
 }
@@ -199,12 +226,24 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
 	})
+	var rulerQuerySeconds *prometheus.CounterVec
+	if cfg.EnableQueryStats {
+		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_query_seconds_total",
+			Help: "Total amount of wall clock time spent processing queries by the ruler.",
+		}, []string{"user"})
+	}
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+		var queryTime prometheus.Counter = nil
+		if rulerQuerySeconds != nil {
+			queryTime = rulerQuerySeconds.WithLabelValues(userID)
+		}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

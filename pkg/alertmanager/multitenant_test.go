@@ -1325,18 +1325,15 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 				return ringDesc, true, nil
 			}))
 
-			// Assert if we expected a sync or not.
+			// Assert if we expected an additional sync or not.
+			expectedSyncs := 1
 			if tt.expected {
-				test.Poll(t, time.Second, float64(2), func() interface{} {
-					metrics := regs.BuildMetricFamiliesPerUser()
-					return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
-				})
-			} else {
-				time.Sleep(250 * time.Millisecond)
-
-				metrics := regs.BuildMetricFamiliesPerUser()
-				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total"))
+				expectedSyncs++
 			}
+			test.Poll(t, 5*time.Second, float64(expectedSyncs), func() interface{} {
+				metrics := regs.BuildMetricFamiliesPerUser()
+				return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
+			})
 		})
 	}
 }

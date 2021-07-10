@@ -1257,7 +1257,8 @@ storage:
     # CLI flag: -ruler.storage.azure.account-name
     [account_name: <string> | default = ""]
 
-    # The Microsoft Azure account key to use.
+    # The Microsoft Azure account key to use. If not specified, will use Managed
+    # Service Identity
     # CLI flag: -ruler.storage.azure.account-key
     [account_key: <string> | default = ""]
 
@@ -1970,7 +1971,8 @@ storage:
     # CLI flag: -alertmanager.storage.azure.account-name
     [account_name: <string> | default = ""]
 
-    # The Microsoft Azure account key to use.
+    # The Microsoft Azure account key to use. If not specified, will use Managed
+    # Service Identity
     # CLI flag: -alertmanager.storage.azure.account-key
     [account_key: <string> | default = ""]
 
@@ -2877,7 +2879,8 @@ azure:
   # CLI flag: -azure.account-name
   [account_name: <string> | default = ""]
 
-  # The Microsoft Azure account key to use.
+  # The Microsoft Azure account key to use. If not specified, will use Managed
+  # Service Identity
   # CLI flag: -azure.account-key
   [account_key: <string> | default = ""]
 

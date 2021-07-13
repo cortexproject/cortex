@@ -12,7 +12,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
-func TestTimeShardingGrouper_Groups(t *testing.T) {
+func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	block1ulid := ulid.MustNew(1, nil)
 	block2ulid := ulid.MustNew(2, nil)
 	block3ulid := ulid.MustNew(3, nil)

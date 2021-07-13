@@ -272,9 +272,20 @@ func (a *API) RegisterChunksPurger(store *purger.DeleteStore, deleteRequestCance
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
 }
 
-func (a *API) RegisterTenantDeletion(api *purger.TenantDeletionAPI) {
-	a.RegisterRoute("/purger/delete_tenant", http.HandlerFunc(api.DeleteTenant), true, "POST")
-	a.RegisterRoute("/purger/delete_tenant_status", http.HandlerFunc(api.DeleteTenantStatus), true, "GET")
+func (a *API) RegisterBlocksPurgerAPI(blocksPurger *purger.BlocksPurgerAPI) {
+
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(blocksPurger.V2AddDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(blocksPurger.V2GetAllDeleteRequestsHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(blocksPurger.V2CancelDeleteRequestHandler), true, "PUT", "POST")
+
+	// Legacy Routes
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(blocksPurger.V2AddDeleteRequestHandler), true, "PUT", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(blocksPurger.V2AddDeleteRequestHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(blocksPurger.V2CancelDeleteRequestHandler), true, "PUT", "POST")
+
+	// Tenant Deletion
+	a.RegisterRoute("/purger/delete_tenant", http.HandlerFunc(blocksPurger.DeleteTenant), true, "POST")
+	a.RegisterRoute("/purger/delete_tenant_status", http.HandlerFunc(blocksPurger.DeleteTenantStatus), true, "GET")
 }
 
 // RegisterRuler registers routes associated with the Ruler service.

@@ -79,6 +79,7 @@ const (
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
 	ChunksPurger             string = "chunks-purger"
+	BlocksPurger             string = "blocks-purger"
 	TenantDeletion           string = "tenant-deletion"
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
@@ -800,18 +801,18 @@ func (t *Cortex) initChunksPurger() (services.Service, error) {
 	return t.Purger, nil
 }
 
-func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
+func (t *Cortex) initBlocksPurger() (services.Service, error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks || !t.Cfg.PurgerConfig.Enable {
 		return nil, nil
 	}
 
 	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
-	tenantDeletionAPI, err := purger.NewTenantDeletionAPI(t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	blockPurger, err := purger.NewBlocksPurgerAPI(t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
 	if err != nil {
 		return nil, err
 	}
 
-	t.API.RegisterTenantDeletion(tenantDeletionAPI)
+	t.API.RegisterBlocksPurgerAPI(blockPurger)
 	return nil, nil
 }
 
@@ -857,7 +858,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(ChunksPurger, t.initChunksPurger, modules.UserInvisibleModule)
-	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
+	mm.RegisterModule(BlocksPurger, t.initBlocksPurger, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(TenantFederation, t.initTenantFederation, modules.UserInvisibleModule)
@@ -891,8 +892,8 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
-		TenantDeletion:           {Store, API, Overrides},
-		Purger:                   {ChunksPurger, TenantDeletion},
+		BlocksPurger:             {Store, API, Overrides},
+		Purger:                   {ChunksPurger, BlocksPurger},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}

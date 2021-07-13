@@ -85,14 +85,14 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		// understand query responses is prohibitively expensive.
 
 		h.querySeries = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name:    "cortex_query_series",
-			Help:    "Number of series returned by successful queries.",
+			Name:       "cortex_query_series",
+			Help:       "Number of series returned by successful queries.",
 			Objectives: map[float64]float64{},
 		}, []string{"user"})
 
 		h.queryBytes = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name: "cortex_query_bytes",
-			Help: "Number of bytes returned by successful queries.",
+			Name:       "cortex_query_bytes",
+			Help:       "Number of bytes returned by successful queries.",
 			Objectives: map[float64]float64{},
 		}, []string{"user"})
 

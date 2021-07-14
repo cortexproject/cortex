@@ -812,7 +812,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.API.RegisterBlocksPurgerAPI(blockPurger)
+	t.API.RegisterBlocksPurger(blockPurger)
 	return nil, nil
 }
 

@@ -1,16 +1,19 @@
 package purger
 
 import (
+	"bytes"
 	"context"
 	math "math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
@@ -74,7 +77,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 			}
 
 			resp := httptest.NewRecorder()
-			api.V2AddDeleteRequestHandler(resp, req.WithContext(ctx))
+			api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
 			require.Equal(t, tc.expectedHttpStatus, resp.Code)
 
 		})
@@ -108,14 +111,14 @@ func TestBlocksDeleteSeries_AddingSameRequestTwiceShouldFail(t *testing.T) {
 	}
 
 	resp := httptest.NewRecorder()
-	api.V2AddDeleteRequestHandler(resp, req.WithContext(ctx))
+	api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
 
 	// First request made should be okay
 	require.Equal(t, http.StatusNoContent, resp.Code)
 
 	//second should not be accepted because the same exact request already exists
 	resp = httptest.NewRecorder()
-	api.V2AddDeleteRequestHandler(resp, req.WithContext(ctx))
+	api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
 
 	require.Equal(t, http.StatusBadRequest, resp.Code)
 
@@ -189,7 +192,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			}
 
 			resp := httptest.NewRecorder()
-			api.V2CancelDeleteRequestHandler(resp, req.WithContext(ctx))
+			api.CancelDeleteRequestHandler(resp, req.WithContext(ctx))
 			require.Equal(t, tc.expectedHttpStatus, resp.Code)
 
 			// check if the cancelled tombstone file exists
@@ -197,6 +200,79 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			exists, _ := cortex_tsdb.TombstoneExists(ctx, userBkt, "fake", "request_id", cortex_tsdb.StateCancelled)
 			require.Equal(t, tc.cancelledFileExists, exists)
 
+		})
+	}
+}
+
+func TestDeleteTenant(t *testing.T) {
+	bkt := objstore.NewInMemBucket()
+	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+
+	{
+		resp := httptest.NewRecorder()
+		api.DeleteTenant(resp, &http.Request{})
+		require.Equal(t, http.StatusUnauthorized, resp.Code)
+	}
+
+	{
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "fake")
+
+		req := &http.Request{}
+		resp := httptest.NewRecorder()
+		api.DeleteTenant(resp, req.WithContext(ctx))
+
+		require.Equal(t, http.StatusOK, resp.Code)
+		objs := bkt.Objects()
+		require.NotNil(t, objs[path.Join("fake", tsdb.TenantDeletionMarkPath)])
+	}
+}
+
+func TestDeleteTenantStatus(t *testing.T) {
+	const username = "user"
+
+	for name, tc := range map[string]struct {
+		objects               map[string][]byte
+		expectedBlocksDeleted bool
+	}{
+		"empty": {
+			objects:               nil,
+			expectedBlocksDeleted: true,
+		},
+
+		"no user objects": {
+			objects: map[string][]byte{
+				"different-user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
+			},
+			expectedBlocksDeleted: true,
+		},
+
+		"non-block files": {
+			objects: map[string][]byte{
+				"user/deletion-mark.json": []byte("data"),
+			},
+			expectedBlocksDeleted: true,
+		},
+
+		"block files": {
+			objects: map[string][]byte{
+				"user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
+			},
+			expectedBlocksDeleted: false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bkt := objstore.NewInMemBucket()
+			// "upload" objects
+			for objName, data := range tc.objects {
+				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
+			}
+
+			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+
+			res, err := api.isBlocksForUserDeleted(context.Background(), username)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedBlocksDeleted, res)
 		})
 	}
 }

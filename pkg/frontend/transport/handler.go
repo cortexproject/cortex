@@ -79,7 +79,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
-		// Empty objectives for these summaries on purpose since they can't be aggregate
+		// Empty objectives for these summaries on purpose since they can't be aggregated
 		// and so we are just using them for the convenience of sum and count metrics. No
 		// histograms here since the cardinality from the number of buckets required to
 		// understand query responses is prohibitively expensive.

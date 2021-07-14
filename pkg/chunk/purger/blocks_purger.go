@@ -172,7 +172,7 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
 
-	deleteRequest, err := cortex_tsdb.GetDeleteRequestById(ctx, api.bucketClient, api.cfgProvider, userID, requestID)
+	deleteRequest, err := cortex_tsdb.GetDeleteRequestByIdForUser(ctx, api.bucketClient, api.cfgProvider, userID, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

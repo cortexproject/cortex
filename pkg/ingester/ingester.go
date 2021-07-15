@@ -492,11 +492,7 @@ func (i *Ingester) checkRunning() error {
 
 // Push implements client.IngesterServer
 func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	if i.cfg.BlocksStorageEnabled {
-		return i.v2Push(ctx, req)
-	}
-
-	if err := i.checkRunningOrStopping(); err != nil {
+	if err := i.checkRunning(); err != nil {
 		return nil, err
 	}
 
@@ -509,6 +505,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if inflight > gl.MaxInflightPushRequests {
 			return nil, errTooManyInflightPushRequests
 		}
+	}
+
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2Push(ctx, req)
 	}
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not

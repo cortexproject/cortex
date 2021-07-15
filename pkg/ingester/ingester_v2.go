@@ -716,21 +716,6 @@ type extendedAppender interface {
 
 // v2Push adds metrics to a block
 func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	if err := i.checkRunning(); err != nil {
-		return nil, err
-	}
-
-	// We will report *this* request in the error too.
-	inflight := i.inflightPushRequests.Inc()
-	defer i.inflightPushRequests.Dec()
-
-	gl := i.getInstanceLimits()
-	if gl != nil && gl.MaxInflightPushRequests > 0 {
-		if inflight > gl.MaxInflightPushRequests {
-			return nil, errTooManyInflightPushRequests
-		}
-	}
-
 	var firstPartialErr error
 
 	// NOTE: because we use `unsafe` in deserialisation, we must not

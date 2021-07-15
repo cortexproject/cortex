@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	fmt "fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	strings "strings"
 	"time"
@@ -221,6 +222,7 @@ func getTombstoneRequestID(startTime int64, endTime int64, selectors []string) s
 	b.WriteString(",")
 	b.WriteString(strconv.FormatInt(endTime, 10))
 
+	sort.Strings(selectors)
 	for _, s := range selectors {
 		b.WriteString(",")
 		b.WriteString(s)

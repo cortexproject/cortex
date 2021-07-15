@@ -104,7 +104,6 @@ func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID stri
 }
 
 func GetDeleteRequestByIdForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestId string) (*Tombstone, error) {
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
 	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	found := []*Tombstone{}
@@ -130,14 +129,8 @@ func GetDeleteRequestByIdForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 		return nil, nil
 	}
 
-	// If there are multiple tombstones with the same request id but different state, should delete the files with the lower state
-	for _, ts := range found[0 : len(found)-1] {
-		level.Info(userLogger).Log("msg", "Found extra tombstone file with outdated state. Will delete it.", "requestID", ts.RequestID, "state", ts.State)
-		if err := DeleteTombstoneFile(ctx, bkt, cfgProvider, ts); err != nil {
-			level.Error(userLogger).Log("msg", "Unable to delete redundant tombstone file.", "request_id", ts.RequestID, "state", ts.State, "err", err)
-		}
-	}
-
+	// If there are multiple tombstones with the same request id but different state, want to return only the latest one
+	// The older states will be cleaned up by the compactor
 	return found[len(found)-1], nil
 
 }
@@ -157,7 +150,10 @@ func GetAllDeleteRequestsForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 		if _, exists := tombstoneMap[t.RequestID]; !exists {
 			tombstoneMap[t.RequestID] = t
 		} else {
-			newT, err := removeDuplicateTombstone(ctx, bkt, cfgProvider, t.UserID, t, tombstoneMap[t.RequestID])
+			// if there is more than one tombstone for a given request,
+			// we only want to return the latest state. The older file
+			// will be cleaned by the compactor
+			newT, err := getLatestTombstateByState(t, tombstoneMap[t.RequestID])
 			if err != nil {
 				return err
 			}
@@ -178,44 +174,22 @@ func GetAllDeleteRequestsForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 	return deletionRequests, nil
 }
 
-func removeDuplicateTombstone(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, tombstoneA *Tombstone, tombstoneB *Tombstone) (*Tombstone, error) {
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-
-	if tombstoneA.RequestID != tombstoneB.RequestID {
-		return nil, errors.New("Cannot run the remove duplicate function for 2 tombstones with different request ID's")
-	} else if tombstoneA.State == tombstoneB.State {
-		return tombstoneA, nil
-	}
-
-	level.Info(userLogger).Log("msg", "Found multiple tombstones for the same deletion request ID but with different state'", "request ID", tombstoneA.RequestID)
-
-	//find which tombstone should be removed
-	var toDelete, toKeep *Tombstone
-
-	orderA, err := tombstoneA.GetStateOrder()
+func getLatestTombstateByState(a *Tombstone, b *Tombstone) (*Tombstone, error) {
+	orderA, err := a.GetStateOrder()
 	if err != nil {
 		return nil, err
 	}
 
-	orderB, err := tombstoneB.GetStateOrder()
+	orderB, err := b.GetStateOrder()
 	if err != nil {
 		return nil, err
 	}
 
-	if orderA > orderB {
-		toKeep = tombstoneA
-		toDelete = tombstoneB
-	} else {
-		toKeep = tombstoneB
-		toDelete = tombstoneA
+	if orderB > orderA {
+		return b, nil
 	}
 
-	level.Info(userLogger).Log("msg", "For deletion request %s", toDelete.RequestID, ", removing %s", toDelete.State, "state file, while keeping .", string(toKeep.State), "state file")
-	if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, toDelete); err != nil {
-		return nil, errors.Wrap(err, "failed to delete duplicate tombstone")
-	}
-
-	return toKeep, nil
+	return a, nil
 }
 
 func readTombstoneFile(ctx context.Context, bkt objstore.BucketReader, userID string, tombstonePath string) (*Tombstone, error) {

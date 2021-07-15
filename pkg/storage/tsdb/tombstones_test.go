@@ -3,7 +3,6 @@ package tsdb
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"path"
 	"testing"
 
@@ -145,74 +144,6 @@ func TestTombstoneUpdateState(t *testing.T) {
 	require.True(t, exists)
 }
 
-func TestTombstones_RemoveFilesWithDuplicateRequestIds(t *testing.T) {
-	const username = "user"
-	const requestID = "requestID"
-
-	for name, tc := range map[string]struct {
-		remaningState BlockDeleteRequestState
-		deletedState  BlockDeleteRequestState
-	}{
-		"pending state tombstone file should be deleted if deleted file exists ": {
-			remaningState: StateCancelled,
-			deletedState:  StatePending,
-		},
-		"pending state tombstone file should be deleted if processed file exists ": {
-			remaningState: StateProcessed,
-			deletedState:  StatePending,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			ctx = user.InjectOrgID(ctx, username)
-
-			bkt := objstore.NewInMemBucket()
-
-			// create the tombstones
-			tRemaining := NewTombstone(username, 0, 0, 0, 0, []string{}, requestID, tc.remaningState)
-			tToDelete := NewTombstone(username, 0, 0, 0, 0, []string{}, requestID, tc.deletedState)
-
-			// "upload" sample tombstone files
-			tRemainPath := username + "/tombstones/" + requestID + "." + string(tc.remaningState) + ".json"
-			tDeletePath := username + "/tombstones/" + requestID + "." + string(tc.deletedState) + ".json"
-
-			tRemainingJSON, _ := json.Marshal(tRemaining)
-			tToDeleteJSON, _ := json.Marshal(tToDelete)
-
-			require.NoError(t, bkt.Upload(context.Background(), tRemainPath, bytes.NewReader([]byte(tRemainingJSON))))
-			require.NoError(t, bkt.Upload(context.Background(), tDeletePath, bytes.NewReader([]byte(tToDeleteJSON))))
-
-			resultingT, err := removeDuplicateTombstone(ctx, bkt, nil, username, tRemaining, tToDelete)
-			require.NoError(t, err)
-			require.Equal(t, tRemaining, resultingT)
-
-			//check that the tombstone has been deleted
-			exists, _ := bkt.Exists(ctx, tDeletePath)
-			require.False(t, exists)
-
-			exists, _ = bkt.Exists(ctx, tRemainPath)
-			require.True(t, exists)
-
-			//Test switching the order of the parameters passed in the function
-
-			// reupload the files
-			require.NoError(t, bkt.Upload(context.Background(), tRemainPath, bytes.NewReader([]byte(tRemainingJSON))))
-			require.NoError(t, bkt.Upload(context.Background(), tDeletePath, bytes.NewReader([]byte(tToDeleteJSON))))
-
-			resultingT, err = removeDuplicateTombstone(ctx, bkt, nil, username, tToDelete, tRemaining)
-			require.NoError(t, err)
-			require.Equal(t, tRemaining, resultingT)
-
-			//check that the tombstone has been deleted
-			exists, _ = bkt.Exists(ctx, tDeletePath)
-			require.False(t, exists)
-
-			exists, _ = bkt.Exists(ctx, tRemainPath)
-			require.True(t, exists)
-		})
-	}
-}
-
 func TestGetSingleTombstone(t *testing.T) {
 	const username = "user"
 	const requestID = "requestID"
@@ -245,11 +176,6 @@ func TestGetSingleTombstone(t *testing.T) {
 	require.Equal(t, tProcessed.RequestID, tRetrieved.RequestID)
 	require.Equal(t, tProcessed.UserID, tRetrieved.UserID)
 	require.Equal(t, tProcessed.State, tRetrieved.State)
-
-	// make sure the pending tombstone was deleted
-	tPendingPath := username + "/tombstones/" + requestID + "." + string(StatePending) + ".json"
-	exists, _ := bkt.Exists(ctx, tPendingPath)
-	require.False(t, exists)
 
 	// Get single tombstone that doesn't exist should return nil
 	tRetrieved, err = GetDeleteRequestByIdForUser(ctx, bkt, nil, username, "unknownRequestID")

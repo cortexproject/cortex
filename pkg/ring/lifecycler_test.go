@@ -321,6 +321,71 @@ type noopFlushTransferer struct {
 func (f *noopFlushTransferer) Flush()                                {}
 func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
 
+func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	r, err := New(ringConfig, "ingester", IngesterRingKey, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig.UnregisterOnShutdown = false
+	lifecyclerConfig.HeartbeatPeriod = 0
+
+	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
+
+	lifecyclerConfig.ID = "ing2"
+
+	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
+
+	var ingesters map[string]InstanceDesc
+	pool := func(condition func(*Desc) bool) {
+		test.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+			d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+			require.NoError(t, err)
+
+			desc, ok := d.(*Desc)
+
+			if ok {
+				ingesters = desc.Ingesters
+			}
+			return ok && condition(desc)
+		})
+	}
+
+	pool(func(desc *Desc) bool {
+		return len(desc.Ingesters) == 2 && ingesters["ing1"].State == ACTIVE && ingesters["ing2"].State == ACTIVE
+	})
+
+	assert.Equal(t, ACTIVE, ingesters["ing1"].State)
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	pool(func(desc *Desc) bool {
+		return len(desc.Ingesters) == 2 && ingesters["ing2"].State == LEAVING
+	})
+
+	assert.Equal(t, LEAVING, ingesters["ing2"].State)
+	l2Restart, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2Restart))
+	defer services.StopAndAwaitTerminated(context.Background(), l2Restart) //nolint:errcheck
+
+	pool(func(desc *Desc) bool {
+		return len(desc.Ingesters) == 2 && ingesters["ing2"].State == ACTIVE
+	})
+
+	assert.Equal(t, ACTIVE, ingesters["ing1"].State)
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+}
+
 func TestTokensOnDisk(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)

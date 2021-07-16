@@ -659,13 +659,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			numSeries := len(mySeries)
 			chunkBytes := countChunkBytes(mySeries...)
 
-			reqStats.AddSeries(uint64(numSeries))
-			reqStats.AddBytes(uint64(chunkBytes))
+			reqStats.AddFetchedSeries(uint64(numSeries))
+			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
-				"num series", numSeries,
-				"bytes series", chunkBytes,
+				"fetched series", numSeries,
+				"fetched chunk bytes", chunkBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 

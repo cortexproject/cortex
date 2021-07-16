@@ -385,8 +385,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
 
-	reqStats.AddSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
-	reqStats.AddBytes(uint64(resp.ChunksSize()))
+	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
+	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
 
 	return resp, nil
 }

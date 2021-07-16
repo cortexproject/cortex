@@ -54,36 +54,36 @@ func (s *Stats) LoadWallTime() time.Duration {
 	return time.Duration(atomic.LoadInt64((*int64)(&s.WallTime)))
 }
 
-func (s *Stats) AddSeries(series uint64) {
+func (s *Stats) AddFetchedSeries(series uint64) {
 	if s == nil {
 		return
 	}
 
-	atomic.AddUint64(&s.NumSeries, series)
+	atomic.AddUint64(&s.FetchedSeriesCount, series)
 }
 
-func (s *Stats) LoadSeries() uint64 {
+func (s *Stats) LoadFetchedSeries() uint64 {
 	if s == nil {
 		return 0
 	}
 
-	return atomic.LoadUint64(&s.NumSeries)
+	return atomic.LoadUint64(&s.FetchedSeriesCount)
 }
 
-func (s *Stats) AddBytes(bytes uint64) {
+func (s *Stats) AddFetchedChunkBytes(bytes uint64) {
 	if s == nil {
 		return
 	}
 
-	atomic.AddUint64(&s.NumBytes, bytes)
+	atomic.AddUint64(&s.FetchedChunkBytes, bytes)
 }
 
-func (s *Stats) LoadBytes() uint64 {
+func (s *Stats) LoadFetchedChunkBytes() uint64 {
 	if s == nil {
 		return 0
 	}
 
-	return atomic.LoadUint64(&s.NumBytes)
+	return atomic.LoadUint64(&s.FetchedChunkBytes)
 }
 
 // Merge the provide Stats into this one.
@@ -93,8 +93,8 @@ func (s *Stats) Merge(other *Stats) {
 	}
 
 	s.AddWallTime(other.LoadWallTime())
-	s.AddSeries(other.LoadSeries())
-	s.AddBytes(other.LoadBytes())
+	s.AddFetchedSeries(other.LoadFetchedSeries())
+	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

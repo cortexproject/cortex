@@ -85,14 +85,14 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		// understand query responses is prohibitively expensive.
 
 		h.querySeries = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name:       "cortex_query_series",
-			Help:       "Number of series returned by successful queries.",
+			Name:       "cortex_query_fetched_series_per_query",
+			Help:       "Number of series fetched to execute a query.",
 			Objectives: map[float64]float64{},
 		}, []string{"user"})
 
 		h.queryBytes = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name:       "cortex_query_bytes",
-			Help:       "Number of bytes returned by successful queries.",
+			Name:       "cortex_query_fetched_chunks_bytes_per_query",
+			Help:       "Size of all chunks fetched to execute a query in bytes.",
 			Objectives: map[float64]float64{},
 		}, []string{"user"})
 
@@ -187,8 +187,8 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	}
 	userID := tenant.JoinTenantIDs(tenantIDs)
 	wallTime := stats.LoadWallTime()
-	numSeries := stats.LoadSeries()
-	numBytes := stats.LoadBytes()
+	numSeries := stats.LoadFetchedSeries()
+	numBytes := stats.LoadFetchedChunkBytes()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
@@ -204,8 +204,8 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"path", r.URL.Path,
 		"response_time", queryResponseTime,
 		"query_wall_time_seconds", wallTime.Seconds(),
-		"query_series", numSeries,
-		"query_bytes", numBytes,
+		"fetched_series_count", numSeries,
+		"fetched_chunk_bytes", numBytes,
 	}, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

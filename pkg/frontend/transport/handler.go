@@ -205,7 +205,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"response_time", queryResponseTime,
 		"query_wall_time_seconds", wallTime.Seconds(),
 		"fetched_series_count", numSeries,
-		"fetched_chunk_bytes", numBytes,
+		"fetched_chunks_bytes", numBytes,
 	}, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

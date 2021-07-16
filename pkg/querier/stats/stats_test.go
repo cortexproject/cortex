@@ -25,7 +25,7 @@ func TestStats_WallTime(t *testing.T) {
 	})
 }
 
-func TestStats_Series(t *testing.T) {
+func TestStats_AddFetchedSeries(t *testing.T) {
 	t.Run("add and load series", func(t *testing.T) {
 		stats, _ := ContextWithEmptyStats(context.Background())
 		stats.AddFetchedSeries(100)
@@ -42,7 +42,7 @@ func TestStats_Series(t *testing.T) {
 	})
 }
 
-func TestStats_Bytes(t *testing.T) {
+func TestStats_AddFetchedChunkBytes(t *testing.T) {
 	t.Run("add and load bytes", func(t *testing.T) {
 		stats, _ := ContextWithEmptyStats(context.Background())
 		stats.AddFetchedChunkBytes(4096)

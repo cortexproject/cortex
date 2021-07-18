@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path"
 	"path/filepath"
 	"time"
@@ -101,6 +102,28 @@ func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID stri
 	}
 
 	return false, nil
+}
+
+func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestId string) error {
+	usrBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+	userLogger := util_log.WithUserID(userID, util_log.Logger)
+
+	exists, err := TombstoneExists(ctx, usrBkt, userID, requestId, StateCancelled)
+	if err != nil {
+		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestId, "err", err)
+		return err
+	}
+
+	if exists {
+		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestId, StateCancelled); err != nil {
+			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestId, "err", err)
+			return err
+		}
+		fmt.Print("DELETEd")
+	} else {
+		fmt.Println("DOES NOT EXIST")
+	}
+	return nil
 }
 
 func GetDeleteRequestByIdForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestId string) (*Tombstone, error) {
@@ -270,19 +293,19 @@ func UpdateTombstoneState(ctx context.Context, bkt objstore.Bucket, cfgProvider 
 		return nil, err
 	}
 
-	if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, t); err != nil {
+	if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, t.UserID, t.RequestID, t.State); err != nil {
 		level.Error(userLogger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
 	}
 
 	return newT, nil
 }
 
-func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, t *Tombstone) error {
-	userLogger := util_log.WithUserID(t.UserID, util_log.Logger)
-	userBucket := bucket.NewUserBucketClient(t.UserID, bkt, cfgProvider)
+func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userId string, requestId string, state BlockDeleteRequestState) error {
+	userLogger := util_log.WithUserID(userId, util_log.Logger)
+	userBucket := bucket.NewUserBucketClient(userId, bkt, cfgProvider)
 
 	// Create the full path of the tombstone by appending the state as the extension
-	filename := t.RequestID + "." + string(t.State) + ".json"
+	filename := requestId + "." + string(state) + ".json"
 	fullTombstonePath := path.Join(TombstonePath, filename)
 
 	level.Info(userLogger).Log("msg", "Deleting tombstone file", "file", fullTombstonePath)

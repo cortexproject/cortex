@@ -105,7 +105,7 @@ func TestTombstonesDeletion(t *testing.T) {
 	require.NoError(t, bkt.Upload(context.Background(), tPendingPath, bytes.NewReader([]byte("data"))))
 	require.NoError(t, bkt.Upload(context.Background(), tProcessedPath, bytes.NewReader([]byte("data"))))
 
-	require.NoError(t, DeleteTombstoneFile(ctx, bkt, nil, tPending))
+	require.NoError(t, DeleteTombstoneFile(ctx, bkt, nil, tPending.UserID, tPending.RequestID, tPending.State))
 
 	// make sure the pending tombstone was deleted
 	exists, _ := bkt.Exists(ctx, tPendingPath)

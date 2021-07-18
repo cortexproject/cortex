@@ -124,6 +124,77 @@ func TestBlocksDeleteSeries_AddingSameRequestTwiceShouldFail(t *testing.T) {
 
 }
 
+func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testing.T) {
+
+	// If a tombstone has previously been cancelled, and a new request
+	// being made results in the same request id, the cancelled tombstone
+	// should be deleted from the bucket
+
+	bkt := objstore.NewInMemBucket()
+	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, userID)
+
+	//first create a new tombstone
+	paramsCreate := url.Values{
+		"start":   []string{"1"},
+		"end":     []string{"2"},
+		"match[]": []string{"node_exporter"},
+	}
+
+	uCreate := &url.URL{
+		RawQuery: paramsCreate.Encode(),
+	}
+
+	reqCreate := &http.Request{
+		Method:     "GET",
+		RequestURI: uCreate.String(),
+		URL:        uCreate,
+		Body:       http.NoBody,
+		Header:     http.Header{},
+	}
+
+	resp := httptest.NewRecorder()
+	api.AddDeleteRequestHandler(resp, reqCreate.WithContext(ctx))
+	require.Equal(t, http.StatusNoContent, resp.Code)
+
+	//cancel the previous request
+	requestID := getTombstoneRequestID(1000, 2000, []string{"node_exporter"})
+	paramsDelete := url.Values{
+		"request_id": []string{requestID},
+	}
+	uCancel := &url.URL{
+		RawQuery: paramsDelete.Encode(),
+	}
+
+	reqCancel := &http.Request{
+		Method:     "POST",
+		RequestURI: uCancel.String(), // This is what the httpgrpc code looks at.
+		URL:        uCancel,
+		Body:       http.NoBody,
+		Header:     http.Header{},
+	}
+
+	resp = httptest.NewRecorder()
+	api.CancelDeleteRequestHandler(resp, reqCancel.WithContext(ctx))
+	require.Equal(t, http.StatusNoContent, resp.Code)
+
+	// check that the cancelled file exists
+	tCancelledPath := userID + "/tombstones/" + requestID + "." + string(cortex_tsdb.StateCancelled) + ".json"
+	exists, _ := bkt.Exists(ctx, tCancelledPath)
+	require.True(t, exists)
+
+	// create a new request and make sure the cancelled file no longer exists
+	resp = httptest.NewRecorder()
+	api.AddDeleteRequestHandler(resp, reqCreate.WithContext(ctx))
+	require.Equal(t, http.StatusNoContent, resp.Code)
+
+	exists, _ = bkt.Exists(ctx, tCancelledPath)
+	require.False(t, exists)
+
+}
+
 func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 
 	for name, tc := range map[string]struct {

@@ -802,7 +802,7 @@ func (t *Cortex) initChunksPurger() (services.Service, error) {
 }
 
 func (t *Cortex) initBlocksPurger() (services.Service, error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks || !t.Cfg.PurgerConfig.Enable {
+	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
 		return nil, nil
 	}
 
@@ -812,7 +812,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.API.RegisterBlocksPurger(blockPurger)
+	t.API.RegisterBlocksPurger(blockPurger, t.Cfg.PurgerConfig.Enable)
 	return nil, nil
 }
 

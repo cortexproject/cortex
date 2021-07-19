@@ -60,6 +60,20 @@ func TestLoadRuntimeConfig_ShouldLoadEmptyFile(t *testing.T) {
 	assert.Equal(t, &runtimeConfigValues{}, actual)
 }
 
+func TestLoadRuntimeConfig_MissingPointerFieldsAreNil(t *testing.T) {
+	yamlFile := strings.NewReader(`
+# This is an empty YAML.
+`)
+	actual, err := loadRuntimeConfig(yamlFile)
+	require.NoError(t, err)
+
+	actualCfg, ok := actual.(*runtimeConfigValues)
+	require.Truef(t, ok, "expected to be able to cast %+v to runtimeConfigValues", actual)
+
+	// Ensure that when settings are omitted, the pointers are nil. See #4228
+	assert.Nil(t, actualCfg.IngesterLimits)
+}
+
 func TestLoadRuntimeConfig_ShouldReturnErrorOnMultipleDocumentsInTheConfig(t *testing.T) {
 	cases := []string{
 		`

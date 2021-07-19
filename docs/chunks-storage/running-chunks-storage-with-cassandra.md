@@ -5,6 +5,8 @@ weight: 2
 slug: running-chunks-storage-with-cassandra
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 This guide covers how to run a single local Cortex instance - with the [**chunks storage**](../chunks-storage/_index.md) engine - storing time series chunks and index in Cassandra.
 
 In this guide we're going to:

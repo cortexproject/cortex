@@ -27,20 +27,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 )
 
-var (
-	ErrNotFound = errors.New("not found")
-)
+var ErrNotFound = errors.New("not found")
 
 // Client is a client used to interact with Cortex in integration tests
 type Client struct {
-	alertmanagerClient promapi.Client
-	querierAddress     string
-	rulerAddress       string
-	distributorAddress string
-	timeout            time.Duration
-	httpClient         *http.Client
-	querierClient      promv1.API
-	orgID              string
+	alertmanagerClient  promapi.Client
+	querierAddress      string
+	alertmanagerAddress string
+	rulerAddress        string
+	distributorAddress  string
+	timeout             time.Duration
+	httpClient          *http.Client
+	querierClient       promv1.API
+	orgID               string
 }
 
 // NewClient makes a new Cortex client
@@ -61,13 +60,14 @@ func NewClient(
 	}
 
 	c := &Client{
-		distributorAddress: distributorAddress,
-		querierAddress:     querierAddress,
-		rulerAddress:       rulerAddress,
-		timeout:            5 * time.Second,
-		httpClient:         &http.Client{},
-		querierClient:      promv1.NewAPI(querierAPIClient),
-		orgID:              orgID,
+		distributorAddress:  distributorAddress,
+		querierAddress:      querierAddress,
+		alertmanagerAddress: alertmanagerAddress,
+		rulerAddress:        rulerAddress,
+		timeout:             5 * time.Second,
+		httpClient:          &http.Client{},
+		querierClient:       promv1.NewAPI(querierAPIClient),
+		orgID:               orgID,
 	}
 
 	if alertmanagerAddress != "" {
@@ -391,6 +391,32 @@ type userConfig struct {
 	AlertmanagerConfig string            `yaml:"alertmanager_config"`
 }
 
+// GetAlertmanagerStatusPage gets the status page of alertmanager.
+func (c *Client) GetAlertmanagerStatusPage(ctx context.Context) ([]byte, error) {
+	return c.getRawPage(ctx, "http://"+c.alertmanagerAddress+"/multitenant_alertmanager/status")
+}
+
+func (c *Client) getRawPage(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("fetching page failed with status %d and content %v", resp.StatusCode, string(content))
+	}
+	return content, nil
+}
+
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
 	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
@@ -433,7 +459,6 @@ func (c *Client) SetAlertmanagerConfig(ctx context.Context, amConfig string, tem
 		AlertmanagerConfig: amConfig,
 		TemplateFiles:      templates,
 	})
-
 	if err != nil {
 		return err
 	}

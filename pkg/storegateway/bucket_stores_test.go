@@ -589,7 +589,7 @@ func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 	return u.users
 }
 
-func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, synced *extprom.TxGaugeVec) error {
+func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
 	if util.StringsContain(u.users, userID) {
 		return nil
 	}

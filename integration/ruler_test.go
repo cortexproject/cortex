@@ -152,13 +152,13 @@ func TestRulerAPISingleBinary(t *testing.T) {
 	user := "fake"
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory": filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":           "2s",
 		"-ruler.rule-path":               filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 	}
 
 	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
 	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerUserConfigYaml)))
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))
@@ -210,14 +210,14 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	evaluationDelay := time.Minute * 5
 
 	configOverrides := map[string]string{
-		"-ruler.storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
+		"-ruler-storage.local.directory":   filepath.Join(e2e.ContainerSharedDir, "ruler_configs"),
 		"-ruler.poll-interval":             "2s",
 		"-ruler.rule-path":                 filepath.Join(e2e.ContainerSharedDir, "rule_tmp/"),
 		"-ruler.evaluation-delay-duration": evaluationDelay.String(),
 	}
 
 	// Start Cortex components.
-	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
 	require.NoError(t, writeFileToSharedDir(s, filepath.Join("ruler_configs", user, namespace), []byte(cortexRulerEvalStaleNanConfigYaml)))
 	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, configOverrides, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex))

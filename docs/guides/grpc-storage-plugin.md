@@ -5,7 +5,7 @@ weight: 10
 slug: grpc-based-plugin
 ---
 
-_This feature is currently experimental and is only supported for Chunks storage._
+_This feature is currently experimental and is only supported for Chunks storage (deprecated)._
 
 Cortex chunks storage supports a **gRPC-based plugin system** to use alternative backends for the index and chunks store.
 A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.

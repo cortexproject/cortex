@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -83,8 +84,29 @@ func (d *data) MergeContent() []string {
 	return out
 }
 
-func (d *data) RemoveTombstones(limit time.Time) {
+func (d *data) RemoveTombstones(limit time.Time) (_, _ int) {
 	// nothing to do
+	return
+}
+
+func (m member) clone() member {
+	out := member{
+		Timestamp: m.Timestamp,
+		Tokens:    make([]uint32, len(m.Tokens)),
+		State:     m.State,
+	}
+	copy(out.Tokens, m.Tokens)
+	return out
+}
+
+func (d *data) Clone() Mergeable {
+	out := &data{
+		Members: make(map[string]member, len(d.Members)),
+	}
+	for k, v := range d.Members {
+		out.Members[k] = v.clone()
+	}
+	return out
 }
 
 func (d *data) getAllTokens() []uint32 {
@@ -206,12 +228,12 @@ func TestBasicGetAndCas(t *testing.T) {
 	c := dataCodec{}
 
 	name := "Ing 1"
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-		},
-		Codecs: []codec.Codec{c},
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
 	}
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -264,10 +286,10 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 
 	c := dataCodec{}
 
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{},
-		Codecs:       []codec.Codec{c},
-	}
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{}
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -409,9 +431,9 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 func TestMultipleCAS(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{
-		Codecs: []codec.Codec{c},
-	}
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	mkv.maxCasRetries = 20
@@ -500,25 +522,20 @@ func TestMultipleClients(t *testing.T) {
 
 	for i := 0; i < members; i++ {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := KVConfig{
-			NodeName: id,
+		var cfg KVConfig
+		flagext.DefaultValues(&cfg)
+		cfg.NodeName = id
 
-			// some useful parameters when playing with higher number of members
-			// RetransmitMult:     2,
-			GossipInterval:   100 * time.Millisecond,
-			GossipNodes:      3,
-			PushPullInterval: 5 * time.Second,
-			// PacketDialTimeout:  5 * time.Second,
-			// StreamTimeout:      5 * time.Second,
-			// PacketWriteTimeout: 2 * time.Second,
+		cfg.GossipInterval = 100 * time.Millisecond
+		cfg.GossipNodes = 3
+		cfg.PushPullInterval = 5 * time.Second
 
-			TCPTransport: TCPTransportConfig{
-				BindAddrs: []string{"localhost"},
-				BindPort:  0, // randomize ports
-			},
-
-			Codecs: []codec.Codec{c},
+		cfg.TCPTransport = TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0, // randomize ports
 		}
+
+		cfg.Codecs = []codec.Codec{c}
 
 		mkv := NewKV(cfg, log.NewNopLogger())
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -559,9 +576,6 @@ func TestMultipleClients(t *testing.T) {
 		return true // yes, keep watching
 	})
 	cancel() // make linter happy
-
-	// Let clients exchange messages for a while
-	close(stop)
 
 	t.Logf("Ring updates observed: %d", updates)
 
@@ -614,6 +628,9 @@ func TestMultipleClients(t *testing.T) {
 			}
 		}
 	}
+
+	// We cannot shutdown the KV until now in order for Get() to work reliably.
+	close(stop)
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
@@ -644,25 +661,25 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 
 	for i, port := range ports {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := KVConfig{
-			NodeName: id,
+		var cfg KVConfig
+		flagext.DefaultValues(&cfg)
+		cfg.NodeName = id
 
-			GossipInterval:   100 * time.Millisecond,
-			GossipNodes:      3,
-			PushPullInterval: 5 * time.Second,
+		cfg.GossipInterval = 100 * time.Millisecond
+		cfg.GossipNodes = 3
+		cfg.PushPullInterval = 5 * time.Second
 
-			MinJoinBackoff:   100 * time.Millisecond,
-			MaxJoinBackoff:   1 * time.Minute,
-			MaxJoinRetries:   10,
-			AbortIfJoinFails: true,
+		cfg.MinJoinBackoff = 100 * time.Millisecond
+		cfg.MaxJoinBackoff = 1 * time.Minute
+		cfg.MaxJoinRetries = 10
+		cfg.AbortIfJoinFails = true
 
-			TCPTransport: TCPTransportConfig{
-				BindAddrs: []string{"localhost"},
-				BindPort:  port,
-			},
-
-			Codecs: []codec.Codec{c},
+		cfg.TCPTransport = TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  port,
 		}
+
+		cfg.Codecs = []codec.Codec{c}
 
 		if i == 0 {
 			// Add members to first KV config to join immediately on initialization.
@@ -731,21 +748,21 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 	ports, err := getFreePorts(1)
 	require.NoError(t, err)
 
-	cfg := KVConfig{
-		MinJoinBackoff:   100 * time.Millisecond,
-		MaxJoinBackoff:   100 * time.Millisecond,
-		MaxJoinRetries:   2,
-		AbortIfJoinFails: true,
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.MinJoinBackoff = 100 * time.Millisecond
+	cfg.MaxJoinBackoff = 100 * time.Millisecond
+	cfg.MaxJoinRetries = 2
+	cfg.AbortIfJoinFails = true
 
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  0,
-		},
-
-		JoinMembers: []string{fmt.Sprintf("127.0.0.1:%d", ports[0])},
-
-		Codecs: []codec.Codec{c},
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  0,
 	}
+
+	cfg.JoinMembers = []string{fmt.Sprintf("127.0.0.1:%d", ports[0])}
+
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -870,8 +887,17 @@ func (dc distributedCounter) MergeContent() []string {
 	return out
 }
 
-func (dc distributedCounter) RemoveTombstones(limit time.Time) {
+func (dc distributedCounter) RemoveTombstones(limit time.Time) (_, _ int) {
 	// nothing to do
+	return
+}
+
+func (dc distributedCounter) Clone() Mergeable {
+	out := make(distributedCounter, len(dc))
+	for k, v := range dc {
+		out[k] = v
+	}
+	return out
 }
 
 type distributedCounterCodec struct{}
@@ -897,16 +923,16 @@ func (d distributedCounterCodec) Encode(val interface{}) ([]byte, error) {
 var _ codec.Codec = &distributedCounterCodec{}
 
 func TestMultipleCodecs(t *testing.T) {
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  0, // randomize
-		},
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  0, // randomize
+	}
 
-		Codecs: []codec.Codec{
-			dataCodec{},
-			distributedCounterCodec{},
-		},
+	cfg.Codecs = []codec.Codec{
+		dataCodec{},
+		distributedCounterCodec{},
 	}
 
 	mkv1 := NewKV(cfg, log.NewNopLogger())
@@ -988,16 +1014,16 @@ func TestRejoin(t *testing.T) {
 	ports, err := getFreePorts(2)
 	require.NoError(t, err)
 
-	cfg1 := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  ports[0],
-		},
-
-		RandomizeNodeName: true,
-		Codecs:            []codec.Codec{dataCodec{}},
-		AbortIfJoinFails:  false,
+	var cfg1 KVConfig
+	flagext.DefaultValues(&cfg1)
+	cfg1.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  ports[0],
 	}
+
+	cfg1.RandomizeNodeName = true
+	cfg1.Codecs = []codec.Codec{dataCodec{}}
+	cfg1.AbortIfJoinFails = false
 
 	cfg2 := cfg1
 	cfg2.TCPTransport.BindPort = ports[1]

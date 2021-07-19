@@ -5,6 +5,8 @@ weight: 1
 slug: getting-started-chunks-storage
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 Cortex can be run as a single binary or as multiple independent microservices.
 The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
 The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
@@ -18,14 +20,14 @@ Cortex can also make use of external memcacheds for caching and although these a
 
 ## Single instance, single process
 
-For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config.md) with no dependencies:
+For simplicity and to get started, we'll run it as a single process.
 
 Clone and build Cortex
 ```sh
 $ git clone https://github.com/cortexproject/cortex.git
 $ cd cortex
 $ go build ./cmd/cortex
-$ ./cortex -config.file=./docs/configuration/single-process-config.yaml
+$ ./cortex -config.file=./docs/chunks-storage/single-process-config.yaml
 ```
 
 This starts a single Cortex node storing chunks and index to your local filesystem in `/tmp/cortex`.
@@ -79,14 +81,14 @@ Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml \
+    -v $(pwd)/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9001:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500
 $ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml \
+    -v $(pwd)/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9002:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
@@ -143,7 +145,7 @@ Then, launch 3 Cortex nodes with replication factor 3:
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml \
+    -v $(pwd)/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9001:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
@@ -151,7 +153,7 @@ $ docker run -d --name=cortex1 --network=cortex \
     -consul.hostname=consul:8500 \
     -distributor.replication-factor=3
 $ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml \
+    -v $(pwd)/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9002:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \
@@ -159,7 +161,7 @@ $ docker run -d --name=cortex2 --network=cortex \
     -consul.hostname=consul:8500 \
     -distributor.replication-factor=3
 $ docker run -d --name=cortex3 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config.yaml:/etc/single-process-config.yaml \
+    -v $(pwd)/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml \
     -p 9003:9009 \
     quay.io/cortexproject/cortex \
     -config.file=/etc/single-process-config.yaml \

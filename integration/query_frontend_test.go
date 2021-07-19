@@ -107,50 +107,6 @@ func TestQueryFrontendWithBlocksStorageViaConfigFile(t *testing.T) {
 	})
 }
 
-func TestQueryFrontendWithChunksStorageViaFlags(t *testing.T) {
-	runQueryFrontendTest(t, queryFrontendTestConfig{
-		testMissingMetricName: true,
-		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-			require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-
-			dynamo := e2edb.NewDynamoDB()
-			require.NoError(t, s.StartAndWaitReady(dynamo))
-
-			flags = ChunksStorageFlags()
-			tableManager := e2ecortex.NewTableManager("table-manager", flags, "")
-			require.NoError(t, s.StartAndWaitReady(tableManager))
-
-			// Wait until the first table-manager sync has completed, so that we're
-			// sure the tables have been created.
-			require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
-
-			return "", flags
-		},
-	})
-}
-
-func TestQueryFrontendWithChunksStorageViaConfigFile(t *testing.T) {
-	runQueryFrontendTest(t, queryFrontendTestConfig{
-		testMissingMetricName: true,
-		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
-			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(ChunksStorageConfig)))
-			require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-
-			dynamo := e2edb.NewDynamoDB()
-			require.NoError(t, s.StartAndWaitReady(dynamo))
-
-			tableManager := e2ecortex.NewTableManagerWithConfigFile("table-manager", cortexConfigFile, e2e.EmptyFlags(), "")
-			require.NoError(t, s.StartAndWaitReady(tableManager))
-
-			// Wait until the first table-manager sync has completed, so that we're
-			// sure the tables have been created.
-			require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
-
-			return cortexConfigFile, e2e.EmptyFlags()
-		},
-	})
-}
-
 func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,

@@ -20,10 +20,10 @@ func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
 
 	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, "fake")
+	ctx = user.InjectOrgID(ctx, username)
 
 	//create the tombstone
-	tombstone := NewTombstone("fake", 0, 0, 0, 1, []string{"match"}, requestID, StatePending)
+	tombstone := NewTombstone(username, 0, 0, 0, 1, []string{"match"}, requestID, StatePending)
 	err := WriteTombstoneFile(ctx, bkt, username, nil, tombstone)
 	require.NoError(t, err)
 

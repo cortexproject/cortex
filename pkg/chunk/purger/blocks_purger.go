@@ -174,7 +174,6 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 }
 
 func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {

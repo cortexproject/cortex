@@ -62,7 +62,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
 
 			ctx := context.Background()
-			ctx = user.InjectOrgID(ctx, "fake")
+			ctx = user.InjectOrgID(ctx, userID)
 
 			u := &url.URL{
 				RawQuery: tc.parameters.Encode(),
@@ -70,7 +70,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 
 			req := &http.Request{
 				Method:     "GET",
-				RequestURI: u.String(), // This is what the httpgrpc code looks at.
+				RequestURI: u.String(),
 				URL:        u,
 				Body:       http.NoBody,
 				Header:     http.Header{},
@@ -90,7 +90,7 @@ func TestBlocksDeleteSeries_AddingSameRequestTwiceShouldFail(t *testing.T) {
 	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
 
 	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, "fake")
+	ctx = user.InjectOrgID(ctx, userID)
 
 	params := url.Values{
 		"start":   []string{"1"},
@@ -239,11 +239,11 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
 
 			ctx := context.Background()
-			ctx = user.InjectOrgID(ctx, "fake")
+			ctx = user.InjectOrgID(ctx, userID)
 
 			//create the tombstone
-			tombstone := cortex_tsdb.NewTombstone("fake", tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, "request_id", tc.requestState)
-			err := cortex_tsdb.WriteTombstoneFile(ctx, api.bucketClient, "fake", api.cfgProvider, tombstone)
+			tombstone := cortex_tsdb.NewTombstone(userID, tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, "request_id", tc.requestState)
+			err := cortex_tsdb.WriteTombstoneFile(ctx, api.bucketClient, userID, api.cfgProvider, tombstone)
 			require.NoError(t, err)
 
 			params := url.Values{
@@ -267,8 +267,8 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			require.Equal(t, tc.expectedHttpStatus, resp.Code)
 
 			// check if the cancelled tombstone file exists
-			userBkt := bucket.NewUserBucketClient("fake", bkt, api.cfgProvider)
-			exists, _ := cortex_tsdb.TombstoneExists(ctx, userBkt, "fake", "request_id", cortex_tsdb.StateCancelled)
+			userBkt := bucket.NewUserBucketClient(userID, bkt, api.cfgProvider)
+			exists, _ := cortex_tsdb.TombstoneExists(ctx, userBkt, userID, "request_id", cortex_tsdb.StateCancelled)
 			require.Equal(t, tc.cancelledFileExists, exists)
 
 		})
@@ -287,7 +287,7 @@ func TestDeleteTenant(t *testing.T) {
 
 	{
 		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, "fake")
+		ctx = user.InjectOrgID(ctx, userID)
 
 		req := &http.Request{}
 		resp := httptest.NewRecorder()
@@ -295,7 +295,7 @@ func TestDeleteTenant(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, resp.Code)
 		objs := bkt.Objects()
-		require.NotNil(t, objs[path.Join("fake", tsdb.TenantDeletionMarkPath)])
+		require.NotNil(t, objs[path.Join(userID, tsdb.TenantDeletionMarkPath)])
 	}
 }
 

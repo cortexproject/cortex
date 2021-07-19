@@ -164,7 +164,7 @@ func TestGetSingleTombstone(t *testing.T) {
 	require.NoError(t, WriteTombstoneFile(ctx, bkt, username, nil, tPending))
 	require.NoError(t, WriteTombstoneFile(ctx, bkt, username, nil, tProcessed))
 
-	tRetrieved, err := GetDeleteRequestByIdForUser(ctx, bkt, nil, username, requestID)
+	tRetrieved, err := GetDeleteRequestByIDForUser(ctx, bkt, nil, username, requestID)
 	require.NoError(t, err)
 
 	//verify that all the information was read correctly
@@ -178,7 +178,7 @@ func TestGetSingleTombstone(t *testing.T) {
 	require.Equal(t, tProcessed.State, tRetrieved.State)
 
 	// Get single tombstone that doesn't exist should return nil
-	tRetrieved, err = GetDeleteRequestByIdForUser(ctx, bkt, nil, username, "unknownRequestID")
+	tRetrieved, err = GetDeleteRequestByIDForUser(ctx, bkt, nil, username, "unknownRequestID")
 	require.NoError(t, err)
 	require.Nil(t, tRetrieved)
 }

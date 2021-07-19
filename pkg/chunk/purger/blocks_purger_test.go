@@ -24,11 +24,11 @@ import (
 func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 	for name, tc := range map[string]struct {
 		parameters         url.Values
-		expectedHttpStatus int
+		expectedHTTPStatus int
 	}{
 		"empty": {
 			parameters:         nil,
-			expectedHttpStatus: http.StatusBadRequest,
+			expectedHTTPStatus: http.StatusBadRequest,
 		},
 
 		"valid request": {
@@ -37,7 +37,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 				"end":     []string{"2"},
 				"match[]": []string{"selector"},
 			},
-			expectedHttpStatus: http.StatusNoContent,
+			expectedHTTPStatus: http.StatusNoContent,
 		},
 
 		"end time in the future": {
@@ -46,7 +46,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 				"end":     []string{strconv.Itoa(math.MaxInt64)},
 				"match[]": []string{"selector"},
 			},
-			expectedHttpStatus: http.StatusBadRequest,
+			expectedHTTPStatus: http.StatusBadRequest,
 		},
 		"the start time is after the end time": {
 			parameters: url.Values{
@@ -54,7 +54,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 				"end":     []string{"1"},
 				"match[]": []string{"selector"},
 			},
-			expectedHttpStatus: http.StatusBadRequest,
+			expectedHTTPStatus: http.StatusBadRequest,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 
 			resp := httptest.NewRecorder()
 			api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
-			require.Equal(t, tc.expectedHttpStatus, resp.Code)
+			require.Equal(t, tc.expectedHTTPStatus, resp.Code)
 
 		})
 	}
@@ -202,14 +202,14 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 		requestState        cortex_tsdb.BlockDeleteRequestState
 		cancellationPeriod  time.Duration
 		cancelledFileExists bool
-		expectedHttpStatus  int
+		expectedHTTPStatus  int
 	}{
 		"not allowed, grace period has passed": {
 			createdAt:           0,
 			requestState:        cortex_tsdb.StatePending,
 			cancellationPeriod:  time.Second,
 			cancelledFileExists: false,
-			expectedHttpStatus:  http.StatusBadRequest,
+			expectedHTTPStatus:  http.StatusBadRequest,
 		},
 
 		"allowed, grace period not over yet": {
@@ -217,21 +217,21 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			requestState:        cortex_tsdb.StatePending,
 			cancellationPeriod:  time.Hour,
 			cancelledFileExists: true,
-			expectedHttpStatus:  http.StatusNoContent,
+			expectedHTTPStatus:  http.StatusNoContent,
 		},
 		"not allowed, deletion already occurred": {
 			createdAt:           0,
 			requestState:        cortex_tsdb.StateProcessed,
 			cancellationPeriod:  time.Second,
 			cancelledFileExists: false,
-			expectedHttpStatus:  http.StatusBadRequest,
+			expectedHTTPStatus:  http.StatusBadRequest,
 		},
 		"not allowed,request already cancelled": {
 			createdAt:           0,
 			requestState:        cortex_tsdb.StateCancelled,
 			cancellationPeriod:  time.Second,
 			cancelledFileExists: true,
-			expectedHttpStatus:  http.StatusBadRequest,
+			expectedHTTPStatus:  http.StatusBadRequest,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -264,7 +264,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 
 			resp := httptest.NewRecorder()
 			api.CancelDeleteRequestHandler(resp, req.WithContext(ctx))
-			require.Equal(t, tc.expectedHttpStatus, resp.Code)
+			require.Equal(t, tc.expectedHTTPStatus, resp.Code)
 
 			// check if the cancelled tombstone file exists
 			userBkt := bucket.NewUserBucketClient(userID, bkt, api.cfgProvider)

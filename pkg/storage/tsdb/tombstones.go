@@ -48,7 +48,7 @@ type Tombstone struct {
 	State            BlockDeleteRequestState `json:"-"`
 }
 
-func NewTombstone(userID string, requestTime int64, stateTime int64, startTime int64, endTime int64, selectors []string, requestId string, state BlockDeleteRequestState) *Tombstone {
+func NewTombstone(userID string, requestTime int64, stateTime int64, startTime int64, endTime int64, selectors []string, requestID string, state BlockDeleteRequestState) *Tombstone {
 	return &Tombstone{
 		RequestCreatedAt: requestTime,
 		StateCreatedAt:   stateTime,
@@ -56,7 +56,7 @@ func NewTombstone(userID string, requestTime int64, stateTime int64, startTime i
 		EndTime:          endTime,
 		Selectors:        selectors,
 		UserID:           userID,
-		RequestID:        requestId,
+		RequestID:        requestID,
 		State:            state,
 	}
 }
@@ -103,15 +103,15 @@ func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID stri
 	return false, nil
 }
 
-func GetDeleteRequestByIdForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestId string) (*Tombstone, error) {
+func GetDeleteRequestByIDForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestID string) (*Tombstone, error) {
 	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	found := []*Tombstone{}
 
 	for _, state := range AllDeletionStates {
-		filename := requestId + "." + string(state) + ".json"
+		filename := requestID + "." + string(state) + ".json"
 
-		exists, err := TombstoneExists(ctx, userBucket, userID, requestId, state)
+		exists, err := TombstoneExists(ctx, userBucket, userID, requestID, state)
 		if err != nil {
 			return nil, err
 		}
@@ -277,12 +277,12 @@ func UpdateTombstoneState(ctx context.Context, bkt objstore.Bucket, cfgProvider 
 	return newT, nil
 }
 
-func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userId string, requestId string, state BlockDeleteRequestState) error {
-	userLogger := util_log.WithUserID(userId, util_log.Logger)
-	userBucket := bucket.NewUserBucketClient(userId, bkt, cfgProvider)
+func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestID string, state BlockDeleteRequestState) error {
+	userLogger := util_log.WithUserID(userID, util_log.Logger)
+	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Create the full path of the tombstone by appending the state as the extension
-	filename := requestId + "." + string(state) + ".json"
+	filename := requestID + "." + string(state) + ".json"
 	fullTombstonePath := path.Join(TombstonePath, filename)
 
 	level.Info(userLogger).Log("msg", "Deleting tombstone file", "file", fullTombstonePath)
@@ -291,22 +291,22 @@ func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider b
 
 }
 
-func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestId string) error {
+func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestID string) error {
 	usrBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 	userLogger := util_log.WithUserID(userID, util_log.Logger)
 
-	exists, err := TombstoneExists(ctx, usrBkt, userID, requestId, StateCancelled)
+	exists, err := TombstoneExists(ctx, usrBkt, userID, requestID, StateCancelled)
 	if err != nil {
-		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestId, "err", err)
+		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestID, "err", err)
 		return err
 	}
 
 	if exists {
-		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestId, StateCancelled); err != nil {
-			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestId, "err", err)
+		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestID, StateCancelled); err != nil {
+			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestID, "err", err)
 			return err
 		}
-		level.Info(userLogger).Log("msg", "Removing tombstone file with previously cancelled state", "requestID", requestId, "err", err)
+		level.Info(userLogger).Log("msg", "Removing tombstone file with previously cancelled state", "requestID", requestID, "err", err)
 
 	}
 	return nil

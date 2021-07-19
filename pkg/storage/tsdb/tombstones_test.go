@@ -6,10 +6,11 @@ import (
 	"path"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {

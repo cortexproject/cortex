@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {

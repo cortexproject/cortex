@@ -170,7 +170,7 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 
 	reqCancel := &http.Request{
 		Method:     "POST",
-		RequestURI: uCancel.String(), // This is what the httpgrpc code looks at.
+		RequestURI: uCancel.String(),
 		URL:        uCancel,
 		Body:       http.NoBody,
 		Header:     http.Header{},
@@ -256,7 +256,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 
 			req := &http.Request{
 				Method:     "POST",
-				RequestURI: u.String(), // This is what the httpgrpc code looks at.
+				RequestURI: u.String(),
 				URL:        u,
 				Body:       http.NoBody,
 				Header:     http.Header{},

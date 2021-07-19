@@ -118,6 +118,7 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 
 	requestId := getTombstoneRequestID(startTime, endTime, match)
 
+	// Since the request id is based on a hash of the parameters, there is a possibility that a tombstone could already exist for it
 	// if the request was previously cancelled, we need to remove the cancelled tombstone before adding the pending one
 	if err := cortex_tsdb.RemoveCancelledStateIfExists(ctx, api.bucketClient, userID, api.cfgProvider, requestId); err != nil {
 		level.Error(util_log.Logger).Log("msg", "removing cancelled tombstone state if it exists", "err", err)
@@ -125,16 +126,21 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
+	prevT, err := cortex_tsdb.GetDeleteRequestByIdForUser(ctx, api.bucketClient, api.cfgProvider, userID, requestId)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error getting delete request by id", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if prevT != nil {
+		http.Error(w, "delete request tombstone with same information already exists", http.StatusBadRequest)
+		return
+	}
+
 	curTime := time.Now().Unix() * 1000
 	t := cortex_tsdb.NewTombstone(userID, curTime, curTime, startTime, endTime, match, requestId, cortex_tsdb.StatePending)
 
 	if err = cortex_tsdb.WriteTombstoneFile(ctx, api.bucketClient, userID, api.cfgProvider, t); err != nil {
-		if err == cortex_tsdb.ErrTombstoneAlreadyExists {
-			level.Error(util_log.Logger).Log("msg", "delete request tombstone with same information already exists", "err", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

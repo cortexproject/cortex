@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"path"
 	"path/filepath"
 	"time"
@@ -77,7 +76,7 @@ func WriteTombstoneFile(ctx context.Context, bkt objstore.Bucket, userID string,
 
 	fullTombstonePath := path.Join(TombstonePath, filename)
 
-	// Check if the tombstone already exists. Could be the case the same request was made
+	// Check if the tombstone already exists for the same state. Could be the case the same request was made
 	// and is already in the middle of deleting series. Creating a new tombstone would restart
 	// the progress
 	tombstoneExists, err := TombstoneExists(ctx, userBkt, userID, tombstone.RequestID, tombstone.State)
@@ -102,28 +101,6 @@ func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID stri
 	}
 
 	return false, nil
-}
-
-func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestId string) error {
-	usrBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-
-	exists, err := TombstoneExists(ctx, usrBkt, userID, requestId, StateCancelled)
-	if err != nil {
-		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestId, "err", err)
-		return err
-	}
-
-	if exists {
-		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestId, StateCancelled); err != nil {
-			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestId, "err", err)
-			return err
-		}
-		fmt.Print("DELETEd")
-	} else {
-		fmt.Println("DOES NOT EXIST")
-	}
-	return nil
 }
 
 func GetDeleteRequestByIdForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestId string) (*Tombstone, error) {
@@ -312,6 +289,27 @@ func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider b
 
 	return errors.Wrap(userBucket.Delete(ctx, fullTombstonePath), "delete tombstone file")
 
+}
+
+func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestId string) error {
+	usrBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+	userLogger := util_log.WithUserID(userID, util_log.Logger)
+
+	exists, err := TombstoneExists(ctx, usrBkt, userID, requestId, StateCancelled)
+	if err != nil {
+		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestId, "err", err)
+		return err
+	}
+
+	if exists {
+		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestId, StateCancelled); err != nil {
+			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestId, "err", err)
+			return err
+		}
+		level.Info(userLogger).Log("msg", "Removing tombstone file with previously cancelled state", "requestID", requestId, "err", err)
+
+	}
+	return nil
 }
 
 func isValidDeleteRequestState(state BlockDeleteRequestState) bool {

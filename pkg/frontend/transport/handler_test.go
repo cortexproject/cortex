@@ -82,8 +82,8 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			count, err := promtest.GatherAndCount(
 				reg,
 				"cortex_query_seconds_total",
-				"cortex_query_fetched_series_per_query",
-				"cortex_query_fetched_chunks_bytes_per_query",
+				"cortex_query_fetched_series_total",
+				"cortex_query_fetched_chunks_bytes_total",
 			)
 
 			assert.NoError(t, err)

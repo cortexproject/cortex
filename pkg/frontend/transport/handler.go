@@ -60,8 +60,8 @@ type Handler struct {
 
 	// Metrics.
 	querySeconds *prometheus.CounterVec
-	querySeries  *prometheus.SummaryVec
-	queryBytes   *prometheus.SummaryVec
+	querySeries  *prometheus.CounterVec
+	queryBytes   *prometheus.CounterVec
 	activeUsers  *util.ActiveUsersCleanupService
 }
 
@@ -79,21 +79,14 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Total amount of wall clock time spend processing queries.",
 		}, []string{"user"})
 
-		// Empty objectives for these summaries on purpose since they can't be aggregated
-		// and so we are just using them for the convenience of sum and count metrics. No
-		// histograms here since the cardinality from the number of buckets required to
-		// understand query responses is prohibitively expensive.
-
-		h.querySeries = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name:       "cortex_query_fetched_series_per_query",
-			Help:       "Number of series fetched to execute a query.",
-			Objectives: map[float64]float64{},
+		h.querySeries = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_fetched_series_total",
+			Help: "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
-		h.queryBytes = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-			Name:       "cortex_query_fetched_chunks_bytes_per_query",
-			Help:       "Size of all chunks fetched to execute a query in bytes.",
-			Objectives: map[float64]float64{},
+		h.queryBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_fetched_chunks_bytes_total",
+			Help: "Size of all chunks fetched to execute a query in bytes.",
 		}, []string{"user"})
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
@@ -192,8 +185,8 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
-	f.querySeries.WithLabelValues(userID).Observe(float64(numSeries))
-	f.queryBytes.WithLabelValues(userID).Observe(float64(numBytes))
+	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
+	f.queryBytes.WithLabelValues(userID).Add(float64(numBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.

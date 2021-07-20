@@ -229,7 +229,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
 			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
-				return promql.Vector{}, tc.returnedError
+				return promql.Vector{}, WrapQueryableErrors(tc.returnedError)
 			}
 			qf := MetricsQueryFunc(mockFunc, queries, failures)
 

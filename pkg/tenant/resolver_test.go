@@ -64,6 +64,18 @@ var commonResolverTestCases = []resolverTestCase{
 		tenantID:    "tenant-a",
 		tenantIDs:   []string{"tenant-a"},
 	},
+	{
+		name:         "parent-dir",
+		headerValue:  strptr(".."),
+		errTenantID:  errInvalidTenantID,
+		errTenantIDs: errInvalidTenantID,
+	},
+	{
+		name:         "current-dir",
+		headerValue:  strptr("."),
+		errTenantID:  errInvalidTenantID,
+		errTenantIDs: errInvalidTenantID,
+	},
 }
 
 func TestSingleResolver(t *testing.T) {
@@ -74,6 +86,18 @@ func TestSingleResolver(t *testing.T) {
 			headerValue: strptr("tenant-a|tenant-b"),
 			tenantID:    "tenant-a|tenant-b",
 			tenantIDs:   []string{"tenant-a|tenant-b"},
+		},
+		{
+			name:         "containing-forward-slash",
+			headerValue:  strptr("forward/slash"),
+			errTenantID:  errInvalidTenantID,
+			errTenantIDs: errInvalidTenantID,
+		},
+		{
+			name:         "containing-backward-slash",
+			headerValue:  strptr(`backward\slash`),
+			errTenantID:  errInvalidTenantID,
+			errTenantIDs: errInvalidTenantID,
 		},
 	}...) {
 		t.Run(tc.name, tc.test(r))
@@ -100,6 +124,24 @@ func TestMultiResolver(t *testing.T) {
 			headerValue: strptr("tenant-b|tenant-b|tenant-a"),
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
+		},
+		{
+			name:         "multi-tenant-with-relative-path",
+			headerValue:  strptr("tenant-a|tenant-b|.."),
+			errTenantID:  errInvalidTenantID,
+			errTenantIDs: errInvalidTenantID,
+		},
+		{
+			name:         "containing-forward-slash",
+			headerValue:  strptr("forward/slash"),
+			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
+			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
+		},
+		{
+			name:         "containing-backward-slash",
+			headerValue:  strptr(`backward\slash`),
+			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
+			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
 		},
 	}...) {
 		t.Run(tc.name, tc.test(r))

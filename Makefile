@@ -176,7 +176,7 @@ lint:
 	# Configured via .golangci.yml.
 	golangci-lint run
 
-	# Ensure no blacklisted package is imported.
+	# Ensure no blocklisted package is imported.
 	GOFLAGS="-tags=requires_docker" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\

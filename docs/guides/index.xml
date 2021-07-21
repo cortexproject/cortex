@@ -885,7 +885,7 @@ even if you plan to use the default values.&lt;/p></description></item><item><ti
 &lt;li>Exclamation point (&lt;code>!&lt;/code>)&lt;/li>
 &lt;li>Hyphen (&lt;code>-&lt;/code>)&lt;/li>
 &lt;li>Underscore (&lt;code>_&lt;/code>)&lt;/li>
-&lt;li>Period (&lt;code>.&lt;/code>)&lt;/li>
+&lt;li>Single Period (&lt;code>.&lt;/code>), but the tenant IDs &lt;code>.&lt;/code> and &lt;code>..&lt;/code> is considered invalid&lt;/li>
 &lt;li>Asterisk (&lt;code>*&lt;/code>)&lt;/li>
 &lt;li>Single quote (&lt;code>'&lt;/code>)&lt;/li>
 &lt;li>Open parenthesis (&lt;code>(&lt;/code>)&lt;/li>

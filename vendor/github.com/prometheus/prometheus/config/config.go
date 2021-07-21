@@ -23,8 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/alecthomas/units"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -172,8 +173,9 @@ var (
 
 	// DefaultMetadataConfig is the default metadata configuration for a remote write endpoint.
 	DefaultMetadataConfig = MetadataConfig{
-		Send:         true,
-		SendInterval: model.Duration(1 * time.Minute),
+		Send:              true,
+		SendInterval:      model.Duration(1 * time.Minute),
+		MaxSamplesPerSend: 500,
 	}
 
 	// DefaultRemoteReadConfig is the default remote read configuration.
@@ -382,6 +384,9 @@ type ScrapeConfig struct {
 	MetricsPath string `yaml:"metrics_path,omitempty"`
 	// The URL scheme with which to fetch metrics from targets.
 	Scheme string `yaml:"scheme,omitempty"`
+	// An uncompressed response body larger than this many bytes will cause the
+	// scrape to fail. 0 means no limit.
+	BodySizeLimit units.Base2Bytes `yaml:"body_size_limit,omitempty"`
 	// More than this many samples post metric-relabeling will cause the scrape to
 	// fail.
 	SampleLimit uint `yaml:"sample_limit,omitempty"`
@@ -727,6 +732,8 @@ type MetadataConfig struct {
 	Send bool `yaml:"send"`
 	// SendInterval controls how frequently we send metric metadata.
 	SendInterval model.Duration `yaml:"send_interval"`
+	// Maximum number of samples per send.
+	MaxSamplesPerSend int `yaml:"max_samples_per_send,omitempty"`
 }
 
 // SigV4Config is the configuration for signing remote write requests with

@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,6 +58,10 @@ const (
 	tmpForCreationBlockDirSuffix = ".tmp-for-creation"
 	// Pre-2.21 tmp dir suffix, used in clean-up functions.
 	tmpLegacy = ".tmp"
+
+	lockfileDisabled       = -1
+	lockfileReplaced       = 0
+	lockfileCreatedCleanly = 1
 )
 
 var (
@@ -153,8 +157,9 @@ type BlocksToDeleteFunc func(blocks []*Block) map[ulid.ULID]struct{}
 // DB handles reads and writes of time series falling into
 // a hashed partition of a seriedb.
 type DB struct {
-	dir   string
-	lockf fileutil.Releaser
+	dir       string
+	lockf     fileutil.Releaser
+	lockfPath string
 
 	logger         log.Logger
 	metrics        *dbMetrics
@@ -186,19 +191,20 @@ type DB struct {
 }
 
 type dbMetrics struct {
-	loadedBlocks         prometheus.GaugeFunc
-	symbolTableSize      prometheus.GaugeFunc
-	reloads              prometheus.Counter
-	reloadsFailed        prometheus.Counter
-	compactionsFailed    prometheus.Counter
-	compactionsTriggered prometheus.Counter
-	compactionsSkipped   prometheus.Counter
-	sizeRetentionCount   prometheus.Counter
-	timeRetentionCount   prometheus.Counter
-	startTime            prometheus.GaugeFunc
-	tombCleanTimer       prometheus.Histogram
-	blocksBytes          prometheus.Gauge
-	maxBytes             prometheus.Gauge
+	loadedBlocks           prometheus.GaugeFunc
+	symbolTableSize        prometheus.GaugeFunc
+	reloads                prometheus.Counter
+	reloadsFailed          prometheus.Counter
+	compactionsFailed      prometheus.Counter
+	compactionsTriggered   prometheus.Counter
+	compactionsSkipped     prometheus.Counter
+	sizeRetentionCount     prometheus.Counter
+	timeRetentionCount     prometheus.Counter
+	startTime              prometheus.GaugeFunc
+	tombCleanTimer         prometheus.Histogram
+	blocksBytes            prometheus.Gauge
+	maxBytes               prometheus.Gauge
+	lockfileCreatedCleanly prometheus.Gauge
 }
 
 func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
@@ -276,6 +282,10 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 		Name: "prometheus_tsdb_size_retentions_total",
 		Help: "The number of times that blocks were deleted because the maximum number of bytes was exceeded.",
 	})
+	m.lockfileCreatedCleanly = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_clean_start",
+		Help: "-1: lockfile is disabled. 0: a lockfile from a previous execution was replaced. 1: lockfile creation was clean",
+	})
 
 	if r != nil {
 		r.MustRegister(
@@ -292,9 +302,24 @@ func newDBMetrics(db *DB, r prometheus.Registerer) *dbMetrics {
 			m.tombCleanTimer,
 			m.blocksBytes,
 			m.maxBytes,
+			m.lockfileCreatedCleanly,
 		)
 	}
 	return m
+}
+
+// DBStats contains statistics about the DB seperated by component (eg. head).
+// They are available before the DB has finished initializing.
+type DBStats struct {
+	Head *HeadStats
+}
+
+// NewDBStats returns a new DBStats object initialized using the
+// the new function from each component.
+func NewDBStats() *DBStats {
+	return &DBStats{
+		Head: NewHeadStats(),
+	}
 }
 
 // ErrClosed is returned when the db is closed.
@@ -346,7 +371,7 @@ func (db *DBReadOnly) FlushWAL(dir string) (returnErr error) {
 	}
 	opts := DefaultHeadOptions()
 	opts.ChunkDirRoot = db.dir
-	head, err := NewHead(nil, db.logger, w, opts)
+	head, err := NewHead(nil, db.logger, w, opts, NewHeadStats())
 	if err != nil {
 		return err
 	}
@@ -370,6 +395,7 @@ func (db *DBReadOnly) FlushWAL(dir string) (returnErr error) {
 		db.logger,
 		ExponentialBlockRanges(DefaultOptions().MinBlockDuration, 3, 5),
 		chunkenc.NewPool(),
+		nil,
 	)
 	if err != nil {
 		return errors.Wrap(err, "create leveled compactor")
@@ -401,7 +427,7 @@ func (db *DBReadOnly) loadDataAsQueryable(maxt int64) (storage.SampleAndChunkQue
 
 	opts := DefaultHeadOptions()
 	opts.ChunkDirRoot = db.dir
-	head, err := NewHead(nil, db.logger, nil, opts)
+	head, err := NewHead(nil, db.logger, nil, opts, NewHeadStats())
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +447,7 @@ func (db *DBReadOnly) loadDataAsQueryable(maxt int64) (storage.SampleAndChunkQue
 		}
 		opts := DefaultHeadOptions()
 		opts.ChunkDirRoot = db.dir
-		head, err = NewHead(nil, db.logger, w, opts)
+		head, err = NewHead(nil, db.logger, w, opts, NewHeadStats())
 		if err != nil {
 			return nil, err
 		}
@@ -540,10 +566,11 @@ func (db *DBReadOnly) Close() error {
 }
 
 // Open returns a new DB in the given directory. If options are empty, DefaultOptions will be used.
-func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options) (db *DB, err error) {
+func Open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, stats *DBStats) (db *DB, err error) {
 	var rngs []int64
 	opts, rngs = validateOpts(opts, nil)
-	return open(dir, l, r, opts, rngs)
+
+	return open(dir, l, r, opts, rngs, stats)
 }
 
 func validateOpts(opts *Options, rngs []int64) (*Options, []int64) {
@@ -574,12 +601,15 @@ func validateOpts(opts *Options, rngs []int64) (*Options, []int64) {
 	return opts, rngs
 }
 
-func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs []int64) (_ *DB, returnedErr error) {
+func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs []int64, stats *DBStats) (_ *DB, returnedErr error) {
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, err
 	}
 	if l == nil {
 		l = log.NewNopLogger()
+	}
+	if stats == nil {
+		stats = NewDBStats()
 	}
 
 	for i, v := range rngs {
@@ -634,12 +664,22 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 		db.blocksToDelete = DefaultBlocksToDelete(db)
 	}
 
+	lockfileCreationStatus := lockfileDisabled
 	if !opts.NoLockfile {
 		absdir, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, err
 		}
-		lockf, _, err := fileutil.Flock(filepath.Join(absdir, "lock"))
+		db.lockfPath = filepath.Join(absdir, "lock")
+
+		if _, err := os.Stat(db.lockfPath); err == nil {
+			level.Warn(db.logger).Log("msg", "A TSDB lockfile from a previous execution already existed. It was replaced", "file", db.lockfPath)
+			lockfileCreationStatus = lockfileReplaced
+		} else {
+			lockfileCreationStatus = lockfileCreatedCleanly
+		}
+
+		lockf, _, err := fileutil.Flock(db.lockfPath)
 		if err != nil {
 			return nil, errors.Wrap(err, "lock DB directory")
 		}
@@ -648,7 +688,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 
 	var err error
 	ctx, cancel := context.WithCancel(context.Background())
-	db.compactor, err = NewLeveledCompactorWithChunkSize(ctx, r, l, rngs, db.chunkPool, opts.MaxBlockChunkSegmentSize)
+	db.compactor, err = NewLeveledCompactorWithChunkSize(ctx, r, l, rngs, db.chunkPool, opts.MaxBlockChunkSegmentSize, nil)
 	if err != nil {
 		cancel()
 		return nil, errors.Wrap(err, "create leveled compactor")
@@ -677,7 +717,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 	headOpts.StripeSize = opts.StripeSize
 	headOpts.SeriesCallback = opts.SeriesLifecycleCallback
 	headOpts.NumExemplars = opts.MaxExemplars
-	db.head, err = NewHead(r, l, wlog, headOpts)
+	db.head, err = NewHead(r, l, wlog, headOpts, stats.Head)
 	if err != nil {
 		return nil, err
 	}
@@ -688,6 +728,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 	if maxBytes < 0 {
 		maxBytes = 0
 	}
+	db.metrics.lockfileCreatedCleanly.Set(float64(lockfileCreationStatus))
 	db.metrics.maxBytes.Set(float64(maxBytes))
 
 	if err := db.reload(); err != nil {
@@ -1399,6 +1440,7 @@ func (db *DB) Close() error {
 	errs := tsdb_errors.NewMulti(g.Wait())
 	if db.lockf != nil {
 		errs.Add(db.lockf.Release())
+		errs.Add(os.Remove(db.lockfPath))
 	}
 	if db.head != nil {
 		errs.Add(db.head.Close())

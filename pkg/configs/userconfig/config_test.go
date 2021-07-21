@@ -91,6 +91,7 @@ func TestParseLegacyAlerts(t *testing.T) {
 			labels.Label{Name: "message", Value: "I am a message"},
 		},
 		nil,
+		"",
 		true,
 		log.With(util_log.Logger, "alert", "TestAlert"),
 	)

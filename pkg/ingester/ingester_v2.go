@@ -1579,7 +1579,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		SeriesLifecycleCallback:   userDB,
 		BlocksToDelete:            userDB.blocksToDelete,
 		MaxExemplars:              i.cfg.BlocksStorageConfig.TSDB.MaxExemplars,
-	})
+	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
 	}

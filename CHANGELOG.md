@@ -37,6 +37,11 @@
 =======
 >>>>>>> Update for 1.10.0-rc.0 release candidate
 
+## 1.10.0-rc.1 / 2021-07-21
+
+* [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
+  * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
+
 ## 1.10.0-rc.0 / 2021-06-28
 
 * [CHANGE] Enable strict JSON unmarshal for `pkg/util/validation.Limits` struct. The custom `UnmarshalJSON()` will now fail if the input has unknown fields. #4298

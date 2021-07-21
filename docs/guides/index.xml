@@ -682,10 +682,7 @@ through the following config parameters:&lt;/p>
 -ingester.client.tls-key-path=/path/to/client.key
 # Path to the TLS CA for the GRPC Client
 -ingester.client.tls-ca-path=/path/to/root.crt
-&lt;/code>&lt;/pre>&lt;p>TLS can be configured in a similar fashion for other HTTP/GRPC clients in Cortex.&lt;/p></description></item><item><title>Docs: Security</title><link>/docs/guides/security/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/security/</guid><description>
-&lt;p>Cortex must be deployed with due care over system configuration, using principles such as &amp;ldquo;least privilege&amp;rdquo; to limit any exposure due to flaws in the source code.&lt;/p>
-&lt;p>You must configure authorisation and authentication externally to Cortex; see &lt;a href="/docs/guides/auth/">this guide&lt;/a>&lt;/p>
-&lt;p>Information about security disclosures and mailing lists is &lt;a href="https://github.com/cortexproject/cortex/blob/master/SECURITY.md">in the main repo&lt;/a>&lt;/p></description></item><item><title>Docs: Shuffle Sharding</title><link>/docs/guides/shuffle-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/shuffle-sharding/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>TLS can be configured in a similar fashion for other HTTP/GRPC clients in Cortex.&lt;/p></description></item><item><title>Docs: Shuffle Sharding</title><link>/docs/guides/shuffle-sharding/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/shuffle-sharding/</guid><description>
 &lt;p>Cortex leverages on sharding techniques to horizontally scale both single and multi-tenant clusters beyond the capacity of a single node.&lt;/p>
 &lt;h2 id="background">Background&lt;/h2>
 &lt;p>The &lt;strong>default sharding strategy&lt;/strong> employed by Cortex distributes the workload across the entire pool of instances running a given service (eg. ingesters). For example, on the write path each tenant&amp;rsquo;s series are sharded across all ingesters, regardless how many active series the tenant has or how many different tenants are in the cluster.&lt;/p>

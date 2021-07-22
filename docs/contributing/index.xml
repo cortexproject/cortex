@@ -81,6 +81,7 @@ make web-serve
 &lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>Upgrade the reference to the latest build image called &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code> in &lt;code>Makefile&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;p>If the minimum support Golang version should be upgraded as well:&lt;/p>
 &lt;ol>

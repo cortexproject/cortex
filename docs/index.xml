@@ -667,12 +667,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -distributor.ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -distributor.ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which distributors are considered unhealthy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -distributor.ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -761,6 +761,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which ingesters are skipped for reads/writes.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -777,7 +778,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ingester.num-tokens&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[num_tokens&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">128&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to consul.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to consul. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ingester.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1659,12 +1660,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which rulers are considered unhealthy within the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># ring. 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1695,6 +1696,11 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># processing will ignore them instead. Subject to sharding.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.disabled-tenants&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[disabled_tenants&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Report the wall time for ruler queries to complete as a per user metric and as&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># an info level log message.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -ruler.query-stats-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[query_stats_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="ruler_storage_config">&lt;code>ruler_storage_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>ruler_storage_config&lt;/code> configures the Cortex ruler storage backend.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Backend storage to use. Supported backends are: s3, gcs, azure, swift,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -1970,12 +1976,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.sharding-ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which alertmanagers are considered unhealthy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -alertmanager.sharding-ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -3780,35 +3786,39 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[randomize_node_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The timeout for establishing a connection with a remote node, and for&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># read/write operations. Uses memberlist LAN defaults if 0.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># read/write operations.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.stream-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[stream_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[stream_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>10s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Multiplication factor used when sending out messages (factor * log(N+1)).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.retransmit-factor&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[retransmit_factor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[retransmit_factor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">4&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How often to use pull/push sync. Uses memberlist LAN defaults if 0.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How often to use pull/push sync.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.pullpush-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[pull_push_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[pull_push_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>30s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How often to gossip. Uses memberlist LAN defaults if 0.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How often to gossip.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.gossip-interval&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_interval&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>200ms&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How many nodes to gossip to. Uses memberlist LAN defaults if 0.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How many nodes to gossip to.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.gossip-nodes&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_nodes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_nodes&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How long to keep gossiping to dead nodes, to give them chance to refute their&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># death. Uses memberlist LAN defaults if 0.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># death.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.gossip-to-dead-nodes-time&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_to_dead_nodes_time&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[gossip_to_dead_nodes_time&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>30s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How soon can dead node&amp;#39;s name be reclaimed with new address. Defaults to 0,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># which is disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># How soon can dead node&amp;#39;s name be reclaimed with new address. 0 to disable.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.dead-node-reclaim-time&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[dead_node_reclaim_time&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>0s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable message compression. This can be used to reduce bandwidth usage at the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># cost of slightly more CPU utilization.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -memberlist.compression-enabled&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[compression_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;boolean&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Other cluster members to join. Can be specified multiple times. It can be an&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># IP, hostname or an entry specified in the DNS Service Discovery format (see&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -4057,11 +4067,9 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_chunks_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">2000000&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Maximum number of chunks that can be fetched in a single query from ingesters&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># and long-term storage: the total number of actual fetched chunks could be 2x&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the limit, being independently applied when querying ingesters and long-term&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># storage. This limit is enforced in the ingester (if chunks streaming is&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># enabled), querier, ruler and store-gateway. Takes precedence over the&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># deprecated -store.query-chunk-limit. 0 to disable.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># and long-term storage. This limit is enforced in the querier, ruler and&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># store-gateway. Takes precedence over the deprecated -store.query-chunk-limit.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># 0 to disable.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -querier.max-fetched-chunks-per-query&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[max_fetched_chunks_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;int&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5150,12 +5158,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which compactors are considered unhealthy within&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># the ring. 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5171,6 +5179,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Name of network interface to read address from.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.instance-interface-names&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[instance_interface_names&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;list&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>of&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>eth0&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>en0&lt;span style="color:#000;font-weight:bold">]]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Timeout for waiting on compactor to become ACTIVE in the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.wait-active-instance-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[wait_active_instance_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>10m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="store_gateway_config">&lt;code>store_gateway_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>store_gateway_config&lt;/code> configures the store-gateway service used by the blocks storage.&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># Shard blocks across multiple store gateway instances. This option needs be set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5219,13 +5231,13 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which store gateways are considered unhealthy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. This option needs be set both on the store-gateway and&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># querier when running in microservices mode.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. 0 = never (timeout disabled). This option needs be set both&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># on the store-gateway and querier when running in microservices mode.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5961,7 +5973,45 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;li>Ingester: Add flags for always flushing on shutdown, even when using WAL or blocks.&lt;/li>
 &lt;li>Querier: Add support for querying both chunk store and blocks at the same time and test the support for querying both chunks and blocks from ingesters works correctly&lt;/li>
 &lt;li>Querier: Add cut-off time support to querier to query chunk the store only if needed, based on query time.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Parallel Compaction by Time Interval</title><link>/docs/proposals/parallel-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/parallel-compaction/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/roystchiang">Roy Chiang&lt;/a>&lt;/li>
+&lt;li>Date: May 2021&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>As a part of pushing Cortex’s scaling capability at AWS, we have done performance testing with Cortex and found the compactor to be one of the main limiting factors for higher active timeseries limit per tenant. The documentation &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#how-compaction-works">Compactor&lt;/a> describes the responsibilities of a compactor, and this proposal focuses on the limitations of the current compactor architecture. In the current architecture, compactor has simple sharding, meaning that a single tenant is sharded to a single compactor. In addition, a compactor handles compaction groups of a single tenant iteratively, meaning that blocks belonging non-overlapping times are not compacted in parallel.&lt;/p>
+&lt;h3 id="problem-and-requirements">Problem and Requirements&lt;/h3>
+&lt;p>Currently, a compactor is able to compact up to 20M timeseries within 2 hours for a level-2 compaction, including the time to download blocks, compact, and upload the newly compacted block. We would like to increase the timeseries limit per tenant, and compaction is one of the limiting factors. In addition, we would like to achieve the following:&lt;/p>
+&lt;ul>
+&lt;li>Compact multiple non-overlapping time intervals concurrently, so we can achieve higher throughput for the compaction of a single tenant&lt;/li>
+&lt;li>We should be able to scale up, down compactor as needed, depending on how many compactions are pending&lt;/li>
+&lt;li>Insight into the compaction progress of a tenant, such as the number of compactions required in order to catch up to the newest blocks&lt;/li>
+&lt;/ul>
+&lt;h2 id="design">Design&lt;/h2>
+&lt;p>We accept the fact that a single compaction can potentially take more than 2 hours to compact, and we achieve higher compaction throughput through horizontally scaling the compactor. To compact more blocks in parallel for a single tenant, we distribute the compaction groups to compactors, instead of introducing more parallelism within a compactor.&lt;/p>
+&lt;h3 id="parallelize-work">Parallelize Work&lt;/h3>
+&lt;p>This proposal builds heavily on top of the &lt;a href="https://github.com/cortexproject/cortex/pull/2616">GrafanaLabs approach of introducing parallelism via time intervals&lt;/a>. The difference being that a single tenant is now sharded across multiple compactors instead of just a single compactor. The initial approach will be to work on distinct time intervals, but the compactor planner can be later extended to introduce parallelism within a time interval as well.&lt;/p>
+&lt;p>The following is an example of parallelize work at each level:&lt;/p>
+&lt;p>&lt;img src="/images/proposals/parallel-compaction-grouping.png" alt="Parallel Compaction Grouping">&lt;/p>
+&lt;p>Compactors are shuffle-sharded, meaning that 1 tenant can belong to multiple compactors, and these subset of compactors determine which blocks should be compacted together. Compactors determine amongst themselves the responsibility of the compaction blocks, by using a hash of time interval and tenant id, and putting it on the sharding ring.&lt;/p>
+&lt;p>The benefit of this approach is that this aligns with what Cortex currently does in Ruler. The downside is that a compaction job can only be assigned to a single compactor, rather than all of the compactors sharded for the tenant. If a compaction job takes forever, other tenants sharded to the same compactor will be blocked until the issue is resolved. With the scheduler approach, any compactor assigned to a given tenant can pick up any work required.&lt;/p>
+&lt;p>&lt;img src="/images/proposals/parallel-compaction-without-scheduler.png" alt="Parallel Compaction Without Scheduler">&lt;/p>
+&lt;h2 id="scenarios">Scenarios&lt;/h2>
+&lt;h3 id="bad-block-resulting-in-non-ideal-compaction-groups">Bad block resulting in non-ideal compaction groups&lt;/h3>
+&lt;p>A Cortex operator configures the compaction block range. Using 2h and 6h as example, [2h-1] [2h-2] [2h-3] [2h-4] [2h-5] [2h-6]. If the [2h-1] block is corrupted, we may compact the subsequent [2h-2] [2h-3] [2h-4] [2h-5] [2h-6] blocks. To compact into a 6 hour group, the ideal compaction is [2h-1] [2h-2] [2h-3] and [2h-4] [2h-5] [2h-6]. The cortex planner needs to know the ideal compaction interval, and prevent compaction of [2h-2] [2h-3] [2h-4] from happening, which will result in [2h-1] not able to be compacted into longer time interval blocks. Cortex has full information regarding all the available blocks, so we should utilize this information to achieve the best compaction interval.&lt;/p>
+&lt;h2 id="alternatives">Alternatives&lt;/h2>
+&lt;h3 id="shard-compaction-jobs-amongst-compactors-with-a-scheduler">Shard compaction jobs amongst compactors with a scheduler&lt;/h3>
+&lt;p>&lt;img src="/images/proposals/parallel-compaction-design.png" alt="Parallel Compaction Architecture">&lt;/p>
+&lt;p>We add a new component Compactor Scheduler, which is responsible for calculating the compaction plan, and distributing compaction groups to compactors. The planner is sharded by tenant id, so that we can horizontally scale the planner as needed in order to accept more tenants in the cortex cluster. A tenant will have two queues inside the planner, a compaction queue and a clean up queue, similar to how the query frontend currently holds queues of pending queries.&lt;/p>
+&lt;p>Once a compactor scheduler pushes a job to a compactor, the job is no longer available. Every set interval, or once the compaction is done, a compactor will update the compactor schedule the current status of the compaction job. If a compactor does not provide an update to the scheduler within a timeout, the compaction job becomes available to be assigned to other compactors.&lt;/p>
+&lt;h4 id="concurrency">Concurrency&lt;/h4>
+&lt;p>To achieve concurrency within a single tenant, compactor scheduler will push jobs to compactors. Compactors are shuffle-sharded by tenant id, to prevent a large tenant from impacting the compaction of other tenants. Compactor will download blocks from long term storage, compact, and upload. Compactor will also pull from the clean up queues from scheduler, and delete blocks marked for deletion.&lt;/p>
+&lt;h4 id="consistency">Consistency&lt;/h4>
+&lt;p>On resharding of compactor schedulers, a tenant might move to a different scheduler. We can either drop the current compactor job in order to prevent duplicate compaction jobs, or continue compaction. I propose that the compactor drops the compaction job if the compaction group no longer belongs to the original compactor scheduler. This way, we do not have duplicate compactions happening, and we can minimize work wasted.&lt;/p>
+&lt;h3 id="contribute-to-thanos-for-a-more-scalable-compactor">Contribute to Thanos for a more scalable compactor&lt;/h3>
+&lt;p>Instead of introducing parallelism on the Cortex compactor level, we move the parallelism to the Thanos compactor itself. Thanos has a &lt;a href="https://docs.google.com/document/d/1xi0V8DB0hE54XgkogJRnNL6yH7C5JThJywlLFoC6dCQ/">proposal to make compactor more scalable&lt;/a>, and a &lt;a href="https://github.com/thanos-io/thanos/pull/3807">PR&lt;/a>. Cortex will enjoy higher throughput per tenant if Thanos is able to speed up the compaction, and we can keep the Cortex architecture the same. However, this approach means that a single tenant is still sharded to a single compactor. In order to compact more groups at once, we must scale up compactor vertically. Although vertical scaling can get us far, we should scale horizontally where we can.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
@@ -6663,6 +6713,209 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;ul>
 &lt;li>&lt;a href="https://docs.google.com/document/d/1LoCWPAIIbGSq59NG3ZYyvkeNb8Ymz28PUKbg_yhAzvE/edit#">Prometheus Propagate metadata via Remote Write Design Doc&lt;/a>&lt;/li>
 &lt;li>&lt;a href="https://github.com/prometheus/prometheus/issues/6395">Prometheus Propagate metadata via Remote Write Design Issue&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Time Series Deletion from Blocks Storage</title><link>/docs/proposals/block-storage-time-series-deletion/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/block-storage-time-series-deletion/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/ilangofman">Ilan Gofman&lt;/a>&lt;/li>
+&lt;li>Date: June 2021&lt;/li>
+&lt;li>Status: Proposal&lt;/li>
+&lt;/ul>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Currently, Cortex only implements a time series deletion API for chunk storage. We present a design for implementing time series deletion with block storage. We would like to have the same API for deleting series as currently implemented in Prometheus and in Cortex with chunk storage.&lt;/p>
+&lt;p>This can be very important for users to have as confidential or accidental data might have been incorrectly pushed and needs to be removed. As well as potentially removing high cardinality data that is causing inefficient queries.&lt;/p>
+&lt;h2 id="related-works">Related works&lt;/h2>
+&lt;p>As previously mentioned, the deletion feature is already implemented with chunk storage. The main functionality is implemented through the purger service. It accepts requests for deletion and processes them. At first, when a deletion request is made, a tombstone is created. This is used to filter out the data for queries. After some time, a deletion plan is executed where the data is permanently removed from chunk storage.&lt;/p>
+&lt;p>Can find more info here:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/guides/deleting-series/">Cortex documentation for chunk store deletion&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://docs.google.com/document/d/1PeKwP3aGo3xVrR-2qJdoFdzTJxT8FcAbLm2ew_6UQyQ/edit">Chunk deletion proposal&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="background-on-current-storage">Background on current storage&lt;/h2>
+&lt;p>With a block-storage configuration, Cortex stores data that could be potentially deleted by a user in:&lt;/p>
+&lt;ul>
+&lt;li>Object store (GCS, S3, etc..) for long term storage of blocks&lt;/li>
+&lt;li>Ingesters for more recent data that should be eventually transferred to the object store&lt;/li>
+&lt;li>Cache
+&lt;ul>
+&lt;li>Index cache&lt;/li>
+&lt;li>Metadata cache&lt;/li>
+&lt;li>Chunks cache (stores the potentially to be deleted data)&lt;/li>
+&lt;li>Query results cache (stores the potentially to be deleted data)&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Compactor during the compaction process&lt;/li>
+&lt;li>Store-gateway&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;p>The deletion will not happen right away. Initially, the data will be filtered out from queries using tombstones and will be deleted afterward. This will allow the user some time to cancel the delete request.&lt;/p>
+&lt;h3 id="api-endpoints">API Endpoints&lt;/h3>
+&lt;p>The existing purger service will be used to process the incoming requests for deletion. The API will follow the same structure as the chunk storage endpoints for deletion, which is also based on the Prometheus deletion API.&lt;/p>
+&lt;p>This will enable the following endpoints for Cortex when using block storage:&lt;/p>
+&lt;p>&lt;code>POST /api/v1/admin/tsdb/delete_series&lt;/code> - Accepts &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus style delete request&lt;/a> for deleting series.&lt;/p>
+&lt;p>Parameters:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>start=&amp;lt;rfc3339 | unix_timestamp&amp;gt;&lt;/code>
+&lt;ul>
+&lt;li>Optional. If not provided, will be set to minimum possible time.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;code>end=&amp;lt;rfc3339 | unix_timestamp&amp;gt; &lt;/code>
+&lt;ul>
+&lt;li>Optional. If not provided, will be set to maximum possible time (time when request was made). End time cannot be greater than the current UTC time.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;code>match[]=&amp;lt;series_selector&amp;gt;&lt;/code>
+&lt;ul>
+&lt;li>Cannot be empty, must contain at least one label matcher argument.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>&lt;code>POST /api/v1/admin/tsdb/cancel_delete_request&lt;/code> - To cancel a request if it has not been processed yet for permanent deletion. This can only be done before the &lt;code>-purger.delete-request-cancel-period&lt;/code> has passed.
+Parameters:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>request_id&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;code>GET /api/v1/admin/tsdb/delete_series&lt;/code> - Get all delete requests id’s and their current status.&lt;/p>
+&lt;p>Prometheus also implements a &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">clean_tombstones&lt;/a> API which is not included in this proposal. The tombstones will be deleted automatically once the permanent deletion has taken place which is described in the section below. By default, this should take approximately 24 hours.&lt;/p>
+&lt;h3 id="deletion-lifecycle">Deletion Lifecycle&lt;/h3>
+&lt;p>The deletion request lifecycle can follow these 3 states:&lt;/p>
+&lt;ol>
+&lt;li>Pending - Tombstone file is created. During this state, the queriers will be performing query time filtering. The initial time period configured by &lt;code>-purger.delete-request-cancel-period&lt;/code>, no data will be deleted. Once this period is over, permanent deletion processing will begin and the request is no longer cancellable.&lt;/li>
+&lt;li>Processed - All requested data has been deleted. Initially, will still need to do query time filtering while waiting for the bucket index and store-gateway to pick up the new blocks. Once that period has passed, will no longer require any query time filtering.&lt;/li>
+&lt;li>Deleted - The deletion request was cancelled. A grace period configured by &lt;code>-purger.delete-request-cancel-period&lt;/code> will allow the user some time to cancel the deletion request if it was made by mistake. The request is no longer cancelable after this period has passed.&lt;/li>
+&lt;/ol>
+&lt;h3 id="filtering-data-during-queries-while-not-yet-deleted">Filtering data during queries while not yet deleted:&lt;/h3>
+&lt;p>Once a deletion request is received, a tombstone entry will be created. The object store such as S3, GCS, Azure storage, can be used to store all the deletion requests. See the section below for more detail on how the tombstones will be stored. Using the tombstones, the querier will be able to filter the to-be-deleted data initially. If a cancel delete request is made, then the tombstone file will be deleted. In addition, the existing cache will be invalidated using cache generation numbers, which are described in the later sections.&lt;/p>
+&lt;p>The compactor&amp;rsquo;s &lt;em>BlocksCleaner&lt;/em> service will scan for new tombstone files and will update the bucket-index with the tombstone information regarding the deletion requests. This will enable the querier to periodically check the bucket index if there are any new tombstone files that are required to be used for filtering. One drawback of this approach is the time it could take to start filtering the data. Since the compactor will update the bucket index with the new tombstones every &lt;code>-compactor.cleanup-interval&lt;/code> (default 15 min). Then the cached bucket index is refreshed in the querier every &lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code> (default 15 min). Potentially could take almost 30 min for queriers to start filtering deleted data when using the default values. If the information requested for deletion is confidential/classified, the time delay is something that the user should be aware of, in addition to the time that the data has already been in Cortex.&lt;/p>
+&lt;p>An additional thing to consider is that this would mean that the bucket-index would have to be enabled for this API to work. Since the plan is to make to the bucket-index mandatory in the future for block storage, this shouldn&amp;rsquo;t be an issue.&lt;/p>
+&lt;p>Similar to the chunk storage deletion implementation, the initial filtering of the deleted data will be done inside the Querier. This will allow filtering the data read from both the store gateway and the ingester. This functionality already exists for the chunk storage implementation. By implementing it in the querier, this would mean that the ruler will be supported too (ruler internally runs the querier).&lt;/p>
+&lt;h4 id="storing-tombstones-in-object-store">Storing tombstones in object store&lt;/h4>
+&lt;p>The Purger will write the new tombstone entries in a separate folder called &lt;code>tombstones&lt;/code> in the object store (e.g. S3 bucket) in the respective tenant folder. Each tombstone can have a separate JSON file outlining all the necessary information about the deletion request such as the parameters passed in the request, as well as some meta-data such as the creation date of the file. The name of the file can be a hash of the API parameters (start, end, markers). This way if a user calls the API twice by accident with the same parameters, it will only create one tombstone. To keep track of the request state, filename extensions can be used. This will allow the tombstone files to be immutable. The 3 different file extensions will be &lt;code>pending, processed, deleted&lt;/code>. Each time the deletion request moves to a new state, a new file will be added with the same deletion information but a different extension to indicate the new state. The file containing the previous state will be deleted once the new one is created. If a deletion request is cancelled, then a tombstone file with the &lt;code>.deleted&lt;/code> filename extension will be created.&lt;/p>
+&lt;p>When it is determined that the request should move to the next state, then it will first write a new file containing the tombstone information to the object store. The information inside the file will be the same except the &lt;code>stateCreationTime&lt;/code>, which is replaced with the current timestamp. The extension of the new file will be different to reflect the new state. If the new file is successfully written, the file with the previous state is deleted. If the write of the new file fails, then the previous file is not going to be deleted. Next time the service runs to check the state of each tombstone, it will retry creating the new file with the updated state. If the write is successful but the deletion of the old file is unsuccessful then there will be 2 tombstone files with the same filename but different extension. When &lt;code>BlocksCleaner&lt;/code> writes the tombstones to the bucket index, the compactor will check for duplicate tombstone files but with different extensions. It will use the tombstone with the most recently updated state and try to delete the file with the older state. There could be a scenario where there are two files with the same request ID but different extensions: {&lt;code>.pending&lt;/code>, &lt;code>.processed&lt;/code>} or {&lt;code>.pending&lt;/code>, &lt;code>.deleted&lt;/code>}. In this case, the &lt;code>.processed&lt;/code> or &lt;code>.deleted &lt;/code> file will be selected as it is always the later state compared to the &lt;code>pending&lt;/code> state.&lt;/p>
+&lt;p>The tombstone will be stored in a single JSON file per request and state:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>/&amp;lt;tenantId&amp;gt;/tombstones/&amp;lt;request_id&amp;gt;.json.&amp;lt;state&amp;gt;&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>The schema of the JSON file is:&lt;/p>
+&lt;pre>&lt;code>{
+&amp;quot;requestId&amp;quot;: &amp;lt;string&amp;gt;,
+&amp;quot;startTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;endTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;requestCreationTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;stateCreationTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;matchers&amp;quot;: [
+&amp;quot;&amp;lt;string matcher 1&amp;gt;&amp;quot;,
+..,
+&amp;quot;&amp;lt;string matcher n&amp;gt;&amp;quot;
+]
+},
+&amp;quot;userID&amp;quot;: &amp;lt;string&amp;gt;,
+}
+&lt;/code>&lt;/pre>&lt;p>Pros:&lt;/p>
+&lt;ul>
+&lt;li>Allows deletion and un-delete to be done in a single operation.&lt;/li>
+&lt;/ul>
+&lt;p>Cons:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>Negative impact on query performance when there are active tombstones. As in the chunk storage implementation, all the series will have to be compared to the matchers contained in the active tombstone files. The impact on performance should be the same as the deletion would have with chunk storage.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>With the default config, potential 30 minute wait for the data to begin filtering if using the default configuration.&lt;/p>
+&lt;/li>
+&lt;/ul>
+&lt;h4 id="invalidating-cache">Invalidating cache&lt;/h4>
+&lt;p>Using block store, the different caches available are:&lt;/p>
+&lt;ul>
+&lt;li>Index cache&lt;/li>
+&lt;li>Metadata cache&lt;/li>
+&lt;li>Chunks cache (stores the potentially to be deleted chunks of data)&lt;/li>
+&lt;li>Query results cache (stores the potentially to be deleted data)&lt;/li>
+&lt;/ul>
+&lt;p>There are two potential caches that could contain deleted data, the chunks cache, and the query results cache. Using the tombstones, the queriers filter out the data received from the ingesters and store-gateway. The cache not being processed through the querier needs to be invalidated to prevent deleted data from coming up in queries.&lt;/p>
+&lt;p>Firstly, the query results cache needs to be invalidated for each new delete request or a cancellation of one. This can be accomplished by utilizing cache generation numbers. For each tenant, their cache is prefixed with a cache generation number. When the query front-end discovers a cache generation number that is greater than the previous generation number, then it knows to invalidate the query results cache. However, the cache can only be invalidated once the queriers have loaded the tombstones from the bucket index and have begun filtering the data. Otherwise, to-be deleted data might show up in queries and be cached again. One of the way to guarantee that all the queriers are using the new tombstones is to wait until the bucket index staleness period has passed from the time the tombstones have been written to the bucket index. The staleness period can be configured using the following flag: &lt;code>-blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/code>. We can use the bucket index staleness period as the delay to wait before the cache generation number is increased. A query will fail inside the querier, if the bucket index last update is older the staleness period. Once this period is over, all the queriers should have the updated tombstones and the query results cache can be invalidated. Here is the proposed method for accomplishing this:&lt;/p>
+&lt;ul>
+&lt;li>The cache generation number will be a timestamp. The default value will be 0.&lt;/li>
+&lt;li>The bucket index will store the cache generation number. The query front-end will periodically fetch the bucket index.&lt;/li>
+&lt;li>Inside the compactor, the &lt;em>BlocksCleaner&lt;/em> will load the tombstones from object store and update the bucket index accordingly. It will calculate the cache generation number by iterating through all the tombstones and their respective times (next bullet point) and selecting the maximum timestamp that is less than (current time minus &lt;code>-blocks-storage.bucket-store.bucket-index.max-stale-period&lt;/code>). This would mean that if a deletion request is made or cancelled, the compactor will only update the cache generation number once the staleness period is over, ensuring that all queriers have the updated tombstones.&lt;/li>
+&lt;li>For requests in a pending or processed state, the &lt;code>requestCreationTime&lt;/code> will be used when comparing the maximum timestamps. If a request is in a deleted state, it will use the &lt;code>stateCreationTime&lt;/code> for comparing the timestamps. This means that the cache gets invalidated only once it has been created or deleted, and the bucket index staleness period has passed. The cache will not be invalidated again when a request advances from pending to processed state.&lt;/li>
+&lt;li>The query front-end will fetch the cache generation number from the bucket index. The query front end will compare it to the current cache generation number stored in the front-end. If the cache generation number from the front-end is less than the one from bucket index, then the cache is invalidated.&lt;/li>
+&lt;/ul>
+&lt;p>In regards to the chunks cache, since it is retrieved from the store gateway and passed to the querier, it will be filtered out like the rest of the time series data in the querier using the tombstones, with the mechanism described in the previous section.&lt;/p>
+&lt;h3 id="permanently-deleting-the-data">Permanently deleting the data&lt;/h3>
+&lt;p>The proposed approach is to perform the deletions from the compactor. A new background service inside the compactor called &lt;em>DeletedSeriesCleaner&lt;/em> can be created and is responsible for executing the deletion.&lt;/p>
+&lt;h4 id="processing">Processing&lt;/h4>
+&lt;p>This will happen after a grace period has passed once the API request has been made. By default this should be 24 hours. A background task can be created to process the permanent deletion of time series. This background task can be executed each hour.&lt;/p>
+&lt;p>To delete the data from the blocks, the same logic as the &lt;a href="https://thanos.io/tip/components/tools.md/#bucket-rewrite">Bucket Rewrite Tool&lt;/a> from Thanos can be leveraged. This tool does the following: &lt;code>tools bucket rewrite rewrites chosen blocks in the bucket, while deleting or modifying series&lt;/code>. The tool itself is a CLI tool that we won’t be using, but instead we can utilize the logic inside it. For more information about the way this tool runs, please see the code &lt;a href="https://github.com/thanos-io/thanos/blob/d8b21e708bee6d19f46ca32b158b0509ca9b7fed/cmd/thanos/tools_bucket.go#L809">here&lt;/a>.&lt;/p>
+&lt;p>The compactor’s &lt;em>DeletedSeriesCleaner&lt;/em> will apply this logic on individual blocks and each time it is run, it creates a new block without the data that matched the deletion request. The original individual blocks containing the data that was requested to be deleted, need to be marked for deletion by the compactor.&lt;/p>
+&lt;p>While deleting the data permanently from the block storage, the &lt;code>meta.json&lt;/code> files will be used to keep track of the deletion progress. Inside each &lt;code>meta.json&lt;/code> file, we will add a new field called &lt;code>tombstonesFiltered&lt;/code>. This will store an array of deletion request id&amp;rsquo;s that were used to create this block. Once the rewrite logic is applied to a block, the new block&amp;rsquo;s &lt;code>meta.json&lt;/code> file will append the deletion request id(s) used for the rewrite operation inside this field. This will let the &lt;em>DeletedSeriesCleaner&lt;/em> know that this block has already processed the particular deletions requests listed in this field. Assuming that the deletion requests are quite rare, the size of the meta.json files should remain small.&lt;/p>
+&lt;p>The &lt;em>DeletedSeriesCleaner&lt;/em> can iterate through all the blocks that the deletion request could apply to. For each of these blocks, if the deletion request ID isn&amp;rsquo;t inside the meta.json &lt;code>tombstonesFiltered&lt;/code> field, then the compactor can apply the rewrite logic to this block. If there are multiple tombstones that are currently being processing for deletions and apply to a particular block, then the &lt;em>DeletedSeriesCleaner&lt;/em> will process both at the same time to prevent additional blocks from being created. If after iterating through all the blocks, it doesn’t find any such blocks requiring deletion, then the &lt;code>Pending&lt;/code> state is complete and the request progresses to the &lt;code>Processed&lt;/code> state.&lt;/p>
+&lt;p>One important thing to note regarding this rewrite tool is that it should not be used at the same time as when another compactor is touching a block. If the tool is run at the same time as compaction on a particular block, it can cause overlap and the data marked for deletion can already be part of the compacted block. To mitigate such issues, these are some of the proposed solutions:&lt;/p>
+&lt;p>Option 1: Only apply the deletion once the blocks are in the final state of compaction.&lt;/p>
+&lt;p>Pros:&lt;/p>
+&lt;ul>
+&lt;li>Simpler implementation as everything is contained within the DeletedSeriesCleaner.&lt;/li>
+&lt;/ul>
+&lt;p>Cons:&lt;/p>
+&lt;ul>
+&lt;li>Might have to wait for a longer period of time for the compaction to be finished.
+&lt;ul>
+&lt;li>This would mean the earliest time to be able to run the deletion would be once the last time from the block_ranges in the &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#compactor-configuration">compactor_config&lt;/a> has passed. By default this value is 24 hours, so only once 24 hours have passed and the new compacted blocks have been created, then the rewrite can be safely run.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>Option 2: For blocks that still need to be compacted further after the deletion request cancel period is over, the deletion logic can be applied before the blocks are compacted. This will generate a new block which can then be used instead for compaction with other blocks.&lt;/p>
+&lt;p>Pros:&lt;/p>
+&lt;ul>
+&lt;li>The deletion can be applied earlier than the previous options.
+&lt;ul>
+&lt;li>Only applies if the deletion request cancel period is less than the last time interval for compaction is.
+Cons:&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Added coupling between the compaction and the DeletedSeriesCleaner.&lt;/li>
+&lt;li>Might block compaction for a short time while doing the deletion.&lt;/li>
+&lt;/ul>
+&lt;p>Once all the applicable blocks have been rewritten without the deleted data, the deletion request state moves to the &lt;code>Processed&lt;/code> state. Once in this state, the queriers will still have to perform query time filtering using the tombstones until the old blocks that were marked for deletion are no longer queried by the queriers. This will mean that the query time filtering will last for an additional length of &lt;code>-compactor.deletion-delay + -compactor.cleanup-interval + -blocks-storage.bucket-store.sync-interval&lt;/code> in the &lt;code>Processed&lt;/code> state. Once that time period has passed, the queriers should no longer be querying any of the old blocks that were marked for deletion. The tombstone will no longer be used after this.&lt;/p>
+&lt;h4 id="cancelled-delete-requests">Cancelled Delete Requests&lt;/h4>
+&lt;p>If a request was successfully cancelled, then a tombstone file a &lt;code>.deleted&lt;/code> extension is created. This is done to help ensure that the cache generation number is updated and the query results cache is invalidated. The compactor&amp;rsquo;s blocks cleaner can take care of cleaning up &lt;code>.deleted&lt;/code> tombstones after a period of time of when they are no longer required for cache invalidation. This can be done after 10 times the bucket index max staleness time period has passed. Before removing the file from the object store, the current cache generation number must greater than or equal to when the tombstone was cancelled.&lt;/p>
+&lt;h4 id="handling-failedunfinished-delete-jobs">Handling failed/unfinished delete jobs:&lt;/h4>
+&lt;p>Deletions will be completed and the tombstones will be deleted only when the DeletedSeriesCleaner iterates over all blocks that match the time interval and confirms that they have been re-written without the deleted data. Otherwise, it will keep iterating over the blocks and process the blocks that haven&amp;rsquo;t been rewritten according to the information in the &lt;code>meta.json&lt;/code> file. In case of any failure that causes the deletion to stop, any unfinished deletions will be resumed once the service is restarted. If the block rewrite was not completed on a particular block, then the original block will not be marked for deletion. The compactor will continue to iterate over the blocks and process the block again.&lt;/p>
+&lt;h4 id="tenant-deletion-api">Tenant Deletion API&lt;/h4>
+&lt;p>If a request is made to delete a tenant, then all the tombstones will be deleted for that user.&lt;/p>
+&lt;h2 id="current-open-questions">Current Open Questions:&lt;/h2>
+&lt;ul>
+&lt;li>If the start and end time is very far apart, it might result in a lot of the data being re-written. Since we create a new block without the deleted data and mark the old one for deletion, there may be a period of time with lots of extra blocks and space used for large deletion queries.&lt;/li>
+&lt;li>There will be a delay between the deletion request and the deleted data being filtered during queries.
+&lt;ul>
+&lt;li>In Prometheus, there is no delay.&lt;/li>
+&lt;li>One way to filter out immediately is to load the tombstones during query time but this will cause a negative performance impact.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Adding limits to the API such as:
+&lt;ul>
+&lt;li>Max number of deletion requests allowed in the last 24 hours for a given tenent.&lt;/li>
+&lt;li>Max number of pending tombstones for a given tenant.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
+&lt;h4 id="adding-a-pre-processing-state">Adding a Pre-processing State&lt;/h4>
+&lt;p>The process of permanently deleting the data can be separated into 2 stages, preprocessing and processing.&lt;/p>
+&lt;p>Pre-processing will begin after the &lt;code>-purger.delete-request-cancel-period&lt;/code> has passed since the API request has been made. The deletion request will move to a new state called &lt;code>BuildingPlan&lt;/code>. The compactor will outline all the blocks that may contain data to be deleted. For each separate block that the deletion may be applicable to, the compactor will begin the process by adding a series deletion marker inside the series-deletion-marker.json file. The JSON file will contain an array of deletion request id&amp;rsquo;s that need to be applied to the block, which allows the ability to handle the situation when there are multiple tombstones that could be applicable to a particular block. Then during the processing step, instead of checking the meta.json file, we only need to check if a marker file exists with a specific deletion request id. If the marker file exists, then we apply the rewrite logic.&lt;/p>
+&lt;h4 id="alternative-permanent-deletion-processing">Alternative Permanent Deletion Processing&lt;/h4>
+&lt;p>For processing the actual deletions, an alternative approach is not to wait until the final compaction has been completed and filter out the data during compaction. If the data is marked to be deleted, then don’t include it the new bigger block during compaction. For the remaining blocks where the data wasn’t filtered during compaction, the deletion can be done the same as in the previous section.&lt;/p>
+&lt;p>Pros:&lt;/p>
+&lt;ul>
+&lt;li>The deletion can happen sooner.&lt;/li>
+&lt;li>The rewrite tools creates additional blocks. By filtering the metrics during compaction, the intermediary re-written block will be avoided.&lt;/li>
+&lt;/ul>
+&lt;p>Cons:&lt;/p>
+&lt;ul>
+&lt;li>A more complicated implementation requiring add more logic to the compactor&lt;/li>
+&lt;li>Slower compaction if it needs to filter all the data&lt;/li>
+&lt;li>Need to manage which blocks should be deleted with the rewrite vs which blocks already had data filtered during compaction.&lt;/li>
+&lt;li>Would need to run the rewrite logic during and outside of compaction because some blocks that might need to be deleted are already in the final compaction state. So that would mean the deletion functionality has to be implemented in multiple places.&lt;/li>
+&lt;li>Won’t be leveraging the rewrites tools from Thanos for all the deletion, so potentially more work is duplicated&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
 &lt;p>Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the &lt;a href="#ingester">ingesters&lt;/a>) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex&amp;rsquo;s architecture.&lt;/p>
 &lt;p align="center">&lt;img src="/images/architecture.png" alt="Cortex Architecture">&lt;/p>
@@ -6753,7 +7006,7 @@ During scale-down this needs to be lowered in order to let queriers and rulers u
 &lt;li>Hash the metric name and tenant ID (default)&lt;/li>
 &lt;li>Hash the metric name, labels and tenant ID (enabled with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>)&lt;/li>
 &lt;/ol>
-&lt;p>The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.&lt;/p>
+&lt;p>The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to all ingesters since a metric could be spread across multiple ingesters given different label sets.&lt;/p>
 &lt;h4 id="the-hash-ring">The hash ring&lt;/h4>
 &lt;p>A hash ring (stored in a key-value store) is used to achieve consistent hashing for the series sharding and replication across the ingesters. All &lt;a href="#ingester">ingesters&lt;/a> register themselves into the hash ring with a set of tokens they own; each token is a random unsigned 32-bit number. Each incoming series is &lt;a href="#hashing">hashed&lt;/a> in the distributor and then pushed to the ingester owning the tokens range for the series hash number plus N-1 subsequent ingesters in the ring, where N is the replication factor.&lt;/p>
 &lt;p>To do the hash lookup, distributors find the smallest appropriate token whose value is larger than the &lt;a href="#hashing">hash of the series&lt;/a>. When the replication factor is larger than 1, the next subsequent tokens (clockwise in the ring) that belong to different ingesters will also be included in the result.&lt;/p>
@@ -8971,13 +9224,13 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>15s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which store gateways are considered unhealthy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. This option needs be set both on the store-gateway and&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># querier when running in microservices mode.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. 0 = never (timeout disabled). This option needs be set&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># both on the store-gateway and querier when running in microservices mode.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -store-gateway.sharding-ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -9995,12 +10248,12 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.multi.mirror-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[mirror_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>2s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Period at which to heartbeat to the ring. 0 = disabled.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.heartbeat-period&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>5s&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The heartbeat timeout after which compactors are considered unhealthy&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># within the ring. 0 = never (timeout disabled).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.heartbeat-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[heartbeat_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -10016,6 +10269,10 @@ Displays the status of the compactors ring, including the tokens owned by each c
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Name of network interface to read address from.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.instance-interface-names&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[instance_interface_names&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;list&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>of&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[&lt;/span>eth0&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>en0&lt;span style="color:#000;font-weight:bold">]]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Timeout for waiting on compactor to become ACTIVE in the ring.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -compactor.ring.wait-active-instance-timeout&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[wait_active_instance_timeout&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>10m&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Getting started with gossiped ring</title><link>/docs/guides/getting-started-with-gossiped-ring/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/getting-started-with-gossiped-ring/</guid><description>
 &lt;p>Cortex requires Key-Value (KV) store to store the ring. It can use traditional KV stores like Consul or Etcd,
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
@@ -10124,6 +10381,7 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>Upgrade the reference to the latest build image called &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code> in &lt;code>Makefile&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;p>If the minimum support Golang version should be upgraded as well:&lt;/p>
 &lt;ol>
@@ -10806,170 +11064,4 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;ul>
 &lt;li>Scanner supports only BigTable and DynamoDB for chunks index backend, and cannot currently scan other databases.&lt;/li>
 &lt;li>Supports only chunks schema versions v9 for DynamoDB; v9, v10 and v11 for Bigtable.&lt;/li>
-&lt;/ul></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
-&lt;p>For the v1.0 release, we want to provide the following guarantees:&lt;/p>
-&lt;h2 id="flags-config-and-minor-version-upgrades">Flags, Config and minor version upgrades&lt;/h2>
-&lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>cortex_deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>
-&lt;p>Similarly to flags, minor version upgrades using config files should &amp;ldquo;just work&amp;rdquo;. If we do need to change config, we will keep the old way working for two minor version. There will be a metric you can alert on for this too.&lt;/p>
-&lt;p>These guarantees don&amp;rsquo;t apply for &lt;a href="#experimental-features">experimental features&lt;/a>.&lt;/p>
-&lt;h2 id="reading-old-data">Reading old data&lt;/h2>
-&lt;p>The Cortex maintainers commit to ensuring future version of Cortex can read data written by versions up to two years old. In practice we expect to be able to read more, but this is our guarantee.&lt;/p>
-&lt;h2 id="api-compatibility">API Compatibility&lt;/h2>
-&lt;p>Cortex strives to be 100% API compatible with Prometheus (under &lt;code>/prometheus/*&lt;/code> and &lt;code>/api/prom/*&lt;/code>); any deviation from this is considered a bug, except:&lt;/p>
-&lt;ul>
-&lt;li>Requiring the &lt;code>__name__&lt;/code> label on queries when querying the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> (queries to ingesters or clusters running the blocks storage are not affected).&lt;/li>
-&lt;li>For queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the &lt;em>blocks&lt;/em> storage engine when &lt;code>-querier.query-store-for-labels-enabled&lt;/code> is set.&lt;/li>
-&lt;li>Additional API endpoints for creating, removing and modifying alerts and recording rules.&lt;/li>
-&lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
-&lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
-&lt;/ul>
-&lt;p>&lt;em>For more information, please refer to the &lt;a href="/docs/guides/limitations/">limitations&lt;/a> doc.&lt;/em>&lt;/p>
-&lt;h2 id="experimental-features">Experimental features&lt;/h2>
-&lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
-&lt;p>Currently experimental features are:&lt;/p>
-&lt;ul>
-&lt;li>S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).&lt;/li>
-&lt;li>Azure blob storage.&lt;/li>
-&lt;li>Zone awareness based replication.&lt;/li>
-&lt;li>Ruler API (to PUT rules).&lt;/li>
-&lt;li>Alertmanager:
-&lt;ul>
-&lt;li>API (enabled via &lt;code>-experimental.alertmanager.enable-api&lt;/code>)&lt;/li>
-&lt;li>Sharding of tenants across multiple instances (enabled via &lt;code>-alertmanager.sharding-enabled&lt;/code>)&lt;/li>
-&lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Memcached client DNS-based service discovery.&lt;/li>
-&lt;li>Delete series APIs.&lt;/li>
-&lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
-&lt;li>gRPC Store.&lt;/li>
-&lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
-&lt;li>TLS configuration in Etcd client.&lt;/li>
-&lt;li>Blocksconvert tools&lt;/li>
-&lt;li>OpenStack Swift storage support (both in blocks and chunks storage).&lt;/li>
-&lt;li>Metric relabeling in the distributor.&lt;/li>
-&lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
-&lt;li>Querying store for series, labels APIs (&lt;code>-querier.query-store-for-labels-enabled&lt;/code>)&lt;/li>
-&lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
-&lt;li>Distributor: do not extend writes on unhealthy ingesters (&lt;code>-distributor.extend-writes=false&lt;/code>)&lt;/li>
-&lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
-&lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage bucket index
-&lt;ul>
-&lt;li>The bucket index support in the querier and store-gateway (enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code>) is experimental&lt;/li>
-&lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Querier: tenant federation&lt;/li>
-&lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
-&lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
-&lt;ul>
-&lt;li>&lt;code>-ingester.stream-chunks-when-using-blocks&lt;/code> CLI flag&lt;/li>
-&lt;li>&lt;code>-ingester_stream_chunks_when_using_blocks&lt;/code> (boolean) field in runtime config file&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Instance limits in ingester and distributor&lt;/li>
-&lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
-&lt;li>Querier limits:
-&lt;ul>
-&lt;li>&lt;code>-querier.max-fetched-chunks-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-chunk-bytes-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-series-per-query&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Alertmanager limits
-&lt;ul>
-&lt;li>notification rate (&lt;code>-alertmanager.notification-rate-limit&lt;/code> and &lt;code>-alertmanager.notification-rate-limit-per-integration&lt;/code>)&lt;/li>
-&lt;li>dispatcher groups (&lt;code>-alertmanager.max-dispatcher-aggregation-groups&lt;/code>)&lt;/li>
-&lt;li>user config size (&lt;code>-alertmanager.max-config-size-bytes&lt;/code>)&lt;/li>
-&lt;li>templates count in user config (&lt;code>-alertmanager.max-templates-count&lt;/code>)&lt;/li>
-&lt;li>max template size (&lt;code>-alertmanager.max-template-size-bytes&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
-&lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
-&lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>
-&lt;p>The Cortex blocks storage has few requirements that should be considered when migrating TSDB blocks from Thanos / Prometheus to Cortex:&lt;/p>
-&lt;ol>
-&lt;li>&lt;strong>The blocks in the bucket should be located at &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code>&lt;/strong>&lt;br />
-Cortex isolates blocks on a per-tenant basis in the bucket and, for this reason, each tenant blocks should be uploaded to a different location in the bucket. The bucket prefix, where a specific tenant blocks should be uploaded, is &lt;code>/&amp;lt;tenant-id&amp;gt;/&lt;/code>; if Cortex is running with auth disabled (no multi-tenancy) then the &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> to use is &lt;code>fake&lt;/code>.&lt;/li>
-&lt;li>&lt;strong>Remove Thanos external labels and inject &lt;code>__org_id__&lt;/code> into each block&amp;rsquo;s &lt;code>meta.json&lt;/code>&lt;/strong>&lt;br />
-Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thanos stores external labels at &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>, which should be all removed when migrating to Cortex, while the &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> added.&lt;/li>
-&lt;/ol>
-&lt;h2 id="how-to-migrate-the-storage">How to migrate the storage&lt;/h2>
-&lt;h3 id="upload-tsdb-blocks-to-cortex-bucket">Upload TSDB blocks to Cortex bucket&lt;/h3>
-&lt;p>TSDB blocks stored in Prometheus local disk or Thanos bucket should be copied/uploaded to the Cortex bucket at the location &lt;code>bucket://&amp;lt;tenant-id&amp;gt;/&lt;/code> (when Cortex is running with auth disabled then &lt;code>&amp;lt;tenant-id&amp;gt;&lt;/code> must be &lt;code>fake&lt;/code>).&lt;/p>
-&lt;h3 id="migrate-block-metadata-metajson-to-cortex">Migrate block metadata (&lt;code>meta.json&lt;/code>) to Cortex&lt;/h3>
-&lt;p>For each block copied/uploaded to the Cortex bucket, there are a few changes required to the &lt;code>meta.json&lt;/code>.&lt;/p>
-&lt;h4 id="automatically-migrate-metadata-using-the-thanosconvert-tool">Automatically migrate metadata using the &lt;code>thanosconvert&lt;/code> tool&lt;/h4>
-&lt;p>&lt;code>thanosconvert&lt;/code> can iterate over a Cortex bucket and make sure that each &lt;code>meta.json&lt;/code> has the correct &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> layout.&lt;/p>
-&lt;p>⚠ Warning ⚠ &lt;code>thanosconvert&lt;/code> will modify files in the bucket you specify. It&amp;rsquo;s recommended that you have backups or enable object versioning before running this tool.&lt;/p>
-&lt;p>To run &lt;code>thanosconvert&lt;/code>, you need to provide it with the bucket configuration in the same format as the &lt;a href="/docs/configuration/configuration-file/#blocks_storage_config">blocks storage bucket configuration&lt;/a>.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># bucket-config.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">backend&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>s3&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">s3&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">endpoint&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>s3.us-east&lt;span style="color:#0000cf;font-weight:bold">-1.&lt;/span>amazonaws.com&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bucket_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>my-cortex-bucket&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run thanosconvert directly using Go:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">go install github.com/cortexproject/cortex/cmd/thanosconvert
-thanosconvert
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Or use the provided docker image:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">docker run quay.io/cortexproject/thanosconvert
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can run the tool in dry-run mode first to find out what which blocks it will migrate:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">thanosconvert -config ./bucket-config.yaml -dry-run
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Once you&amp;rsquo;re happy with the results, you can run without dry run to migrate blocks:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">thanosconvert -config ./bucket-config.yaml
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>You can cancel a conversion in progress (with Ctrl+C) and rerun &lt;code>thanosconvert&lt;/code>. It won&amp;rsquo;t change any blocks which have been written by Cortex or already converted from Thanos, so you can run &lt;code>thanosconvert&lt;/code> multiple times.&lt;/p>
-&lt;h4 id="migrate-metadata-manually">Migrate metadata manually&lt;/h4>
-&lt;p>If you need to migrate the block metadata manually, you need to:&lt;/p>
-&lt;ol>
-&lt;li>Download the &lt;code>meta.json&lt;/code> to the local filesystem&lt;/li>
-&lt;li>Decode the JSON&lt;/li>
-&lt;li>Manipulate the data structure (&lt;em>see below&lt;/em>)&lt;/li>
-&lt;li>Re-encode the JSON&lt;/li>
-&lt;li>Re-upload it to the bucket (overwriting the previous version of the &lt;code>meta.json&lt;/code> file)&lt;/li>
-&lt;/ol>
-&lt;p>The &lt;code>meta.json&lt;/code> should be manipulated in order to ensure:&lt;/p>
-&lt;ul>
-&lt;li>It contains the &lt;code>thanos&lt;/code> root-level entry&lt;/li>
-&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> do not contain any Thanos-specific external label&lt;/li>
-&lt;li>The &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code> contain the Cortex-specific external label &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;h5 id="when-migrating-from-thanos">When migrating from Thanos&lt;/h5>
-&lt;p>When migrating from Thanos, the easiest approach would be keep the existing &lt;code>thanos&lt;/code> root-level entry as is, except:&lt;/p>
-&lt;ol>
-&lt;li>Completely remove the content of &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;p>For example, when migrating a block from Thanos for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file will look like:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;h5 id="when-migrating-from-prometheus">When migrating from Prometheus&lt;/h5>
-&lt;p>When migrating from Prometheus, the &lt;code>meta.json&lt;/code> file will not contain any &lt;code>thanos&lt;/code> root-level entry and, for this reason, it would need to be generated:&lt;/p>
-&lt;ol>
-&lt;li>Create the &lt;code>thanos&lt;/code> root-level entry (&lt;em>see below&lt;/em>)&lt;/li>
-&lt;li>Add &lt;code>&amp;quot;__org_id__&amp;quot;: &amp;quot;&amp;lt;tenant-id&amp;gt;&amp;quot;&lt;/code> to &lt;code>thanos&lt;/code> &amp;gt; &lt;code>labels&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;p>For example, when migrating a block from Prometheus for the tenant &lt;code>user-1&lt;/code>, the &lt;code>thanos&lt;/code> root-level property within the &lt;code>meta.json&lt;/code> file should be as follow:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-json" data-lang="json">&lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;thanos&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;labels&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;__org_id__&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;user-1&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;downsample&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;resolution&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>
-&lt;span style="color:#000;font-weight:bold">},&lt;/span>
-&lt;span style="color:#204a87;font-weight:bold">&amp;#34;source&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span> &lt;span style="color:#4e9a06">&amp;#34;compactor&amp;#34;&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>
+&lt;/ul></description></item></channel></rss>

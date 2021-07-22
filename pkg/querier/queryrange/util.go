@@ -70,3 +70,7 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits 
 
 	return resps, firstErr
 }
+
+type Buffer interface {
+	Bytes() []byte
+}

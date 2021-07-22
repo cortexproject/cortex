@@ -285,7 +285,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 }
 
 func bodyBuffer(res *http.Response) ([]byte, error) {
-	if buffer := res.Body.(Buffer); buffer != nil {
+	if buffer, ok := res.Body.(Buffer); ok {
 		return buffer.Bytes(), nil
 	}
 	// Preallocate the buffer with the exact size so we don't waste allocations

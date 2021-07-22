@@ -1005,7 +1005,7 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 		MinBlockDuration:  2 * time.Hour.Milliseconds(),
 		MaxBlockDuration:  2 * time.Hour.Milliseconds(),
 		RetentionDuration: 15 * 24 * time.Hour.Milliseconds(),
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	db.DisableCompactions()

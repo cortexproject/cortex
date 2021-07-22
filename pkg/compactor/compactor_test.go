@@ -958,7 +958,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 		MinBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
 		MaxBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
 		RetentionDuration: int64(15 * 86400 * 1000),  // 15 days
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	db.DisableCompactions()

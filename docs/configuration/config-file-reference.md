@@ -563,12 +563,12 @@ ring:
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which distributors are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -662,6 +662,7 @@ lifecycler:
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
+    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -678,7 +679,7 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul.
+  # Period at which to heartbeat to consul. 0 = disabled.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -1580,12 +1581,12 @@ ring:
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which rulers are considered unhealthy within the
-  # ring.
+  # ring. 0 = never (timeout disabled).
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1616,6 +1617,11 @@ ring:
 # processing will ignore them instead. Subject to sharding.
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+# Report the wall time for ruler queries to complete as a per user metric and as
+# an info level log message.
+# CLI flag: -ruler.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`
@@ -1901,12 +1907,12 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -alertmanager.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which alertmanagers are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3761,35 +3767,39 @@ The `memberlist_config` configures the Gossip memberlist.
 [randomize_node_name: <boolean> | default = true]
 
 # The timeout for establishing a connection with a remote node, and for
-# read/write operations. Uses memberlist LAN defaults if 0.
+# read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 0s]
+[stream_timeout: <duration> | default = 10s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
-[retransmit_factor: <int> | default = 0]
+[retransmit_factor: <int> | default = 4]
 
-# How often to use pull/push sync. Uses memberlist LAN defaults if 0.
+# How often to use pull/push sync.
 # CLI flag: -memberlist.pullpush-interval
-[pull_push_interval: <duration> | default = 0s]
+[pull_push_interval: <duration> | default = 30s]
 
-# How often to gossip. Uses memberlist LAN defaults if 0.
+# How often to gossip.
 # CLI flag: -memberlist.gossip-interval
-[gossip_interval: <duration> | default = 0s]
+[gossip_interval: <duration> | default = 200ms]
 
-# How many nodes to gossip to. Uses memberlist LAN defaults if 0.
+# How many nodes to gossip to.
 # CLI flag: -memberlist.gossip-nodes
-[gossip_nodes: <int> | default = 0]
+[gossip_nodes: <int> | default = 3]
 
 # How long to keep gossiping to dead nodes, to give them chance to refute their
-# death. Uses memberlist LAN defaults if 0.
+# death.
 # CLI flag: -memberlist.gossip-to-dead-nodes-time
-[gossip_to_dead_nodes_time: <duration> | default = 0s]
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
 
-# How soon can dead node's name be reclaimed with new address. Defaults to 0,
-# which is disabled.
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
+
+# Enable message compression. This can be used to reduce bandwidth usage at the
+# cost of slightly more CPU utilization.
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
 
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format (see
@@ -5174,12 +5184,12 @@ sharding_ring:
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring.
+  # the ring. 0 = never (timeout disabled).
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -5195,6 +5205,10 @@ sharding_ring:
   # Name of network interface to read address from.
   # CLI flag: -compactor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # Timeout for waiting on compactor to become ACTIVE in the ring.
+  # CLI flag: -compactor.ring.wait-active-instance-timeout
+  [wait_active_instance_timeout: <duration> | default = 10m]
 ```
 
 ### `store_gateway_config`
@@ -5248,13 +5262,13 @@ sharding_ring:
       # CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. This option needs be set both on the store-gateway and
-  # querier when running in microservices mode.
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 

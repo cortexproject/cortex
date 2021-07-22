@@ -232,13 +232,13 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
-    # Period at which to heartbeat to the ring.
+    # Period at which to heartbeat to the ring. 0 = disabled.
     # CLI flag: -store-gateway.sharding-ring.heartbeat-period
     [heartbeat_period: <duration> | default = 15s]
 
     # The heartbeat timeout after which store gateways are considered unhealthy
-    # within the ring. This option needs be set both on the store-gateway and
-    # querier when running in microservices mode.
+    # within the ring. 0 = never (timeout disabled). This option needs be set
+    # both on the store-gateway and querier when running in microservices mode.
     # CLI flag: -store-gateway.sharding-ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 

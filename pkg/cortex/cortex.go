@@ -170,7 +170,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Alertmanager.RegisterFlags(f)
 	c.AlertmanagerStorage.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
-	c.MemberlistKV.RegisterFlags(f, "")
+	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 
 	// These don't seem to have a home.

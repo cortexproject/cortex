@@ -31,6 +31,10 @@ const (
 	// originalDefaultTenantLabel is the default tenant label with a prefix.
 	// It is used to prevent matcher clashes for timeseries that happen to have a label with the same name as the default tenant label.
 	originalDefaultTenantLabel = retainExistingPrefix + defaultTenantLabel
+	// seriesWithLabelNames can be used as matcher's label name in LabelNames call.
+	// If it's the only matcher provided then the result label names are the pipe-split value of the matcher.
+	// Matcher type is ignored.
+	seriesWithLabelNames = "series_with_label_names"
 )
 
 // mockTenantQueryableWithFilter is a storage.Queryable that can be use to return specific warnings or errors by tenant.
@@ -203,7 +207,20 @@ func (m mockTenantQuerier) LabelValues(name string, matchers ...*labels.Matcher)
 
 // LabelNames implements the storage.LabelQuerier interface.
 // It returns a sorted slice of all label names in the querier.
-func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
+// If only one matcher is provided with label Name=seriesWithLabelNames then the resulting set will have the values of that matchers pipe-split appended.
+// I.e. querying for {seriesWithLabelNames="foo|bar|baz"} will have as result [bar, baz, foo, <rest of label names from querier matrix> ]
+func (m mockTenantQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	var results []string
+
+	if len(matchers) == 1 && matchers[0].Name == seriesWithLabelNames {
+		if matchers[0].Value == "" {
+			return nil, m.warnings, nil
+		}
+		results = strings.Split(matchers[0].Value, "|")
+	} else if len(matchers) > 1 {
+		m.warnings = append(m.warnings, errors.New(mockMatchersNotImplemented))
+	}
+
 	if m.queryErr != nil {
 		return nil, nil, m.queryErr
 	}
@@ -214,7 +231,7 @@ func (m mockTenantQuerier) LabelNames() ([]string, storage.Warnings, error) {
 			labelValues[string(k)] = struct{}{}
 		}
 	}
-	var results []string
+
 	for k := range labelValues {
 		results = append(results, k)
 	}
@@ -276,6 +293,8 @@ type selectScenario struct {
 type labelNamesTestCase struct {
 	// name is a description of the test case.
 	name string
+	// matchers is a slice of label matchers used to filter series in the test case.
+	matchers []*labels.Matcher
 	// expectedLabelNames are the expected label names returned from the queryable.
 	expectedLabelNames []string
 	// expectedWarnings is a slice of storage.Warnings messages expected when querying.
@@ -498,6 +517,14 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 			},
 		},
 		{
+			mergeQueryableScenario: singleTenantScenario,
+			labelNamesTestCase: labelNamesTestCase{
+				name:               "should not return the __tenant_id__ label as the MergeQueryable has been bypassed with matchers",
+				matchers:           []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, seriesWithLabelNames, "bar|foo")},
+				expectedLabelNames: []string{"bar", "foo", "instance", "tenant-team-a"},
+			},
+		},
+		{
 			mergeQueryableScenario: singleTenantNoBypassScenario,
 			labelNamesTestCase: labelNamesTestCase{
 				name:               "should return the __tenant_id__ label as the MergeQueryable has not been bypassed",
@@ -536,13 +563,69 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 				expectedQueryErr: errors.New("error querying tenant_id team-b: failure xyz"),
 			},
 		},
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelNamesTestCase: labelNamesTestCase{
+				name:               "should propagate non-tenant matchers to downstream queriers",
+				matchers:           []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, seriesWithLabelNames, "bar|foo")},
+				expectedLabelNames: []string{defaultTenantLabel, "bar", "foo", "instance", "tenant-team-a", "tenant-team-b", "tenant-team-c"},
+				expectedWarnings: []string{
+					`warning querying tenant_id team-b: don't like them`,
+					`warning querying tenant_id team-c: out of office`,
+				},
+			},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelNamesTestCase: labelNamesTestCase{
+
+				name: "should only query tenant-b when there is an equals matcher for team-b tenant",
+				matchers: []*labels.Matcher{
+					{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual},
+					labels.MustNewMatcher(labels.MatchRegexp, seriesWithLabelNames, "bar|foo"),
+				},
+				expectedLabelNames: []string{defaultTenantLabel, "bar", "foo", "instance", "tenant-team-b"},
+				expectedWarnings: []string{
+					`warning querying tenant_id team-b: don't like them`,
+				},
+			},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelNamesTestCase: labelNamesTestCase{
+				name: "should only query tenant-b and tenant-c when there is an regex matcher for team-b|team-c tenant",
+				matchers: []*labels.Matcher{
+					labels.MustNewMatcher(labels.MatchRegexp, defaultTenantLabel, "team-b|team-c"),
+					labels.MustNewMatcher(labels.MatchRegexp, seriesWithLabelNames, "bar|foo"),
+				},
+				expectedLabelNames: []string{defaultTenantLabel, "bar", "foo", "instance", "tenant-team-b", "tenant-team-c"},
+				expectedWarnings: []string{
+					`warning querying tenant_id team-b: don't like them`,
+					`warning querying tenant_id team-c: out of office`,
+				},
+			},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithWarningsScenario,
+			labelNamesTestCase: labelNamesTestCase{
+				name: "only tenant-b is selected and it already has a defaultTenantLabel which is prepended with original_ prefix",
+				matchers: []*labels.Matcher{
+					{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual},
+					labels.MustNewMatcher(labels.MatchRegexp, seriesWithLabelNames, defaultTenantLabel),
+				},
+				expectedLabelNames: []string{defaultTenantLabel, "instance", originalDefaultTenantLabel, "tenant-team-b"},
+				expectedWarnings: []string{
+					`warning querying tenant_id team-b: don't like them`,
+				},
+			},
+		},
 	} {
 		t.Run(scenario.mergeQueryableScenario.name, func(t *testing.T) {
 			querier, err := scenario.init()
 			require.NoError(t, err)
 
 			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
-				labelNames, warnings, err := querier.LabelNames()
+				labelNames, warnings, err := querier.LabelNames(scenario.labelNamesTestCase.matchers...)
 				if scenario.labelNamesTestCase.expectedQueryErr != nil {
 					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
 				} else {

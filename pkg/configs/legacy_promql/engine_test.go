@@ -135,8 +135,10 @@ func (q *errQuerier) Select(bool, *storage.SelectHints, ...*labels.Matcher) stor
 func (q *errQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, q.err
 }
-func (q *errQuerier) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, q.err }
-func (q *errQuerier) Close() error                                    { return q.err }
+func (q *errQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, q.err
+}
+func (q *errQuerier) Close() error { return q.err }
 
 func TestQueryError(t *testing.T) {
 	engine := NewEngine(nil, nil, 10, 10*time.Second)

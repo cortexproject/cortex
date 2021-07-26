@@ -16,6 +16,9 @@
 * [CHANGE] Update Go version to 1.16.6. #4362
 * [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
 * [CHANGE] Memberlist: the `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
+* [CHANGE] Memberlist: allow specifying address and port advertised to the memberlist ring by setting the following configuration: #4387
+   * `-memberlist.advertise_addr`
+   * `-memberlist.advertise_port`
 * [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
   * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
 * [CHANGE] Some files and directories created by Mimir components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394

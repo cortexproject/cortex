@@ -3863,6 +3863,16 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.bind-port
 [bind_port: <int> | default = 7946]
 
+# IP address to advertise to memberlist cluster. Used for NAT traversal.
+# Defaults to first IP specified in `-memberlist.bind-addr` or
+# `sockaddr.GetPrivateIP()` if that IP is 0.0.0.0
+# CLI flag: -memberlist.advertise-addr
+[advertise_addr: <string> | default = ""]
+
+# Port to advertise to memberlist cluster. Used for NAT traversal.
+# CLI flag: -memberlist.advertise-port
+[advertise_port: <int> | default = 7946]
+
 # Timeout used when connecting to other nodes to send packet.
 # CLI flag: -memberlist.packet-dial-timeout
 [packet_dial_timeout: <duration> | default = 5s]

@@ -94,7 +94,7 @@ func (s *testStore) checkData(t *testing.T, userIDs []string, testData map[strin
 		res, err := chunk.ChunksToMatrix(context.Background(), s.chunks[userID], model.Time(0), model.Time(math.MaxInt64))
 		require.NoError(t, err)
 		sort.Sort(res)
-		assert.Equal(t, testData[userID], res)
+		assert.Equal(t, testData[userID], res, "userID %s", userID)
 	}
 }
 
@@ -388,7 +388,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 	userIDs, testData := pushTestSamples(t, ing, 4, 100, 0)
 
 	// wait beyond idle time so samples flush
-	time.Sleep(cfg.MaxChunkIdle * 2)
+	time.Sleep(cfg.MaxChunkIdle * 3)
 
 	store.checkData(t, userIDs, testData)
 
@@ -410,6 +410,8 @@ func TestIngesterIdleFlush(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, model.Matrix{}, res)
 	}
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 func TestIngesterSpreadFlush(t *testing.T) {
@@ -426,10 +428,13 @@ func TestIngesterSpreadFlush(t *testing.T) {
 	_, _ = pushTestSamples(t, ing, 4, 1, int(cfg.MaxChunkAge.Seconds()-1)*1000)
 
 	// wait beyond flush time so first set of samples should be sent to store
-	time.Sleep(cfg.FlushCheckPeriod * 2)
+	// (you'd think a shorter wait, like period*2, would work, but Go timers are not reliable enough for that)
+	time.Sleep(cfg.FlushCheckPeriod * 10)
 
 	// check the first set of samples has been sent to the store
 	store.checkData(t, userIDs, testData)
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
 type stream struct {

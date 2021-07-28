@@ -645,10 +645,11 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	if r.cfg.EnableSharding {
 		return r.getShardedRules(ctx, userID)
@@ -794,10 +795,11 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	groupDescs, err := r.getLocalRules(userID)
 	if err != nil {
@@ -841,13 +843,14 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	userID, err := tenant.TenantID(req.Context())
+	tenantIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
 		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
 	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {

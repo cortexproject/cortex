@@ -122,11 +122,12 @@ func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) 
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	logger := util_log.WithContext(r.Context(), d.logger)
 

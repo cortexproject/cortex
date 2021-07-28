@@ -58,12 +58,13 @@ type UserConfig struct {
 func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
 
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
@@ -95,12 +96,13 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	var input io.Reader
 	maxConfigSize := am.limits.AlertmanagerMaxConfigSize(userID)
@@ -155,12 +157,13 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 // Note that if no config exists for a user, StatusOK is returned.
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
-	userID, err := tenant.TenantID(r.Context())
+	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
 		return
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	err = am.store.DeleteAlertConfig(r.Context(), userID)
 	if err != nil {

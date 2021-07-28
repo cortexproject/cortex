@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -36,7 +38,7 @@ type PusherAppender struct {
 	ctx             context.Context
 	pusher          Pusher
 	labels          []labels.Labels
-	samples         []cortexpb.Sample
+	samples         map[string][]cortexpb.Sample
 	userID          string
 	evaluationDelay time.Duration
 }
@@ -56,7 +58,19 @@ func (a *PusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (
 		t -= a.evaluationDelay.Milliseconds()
 	}
 
-	a.samples = append(a.samples, cortexpb.Sample{
+	userID := a.userID
+	if tenant.IsCompositeTenantID(userID) {
+		// Set seed based on a hash of the series so same series always goes to same subtenant
+		src := rand.NewSource(int64(l.Copy().Hash()))
+		r := rand.New(src)
+		userIDs, err := tenant.TenantIDsFromOrgID(userID)
+		if err != nil {
+			return 0, err
+		}
+		i := r.Intn(len(userIDs))
+		userID = userIDs[i]
+	}
+	a.samples[userID] = append(a.samples[userID], cortexpb.Sample{
 		TimestampMs: t,
 		Value:       v,
 	})
@@ -72,23 +86,26 @@ func (a *PusherAppender) Commit() error {
 
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
+	var err error
+	for userID, samples := range a.samples {
+		_, err = a.pusher.Push(user.InjectOrgID(a.ctx, userID), cortexpb.ToWriteRequest(a.labels, samples, nil, cortexpb.RULE))
 
-	if err != nil {
-		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
-			a.failedWrites.Inc()
+		if err != nil {
+			// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
+			if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
+				a.failedWrites.Inc()
+			}
 		}
 	}
 
 	a.labels = nil
-	a.samples = nil
+	a.samples = map[string][]cortexpb.Sample{}
 	return err
 }
 
 func (a *PusherAppender) Rollback() error {
 	a.labels = nil
-	a.samples = nil
+	a.samples = map[string][]cortexpb.Sample{}
 	return nil
 }
 
@@ -122,6 +139,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 		pusher:          t.pusher,
 		userID:          t.userID,
 		evaluationDelay: t.rulesLimits.EvaluationDelay(t.userID),
+		samples:         map[string][]cortexpb.Sample{},
 	}
 }
 

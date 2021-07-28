@@ -138,8 +138,8 @@ func NewAPI(r *Ruler, s rulestore.RuleStore, logger log.Logger) *API {
 
 func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
-	if err != nil || userID == "" {
+	tenantIDs, err := tenant.TenantIDs(req.Context())
+	if err != nil || len(tenantIDs) == 0 {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
 		return
@@ -230,8 +230,8 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
-	if err != nil || userID == "" {
+	tenantIDs, err := tenant.TenantIDs(req.Context())
+	if err != nil || len(tenantIDs) == 0 {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		respondError(logger, w, "no valid org id found")
 		return
@@ -359,10 +359,11 @@ func parseGroupName(params map[string]string) (string, error) {
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	userID, err := tenant.TenantID(req.Context())
+	tenantIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	vars := mux.Vars(req)
 

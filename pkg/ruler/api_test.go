@@ -241,7 +241,7 @@ rules:
 			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
 			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").HandlerFunc(a.GetRuleGroup)
 			// POST
-			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1|user2|user3")
 			w := httptest.NewRecorder()
 
 			router.ServeHTTP(w, req)
@@ -249,7 +249,7 @@ rules:
 
 			if tt.err == nil {
 				// GET
-				req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace/test", nil, "user1")
+				req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace/test", nil, "user1|user2|user3")
 				w = httptest.NewRecorder()
 
 				router.ServeHTTP(w, req)

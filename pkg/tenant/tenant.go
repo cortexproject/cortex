@@ -68,6 +68,10 @@ func ValidTenantID(s string) error {
 	return nil
 }
 
+func IsCompositeTenantID(s string) bool {
+	return strings.Contains(s, tenantIDsLabelSeparator)
+}
+
 func JoinTenantIDs(tenantIDs []string) string {
 	return strings.Join(tenantIDs, tenantIDsLabelSeparator)
 }

@@ -284,7 +284,15 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	return &resp, nil
 }
 
+// Buffer can be used to read a response body.
+// This allows to avoid reading the body multiple times from the `http.Response.Body`.
+type Buffer interface {
+	Bytes() []byte
+}
+
 func bodyBuffer(res *http.Response) ([]byte, error) {
+	// Attempt to cast the response body to a Buffer and use it if possible.
+	// This is because the frontend may have already read the body and buffered it.
 	if buffer, ok := res.Body.(Buffer); ok {
 		return buffer.Bytes(), nil
 	}

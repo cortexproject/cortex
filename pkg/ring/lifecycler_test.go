@@ -347,7 +347,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 
 	pool := func(condition func(*Desc) bool) map[string]InstanceDesc {
 		var ingesters map[string]InstanceDesc
-		test.Poll(t, 5000*time.Millisecond, true, func() interface{} {
+		test.Poll(t, 5*time.Second, true, func() interface{} {
 			d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
 			require.NoError(t, err)
 

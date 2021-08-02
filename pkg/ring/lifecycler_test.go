@@ -330,25 +330,6 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
 
-	// We are going to create 2 fake ingester with disabled heart beat and `unregister_on_shutdown=false` then
-	// test if the ingester 2 became active after:
-	// * Clean Shutdown (LEAVING after shutdown)
-	// * Crashes while in the PENDING or JOINING state
-	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
-	lifecyclerConfig.UnregisterOnShutdown = false
-	lifecyclerConfig.HeartbeatPeriod = 0
-
-	l1, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
-	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
-
-	lifecyclerConfig.ID = "ing2"
-
-	l2, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l2))
-
 	// poll function waits for a condition and returning actual state of the ingesters after the condition succeed.
 	poll := func(condition func(*Desc) bool) map[string]InstanceDesc {
 		var ingesters map[string]InstanceDesc
@@ -367,16 +348,29 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 		return ingesters
 	}
 
-	// Starts Ingester2 and wait it to became active
-	startIngester2AndWaitActive := func(lcConfig LifecyclerConfig) *Lifecycler {
-		ingester, err := NewLifecycler(lcConfig, &noopFlushTransferer{}, "ingester", IngesterRingKey, true, nil)
+	// Starts Ingester and wait it to became active
+	startIngesterAndWaitActive := func(ingId string) *Lifecycler {
+		lifecyclerConfig := testLifecyclerConfig(ringConfig, ingId)
+		// Disabling heartBeat and unregister_on_shutdown
+		lifecyclerConfig.UnregisterOnShutdown = false
+		lifecyclerConfig.HeartbeatPeriod = 0
+		lifecycler, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "lifecycler", IngesterRingKey, true, nil)
 		require.NoError(t, err)
-		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler))
 		poll(func(desc *Desc) bool {
-			return len(desc.Ingesters) == 2 && desc.Ingesters["ing2"].State == ACTIVE
+			return desc.Ingesters[ingId].State == ACTIVE
 		})
-		return ingester
+		return lifecycler
 	}
+
+	// We are going to create 2 fake ingester with disabled heart beat and `unregister_on_shutdown=false` then
+	// test if the ingester 2 became active after:
+	// * Clean Shutdown (LEAVING after shutdown)
+	// * Crashes while in the PENDING or JOINING state
+	l1 := startIngesterAndWaitActive("ing1")
+	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
+
+	l2 := startIngesterAndWaitActive("ing2")
 
 	ingesters := poll(func(desc *Desc) bool {
 		return len(desc.Ingesters) == 2 && desc.Ingesters["ing1"].State == ACTIVE && desc.Ingesters["ing2"].State == ACTIVE
@@ -395,7 +389,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	assert.Equal(t, LEAVING, ingesters["ing2"].State)
 
 	// Start Ingester2 again - Should flip back to ACTIVE in the ring
-	l2 = startIngester2AndWaitActive(lifecyclerConfig)
+	l2 = startIngesterAndWaitActive("ing2")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with JOINING state
@@ -409,7 +403,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngester2AndWaitActive(lifecyclerConfig)
+	l2 = startIngesterAndWaitActive("ing2")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 
 	// Simulate ingester2 crash on startup and left the ring with PENDING state
@@ -423,7 +417,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 	})
 	require.NoError(t, err)
 
-	l2 = startIngester2AndWaitActive(lifecyclerConfig)
+	l2 = startIngesterAndWaitActive("ing2")
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
 }
 

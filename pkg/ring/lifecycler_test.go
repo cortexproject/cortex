@@ -321,6 +321,106 @@ type noopFlushTransferer struct {
 func (f *noopFlushTransferer) Flush()                                {}
 func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
 
+func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testing.T) {
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = consul.NewInMemoryClient(GetCodec())
+
+	r, err := New(ringConfig, "ingester", IngesterRingKey, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+
+	// poll function waits for a condition and returning actual state of the ingesters after the condition succeed.
+	poll := func(condition func(*Desc) bool) map[string]InstanceDesc {
+		var ingesters map[string]InstanceDesc
+		test.Poll(t, 5*time.Second, true, func() interface{} {
+			d, err := r.KVClient.Get(context.Background(), IngesterRingKey)
+			require.NoError(t, err)
+
+			desc, ok := d.(*Desc)
+
+			if ok {
+				ingesters = desc.Ingesters
+			}
+			return ok && condition(desc)
+		})
+
+		return ingesters
+	}
+
+	// Starts Ingester and wait it to became active
+	startIngesterAndWaitActive := func(ingId string) *Lifecycler {
+		lifecyclerConfig := testLifecyclerConfig(ringConfig, ingId)
+		// Disabling heartBeat and unregister_on_shutdown
+		lifecyclerConfig.UnregisterOnShutdown = false
+		lifecyclerConfig.HeartbeatPeriod = 0
+		lifecycler, err := NewLifecycler(lifecyclerConfig, &noopFlushTransferer{}, "lifecycler", IngesterRingKey, true, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), lifecycler))
+		poll(func(desc *Desc) bool {
+			return desc.Ingesters[ingId].State == ACTIVE
+		})
+		return lifecycler
+	}
+
+	// We are going to create 2 fake ingester with disabled heart beat and `unregister_on_shutdown=false` then
+	// test if the ingester 2 became active after:
+	// * Clean Shutdown (LEAVING after shutdown)
+	// * Crashes while in the PENDING or JOINING state
+	l1 := startIngesterAndWaitActive("ing1")
+	defer services.StopAndAwaitTerminated(context.Background(), l1) //nolint:errcheck
+
+	l2 := startIngesterAndWaitActive("ing2")
+
+	ingesters := poll(func(desc *Desc) bool {
+		return len(desc.Ingesters) == 2 && desc.Ingesters["ing1"].State == ACTIVE && desc.Ingesters["ing2"].State == ACTIVE
+	})
+
+	// Both Ingester should be active and running
+	assert.Equal(t, ACTIVE, ingesters["ing1"].State)
+	assert.Equal(t, ACTIVE, ingesters["ing2"].State)
+
+	// Stop One ingester gracefully should leave it on LEAVING STATE on the ring
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	ingesters = poll(func(desc *Desc) bool {
+		return len(desc.Ingesters) == 2 && desc.Ingesters["ing2"].State == LEAVING
+	})
+	assert.Equal(t, LEAVING, ingesters["ing2"].State)
+
+	// Start Ingester2 again - Should flip back to ACTIVE in the ring
+	l2 = startIngesterAndWaitActive("ing2")
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	// Simulate ingester2 crash on startup and left the ring with JOINING state
+	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		desc, ok := in.(*Desc)
+		require.Equal(t, true, ok)
+		ingester2Desc := desc.Ingesters["ing2"]
+		ingester2Desc.State = JOINING
+		desc.Ingesters["ing2"] = ingester2Desc
+		return desc, true, nil
+	})
+	require.NoError(t, err)
+
+	l2 = startIngesterAndWaitActive("ing2")
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+
+	// Simulate ingester2 crash on startup and left the ring with PENDING state
+	err = r.KVClient.CAS(context.Background(), IngesterRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		desc, ok := in.(*Desc)
+		require.Equal(t, true, ok)
+		ingester2Desc := desc.Ingesters["ing2"]
+		ingester2Desc.State = PENDING
+		desc.Ingesters["ing2"] = ingester2Desc
+		return desc, true, nil
+	})
+	require.NoError(t, err)
+
+	l2 = startIngesterAndWaitActive("ing2")
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), l2))
+}
+
 func TestTokensOnDisk(t *testing.T) {
 	var ringConfig Config
 	flagext.DefaultValues(&ringConfig)

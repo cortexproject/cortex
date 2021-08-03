@@ -18,7 +18,7 @@ interface and humans sending queries from GUIs, supply credentials
 which identify them and confirm they are authorised. When configuring the
 `remote_write` API in Prometheus, the user and password fields of http Basic
 auth, or Bearer token, can be used to convey the tenant ID and/or credentials.
-See the **Cortex-Tenant** section below for one way to solve this.
+See the [Cortex-Tenant](#cortex-tenant) section below for one way to solve this.
 
 In trusted environments, Prometheus can send the `X-Scope-OrgID` header itself
 by configuring the `headers` field in its [`remote_write` configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write):

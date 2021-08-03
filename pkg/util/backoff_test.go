@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBackoff_NextDelay(t *testing.T) {
@@ -98,6 +100,42 @@ func TestBackoff_NextDelay(t *testing.T) {
 					t.Errorf("%d expected to be within %d and %d", delay, expectedRange[0], expectedRange[1])
 				}
 			}
+		})
+	}
+}
+
+func TestBackoff_Ongoing(t *testing.T) {
+	tests := map[string]struct {
+		maxRetries      int
+		currentRetires  int
+		expectedOngoing bool
+	}{
+		"max retires == 0 disables retries": {
+			maxRetries:      0,
+			currentRetires:  0,
+			expectedOngoing: false,
+		},
+		"keep retrying": {
+			maxRetries:      42,
+			currentRetires:  12,
+			expectedOngoing: true,
+		},
+		"stop retrying": {
+			maxRetries:      42,
+			currentRetires:  42,
+			expectedOngoing: true,
+		},
+	}
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			b := NewBackoff(context.Background(), BackoffConfig{
+				MaxRetries: testData.maxRetries,
+			})
+			b.numRetries = testData.currentRetires
+
+			require.Equal(t, testData.expectedOngoing, b.Ongoing())
 		})
 	}
 }

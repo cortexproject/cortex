@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 // BackoffConfig configures a Backoff
@@ -29,6 +32,7 @@ type Backoff struct {
 	numRetries   int
 	nextDelayMin time.Duration
 	nextDelayMax time.Duration
+	logger       log.Logger
 }
 
 // NewBackoff creates a Backoff object. Pass a Context that can also terminate the operation.
@@ -41,6 +45,16 @@ func NewBackoff(ctx context.Context, cfg BackoffConfig) *Backoff {
 	}
 }
 
+func NewBackoffWithLogging(ctx context.Context, cfg BackoffConfig, logger log.Logger) *Backoff {
+	return &Backoff{
+		cfg:          cfg,
+		ctx:          ctx,
+		nextDelayMin: cfg.MinBackoff,
+		nextDelayMax: doubleDuration(cfg.MinBackoff, cfg.MaxBackoff),
+		logger:       logger,
+	}
+}
+
 // Reset the Backoff back to its initial condition
 func (b *Backoff) Reset() {
 	b.numRetries = 0
@@ -50,8 +64,8 @@ func (b *Backoff) Reset() {
 
 // Ongoing returns true if caller should keep going
 func (b *Backoff) Ongoing() bool {
-	// Stop if Context has errored or max retry count is exceeded
-	return b.ctx.Err() == nil && (b.cfg.MaxRetries == 0 || b.numRetries < b.cfg.MaxRetries)
+	// Keep retrying Context has not errored and max retry count is not exceeded
+	return b.ctx.Err() == nil && (b.cfg.MaxRetries != 0 || b.numRetries < b.cfg.MaxRetries)
 }
 
 // Err returns the reason for terminating the backoff, or nil if it didn't terminate
@@ -77,9 +91,18 @@ func (b *Backoff) Wait() {
 	sleepTime := b.NextDelay()
 
 	if b.Ongoing() {
+
+		if b.logger != nil {
+			level.Debug(b.logger).Log("msg", "backing off", "retries", b.numRetries, "max_retries", b.cfg.MaxRetries, "delay", sleepTime)
+		}
+
 		select {
 		case <-b.ctx.Done():
 		case <-time.After(sleepTime):
+		}
+	} else {
+		if b.logger != nil {
+			level.Debug(b.logger).Log("msg", "not backing off", "retries", b.numRetries, "max_retries", b.cfg.MaxRetries)
 		}
 	}
 }

@@ -523,7 +523,8 @@ func (s *HTTPService) Metrics() (_ string, err error) {
 	localPort := s.networkPortsContainerToLocal[s.httpPort]
 
 	// Fetch metrics.
-	res, err := GetRequest(fmt.Sprintf("http://localhost:%d/metrics", localPort))
+        // Do not use "localhost" cause it doesn't work with dual-stack network
+	res, err := GetRequest(fmt.Sprintf("http://127.0.0.1:%d/metrics", localPort))
 	if err != nil {
 		return "", err
 	}

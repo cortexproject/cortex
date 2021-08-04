@@ -8,6 +8,7 @@
 * [CHANGE] Memberlist: the `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
 * [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
   * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
+* [CHANGE] The directory and file permissions for TSDB blocks stored on disk in ingester, compactor and store-gateway have been restricted to be writeable only by the owner and readable by owner and group. #4394
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341
 * [ENHANCEMENT] Ring: allow experimental configuration of disabling of heartbeat timeouts by setting the relevant configuration value to zero. Applies to the following: #4342

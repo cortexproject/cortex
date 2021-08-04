@@ -196,13 +196,12 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 			select {
 			case <-c.quit:
 				return
-			default:
-				c.inputCh <- &work{
-					keys:     batchKeys,
-					ctx:      ctx,
-					resultCh: resultsCh,
-					batchID:  j,
-				}
+			case c.inputCh <- &work{
+				keys:     batchKeys,
+				ctx:      ctx,
+				resultCh: resultsCh,
+				batchID:  j,
+			}:
 			}
 			j++
 		}
@@ -216,13 +215,21 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	// We need to order found by the input keys order.
 	results := make([]*result, numResults)
+loopResults:
 	for i := 0; i < numResults; i++ {
-		result := <-resultsCh
-		results[result.batchID] = result
+		select {
+		case <-c.quit:
+			break loopResults
+		case result := <-resultsCh:
+			results[result.batchID] = result
+		}
 	}
 	close(resultsCh)
 
 	for _, result := range results {
+		if result == nil {
+			continue
+		}
 		found = append(found, result.found...)
 		bufs = append(bufs, result.bufs...)
 		missed = append(missed, result.missed...)

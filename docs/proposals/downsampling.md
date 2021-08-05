@@ -7,7 +7,7 @@ slug: downsampling
 
 - Author: [Michael Hausenblas](https://github.com/mhausenblas)
 - Reviewers:
-- Date: July 2021
+- Date: August 2021
 - Status: Proposed
 
 ## Problem Statement

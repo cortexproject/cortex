@@ -37,7 +37,7 @@ dimension.
 
 *Accuracy*: when performing downsampling, one has two options: A) keep the raw
 samples around, that is, store the downsampled data alonside the raw data, or
-B) discard the raw data either on ingestion or after some tim and, in the long
+B) discard the raw data either on ingestion or after some time and, in the long
 term, only store the downsampled data.
 
 Going forward we will call the approach (A) comprehensive and (B) trimmed
@@ -131,12 +131,26 @@ We now turn our attention to the proposed solution for downsampling in Cortex.
 * MUST support tenant-level granularity (can opt-in on an per-tenant basis).
 * SHOULD not have a significant impact on the write path performance.
 
+Concerning the sampling tiers we want to support the following time periods:
+
+1. Data up to one week raw (not downsampled).
+1. Data older than one week up to six months downsampled to 1h intervals.
+1. Data older than six months downsampled to 24h intervals.
+
 ### Concept
 
-It seems that the offline downsampling would be the preferred solution, allowing
+Offline downsampling is the preferred solution, allowing
 us to address the requirements as well as, in the mid to long run, aligning 
 efforts with the Thanos project.
 
+There are two options to realize downsampling we can consider:
+
+1. Making the process part of the compactor. This option has the advantage that
+   it would align with Thanos, but has the potential to be operationally more
+   complicated to use and troubleshoot.
+1. Introducing a new component dedicated to downsampling. This option is more
+   flexible and operationally simpler, however increases the overall number
+   of components Cortex has.
 
 [tenants]: https://cortexmetrics.io/docs/guides/glossary/#tenant
 [tenant-deletion]: https://cortexmetrics.io/docs/proposals/tenant-deletion/

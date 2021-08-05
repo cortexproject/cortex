@@ -4765,6 +4765,10 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
+      # Use memcached auto-discovery instead of DNS resolution
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
@@ -4811,6 +4815,10 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery instead of DNS resolution
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
 
     # Size of each subrange that bucket object is split into for better caching.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -4876,6 +4884,10 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery instead of DNS resolution
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
 
     # How long to cache list of tenants in the bucket.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl

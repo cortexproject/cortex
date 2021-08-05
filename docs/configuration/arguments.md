@@ -533,6 +533,8 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 
 If **no prefix** is provided, the provided IP or hostname will be used straightaway without pre-resolving it.
 
+If you are using a managed memcached service from [Google Cloud](https://cloud.google.com/memorystore/docs/memcached/auto-discovery-overview), or [AWS](https://docs.aws.amazon.com/AmazonElastiCache/latest/mem-ug/AutoDiscovery.HowAutoDiscoveryWorks.html), use the [auto-discovery](./config-file-reference.md#memcached-client-config) flag instead of DNS discovery.
+
 ## Logging of IP of reverse proxy
 
 If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.

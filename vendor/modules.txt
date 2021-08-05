@@ -605,7 +605,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.22.0
+# github.com/thanos-io/thanos v0.19.1-0.20210803192524-baea4ce9ef52
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -619,6 +619,7 @@ github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/godns
 github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
+github.com/thanos-io/thanos/pkg/discovery/memcache
 github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/exemplars/exemplarspb
 github.com/thanos-io/thanos/pkg/extprom

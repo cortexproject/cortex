@@ -186,6 +186,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
+	f.IntVar(&cfg.HandoffQueueDepth, prefix+"memberlist.handoff-queue-depth", 1024, "Size of Memberlist's internal channel which handles UDP messages. The size of this determines the size of the queue which Memberlist will keep while UDP messages are handled.")
 
 	cfg.TCPTransport.RegisterFlags(f, prefix)
 }

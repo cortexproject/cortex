@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -146,19 +148,58 @@ func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides Rules
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
-
 		result, err := qf(ctx, qs, t)
 
-		// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
-		// It returns promql.ErrStorage, if error should be reported back as 500.
-		// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
-		// or various user-errors (limits, duplicate samples, etc. ... also not failures).
-		//
-		// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
-		// but we only want internal errors here.
-		if _, ok := querier.TranslateToPromqlAPIError(err).(promql.ErrStorage); ok {
-			failedQueries.Inc()
+		// We only care about errors returned by underlying Queryable. Errors returned by PromQL engine are "user-errors",
+		// and not interesting here.
+		qerr := QueryableError{}
+		if err != nil && errors.As(err, &qerr) {
+			origErr := qerr.Unwrap()
+
+			// Not all errors returned by Queryable are interesting, only those that would result in 500 status code.
+			//
+			// We rely on TranslateToPromqlApiError to do its job here... it returns nil, if err is nil.
+			// It returns promql.ErrStorage, if error should be reported back as 500.
+			// Other errors it returns are either for canceled or timed-out queriers (we're not reporting those as failures),
+			// or various user-errors (limits, duplicate samples, etc. ... also not failures).
+			//
+			// All errors will still be counted towards "evaluation failures" metrics and logged by Prometheus Ruler,
+			// but we only want internal errors here.
+			if _, ok := querier.TranslateToPromqlAPIError(origErr).(promql.ErrStorage); ok {
+				failedQueries.Inc()
+			}
+
+			// Return unwrapped error.
+			return result, origErr
 		}
+
+		return result, err
+	}
+}
+
+func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Counter, logger log.Logger) rules.QueryFunc {
+	if queryTime == nil {
+		return qf
+	}
+
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// If we've been passed a counter we want to record the wall time spent executing this request.
+		timer := prometheus.NewTimer(nil)
+		defer func() {
+			querySeconds := timer.ObserveDuration().Seconds()
+			queryTime.Add(querySeconds)
+
+			// Log ruler query stats.
+			logMessage := []interface{}{
+				"msg", "query stats",
+				"component", "ruler",
+				"cortex_ruler_query_seconds_total", querySeconds,
+				"query", qs,
+			}
+			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
+		}()
+
+		result, err := qf(ctx, qs, t)
 		return result, err
 	}
 }
@@ -172,7 +213,7 @@ type RulesManager interface {
 	Stop()
 
 	// Updates rules manager state.
-	Update(interval time.Duration, files []string, externalLabels labels.Labels) error
+	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string) error
 
 	// Returns current rules groups.
 	RuleGroups() []*rules.Group
@@ -199,12 +240,29 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
 	})
+	var rulerQuerySeconds *prometheus.CounterVec
+	if cfg.EnableQueryStats {
+		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_query_seconds_total",
+			Help: "Total amount of wall clock time spent processing queries by the ruler.",
+		}, []string{"user"})
+	}
+
+	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
+	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
+	// Errors from PromQL are always "user" errors.
+	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
+		var queryTime prometheus.Counter = nil
+		if rulerQuerySeconds != nil {
+			queryTime = rulerQuerySeconds.WithLabelValues(userID)
+		}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
@@ -215,4 +273,24 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			ResendDelay:     cfg.ResendDelay,
 		})
 	}
+}
+
+type QueryableError struct {
+	err error
+}
+
+func (q QueryableError) Unwrap() error {
+	return q.err
+}
+
+func (q QueryableError) Error() string {
+	return q.err.Error()
+}
+
+func WrapQueryableErrors(err error) error {
+	if err == nil {
+		return err
+	}
+
+	return QueryableError{err: err}
 }

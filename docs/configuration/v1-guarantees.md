@@ -81,3 +81,17 @@ Currently experimental features are:
   - user config size (`-alertmanager.max-config-size-bytes`)
   - templates count in user config (`-alertmanager.max-templates-count`)
   - max template size (`-alertmanager.max-template-size-bytes`)
+- Disabling ring heartbeat timeouts
+  - `-distributor.ring.heartbeat-timeout=0`
+  - `-ring.heartbeat-timeout=0`
+  - `-ruler.ring.heartbeat-timeout=0`
+  - `-alertmanager.sharding-ring.heartbeat-timeout=0`
+  - `-compactor.ring.heartbeat-timeout=0`
+  - `-store-gateway.sharding-ring.heartbeat-timeout=0`
+- Disabling ring heartbeats
+  - `-distributor.ring.heartbeat-period=0`
+  - `-ingester.heartbeat-period=0`
+  - `-ruler.ring.heartbeat-period=0`
+  - `-alertmanager.sharding-ring.heartbeat-period=0`
+  - `-compactor.ring.heartbeat-period=0`
+  - `-store-gateway.sharding-ring.heartbeat-period=0`

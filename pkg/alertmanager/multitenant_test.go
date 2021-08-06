@@ -1325,18 +1325,15 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 				return ringDesc, true, nil
 			}))
 
-			// Assert if we expected a sync or not.
+			// Assert if we expected an additional sync or not.
+			expectedSyncs := 1
 			if tt.expected {
-				test.Poll(t, time.Second, float64(2), func() interface{} {
-					metrics := regs.BuildMetricFamiliesPerUser()
-					return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
-				})
-			} else {
-				time.Sleep(250 * time.Millisecond)
-
-				metrics := regs.BuildMetricFamiliesPerUser()
-				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total"))
+				expectedSyncs++
 			}
+			test.Poll(t, 5*time.Second, float64(expectedSyncs), func() interface{} {
+				metrics := regs.BuildMetricFamiliesPerUser()
+				return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
+			})
 		})
 	}
 }
@@ -1820,7 +1817,14 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 			{
 				metrics := registries.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
-				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+			}
+			// 2.c. Wait for the silence replication to be attempted; note this is asynchronous.
+			{
+				test.Poll(t, 5*time.Second, float64(1), func() interface{} {
+					metrics := registries.BuildMetricFamiliesPerUser()
+					return metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total")
+				})
+				metrics := registries.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 			}
 

@@ -40,4 +40,7 @@ type Mergeable interface {
 	// time when client is accessing value from the store. It can be used to hide tombstones from the clients.
 	// Returns the total number of tombstones present and the number of removed tombstones by this invocation.
 	RemoveTombstones(limit time.Time) (total, removed int)
+
+	// Clone should return a deep copy of the state.
+	Clone() Mergeable
 }

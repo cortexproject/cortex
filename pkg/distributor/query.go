@@ -2,7 +2,6 @@ package distributor
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sort"
 	"time"
@@ -11,10 +10,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/weaveworks/common/instrument"
-	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -22,10 +21,6 @@ import (
 	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-)
-
-var (
-	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from ingesters for %s (limit: %d)"
 )
 
 // Query multiple ingesters and returns a Matrix of samples.
@@ -86,11 +81,6 @@ func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, m
 func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*ingester_client.QueryStreamResponse, error) {
 	var result *ingester_client.QueryStreamResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryStream", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			return err
-		}
-
 		req, err := ingester_client.ToQueryRequest(from, to, matchers)
 		if err != nil {
 			return err
@@ -101,7 +91,7 @@ func (d *Distributor) QueryStream(ctx context.Context, from, to model.Time, matc
 			return err
 		}
 
-		result, err = d.queryIngesterStream(ctx, userID, replicationSet, req)
+		result, err = d.queryIngesterStream(ctx, replicationSet, req)
 		if err != nil {
 			return err
 		}
@@ -290,11 +280,10 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.
-func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
+func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (*ingester_client.QueryStreamResponse, error) {
 	var (
-		chunksLimit  = d.limits.MaxChunksPerQueryFromIngesters(userID)
-		chunksCount  = atomic.Int32{}
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
+		reqStats     = stats.FromContext(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -327,14 +316,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 			}
 
 			// Enforce the max chunks limits.
-			if chunksLimit > 0 {
-				if count := int(chunksCount.Add(int32(resp.ChunksCount()))); count > chunksLimit {
-					// We expect to be always able to convert the label matchers back to Prometheus ones.
-					// In case we fail (unexpected) the error will not include the matchers, but the core
-					// logic doesn't break.
-					matchers, _ := ingester_client.FromLabelMatchers(req.Matchers)
-					return nil, validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), chunksLimit))
-				}
+			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
+				return nil, validation.LimitError(chunkLimitErr.Error())
 			}
 
 			for _, series := range resp.Chunkseries {
@@ -401,6 +384,9 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, userID string, re
 	for _, series := range hashToTimeSeries {
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
+
+	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
+	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
 
 	return resp, nil
 }

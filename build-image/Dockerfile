@@ -1,4 +1,4 @@
-FROM golang:1.16.3-buster
+FROM golang:1.16.6-buster
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
 RUN apt-get update && apt-get install -y curl python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \

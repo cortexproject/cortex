@@ -3317,7 +3317,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 			NoLockfile:        true,
 			MinBlockDuration:  chunkRange,
 			MaxBlockDuration:  chunkRange,
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		db.DisableCompactions()

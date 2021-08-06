@@ -7,6 +7,8 @@ require (
 	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest/autorest/adal v0.9.14
+	github.com/Azure/go-autorest/autorest/azure/auth v0.5.8
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15

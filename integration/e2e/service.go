@@ -48,6 +48,9 @@ type ConcreteService struct {
 	// docker NetworkName used to start this container.
 	// If empty it means service is stopped.
 	usedNetworkName string
+
+	//docker container name
+	containerName string
 }
 
 func NewConcreteService(
@@ -102,13 +105,16 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		}
 	}()
 
+	s.usedNetworkName = networkName
+	if err = s.setContainerName(); err != nil {
+		return err
+	}
 	cmd := exec.Command("docker", s.buildDockerRunArgs(networkName, sharedDir)...)
 	cmd.Stdout = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
 	cmd.Stderr = &LinePrefixLogger{prefix: s.name + ": ", logger: logger}
 	if err = cmd.Start(); err != nil {
 		return err
 	}
-	s.usedNetworkName = networkName
 
 	// Wait until the container has been started.
 	if err = s.WaitForRunning(); err != nil {
@@ -119,11 +125,11 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 	for _, containerPort := range s.networkPorts {
 		var out []byte
 
-		out, err = RunCommandAndGetOutput("docker", "port", s.containerName(), strconv.Itoa(containerPort))
+		out, err = RunCommandAndGetOutput("docker", "port", s.getContainerName(), strconv.Itoa(containerPort))
 		if err != nil {
 			// Catch init errors.
 			if werr := s.WaitForRunning(); werr != nil {
-				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.containerName(), err)
+				return errors.Wrapf(werr, "failed to get mapping for port as container %s exited: %v", s.getContainerName(), err)
 			}
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s; output: %q", containerPort, s.name, out)
 		}
@@ -136,7 +142,7 @@ func (s *ConcreteService) Start(networkName, sharedDir string) (err error) {
 		s.networkPortsContainerToLocal[containerPort] = localPort
 	}
 
-	logger.Log("Ports for container:", s.containerName(), "Mapping:", s.networkPortsContainerToLocal)
+	logger.Log("Ports for container:", s.getContainerName(), "Mapping:", s.networkPortsContainerToLocal)
 	return nil
 }
 
@@ -147,7 +153,7 @@ func (s *ConcreteService) Stop() error {
 
 	logger.Log("Stopping", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.getContainerName()); err != nil {
 		logger.Log(string(out))
 		return err
 	}
@@ -163,14 +169,14 @@ func (s *ConcreteService) Kill() error {
 
 	logger.Log("Killing", s.name)
 
-	if out, err := RunCommandAndGetOutput("docker", "kill", s.containerName()); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "kill", s.getContainerName()); err != nil {
 		logger.Log(string(out))
 		return err
 	}
 
 	// Wait until the container actually stopped. However, this could fail if
 	// the container already exited, so we just ignore the error.
-	_, _ = RunCommandAndGetOutput("docker", "wait", s.containerName())
+	_, _ = RunCommandAndGetOutput("docker", "wait", s.getContainerName())
 
 	s.usedNetworkName = ""
 
@@ -235,8 +241,17 @@ func (s *ConcreteService) Ready() error {
 	return s.readiness.Ready(s)
 }
 
-func (s *ConcreteService) containerName() string {
-	return NetworkContainerHost(s.usedNetworkName, s.name)
+func (s *ConcreteService) setContainerName() error {
+	s.containerName = NetworkContainerHost(s.usedNetworkName, s.name)
+	// Linux supports up to 64 chars for hostname
+	if len(s.containerName) > 64 {
+		return fmt.Errorf("service container name %s should not exceed 64.", s.containerName)
+	}
+	return nil
+}
+
+func (s *ConcreteService) getContainerName() string {
+	return s.containerName
 }
 
 func (s *ConcreteService) WaitForRunning() (err error) {
@@ -249,7 +264,7 @@ func (s *ConcreteService) WaitForRunning() (err error) {
 		// stuck here.
 
 		var out []byte
-		out, err = RunCommandWithTimeoutAndGetOutput(5*time.Second, "docker", "inspect", "--format={{json .State.Running}}", s.containerName())
+		out, err = RunCommandWithTimeoutAndGetOutput(5*time.Second, "docker", "inspect", "--format={{json .State.Running}}", s.getContainerName())
 		if err != nil {
 			s.retryBackoff.Wait()
 			continue
@@ -292,7 +307,7 @@ func (s *ConcreteService) WaitReady() (err error) {
 }
 
 func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []string {
-	args := []string{"run", "--rm", "--net=" + networkName, "--name=" + networkName + "-" + s.name, "--hostname=" + s.name}
+	args := []string{"run", "--rm", "--net=" + networkName, "--name=" + s.getContainerName(), "--hostname=" + s.name}
 
 	// For Drone CI users, expire the container after 6 hours using drone-gc
 	args = append(args, "--label", fmt.Sprintf("io.drone.expires=%d", time.Now().Add(6*time.Hour).Unix()))
@@ -333,7 +348,7 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 // service. It returns the stdout, stderr, and error response from attempting
 // to run the command.
 func (s *ConcreteService) Exec(command *Command) (string, string, error) {
-	args := []string{"exec", s.containerName()}
+	args := []string{"exec", s.getContainerName()}
 	args = append(args, command.cmd)
 	args = append(args, command.args...)
 

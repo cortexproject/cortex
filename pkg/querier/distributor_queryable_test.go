@@ -306,6 +306,30 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 	require.False(t, it.Next())
 	require.Nil(t, it.Err())
 }
+func TestDistributorQuerier_LabelNames(t *testing.T) {
+	someMatchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}
+	labelNames := []string{"foo", "job"}
+
+	t.Run("with matchers", func(t *testing.T) {
+		metrics := []metric.Metric{
+			{Metric: model.Metric{"foo": "bar"}},
+			{Metric: model.Metric{"job": "baz"}},
+			{Metric: model.Metric{"job": "baz", "foo": "boom"}},
+		}
+		d := &mockDistributor{}
+		d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).
+			Return(metrics, nil)
+
+		queryable := newDistributorQueryable(d, false, nil, 0)
+		querier, err := queryable.Querier(context.Background(), mint, maxt)
+		require.NoError(t, err)
+
+		names, warnings, err := querier.LabelNames(someMatchers...)
+		require.NoError(t, err)
+		assert.Empty(t, warnings)
+		assert.Equal(t, labelNames, names)
+	})
+}
 
 func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
 	// We need to make sure that there is atleast one chunk present,
@@ -334,6 +358,10 @@ type mockDistributor struct {
 func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(model.Matrix), args.Error(1)
+}
+func (m *mockDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).(*client.ExemplarQueryResponse), args.Error(1)
 }
 func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	args := m.Called(ctx, from, to, matchers)

@@ -81,7 +81,7 @@ func TestTsdbBuilder(t *testing.T) {
 	id, err := b.finishBlock("unit test", map[string]string{"ext_label": "12345"})
 	require.NoError(t, err)
 
-	db, err := tsdb.Open(dir, util_log.Logger, prometheus.NewRegistry(), tsdb.DefaultOptions())
+	db, err := tsdb.Open(dir, util_log.Logger, prometheus.NewRegistry(), tsdb.DefaultOptions(), nil)
 	require.NoError(t, err)
 
 	blocks := db.Blocks()

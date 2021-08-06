@@ -1,9 +1,11 @@
 ---
-title: "Chunks Storage"
-linkTitle: "Chunks Storage"
+title: "Chunks Storage (deprecated)"
+linkTitle: "Chunks Storage (deprecated)"
 weight: 4
 menu:
 ---
+
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
 
 The chunks storage is a Cortex storage engine which stores each single time series into a separate object called _chunk_. Each chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) chunks. For this reason, the Cortex chunks storage requires two backend storages: a key-value store for the index and an object store for the chunks.
 

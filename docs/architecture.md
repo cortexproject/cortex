@@ -21,12 +21,12 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 Cortex currently supports two storage engines to store and query the time series:
 
-- Chunks (default)
+- Chunks (deprecated)
 - Blocks
 
 The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
 
-### Chunks storage (default)
+### Chunks storage (deprecated)
 
 The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
 
@@ -117,7 +117,7 @@ Cortex supports two hashing strategies:
 1. Hash the metric name and tenant ID (default)
 2. Hash the metric name, labels and tenant ID (enabled with `-distributor.shard-by-all-labels=true`)
 
-The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to any ingester since a metric could be spread across multiple ingesters given different label sets.
+The trade-off associated with the latter is that writes are more balanced across ingesters but each query needs to talk to all ingesters since a metric could be spread across multiple ingesters given different label sets.
 
 #### The hash ring
 

@@ -128,7 +128,7 @@ func (m testQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]st
 	return nil, nil, nil
 }
 
-func (m testQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (m testQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

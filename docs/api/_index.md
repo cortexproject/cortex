@@ -33,6 +33,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Ingesters ring status](#ingesters-ring-status) | Ingester | `GET /ingester/ring` |
 | [Instant query](#instant-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
+| [Exemplar query](#exemplar-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
 | [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/series` |
 | [Get label names](#get-label-names) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend | `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
@@ -317,6 +318,21 @@ GET,POST <legacy-http-prefix>/api/v1/query_range
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
 
 _For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Exemplar query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/query_exemplars
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/query_exemplars
+```
+
+Prometheus-compatible exemplar query endpoint.
+
+_For more information, please check out the Prometheus [exemplar query](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-exemplars) documentation._
 
 _Requires [authentication](#authentication)._
 

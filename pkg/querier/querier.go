@@ -300,16 +300,17 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step, "matchers", matchers)
 	}
 
-	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
-	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
-	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
-	// querying the long-term storage.
+	// If the querier receives a 'series' query, it means only metadata is needed.
+	// Here we expect that metadataQuerier querier will handle that.
 	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
-	if (sp == nil || sp.Func == "series") && !q.queryStoreForLabels {
+	if sp != nil && sp.Func == "series" && !q.queryStoreForLabels {
 		// In this case, the query time range has already been validated when the querier has been
 		// created.
 		return q.metadataQuerier.Select(true, sp, matchers...)
+	} else if sp == nil {
+		// if SelectHints is null, rely on minT, maxT of querier to scope in range for Select stmt
+		sp = &storage.SelectHints{Start: q.mint, End: q.maxt}
 	}
 
 	userID, err := tenant.TenantID(ctx)

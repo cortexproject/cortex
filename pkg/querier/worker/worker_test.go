@@ -23,7 +23,7 @@ func TestResetConcurrency(t *testing.T) {
 		maxConcurrent                         int
 		numTargets                            int
 		expectedConcurrency                   int
-		exepctedConcurrencyAfterTargetRemoval int
+		expectedConcurrencyAfterTargetRemoval int
 	}{
 		{
 			name:                                  "Test create at least one processor per target",

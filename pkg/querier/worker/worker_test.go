@@ -31,7 +31,7 @@ func TestResetConcurrency(t *testing.T) {
 			maxConcurrent:                         0,
 			numTargets:                            2,
 			expectedConcurrency:                   2,
-			exepctedConcurrencyAfterTargetRemoval: 1,
+			expectedConcurrencyAfterTargetRemoval: 1,
 		},
 		{
 			name:                                  "Test parallelism per target",
@@ -39,7 +39,7 @@ func TestResetConcurrency(t *testing.T) {
 			maxConcurrent:                         0,
 			numTargets:                            2,
 			expectedConcurrency:                   8,
-			exepctedConcurrencyAfterTargetRemoval: 4,
+			expectedConcurrencyAfterTargetRemoval: 4,
 		},
 		{
 			name:                                  "Test Total Parallelism with a remainder",
@@ -47,7 +47,7 @@ func TestResetConcurrency(t *testing.T) {
 			maxConcurrent:                         7,
 			numTargets:                            4,
 			expectedConcurrency:                   7,
-			exepctedConcurrencyAfterTargetRemoval: 7,
+			expectedConcurrencyAfterTargetRemoval: 7,
 		},
 		{
 			name:                                  "Test Total Parallelism dividing evenly",
@@ -55,7 +55,7 @@ func TestResetConcurrency(t *testing.T) {
 			maxConcurrent:                         6,
 			numTargets:                            2,
 			expectedConcurrency:                   6,
-			exepctedConcurrencyAfterTargetRemoval: 6,
+			expectedConcurrencyAfterTargetRemoval: 6,
 		},
 		{
 			name:                                  "Test Total Parallelism at least one worker per target",
@@ -63,7 +63,7 @@ func TestResetConcurrency(t *testing.T) {
 			maxConcurrent:                         3,
 			numTargets:                            6,
 			expectedConcurrency:                   6,
-			exepctedConcurrencyAfterTargetRemoval: 5,
+			expectedConcurrencyAfterTargetRemoval: 5,
 		},
 	}
 
@@ -91,7 +91,7 @@ func TestResetConcurrency(t *testing.T) {
 
 			// now we remove an address and ensure we still have the expected concurrency
 			w.AddressRemoved(fmt.Sprintf("127.0.0.1:%d", rand.Intn(tt.numTargets)))
-			test.Poll(t, 250*time.Millisecond, tt.exepctedConcurrencyAfterTargetRemoval, func() interface{} {
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrencyAfterTargetRemoval, func() interface{} {
 				return getConcurrentProcessors(w)
 			})
 

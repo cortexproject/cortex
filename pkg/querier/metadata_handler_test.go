@@ -7,13 +7,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/querier/testutils"
+
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMetadataHandler_Success(t *testing.T) {
-	d := &mockDistributor{}
+	d := &testutils.MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return(
 		[]scrape.MetricMetadata{
 			{Metric: "alertmanager_dispatcher_aggregation_groups", Help: "Number of active aggregation groups", Type: "gauge", Unit: ""},
@@ -51,7 +53,7 @@ func TestMetadataHandler_Success(t *testing.T) {
 }
 
 func TestMetadataHandler_Error(t *testing.T) {
-	d := &mockDistributor{}
+	d := &testutils.MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return([]scrape.MetricMetadata{}, fmt.Errorf("no user id"))
 
 	handler := MetadataHandler(d)

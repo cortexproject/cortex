@@ -21,7 +21,7 @@ import (
 const (
 	defaultTenantLabel   = "__tenant_id__"
 	retainExistingPrefix = "original_"
-	maxConcurrency       = 16
+	maxConcurrency       = 60
 )
 
 // NewQueryable returns a queryable that iterates through all the tenant IDs

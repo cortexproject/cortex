@@ -954,23 +954,32 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 // MetricsMetadata returns all metric metadata of a user.
 func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
-	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	userIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &ingester_client.MetricsMetadataRequest{}
-	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-		return client.MetricsMetadata(ctx, req)
-	})
-	if err != nil {
-		return nil, err
+	var userResps []interface{}
+	for _, userID := range userIDs {
+		ctx = user.InjectOrgID(ctx, userID)
+		replicationSet, err := d.GetIngestersForMetadata(ctx)
+		if err != nil {
+			return nil, err
+		}
+		req := &ingester_client.MetricsMetadataRequest{}
+		// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
+		resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+			return client.MetricsMetadata(ctx, req)
+		})
+		if err != nil {
+			return nil, err
+		}
+		userResps = append(userResps, resps...)
 	}
 
 	result := []scrape.MetricMetadata{}
 	dedupTracker := map[cortexpb.MetricMetadata]struct{}{}
-	for _, resp := range resps {
+	for _, resp := range userResps {
 		r := resp.(*ingester_client.MetricsMetadataResponse)
 		for _, m := range r.Metadata {
 			// Given we look across all ingesters - dedup the metadata.

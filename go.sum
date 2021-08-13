@@ -1455,8 +1455,8 @@ github.com/prometheus/alertmanager v0.21.1-0.20201106142418-c39b78780054/go.mod 
 github.com/prometheus/alertmanager v0.21.1-0.20210310093010-0f9cab6991e6/go.mod h1:MTqVn+vIupE0dzdgo+sMcNCp37SCAi8vPrvKTTnTz9g=
 github.com/prometheus/alertmanager v0.21.1-0.20210422101724-8176f78a70e1/go.mod h1:gsEqwD5BHHW9RNKvCuPOrrTMiP5I+faJUyLXvnivHik=
 github.com/prometheus/alertmanager v0.22.2/go.mod h1:rYinOWxFuCnNssc3iOjn2oMTlhLaPcUuqV5yk5JKUAE=
-github.com/prometheus/alertmanager v0.22.3-0.20210628111558-8491f816296b h1:Ug/6s8FVHfsuSGFNUTAhvp3ZXkeAVk2TvHeolesN/wk=
-github.com/prometheus/alertmanager v0.22.3-0.20210628111558-8491f816296b/go.mod h1:ntrorfzWQ1I9mhJK7AO71w4xMUgM4SxmwbtyQgAWZz0=
+github.com/prometheus/alertmanager v0.22.3-0.20210726110322-3d86bd709df8 h1:EH5EZxZcmazowe8c86MnhO77Kn/7ni9C5SdmdDK38UE=
+github.com/prometheus/alertmanager v0.22.3-0.20210726110322-3d86bd709df8/go.mod h1:BBhEP06PwDGsIKsQzOeTNe2jU6tU19SzhJ41C2ib4XE=
 github.com/prometheus/client_golang v0.0.0-20180209125602-c332b6f63c06/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.8.0/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
 github.com/prometheus/client_golang v0.9.1/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
@@ -1508,10 +1508,11 @@ github.com/prometheus/common v0.18.0/go.mod h1:U+gB1OBLb1lF3O42bTCL+FK18tX9Oar16
 github.com/prometheus/common v0.20.0/go.mod h1:U+gB1OBLb1lF3O42bTCL+FK18tX9Oar16Clt/msog/s=
 github.com/prometheus/common v0.21.0/go.mod h1:U+gB1OBLb1lF3O42bTCL+FK18tX9Oar16Clt/msog/s=
 github.com/prometheus/common v0.23.0/go.mod h1:H6QK/N6XVT42whUeIdI3dp36w49c+/iMDk7UAI2qm7Q=
-github.com/prometheus/common v0.24.0/go.mod h1:H6QK/N6XVT42whUeIdI3dp36w49c+/iMDk7UAI2qm7Q=
 github.com/prometheus/common v0.26.0/go.mod h1:M7rCNAaPfAosfx8veZJCuw84e35h3Cfd9VFqTh1DIvc=
 github.com/prometheus/common v0.29.0 h1:3jqPBvKT4OHAbje2Ql7KeaaSicDBCxMYwEJU1zRJceE=
 github.com/prometheus/common v0.29.0/go.mod h1:vu+V0TpY+O6vW9J44gczi3Ap/oXXR10b+M/gUGO4Hls=
+github.com/prometheus/common/sigv4 v0.1.0 h1:qoVebwtwwEhS85Czm2dSROY5fTo2PAPEVdDeppTwGX4=
+github.com/prometheus/common/sigv4 v0.1.0/go.mod h1:2Jkxxk9yYvCkE5G1sQT7GuEXm57JrvHu9k5YwTjsNtI=
 github.com/prometheus/exporter-toolkit v0.5.0/go.mod h1:OCkM4805mmisBhLmVFw858QYi3v0wKdY6/UxrT0pZVg=
 github.com/prometheus/exporter-toolkit v0.5.1/go.mod h1:OCkM4805mmisBhLmVFw858QYi3v0wKdY6/UxrT0pZVg=
 github.com/prometheus/exporter-toolkit v0.6.0 h1:rGoS9gIqj3sXaw+frvo0ozCs1CxBRqpOCGsbixC52UI=

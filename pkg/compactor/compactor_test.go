@@ -581,10 +581,12 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 
+	// Block that has just been marked for deletion. It will not be deleted just yet, and it also will not be compacted.
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
 	bucketClient.MockGet("user-1/markers/01DTVP434PA9VFXSW2JKB3392D-deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
 
+	// This block will be deleted by cleaner.
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
 	bucketClient.MockGet("user-1/markers/01DTW0ZCPDDNV4BV83Q2SV4QAZ-deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
@@ -608,12 +610,6 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
-	// Mock the planner as if there's no compaction to do,
-	// in order to simplify tests (all in all, we just want to
-	// test our logic and not TSDB compactor which we expect to
-	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
-
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -623,8 +619,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	// Only one user's block is compacted.
-	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 1)
+	// Since both blocks are marked for deletion, none of them are going to be compacted.
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 0)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,

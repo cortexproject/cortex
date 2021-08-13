@@ -1085,7 +1085,7 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 
 	kv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
-	defer services.StopAndAwaitTerminated(context.Background(), kv)
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
 
 	client, err := NewClient(kv, codec)
 	require.NoError(t, err)

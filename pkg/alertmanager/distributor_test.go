@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -35,6 +37,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 		name                string
 		numAM, numHappyAM   int
 		replicationFactor   int
+		failedReqCount      int
 		isRead              bool
 		isDelete            bool
 		expStatusCode       int
@@ -194,6 +197,27 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 1,
 			route:              "/status",
+		},
+		{
+			name:               "Read /status should try all alert managers on error",
+			numAM:              3,
+			numHappyAM:         0,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusInternalServerError,
+			expectedTotalCalls: 3,
+			route:              "/status",
+		},
+		{
+			name:               "Read /status is sent to only 2 AM when 1 is not happy",
+			numAM:              3,
+			numHappyAM:         3,
+			failedReqCount:     2,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/status",
 		}, {
 			name:                "Write /status not supported",
 			numAM:               5,
@@ -227,7 +251,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			route := "/alertmanager/api/v1" + c.route
-			d, ams, cleanup := prepare(t, c.numAM, c.numHappyAM, c.replicationFactor, c.responseBody)
+			d, ams, cleanup := prepare(t, c.numAM, c.numHappyAM, c.failedReqCount, c.replicationFactor, c.responseBody)
 			t.Cleanup(cleanup)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
@@ -304,20 +328,22 @@ func TestDistributor_IsPathSupported(t *testing.T) {
 
 	for path, isSupported := range supported {
 		t.Run(path, func(t *testing.T) {
-			d, _, cleanup := prepare(t, 1, 1, 1, []byte{})
+			d, _, cleanup := prepare(t, 1, 1, 0, 1, []byte{})
 			t.Cleanup(cleanup)
 			require.Equal(t, isSupported, d.IsPathSupported(path))
 		})
 	}
 }
 
-func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
+func prepare(t *testing.T, numAM, numHappyAM, totalFailedReq, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
+	failedReqCount := atomic.NewInt32(int32(totalFailedReq))
+
 	for i := 0; i < numHappyAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, true, responseBody))
+		ams = append(ams, newMockAlertmanager(i, true, failedReqCount, responseBody))
 	}
 	for i := numHappyAM; i < numAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, false, responseBody))
+		ams = append(ams, newMockAlertmanager(i, false, failedReqCount, responseBody))
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
@@ -379,14 +405,16 @@ type mockAlertmanager struct {
 	myAddr           string
 	happy            bool
 	responseBody     []byte
+	failedReqCount   *atomic.Int32
 }
 
-func newMockAlertmanager(idx int, happy bool, responseBody []byte) *mockAlertmanager {
+func newMockAlertmanager(idx int, happy bool, failedReqCount *atomic.Int32, responseBody []byte) *mockAlertmanager {
 	return &mockAlertmanager{
 		receivedRequests: make(map[string]map[int]int),
 		myAddr:           fmt.Sprintf("127.0.0.1:%05d", 10000+idx),
 		happy:            happy,
 		responseBody:     responseBody,
+		failedReqCount:   failedReqCount,
 	}
 }
 
@@ -405,7 +433,9 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *httpgrpc.HTTPRe
 		am.receivedRequests[path] = m
 	}
 
-	if am.happy {
+	failedCountLocal := am.failedReqCount.Dec()
+
+	if am.happy && failedCountLocal < 0 {
 		m[http.StatusOK]++
 		return &httpgrpc.HTTPResponse{
 			Code: http.StatusOK,

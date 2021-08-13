@@ -254,14 +254,30 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
-	amDesc := replicationSet.Instances[rand.Intn(len(replicationSet.Instances))]
-	resp, err := d.doRequest(ctx, amDesc, req)
-	if err != nil {
-		respondFromError(err, w, logger)
-		return
-	}
+	instances := replicationSet.Instances
 
-	respondFromHTTPGRPCResponse(w, resp)
+	// Randomize the list of instances to not always query the same one.
+	rand.Shuffle(len(instances), func(i, j int) {
+		instances[i], instances[j] = instances[j], instances[i]
+	})
+
+	lastInstance := instances[len(instances)-1]
+
+	for _, instance := range instances {
+		resp, err := d.doRequest(ctx, instance, req)
+
+		// Only return error if there is no more instances to try
+		if err != nil && instance.Addr == lastInstance.Addr {
+			respondFromError(err, w, logger)
+			return
+		}
+
+		// Return on the first succeeded request
+		if err == nil {
+			respondFromHTTPGRPCResponse(w, resp)
+			return
+		}
+	}
 }
 
 func respondFromError(err error, w http.ResponseWriter, logger log.Logger) {

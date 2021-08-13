@@ -209,7 +209,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			route:              "/status",
 		},
 		{
-			name:               "Read /status is sent to only 2 AM when 1 is not happy",
+			name:               "Read /status is sent to 3 AM when 2 are not happy",
 			numAM:              3,
 			numHappyAM:         3,
 			failedReqCount:     2,

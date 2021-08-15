@@ -4,6 +4,9 @@ import (
 	"context"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/scrape"
@@ -42,4 +45,22 @@ func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to 
 func (m *MockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	args := m.Called(ctx)
 	return args.Get(0).([]scrape.MetricMetadata), args.Error(1)
+}
+
+type TestConfig struct {
+	Cfg         querier.Config
+	Distributor querier.Distributor
+	Stores      []querier.QueryableWithFilter
+}
+
+func DefaultQuerierConfig() querier.Config {
+	querierCfg := querier.Config{}
+	flagext.DefaultValues(&querierCfg)
+	return querierCfg
+}
+
+func DefaultLimitsConfig() validation.Limits {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	return limits
 }

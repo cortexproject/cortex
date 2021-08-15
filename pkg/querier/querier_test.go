@@ -159,7 +159,7 @@ func TestQuerier(t *testing.T) {
 						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+						overrides, err := validation.NewOverrides(testutils.DefaultLimitsConfig(), nil)
 						require.NoError(t, err)
 
 						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
@@ -282,7 +282,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(testutils.DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
@@ -370,7 +370,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(testutils.DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
@@ -440,7 +440,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			var cfg Config
 			flagext.DefaultValues(&cfg)
 
-			limits := defaultLimitsConfig()
+			limits := testutils.DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
@@ -562,7 +562,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				flagext.DefaultValues(&cfg)
 				cfg.IngesterStreaming = ingesterStreaming
 
-				limits := defaultLimitsConfig()
+				limits := testutils.DefaultLimitsConfig()
 				limits.MaxQueryLookback = testData.maxQueryLookback
 				overrides, err := validation.NewOverrides(limits, nil)
 				require.NoError(t, err)
@@ -904,7 +904,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(testutils.DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
@@ -1021,10 +1021,4 @@ func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storag
 func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
-}
-
-func defaultLimitsConfig() validation.Limits {
-	limits := validation.Limits{}
-	flagext.DefaultValues(&limits)
-	return limits
 }

@@ -132,7 +132,7 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 	// should be deleted from the bucket
 
 	bkt := objstore.NewInMemBucket()
-	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), time.Minute*5)
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, userID)
@@ -237,7 +237,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			bkt := objstore.NewInMemBucket()
-			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), tc.cancellationPeriod)
 
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, userID)

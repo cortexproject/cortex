@@ -206,11 +206,8 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	currentTime := int64(time.Now().Unix() * 1000)
-	timeElapsed := float64(currentTime - deleteRequest.RequestCreatedAt)
-
-	if timeElapsed > float64(api.deleteRequestCancelPeriod.Milliseconds()) {
-		http.Error(w, fmt.Sprintf("deletion of request past the deadline of %s since its creation is not allowed", api.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
+	if time.Since(deleteRequest.GetCreateTime()) > api.deleteRequestCancelPeriod {
+		http.Error(w, fmt.Sprintf("Cancellation of request past the deadline of %s since its creation is not allowed", api.deleteRequestCancelPeriod.String()), http.StatusBadRequest)
 		return
 	}
 

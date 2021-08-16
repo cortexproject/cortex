@@ -1214,7 +1214,7 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 				Rules: []*rulespb.RuleDesc{
 					{
 						Alert: "UP_ALERT",
-						Expr:  "UP < 1",
+						Expr:  "1", // always fire for this test
 						For:   alertForDuration,
 					},
 				},
@@ -1248,6 +1248,7 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 			},
 		},
 		nil)
+	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
 	querierConfig := querier_testutils.DefaultQuerierConfig()
 	querierConfig.IngesterStreaming = false
 
@@ -1268,55 +1269,40 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 	require.Equal(t, "UP_ALERT", alertRule.Name())
 	require.Equal(t, promRules.HealthUnknown, alertRule.Health())
 
-	// NEXT, evaluate the rule group the first time
+	// NEXT, evaluate the rule group the first time and assert
 	ctx := user.InjectOrgID(context.Background(), "user1")
 	ruleGroup.Eval(ctx, currentTime)
 
-	// assert alert state after first eval
 	// since the eval is done at the current timestamp, the activeAt timestamp of alert should equal current timestamp
 	require.Equal(t, "UP_ALERT", alertRule.Name())
 	require.Equal(t, promRules.HealthGood, alertRule.Health())
-	activeMap := reflect.ValueOf(alertRule).Elem().FieldByName("active").MapRange()
-	for activeMap.Next() {
-		alertRuleActive := activeMap.Value().Elem()
 
-		activeAtRaw := alertRuleActive.FieldByName("ActiveAt")
-		activeAtTime := reflect.NewAt(activeAtRaw.Type(), unsafe.Pointer(activeAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
-		require.Equal(t, activeAtTime, currentTime)
+	activeMapRaw := reflect.ValueOf(alertRule).Elem().FieldByName("active")
+	activeMapKeys := activeMapRaw.MapKeys()
+	require.True(t, len(activeMapKeys) == 1)
 
-		require.Equal(t, promRules.StatePending, promRules.AlertState(alertRuleActive.FieldByName("State").Int()))
-	}
+	activeAlertRuleRaw := activeMapRaw.MapIndex(activeMapKeys[0]).Elem()
+	activeAtTimeRaw := activeAlertRuleRaw.FieldByName("ActiveAt")
 
-	// NEXT, restore the FOR state
+	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), currentTime)
+
+	// NEXT, restore the FOR state and assert
 	ruleGroup.RestoreForState(currentTime)
 
-	// assert alert state after RestoreForState
 	require.Equal(t, "UP_ALERT", alertRule.Name())
 	require.Equal(t, promRules.HealthGood, alertRule.Health())
-	activeMap = reflect.ValueOf(alertRule).Elem().FieldByName("active").MapRange()
-	for activeMap.Next() {
-		alertRuleActive := activeMap.Value().Elem()
-
-		activeAtRaw := alertRuleActive.FieldByName("ActiveAt")
-		activeAtTime := reflect.NewAt(activeAtRaw.Type(), unsafe.Pointer(activeAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
-		require.Equal(t, activeAtTime, downAtActiveAtTime.Add(currentTime.Sub(downAtTime)))
-
-		require.Equal(t, promRules.StatePending, promRules.AlertState(alertRuleActive.FieldByName("State").Int()))
-	}
+	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), downAtActiveAtTime.Add(currentTime.Sub(downAtTime)))
 
 	// NEXT, 20 minutes is expected to be left, eval timestamp at currentTimestamp +20m
 	currentTime = currentTime.Add(time.Minute * 20)
 	ruleGroup.Eval(ctx, currentTime)
 
 	// assert alert state after alert is firing
-	activeMap = reflect.ValueOf(alertRule).Elem().FieldByName("active").MapRange()
-	for activeMap.Next() {
-		alertRuleActive := activeMap.Value().Elem()
+	firedAtRaw := activeAlertRuleRaw.FieldByName("FiredAt")
+	firedAtTime := reflect.NewAt(firedAtRaw.Type(), unsafe.Pointer(firedAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
+	require.Equal(t, firedAtTime, currentTime)
 
-		firedAtRaw := alertRuleActive.FieldByName("FiredAt")
-		firedAtTime := reflect.NewAt(firedAtRaw.Type(), unsafe.Pointer(firedAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
-		require.Equal(t, firedAtTime, currentTime)
-
-		require.Equal(t, promRules.StateFiring, promRules.AlertState(alertRuleActive.FieldByName("State").Int()))
-	}
+	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 }

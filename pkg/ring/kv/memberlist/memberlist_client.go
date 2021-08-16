@@ -980,20 +980,8 @@ func (m *KV) NotifyMsg(msg []byte) {
 	} else if version > 0 {
 		m.notifyWatchers(kvPair.Key)
 
-		m.addSentMessage(message{
-			Time:    time.Now(),
-			Size:    len(msg),
-			Pair:    kvPair,
-			Version: version,
-			Changes: changes,
-		})
-
-		// Forward this message
-		// Memberlist will modify message once this function returns, so we need to make a copy
-		msgCopy := append([]byte(nil), msg...)
-
-		// forward this message further
-		m.queueBroadcast(kvPair.Key, mod.MergeContent(), version, msgCopy)
+		// Don't resend original message, but only changes.
+		m.broadcastNewValue(kvPair.Key, mod, version, codec)
 	}
 }
 

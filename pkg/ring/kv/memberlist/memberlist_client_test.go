@@ -1074,3 +1074,97 @@ func TestMessageBuffer(t *testing.T) {
 	assert.Len(t, buf, 2)
 	assert.Equal(t, size, 75)
 }
+
+func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
+	codec := dataCodec{}
+
+	cfg := KVConfig{}
+	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, codec)
+
+	kv := NewKV(cfg, log.NewNopLogger())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
+
+	client, err := NewClient(kv, codec)
+	require.NoError(t, err)
+
+	// No broadcast messages from KV at the beginning.
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	now := time.Now()
+
+	require.NoError(t, client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		d := getOrCreateData(in)
+		d.Members["a"] = member{Timestamp: now.Unix(), State: JOINING}
+		d.Members["b"] = member{Timestamp: now.Unix(), State: JOINING}
+		return d, true, nil
+	}))
+
+	// Check that new instance is broadcasted about just once.
+	assert.Equal(t, 1, len(kv.GetBroadcasts(0, math.MaxInt32)))
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	kv.NotifyMsg(marshalKeyValuePair(t, key, codec, &data{
+		Members: map[string]member{
+			"a": {Timestamp: now.Unix() - 5, State: ACTIVE},
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE},
+		}}))
+
+	// Check two things here:
+	// 1) state of value in KV store
+	// 2) broadcast message only has changed members
+
+	d := getData(t, client, key)
+	assert.Equal(t, &data{
+		Members: map[string]member{
+			"a": {Timestamp: now.Unix(), State: JOINING, Tokens: []uint32{}}, // unchanged, timestamp too old
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE, Tokens: []uint32{}},
+		}}, d)
+
+	bs := kv.GetBroadcasts(0, math.MaxInt32)
+	require.Equal(t, 1, len(bs))
+
+	d = decodeDataFromMarshalledKeyValuePair(t, bs[0], key, codec)
+	assert.Equal(t, &data{
+		Members: map[string]member{
+			// "a" is not here, because it wasn't changed by the message.
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE},
+		}}, d)
+}
+
+func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {
+	kvp := KeyValuePair{}
+	require.NoError(t, kvp.Unmarshal(marshalledKVP))
+	require.Equal(t, key, kvp.Key)
+
+	val, err := codec.Decode(kvp.Value)
+	require.NoError(t, err)
+	d, ok := val.(*data)
+	require.True(t, ok)
+	return d
+}
+
+func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value interface{}) []byte {
+	data, err := codec.Encode(value)
+	require.NoError(t, err)
+
+	kvp := KeyValuePair{Key: key, Codec: codec.CodecID(), Value: data}
+	data, err = kvp.Marshal()
+	require.NoError(t, err)
+	return data
+}
+
+func getOrCreateData(in interface{}) *data {
+	// Modify value that was passed as a parameter.
+	// Client takes care of concurrent modifications.
+	r, ok := in.(*data)
+	if !ok || r == nil {
+		return &data{Members: map[string]member{}}
+	}
+	return r
+}

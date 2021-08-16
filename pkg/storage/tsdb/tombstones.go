@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -32,8 +33,9 @@ const TombstonePath = "tombstones/"
 var (
 	ErrTombstoneAlreadyExists      = errors.New("The deletion tombstone with the same request information already exists")
 	ErrInvalidDeletionRequestState = errors.New("Deletion request filename extension indicating the state is invalid")
-
-	AllDeletionStates = []BlockDeleteRequestState{StatePending, StateProcessed, StateCancelled}
+	ErrTombstoneNotFound           = errors.New("Tombstone file not found in the object store")
+	ErrTombstoneDecode             = errors.New("Unable to read tombstone contents from file")
+	AllDeletionStates              = []BlockDeleteRequestState{StatePending, StateProcessed, StateCancelled}
 )
 
 type Tombstone struct {
@@ -45,7 +47,7 @@ type Tombstone struct {
 	Selectors        []string                `json:"selectors"`
 	Matchers         []*labels.Matcher       `json:"-"`
 	UserID           string                  `json:"user_id"`
-	State            BlockDeleteRequestState `json:"-"`
+	State            BlockDeleteRequestState `json:"state"`
 }
 
 func NewTombstone(userID string, requestTime int64, stateTime int64, startTime int64, endTime int64, selectors []string, requestID string, state BlockDeleteRequestState) *Tombstone {
@@ -61,11 +63,26 @@ func NewTombstone(userID string, requestTime int64, stateTime int64, startTime i
 	}
 }
 
-// Uploads a tombstone file to object sotre
-func WriteTombstoneFile(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, tombstone *Tombstone) error {
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+// TombstoneManager is responsible for reading and writing tombstone files to the bucket.
+type TombstoneManager struct {
+	bkt    objstore.InstrumentedBucket
+	logger log.Logger
+}
 
+func NewTombstoneManager(
+	bkt objstore.Bucket,
+	userID string,
+	cfgProvider bucket.TenantConfigProvider,
+	logger log.Logger) *TombstoneManager {
+
+	return &TombstoneManager{
+		bkt:    bucket.NewUserBucketClient(userID, bkt, cfgProvider),
+		logger: util_log.WithUserID(userID, logger),
+	}
+}
+
+// Uploads a tombstone file to object sotre
+func (m *TombstoneManager) WriteTombstoneFile(ctx context.Context, tombstone *Tombstone) error {
 	data, err := json.Marshal(tombstone)
 	if err != nil {
 		return errors.Wrap(err, "serialize tombstone")
@@ -76,20 +93,19 @@ func WriteTombstoneFile(ctx context.Context, bkt objstore.Bucket, userID string,
 	// Check if the tombstone already exists for the same state. Could be the case the same request was made
 	// and is already in the middle of deleting series. Creating a new tombstone would restart
 	// the progress
-	tombstoneExists, err := TombstoneExists(ctx, userBkt, userID, tombstone.RequestID, tombstone.State)
+	tombstoneExists, err := m.TombstoneExists(ctx, tombstone.RequestID, tombstone.State)
 	if err != nil {
-		level.Error(userLogger).Log("msg", "unable to check if the same tombstone already exists", "requestID", tombstone.RequestID, "err", err)
+		level.Error(m.logger).Log("msg", "unable to check if the same tombstone already exists", "requestID", tombstone.RequestID, "err", err)
 	} else if tombstoneExists {
 		return ErrTombstoneAlreadyExists
 	}
 
-	return errors.Wrap(userBkt.Upload(ctx, fullTombstonePath, bytes.NewReader(data)), "upload tombstone file")
+	return errors.Wrap(m.bkt.Upload(ctx, fullTombstonePath, bytes.NewReader(data)), "upload tombstone file")
 }
 
-func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID string, requestID string, state BlockDeleteRequestState) (bool, error) {
+func (m *TombstoneManager) TombstoneExists(ctx context.Context, requestID string, state BlockDeleteRequestState) (bool, error) {
 	fullTombstonePath := path.Join(TombstonePath, getTombstoneFileName(requestID, state))
-
-	exists, err := bkt.Exists(ctx, fullTombstonePath)
+	exists, err := m.bkt.Exists(ctx, fullTombstonePath)
 
 	if exists || err != nil {
 		return exists, err
@@ -98,20 +114,18 @@ func TombstoneExists(ctx context.Context, bkt objstore.BucketReader, userID stri
 	return false, nil
 }
 
-func GetDeleteRequestByIDForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestID string) (*Tombstone, error) {
-	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-
+func (m *TombstoneManager) GetDeleteRequestByIDForUser(ctx context.Context, requestID string) (*Tombstone, error) {
 	found := []*Tombstone{}
 
 	for _, state := range AllDeletionStates {
 		filename := getTombstoneFileName(requestID, state)
-		exists, err := TombstoneExists(ctx, userBucket, userID, requestID, state)
+		exists, err := m.TombstoneExists(ctx, requestID, state)
 		if err != nil {
 			return nil, err
 		}
 
 		if exists {
-			t, err := readTombstoneFile(ctx, userBucket, userID, path.Join(TombstonePath, filename))
+			t, err := m.ReadTombstoneFile(ctx, path.Join(TombstonePath, filename))
 			if err != nil {
 				return nil, err
 			}
@@ -129,14 +143,12 @@ func GetDeleteRequestByIDForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 
 }
 
-func GetAllDeleteRequestsForUser(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string) ([]*Tombstone, error) {
-	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-
+func (m *TombstoneManager) GetAllDeleteRequestsForUser(ctx context.Context) ([]*Tombstone, error) {
 	// add all the tombstones to a map and check for duplicates,
 	// if a key exists with the same request ID (but two different states)
 	tombstoneMap := make(map[string]*Tombstone)
-	err := userBucket.Iter(ctx, TombstonePath, func(s string) error {
-		t, err := readTombstoneFile(ctx, userBucket, userID, s)
+	err := m.bkt.Iter(ctx, TombstonePath, func(s string) error {
+		t, err := m.ReadTombstoneFile(ctx, s)
 		if err != nil {
 			return err
 		}
@@ -147,7 +159,7 @@ func GetAllDeleteRequestsForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 			// if there is more than one tombstone for a given request,
 			// we only want to return the latest state. The older file
 			// will be cleaned by the compactor
-			newT, err := getLatestTombstateByState(t, tombstoneMap[t.RequestID])
+			newT, err := m.getLatestTombstateByState(t, tombstoneMap[t.RequestID])
 			if err != nil {
 				return err
 			}
@@ -168,13 +180,13 @@ func GetAllDeleteRequestsForUser(ctx context.Context, bkt objstore.Bucket, cfgPr
 	return deletionRequests, nil
 }
 
-func getLatestTombstateByState(a *Tombstone, b *Tombstone) (*Tombstone, error) {
-	orderA, err := a.GetStateOrder()
+func (m *TombstoneManager) getLatestTombstateByState(a *Tombstone, b *Tombstone) (*Tombstone, error) {
+	orderA, err := a.State.GetStateOrder()
 	if err != nil {
 		return nil, err
 	}
 
-	orderB, err := b.GetStateOrder()
+	orderB, err := b.State.GetStateOrder()
 	if err != nil {
 		return nil, err
 	}
@@ -186,29 +198,16 @@ func getLatestTombstateByState(a *Tombstone, b *Tombstone) (*Tombstone, error) {
 	return a, nil
 }
 
-func readTombstoneFile(ctx context.Context, bkt objstore.BucketReader, userID string, tombstonePath string) (*Tombstone, error) {
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-
-	// request filename is in format of request_id + "." + state + ".json"
-
-	// This should get the first extension which is .json
-	filenameExtesion := filepath.Ext(tombstonePath)
-	filenameWithoutJSON := tombstonePath[0 : len(tombstonePath)-len(filenameExtesion)]
-
-	stateExtension := filepath.Ext(filenameWithoutJSON)
-
-	// Ensure that the state exists as the filename extension
-	if len(stateExtension) == 0 {
-		return nil, ErrInvalidDeletionRequestState
+func (m *TombstoneManager) ReadTombstoneFile(ctx context.Context, tombstonePath string) (*Tombstone, error) {
+	_, _, err := GetTombstoneStateAndRequestIDFromPath(tombstonePath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get the requestID and state from filename: %s", tombstonePath)
 	}
 
-	state := BlockDeleteRequestState(stateExtension[1:])
-	if !isValidDeleteRequestState(state) {
-		return nil, errors.Wrapf(ErrInvalidDeletionRequestState, "Filename extension is invalid for tombstone: %s", tombstonePath)
-
+	r, err := m.bkt.Get(ctx, tombstonePath)
+	if m.bkt.IsObjNotFoundErr(err) {
+		return nil, errors.Wrapf(ErrTombstoneNotFound, "tombstone file not found %s", tombstonePath)
 	}
-
-	r, err := bkt.Get(ctx, tombstonePath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to read tombstone object: %s", tombstonePath)
 	}
@@ -218,16 +217,14 @@ func readTombstoneFile(ctx context.Context, bkt objstore.BucketReader, userID st
 
 	// Close reader before dealing with decode error.
 	if closeErr := r.Close(); closeErr != nil {
-		level.Warn(userLogger).Log("msg", "failed to close bucket reader", "err", closeErr)
+		level.Warn(util_log.Logger).Log("msg", "failed to close bucket reader", "err", closeErr)
 	}
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode tombstone object: %s", tombstonePath)
+		return nil, errors.Wrapf(ErrTombstoneDecode, "failed to decode tombstone object: %s, err: %v", tombstonePath, err.Error())
 	}
 
-	tombstone.State = BlockDeleteRequestState(state)
-
-	tombstone.Matchers, err = parseMatchers(tombstone.Selectors)
+	tombstone.Matchers, err = ParseMatchers(tombstone.Selectors)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse tombstone selectors for: %s", tombstonePath)
 	}
@@ -235,7 +232,76 @@ func readTombstoneFile(ctx context.Context, bkt objstore.BucketReader, userID st
 	return tombstone, nil
 }
 
-func parseMatchers(selectors []string) ([]*labels.Matcher, error) {
+func (m *TombstoneManager) UpdateTombstoneState(ctx context.Context, t *Tombstone, newState BlockDeleteRequestState) (*Tombstone, error) {
+	userLogger := util_log.WithUserID(t.UserID, util_log.Logger)
+	// Create the new tombstone, and will delete the previous tombstone
+	newT := NewTombstone(t.UserID, t.RequestCreatedAt, time.Now().Unix()*1000, t.StartTime, t.EndTime, t.Selectors, t.RequestID, newState)
+	newT.Matchers = t.Matchers
+
+	err := m.WriteTombstoneFile(ctx, newT)
+	if err != nil {
+		level.Error(userLogger).Log("msg", "error creating file tombstone file with the updated state", "err", err)
+		return nil, err
+	}
+
+	if err = m.DeleteTombstoneFile(ctx, t.RequestID, t.State); err != nil {
+		level.Error(userLogger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
+	}
+
+	return newT, nil
+}
+
+func (m *TombstoneManager) DeleteTombstoneFile(ctx context.Context, requestID string, state BlockDeleteRequestState) error {
+	filename := getTombstoneFileName(requestID, state)
+	fullTombstonePath := path.Join(TombstonePath, filename)
+
+	level.Info(m.logger).Log("msg", "Deleting tombstone file", "file", fullTombstonePath)
+
+	return errors.Wrap(m.bkt.Delete(ctx, fullTombstonePath), "delete tombstone file")
+
+}
+
+func (m *TombstoneManager) RemoveCancelledStateIfExists(ctx context.Context, requestID string) error {
+	exists, err := m.TombstoneExists(ctx, requestID, StateCancelled)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestID, "err", err)
+		return err
+	}
+
+	if exists {
+		if err = m.DeleteTombstoneFile(ctx, requestID, StateCancelled); err != nil {
+			level.Error(m.logger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestID, "err", err)
+			return err
+		}
+		level.Info(m.logger).Log("msg", "Removing tombstone file with previously cancelled state", "requestID", requestID, "err", err)
+
+	}
+	return nil
+}
+
+func GetTombstoneStateAndRequestIDFromPath(tombstonePath string) (string, BlockDeleteRequestState, error) {
+	// This should get the first extension which is .json
+	filenameExtesion := filepath.Ext(tombstonePath)
+	filenameWithoutJSON := tombstonePath[0 : len(tombstonePath)-len(filenameExtesion)]
+
+	stateExtension := filepath.Ext(filenameWithoutJSON)
+	requestID := filenameWithoutJSON[0 : len(filenameWithoutJSON)-len(stateExtension)]
+
+	// Ensure that the state exists as the filename extension
+	if len(stateExtension) == 0 {
+		return "", "", ErrInvalidDeletionRequestState
+	}
+
+	state := BlockDeleteRequestState(stateExtension[1:])
+	if !isValidDeleteRequestState(state) {
+		return "", "", errors.Wrapf(ErrInvalidDeletionRequestState, "Filename extension is invalid for tombstone: %s", tombstonePath)
+
+	}
+
+	return requestID, state, nil
+}
+
+func ParseMatchers(selectors []string) ([]*labels.Matcher, error) {
 	// Convert the string selectors to label matchers
 	var m []*labels.Matcher
 
@@ -252,57 +318,12 @@ func parseMatchers(selectors []string) ([]*labels.Matcher, error) {
 	return m, nil
 }
 
-func UpdateTombstoneState(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, t *Tombstone, newState BlockDeleteRequestState) (*Tombstone, error) {
-	userLogger := util_log.WithUserID(t.UserID, util_log.Logger)
-	// Create the new tombstone, and will delete the previous tombstone
-	newT := NewTombstone(t.UserID, t.RequestCreatedAt, time.Now().Unix()*1000, t.StartTime, t.EndTime, t.Selectors, t.RequestID, newState)
-	newT.Matchers = t.Matchers
-
-	err := WriteTombstoneFile(ctx, bkt, newT.UserID, cfgProvider, newT)
-	if err != nil {
-		level.Error(userLogger).Log("msg", "error creating file tombstone file with the updated state", "err", err)
-		return nil, err
-	}
-
-	if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, t.UserID, t.RequestID, t.State); err != nil {
-		level.Error(userLogger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
-	}
-
-	return newT, nil
+func (t *Tombstone) GetFilename() string {
+	return t.RequestID + "." + string(t.State) + ".json"
 }
 
-func DeleteTombstoneFile(ctx context.Context, bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, userID string, requestID string, state BlockDeleteRequestState) error {
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-	userBucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-
-	filename := getTombstoneFileName(requestID, state)
-	fullTombstonePath := path.Join(TombstonePath, filename)
-
-	level.Info(userLogger).Log("msg", "Deleting tombstone file", "file", fullTombstonePath)
-
-	return errors.Wrap(userBucket.Delete(ctx, fullTombstonePath), "delete tombstone file")
-
-}
-
-func RemoveCancelledStateIfExists(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, requestID string) error {
-	usrBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-	userLogger := util_log.WithUserID(userID, util_log.Logger)
-
-	exists, err := TombstoneExists(ctx, usrBkt, userID, requestID, StateCancelled)
-	if err != nil {
-		level.Error(userLogger).Log("msg", "unable to check if the request has previously been cancelled", "requestID", requestID, "err", err)
-		return err
-	}
-
-	if exists {
-		if err = DeleteTombstoneFile(ctx, bkt, cfgProvider, userID, requestID, StateCancelled); err != nil {
-			level.Error(userLogger).Log("msg", "unable to delete tombstone with previously cancelled state", "requestID", requestID, "err", err)
-			return err
-		}
-		level.Info(userLogger).Log("msg", "Removing tombstone file with previously cancelled state", "requestID", requestID, "err", err)
-
-	}
-	return nil
+func (t *Tombstone) IsOverlappingInterval(minT int64, maxT int64) bool {
+	return t.StartTime <= maxT && minT < t.EndTime
 }
 
 func (t *Tombstone) GetCreateTime() time.Time {
@@ -324,8 +345,8 @@ func isValidDeleteRequestState(state BlockDeleteRequestState) bool {
 	return false
 }
 
-func (t *Tombstone) GetStateOrder() (int, error) {
-	switch t.State {
+func (s BlockDeleteRequestState) GetStateOrder() (int, error) {
+	switch s {
 	case StatePending:
 		return 0, nil
 	case StateProcessed:

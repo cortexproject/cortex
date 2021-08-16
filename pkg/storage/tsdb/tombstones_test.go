@@ -6,11 +6,10 @@ import (
 	"path"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
@@ -23,9 +22,11 @@ func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, username)
 
+	tManager := NewTombstoneManager(bkt, username, nil, log.NewNopLogger())
+
 	//create the tombstone
 	tombstone := NewTombstone(username, 0, 0, 0, 1, []string{"match"}, requestID, StatePending)
-	err := WriteTombstoneFile(ctx, bkt, username, nil, tombstone)
+	err := tManager.WriteTombstoneFile(ctx, tombstone)
 	require.NoError(t, err)
 
 	filename := requestID + "." + string(StatePending) + ".json"
@@ -33,7 +34,7 @@ func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
 	require.True(t, exists)
 
 	// Creating the same tombstone twice should result in an error
-	err = WriteTombstoneFile(ctx, bkt, username, nil, tombstone)
+	err = tManager.WriteTombstoneFile(ctx, tombstone)
 	require.ErrorIs(t, err, ErrTombstoneAlreadyExists)
 
 }
@@ -79,10 +80,9 @@ func TestTombstonesExists(t *testing.T) {
 			for objName, data := range tc.objects {
 				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
 			}
+			tManager := NewTombstoneManager(bkt, username, nil, log.NewNopLogger())
 
-			userBkt := bucket.NewUserBucketClient(username, bkt, nil)
-
-			res, err := TombstoneExists(ctx, userBkt, username, requestID, tc.targetRequestState)
+			res, err := tManager.TombstoneExists(ctx, requestID, tc.targetRequestState)
 			require.NoError(t, err)
 			require.Equal(t, tc.exists, res)
 		})
@@ -106,7 +106,8 @@ func TestTombstonesDeletion(t *testing.T) {
 	require.NoError(t, bkt.Upload(context.Background(), tPendingPath, bytes.NewReader([]byte("data"))))
 	require.NoError(t, bkt.Upload(context.Background(), tProcessedPath, bytes.NewReader([]byte("data"))))
 
-	require.NoError(t, DeleteTombstoneFile(ctx, bkt, nil, tPending.UserID, tPending.RequestID, tPending.State))
+	tManager := NewTombstoneManager(bkt, tPending.UserID, nil, log.NewNopLogger())
+	require.NoError(t, tManager.DeleteTombstoneFile(ctx, tPending.RequestID, tPending.State))
 
 	// make sure the pending tombstone was deleted
 	exists, _ := bkt.Exists(ctx, tPendingPath)
@@ -129,10 +130,12 @@ func TestTombstoneUpdateState(t *testing.T) {
 	tPendingPath := username + "/tombstones/" + requestID + "." + string(StatePending) + ".json"
 
 	bkt := objstore.NewInMemBucket()
+	tManager := NewTombstoneManager(bkt, username, nil, log.NewNopLogger())
+
 	// "upload" sample tombstone file
 	require.NoError(t, bkt.Upload(context.Background(), tPendingPath, bytes.NewReader([]byte("data"))))
 
-	tProcessed, err := UpdateTombstoneState(ctx, bkt, nil, tPending, StateProcessed)
+	tProcessed, err := tManager.UpdateTombstoneState(ctx, tPending, StateProcessed)
 	require.NoError(t, err)
 
 	// make sure the pending tombstone was deleted
@@ -161,11 +164,13 @@ func TestGetSingleTombstone(t *testing.T) {
 	tProcessed := NewTombstone(username, 10, 20, 30, 60, []string{"node_exporter"}, requestID, StateProcessed)
 
 	bkt := objstore.NewInMemBucket()
-	// first add the tombstone files to the object store
-	require.NoError(t, WriteTombstoneFile(ctx, bkt, username, nil, tPending))
-	require.NoError(t, WriteTombstoneFile(ctx, bkt, username, nil, tProcessed))
+	tManager := NewTombstoneManager(bkt, tPending.UserID, nil, log.NewNopLogger())
 
-	tRetrieved, err := GetDeleteRequestByIDForUser(ctx, bkt, nil, username, requestID)
+	// first add the tombstone files to the object store
+	require.NoError(t, tManager.WriteTombstoneFile(ctx, tPending))
+	require.NoError(t, tManager.WriteTombstoneFile(ctx, tProcessed))
+
+	tRetrieved, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
 	require.NoError(t, err)
 
 	//verify that all the information was read correctly
@@ -179,7 +184,7 @@ func TestGetSingleTombstone(t *testing.T) {
 	require.Equal(t, tProcessed.State, tRetrieved.State)
 
 	// Get single tombstone that doesn't exist should return nil
-	tRetrieved, err = GetDeleteRequestByIDForUser(ctx, bkt, nil, username, "unknownRequestID")
+	tRetrieved, err = tManager.GetDeleteRequestByIDForUser(ctx, "unknownRequestID")
 	require.NoError(t, err)
 	require.Nil(t, tRetrieved)
 }
@@ -189,6 +194,8 @@ func TestGetAllTombstones(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, username)
 	bkt := objstore.NewInMemBucket()
+
+	tManager := NewTombstoneManager(bkt, username, nil, log.NewNopLogger())
 
 	tombstonesInput := []*Tombstone{
 		NewTombstone(username, 0, 0, 0, 0, []string{}, "request1", StatePending),
@@ -212,10 +219,10 @@ func TestGetAllTombstones(t *testing.T) {
 
 	// add all tombstones to the bkt
 	for _, ts := range tombstonesInput {
-		require.NoError(t, WriteTombstoneFile(ctx, bkt, username, nil, ts))
+		require.NoError(t, tManager.WriteTombstoneFile(ctx, ts))
 	}
 
-	tombstonesOutput, err := GetAllDeleteRequestsForUser(ctx, bkt, nil, username)
+	tombstonesOutput, err := tManager.GetAllDeleteRequestsForUser(ctx)
 	require.NoError(t, err)
 
 	outputMap := make(map[string]BlockDeleteRequestState)
@@ -238,23 +245,25 @@ func TestTombstoneReadWithInvalidFileName(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, username)
 
+	tManager := NewTombstoneManager(bkt, username, nil, log.NewNopLogger())
+
 	{
 		tInvalidPath := username + "/tombstones/" + requestID + "." + string(StatePending)
-		_, err := readTombstoneFile(ctx, bkt, username, tInvalidPath)
+		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
 
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 
 	{
 		tInvalidPath := username + "/tombstones/" + requestID
-		_, err := readTombstoneFile(ctx, bkt, username, tInvalidPath)
+		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
 
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 
 	{
 		tInvalidPath := username + "/tombstones/" + requestID + ".json." + string(StatePending)
-		_, err := readTombstoneFile(ctx, bkt, username, tInvalidPath)
+		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 

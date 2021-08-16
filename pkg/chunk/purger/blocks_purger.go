@@ -116,17 +116,18 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	requestID := getTombstoneRequestID(startTime, endTime, match)
+	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
 
+	requestID := getTombstoneRequestID(startTime, endTime, match)
 	// Since the request id is based on a hash of the parameters, there is a possibility that a tombstone could already exist for it
 	// if the request was previously cancelled, we need to remove the cancelled tombstone before adding the pending one
-	if err := cortex_tsdb.RemoveCancelledStateIfExists(ctx, api.bucketClient, userID, api.cfgProvider, requestID); err != nil {
+	if err := tManager.RemoveCancelledStateIfExists(ctx, requestID); err != nil {
 		level.Error(util_log.Logger).Log("msg", "removing cancelled tombstone state if it exists", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	prevT, err := cortex_tsdb.GetDeleteRequestByIDForUser(ctx, api.bucketClient, api.cfgProvider, userID, requestID)
+	prevT, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request by id", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -140,7 +141,7 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 	curTime := time.Now().Unix() * 1000
 	t := cortex_tsdb.NewTombstone(userID, curTime, curTime, startTime, endTime, match, requestID, cortex_tsdb.StatePending)
 
-	if err = cortex_tsdb.WriteTombstoneFile(ctx, api.bucketClient, userID, api.cfgProvider, t); err != nil {
+	if err = tManager.WriteTombstoneFile(ctx, t); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -156,8 +157,8 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-
-	deleteRequests, err := cortex_tsdb.GetAllDeleteRequestsForUser(ctx, api.bucketClient, api.cfgProvider, userID)
+	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
+	deleteRequests, err := tManager.GetAllDeleteRequestsForUser(ctx)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the block store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -184,7 +185,8 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
 
-	deleteRequest, err := cortex_tsdb.GetDeleteRequestByIDForUser(ctx, api.bucketClient, api.cfgProvider, userID, requestID)
+	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
+	deleteRequest, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -212,7 +214,7 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	}
 
 	// create file with the cancelled state
-	_, err = cortex_tsdb.UpdateTombstoneState(ctx, api.bucketClient, api.cfgProvider, deleteRequest, cortex_tsdb.StateCancelled)
+	_, err = tManager.UpdateTombstoneState(ctx, deleteRequest, cortex_tsdb.StateCancelled)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error cancelling the delete request", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

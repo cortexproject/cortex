@@ -17,7 +17,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
@@ -242,9 +241,11 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, userID)
 
+			tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, log.NewNopLogger())
+
 			//create the tombstone
 			tombstone := cortex_tsdb.NewTombstone(userID, tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, "request_id", tc.requestState)
-			err := cortex_tsdb.WriteTombstoneFile(ctx, api.bucketClient, userID, api.cfgProvider, tombstone)
+			err := tManager.WriteTombstoneFile(ctx, tombstone)
 			require.NoError(t, err)
 
 			params := url.Values{
@@ -268,8 +269,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			require.Equal(t, tc.expectedHTTPStatus, resp.Code)
 
 			// check if the cancelled tombstone file exists
-			userBkt := bucket.NewUserBucketClient(userID, bkt, api.cfgProvider)
-			exists, _ := cortex_tsdb.TombstoneExists(ctx, userBkt, userID, "request_id", cortex_tsdb.StateCancelled)
+			exists, _ := tManager.TombstoneExists(ctx, "request_id", cortex_tsdb.StateCancelled)
 			require.Equal(t, tc.cancelledFileExists, exists)
 
 		})

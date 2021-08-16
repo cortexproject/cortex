@@ -84,8 +84,19 @@ func (d *data) MergeContent() []string {
 	return out
 }
 
-func (d *data) RemoveTombstones(limit time.Time) (_, _ int) {
-	// nothing to do
+// This method deliberately ignores zero limit, so that tests can observe LEFT state as well.
+func (d *data) RemoveTombstones(limit time.Time) (total, removed int) {
+	for n, m := range d.Members {
+		if m.State == LEFT {
+			if time.Unix(m.Timestamp, 0).Before(limit) {
+				// remove it
+				delete(d.Members, n)
+				removed++
+			} else {
+				total++
+			}
+		}
+	}
 	return
 }
 
@@ -1135,6 +1146,95 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
 			"c": {Timestamp: now.Unix(), State: ACTIVE},
 		}}, d)
+}
+
+func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
+	codec := dataCodec{}
+
+	cfg := KVConfig{}
+	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+	cfg.RetransmitMult = 1
+	cfg.LeftIngestersTimeout = 5 * time.Minute
+	cfg.Codecs = append(cfg.Codecs, codec)
+
+	kv := NewKV(cfg, log.NewNopLogger())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
+
+	client, err := NewClient(kv, codec)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// No broadcast messages from KV at the beginning.
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	for _, tc := range []struct {
+		name             string
+		valueBeforeSend  *data // value in KV store before sending messsage
+		msgToSend        *data
+		valueAfterSend   *data // value in KV store after sending message
+		broadcastMessage *data // broadcasted change, if not nil
+	}{
+		// These tests follow each other (end state of KV in state is starting point in the next state).
+		{
+			name:             "old tombstone, empty KV",
+			valueBeforeSend:  nil,
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() - int64(2*cfg.LeftIngestersTimeout.Seconds()), State: LEFT}}},
+			valueAfterSend:   nil, // no change to KV
+			broadcastMessage: nil, // no new message
+		},
+
+		{
+			name:             "recent tombstone, empty KV",
+			valueBeforeSend:  nil,
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT}}},
+			broadcastMessage: &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT}}},
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+		},
+
+		{
+			name:             "old tombstone, KV contains tombstone already",
+			valueBeforeSend:  &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() - 10, State: LEFT}}},
+			broadcastMessage: nil,
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+		},
+
+		{
+			name:             "fresh tombstone, KV contains tombstone already",
+			valueBeforeSend:  &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT}}},
+			broadcastMessage: &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT}}},
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT, Tokens: []uint32{}}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := getData(t, client, key)
+			if tc.valueBeforeSend == nil {
+				require.True(t, d == nil || len(d.Members) == 0)
+			} else {
+				require.Equal(t, tc.valueBeforeSend, d, "valueBeforeSend")
+			}
+
+			kv.NotifyMsg(marshalKeyValuePair(t, key, codec, tc.msgToSend))
+
+			bs := kv.GetBroadcasts(0, math.MaxInt32)
+			if tc.broadcastMessage == nil {
+				require.Equal(t, 0, len(bs), "expected no broadcast message")
+			} else {
+				require.Equal(t, 1, len(bs), "expected broadcast message")
+				require.Equal(t, tc.broadcastMessage, decodeDataFromMarshalledKeyValuePair(t, bs[0], key, codec))
+			}
+
+			d = getData(t, client, key)
+			if tc.valueAfterSend == nil {
+				require.True(t, d == nil || len(d.Members) == 0)
+			} else {
+				require.Equal(t, tc.valueAfterSend, d, "valueAfterSend")
+			}
+		})
+	}
 }
 
 func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {

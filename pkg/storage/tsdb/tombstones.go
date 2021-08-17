@@ -233,19 +233,18 @@ func (m *TombstoneManager) ReadTombstoneFile(ctx context.Context, tombstonePath 
 }
 
 func (m *TombstoneManager) UpdateTombstoneState(ctx context.Context, t *Tombstone, newState BlockDeleteRequestState) (*Tombstone, error) {
-	userLogger := util_log.WithUserID(t.UserID, util_log.Logger)
 	// Create the new tombstone, and will delete the previous tombstone
 	newT := NewTombstone(t.UserID, t.RequestCreatedAt, time.Now().Unix()*1000, t.StartTime, t.EndTime, t.Selectors, t.RequestID, newState)
 	newT.Matchers = t.Matchers
 
 	err := m.WriteTombstoneFile(ctx, newT)
 	if err != nil {
-		level.Error(userLogger).Log("msg", "error creating file tombstone file with the updated state", "err", err)
+		level.Error(m.logger).Log("msg", "error creating file tombstone file with the updated state", "err", err)
 		return nil, err
 	}
 
 	if err = m.DeleteTombstoneFile(ctx, t.RequestID, t.State); err != nil {
-		level.Error(userLogger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
+		level.Error(m.logger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
 	}
 
 	return newT, nil

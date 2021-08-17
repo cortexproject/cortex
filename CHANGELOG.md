@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Use github.com/grafana/dskit/backoff instead of pkg/util/backoff.go.
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`

@@ -49,7 +49,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	querier_testutils "github.com/cortexproject/cortex/pkg/querier/testutils"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
@@ -111,12 +110,12 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
-func testQueryableFunc(querierTestConfig *querier_testutils.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
+func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
 	if querierTestConfig != nil {
 		// disable active query tracking for test
 		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
 
-		overrides, _ := validation.NewOverrides(querier_testutils.DefaultLimitsConfig(), nil)
+		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
 		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, purger.NewTombstonesLoader(nil, nil), reg, logger)
 		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(ctx, mint, maxt)
@@ -128,7 +127,7 @@ func testQueryableFunc(querierTestConfig *querier_testutils.TestConfig, reg prom
 	}
 }
 
-func testSetup(t *testing.T, querierTestConfig *querier_testutils.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer, func()) {
+func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer, func()) {
 	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
 	assert.NoError(t, err)
 	cleanup := func() {
@@ -202,7 +201,7 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_testutils.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
 	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
@@ -218,13 +217,13 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_tes
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(cfg, logger, reg, rulerAddrMap),
+		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
 	)
 	require.NoError(t, err)
 	return ruler, cleanup
 }
 
-func newTestRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier_testutils.TestConfig) (*Ruler, func()) {
+func newTestRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig) (*Ruler, func()) {
 	ruler, cleanup := buildRuler(t, rulerConfig, querierTestConfig, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
@@ -397,7 +396,7 @@ func TestGetRules(t *testing.T) {
 					},
 				}
 
-				r, cleanUp := buildRuler(t, cfg, rulerAddrMap)
+				r, cleanUp := buildRuler(t, cfg, nil, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				t.Cleanup(cleanUp)
 				rulerAddrMap[id] = r
@@ -1235,7 +1234,7 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 	downAtTimeMs := downAtTime.UnixNano() / int64(time.Millisecond)
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
-	d := &querier_testutils.MockDistributor{}
+	d := &querier.MockDistributor{}
 	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
 			&model.SampleStream{
@@ -1249,11 +1248,11 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 		},
 		nil)
 	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
-	querierConfig := querier_testutils.DefaultQuerierConfig()
+	querierConfig := querier.DefaultQuerierConfig()
 	querierConfig.IngesterStreaming = false
 
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, rcleanup := newRuler(t, rulerCfg, &querier_testutils.TestConfig{Cfg: querierConfig, Distributor: d})
+	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d}, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 	defer rcleanup()
 

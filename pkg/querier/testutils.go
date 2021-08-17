@@ -1,10 +1,9 @@
-package testutils
+package querier
 
 import (
 	"context"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/prometheus/common/model"
@@ -48,13 +47,13 @@ func (m *MockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricM
 }
 
 type TestConfig struct {
-	Cfg         querier.Config
-	Distributor querier.Distributor
-	Stores      []querier.QueryableWithFilter
+	Cfg         Config
+	Distributor Distributor
+	Stores      []QueryableWithFilter
 }
 
-func DefaultQuerierConfig() querier.Config {
-	querierCfg := querier.Config{}
+func DefaultQuerierConfig() Config {
+	querierCfg := Config{}
 	flagext.DefaultValues(&querierCfg)
 	return querierCfg
 }

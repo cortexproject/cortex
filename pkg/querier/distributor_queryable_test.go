@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/testutils"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -30,7 +28,7 @@ const (
 )
 
 func TestDistributorQuerier(t *testing.T) {
-	d := &testutils.MockDistributor{}
+	d := &MockDistributor{}
 	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
 			// Matrixes are unsorted, so this tests that the labels get sorted.
@@ -118,7 +116,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 	for _, streamingEnabled := range []bool{false, true} {
 		for testName, testData := range tests {
 			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
-				distributor := &testutils.MockDistributor{}
+				distributor := &MockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
@@ -150,7 +148,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 }
 
 func TestDistributorQueryableFilter(t *testing.T) {
-	d := &testutils.MockDistributor{}
+	d := &MockDistributor{}
 	dq := newDistributorQueryable(d, false, nil, 1*time.Hour)
 
 	now := time.Now()
@@ -176,7 +174,7 @@ func TestIngesterStreaming(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	d := &testutils.MockDistributor{}
+	d := &MockDistributor{}
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
@@ -245,7 +243,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		{Value: 5.5, TimestampMs: 5500},
 	}
 
-	d := &testutils.MockDistributor{}
+	d := &MockDistributor{}
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
@@ -317,7 +315,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 			{Metric: model.Metric{"job": "baz"}},
 			{Metric: model.Metric{"job": "baz", "foo": "boom"}},
 		}
-		d := &testutils.MockDistributor{}
+		d := &MockDistributor{}
 		d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).
 			Return(metrics, nil)
 

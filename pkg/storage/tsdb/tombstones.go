@@ -279,6 +279,8 @@ func (m *TombstoneManager) RemoveCancelledStateIfExists(ctx context.Context, req
 }
 
 func GetTombstoneStateAndRequestIDFromPath(tombstonePath string) (string, BlockDeleteRequestState, error) {
+	// The filename of the request should be <requestID>.<state>.json
+
 	// This should get the first extension which is .json
 	filenameExtesion := filepath.Ext(tombstonePath)
 	filenameWithoutJSON := tombstonePath[0 : len(tombstonePath)-len(filenameExtesion)]
@@ -309,8 +311,8 @@ func ParseMatchers(selectors []string) ([]*labels.Matcher, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "error parsing metric selector")
 		}
-		//keep the matchers in a 1D array because the deletions are applied based
-		// on the "and" between all matchers. There is no need to
+		//keep the matchers in a 1D slice because the deletions are applied based
+		// on the "and" between all matchers.
 		m = append(m, parsed...)
 	}
 

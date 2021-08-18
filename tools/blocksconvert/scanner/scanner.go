@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -26,7 +27,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
@@ -436,7 +436,7 @@ func uploadPlansConcurrently(ctx context.Context, log log.Logger, dir string, bu
 				src := filepath.Join(dir, filepath.FromSlash(p))
 				dst := path.Join(bucketPrefix, p)
 
-				boff := util.NewBackoff(ctx, util.BackoffConfig{
+				boff := backoff.New(ctx, backoff.Config{
 					MinBackoff: 1 * time.Second,
 					MaxBackoff: 5 * time.Second,
 					MaxRetries: 5,

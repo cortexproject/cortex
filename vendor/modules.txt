@@ -68,7 +68,7 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.38.60
+# github.com/aws/aws-sdk-go v1.38.68
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -142,7 +142,7 @@ github.com/cespare/xxhash/v2
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 github.com/coreos/go-systemd/journal
-# github.com/coreos/go-systemd/v22 v22.1.0
+# github.com/coreos/go-systemd/v22 v22.3.2
 github.com/coreos/go-systemd/v22/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
@@ -175,7 +175,7 @@ github.com/form3tech-oss/jwt-go
 ## explicit
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
-# github.com/go-kit/kit v0.10.0
+# github.com/go-kit/kit v0.11.0
 ## explicit
 github.com/go-kit/kit/log
 github.com/go-kit/kit/log/level
@@ -294,6 +294,9 @@ github.com/googleapis/gax-go/v2
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 github.com/gorilla/websocket
+# github.com/grafana/dskit v0.0.0-20210817085554-1b69d2de136f
+## explicit
+github.com/grafana/dskit/backoff
 # github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 ## explicit
 github.com/grpc-ecosystem/go-grpc-middleware
@@ -573,7 +576,7 @@ github.com/shurcooL/httpfs/union
 github.com/shurcooL/httpfs/vfsutil
 # github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 github.com/shurcooL/vfsgen
-# github.com/sirupsen/logrus v1.7.0
+# github.com/sirupsen/logrus v1.8.1
 github.com/sirupsen/logrus
 # github.com/soheilhy/cmux v0.1.5-0.20210205191134-5ec6847320e5
 github.com/soheilhy/cmux
@@ -693,7 +696,7 @@ go.etcd.io/bbolt
 go.etcd.io/etcd/pkg/fileutil
 go.etcd.io/etcd/pkg/tlsutil
 go.etcd.io/etcd/pkg/transport
-# go.etcd.io/etcd/api/v3 v3.5.0-alpha.0
+# go.etcd.io/etcd/api/v3 v3.5.0
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
 go.etcd.io/etcd/api/v3/etcdserverpb/gw
@@ -701,9 +704,15 @@ go.etcd.io/etcd/api/v3/membershippb
 go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
-# go.etcd.io/etcd/client/v2 v2.305.0-alpha.0
+# go.etcd.io/etcd/client/pkg/v3 v3.5.0
+go.etcd.io/etcd/client/pkg/v3/logutil
+go.etcd.io/etcd/client/pkg/v3/pathutil
+go.etcd.io/etcd/client/pkg/v3/srv
+go.etcd.io/etcd/client/pkg/v3/systemd
+go.etcd.io/etcd/client/pkg/v3/types
+# go.etcd.io/etcd/client/v2 v2.305.0
 go.etcd.io/etcd/client/v2
-# go.etcd.io/etcd/client/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
+# go.etcd.io/etcd/client/v3 v3.5.0
 ## explicit
 go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/concurrency
@@ -723,7 +732,6 @@ go.etcd.io/etcd/pkg/v3/idutil
 go.etcd.io/etcd/pkg/v3/ioutil
 go.etcd.io/etcd/pkg/v3/logutil
 go.etcd.io/etcd/pkg/v3/netutil
-go.etcd.io/etcd/pkg/v3/pathutil
 go.etcd.io/etcd/pkg/v3/pbutil
 go.etcd.io/etcd/pkg/v3/runtime
 go.etcd.io/etcd/pkg/v3/schedule
@@ -821,21 +829,22 @@ go.opentelemetry.io/otel/metric/number
 go.opentelemetry.io/otel/metric/registry
 # go.opentelemetry.io/otel/trace v0.20.0
 go.opentelemetry.io/otel/trace
-# go.uber.org/atomic v1.8.0
+# go.uber.org/atomic v1.9.0
 ## explicit
 go.uber.org/atomic
 # go.uber.org/goleak v1.1.10
 go.uber.org/goleak
 go.uber.org/goleak/internal/stack
-# go.uber.org/multierr v1.5.0
+# go.uber.org/multierr v1.6.0
 go.uber.org/multierr
-# go.uber.org/zap v1.16.0
+# go.uber.org/zap v1.17.0
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
+go.uber.org/zap/zapgrpc
 # golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1018,7 +1027,7 @@ google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
 google.golang.org/grpc/test/bufconn
-# google.golang.org/protobuf v1.26.0
+# google.golang.org/protobuf v1.27.1
 google.golang.org/protobuf/cmd/protoc-gen-go/internal_gengo
 google.golang.org/protobuf/compiler/protogen
 google.golang.org/protobuf/encoding/protojson

@@ -1,4 +1,4 @@
-package util
+package backoff
 
 import (
 	"context"
@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-// BackoffConfig configures a Backoff
-type BackoffConfig struct {
+// Config configures a Backoff
+type Config struct {
 	MinBackoff time.Duration `yaml:"min_period"`  // start backoff at this level
 	MaxBackoff time.Duration `yaml:"max_period"`  // increase exponentially to this level
 	MaxRetries int           `yaml:"max_retries"` // give up after this many; zero means infinite retries
 }
 
-// RegisterFlags for BackoffConfig.
-func (cfg *BackoffConfig) RegisterFlags(prefix string, f *flag.FlagSet) {
+// RegisterFlagsWithPrefix for Config.
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MinBackoff, prefix+".backoff-min-period", 100*time.Millisecond, "Minimum delay when backing off.")
 	f.DurationVar(&cfg.MaxBackoff, prefix+".backoff-max-period", 10*time.Second, "Maximum delay when backing off.")
 	f.IntVar(&cfg.MaxRetries, prefix+".backoff-retries", 10, "Number of times to backoff and retry before failing.")
@@ -24,15 +24,15 @@ func (cfg *BackoffConfig) RegisterFlags(prefix string, f *flag.FlagSet) {
 
 // Backoff implements exponential backoff with randomized wait times
 type Backoff struct {
-	cfg          BackoffConfig
+	cfg          Config
 	ctx          context.Context
 	numRetries   int
 	nextDelayMin time.Duration
 	nextDelayMax time.Duration
 }
 
-// NewBackoff creates a Backoff object. Pass a Context that can also terminate the operation.
-func NewBackoff(ctx context.Context, cfg BackoffConfig) *Backoff {
+// New creates a Backoff object. Pass a Context that can also terminate the operation.
+func New(ctx context.Context, cfg Config) *Backoff {
 	return &Backoff{
 		cfg:          cfg,
 		ctx:          ctx,
@@ -87,7 +87,7 @@ func (b *Backoff) Wait() {
 func (b *Backoff) NextDelay() time.Duration {
 	b.numRetries++
 
-	// Handle the edge case the min and max have the same value
+	// Handle the edge case where the min and max have the same value
 	// (or due to some misconfig max is < min)
 	if b.nextDelayMin >= b.nextDelayMax {
 		return b.nextDelayMin

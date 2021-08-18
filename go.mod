@@ -12,14 +12,14 @@ require (
 	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
 	github.com/alicebob/miniredis/v2 v2.14.3
 	github.com/armon/go-metrics v0.3.6
-	github.com/aws/aws-sdk-go v1.38.60
+	github.com/aws/aws-sdk-go v1.38.68
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
-	github.com/go-kit/kit v0.10.0
+	github.com/go-kit/kit v0.11.0
 	github.com/go-openapi/strfmt v0.20.1
 	github.com/go-openapi/swag v0.19.15
 	github.com/go-redis/redis/v8 v8.9.0
@@ -30,6 +30,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.3
 	github.com/gorilla/mux v1.7.3
+	github.com/grafana/dskit v0.0.0-20210817085554-1b69d2de136f
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/go-cleanhttp v0.5.1
@@ -59,9 +60,9 @@ require (
 	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
 	go.etcd.io/bbolt v1.3.5
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-	go.etcd.io/etcd/client/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
+	go.etcd.io/etcd/client/v3 v3.5.0
 	go.etcd.io/etcd/server/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
-	go.uber.org/atomic v1.8.0
+	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20210610132358-84b48f89b13b
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6

@@ -15,13 +15,13 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -512,13 +512,13 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 	level.Debug(m.logger).Log("msg", "attempt to join memberlist cluster failed", "retries", 0, "err", err)
 	lastErr := err
 
-	cfg := util.BackoffConfig{
+	cfg := backoff.Config{
 		MinBackoff: m.cfg.MinJoinBackoff,
 		MaxBackoff: m.cfg.MaxJoinBackoff,
 		MaxRetries: m.cfg.MaxJoinRetries,
 	}
 
-	backoff := util.NewBackoff(ctx, cfg)
+	backoff := backoff.New(ctx, cfg)
 
 	for backoff.Ongoing() {
 		backoff.Wait()

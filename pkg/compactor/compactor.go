@@ -51,7 +51,7 @@ var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	errInvalidShardingStrategy  = errors.New("invalid sharding strategy")
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge) compact.Grouper {
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
@@ -64,7 +64,7 @@ var (
 			metadata.NoneFunc)
 	}
 
-	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
+	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge) compact.Grouper {
 		return NewShuffleShardingGrouper(
 			logger,
 			bkt,
@@ -74,6 +74,7 @@ var (
 			blocksMarkedForDeletion,
 			prometheus.NewCounter(prometheus.CounterOpts{}),
 			garbageCollectedBlocks,
+			remainingPlannedCompactions,
 			metadata.NoneFunc,
 			cfg)
 	}
@@ -108,6 +109,7 @@ type BlocksGrouperFactory func(
 	reg prometheus.Registerer,
 	blocksMarkedForDeletion prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
+	remainingPlannedCompactions prometheus.Gauge,
 ) compact.Grouper
 
 // BlocksCompactorFactory builds and returns the compactor and planner to use to compact a tenant's blocks.
@@ -256,6 +258,7 @@ type Compactor struct {
 	compactionRunInterval          prometheus.Gauge
 	blocksMarkedForDeletion        prometheus.Counter
 	garbageCollectedBlocks         prometheus.Counter
+	remainingPlannedCompactions    prometheus.Gauge
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
@@ -303,6 +306,13 @@ func newCompactor(
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
 ) (*Compactor, error) {
+	var remainingPlannedCompactions prometheus.Gauge
+	if compactorCfg.ShardingStrategy == "shuffle-sharding" {
+		remainingPlannedCompactions = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_remaining_planned_compactions",
+			Help: "Total number of plans that remain to be compacted.",
+		})
+	}
 	c := &Compactor{
 		compactorCfg:           compactorCfg,
 		storageCfg:             storageCfg,
@@ -361,6 +371,7 @@ func newCompactor(
 			Name: "cortex_compactor_garbage_collected_blocks_total",
 			Help: "Total number of blocks marked for deletion by compactor.",
 		}),
+		remainingPlannedCompactions: remainingPlannedCompactions,
 	}
 
 	if len(compactorCfg.EnabledTenants) > 0 {
@@ -696,7 +707,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks),
+		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks, c.remainingPlannedCompactions),
 		c.blocksPlanner,
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),

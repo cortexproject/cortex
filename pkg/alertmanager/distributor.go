@@ -263,7 +263,7 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 
 	lastInstance := instances[len(instances)-1]
 
-	for _, instance := range instances {
+	for i, instance := range instances {
 		resp, err := d.doRequest(ctx, instance, req)
 
 		// Only return error if there is no more instances to try

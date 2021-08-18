@@ -131,11 +131,14 @@ We now turn our attention to the proposed solution for downsampling in Cortex.
 * MUST support tenant-level granularity (can opt-in on an per-tenant basis).
 * SHOULD not have a significant impact on the write path performance.
 
-Concerning the sampling tiers we want to support the following time periods:
+Concerning the sampling tiers we want to support the following time periods
+(note that the resolutions below are aligned with what Thanos [uses][thanos-ds-res]
+whereas the default for the time periods are, on a per-tenant basis, proposed
+as is):
 
 1. Data up to one week raw (not downsampled).
-1. Data older than one week up to six months downsampled to 1h intervals.
-1. Data older than six months downsampled to 24h intervals.
+1. Data older than one week up to a month downsampled to 5m resolution.
+1. Data older than a month downsampled to 1h resolution.
 
 ### Concept
 
@@ -152,10 +155,57 @@ There are two options to realize downsampling we can consider:
    flexible and operationally simpler, however increases the overall number
    of components Cortex has.
 
+There is general agreement to align with the Thanos-based implementation of
+downsampling, with the following implications:
+
+* Using three resolutions (raw, @5min, @1h) in an additive manner, that is,
+  new blocks are generated.
+* Making it part of the compactor on an opt-in basis for each tenant.
+
+The implementation would do the following:
+
+#### Configuration
+
+In `github.com/cortexproject/cortex/pkg/compactor.Config` ([source][src-compactor-config])
+we add the respective retention periods per resolution:
+
+```go
+type Config struct {
+        ...
+        // Downsampling retention periods.
+        RetentionRaw    model.Duration  `yaml:"retention_raw"`
+        Retention5Mins  model.Duration  `yaml:"retention_5mins"`
+        Retention1Hour  model.Duration  `yaml:"retention_1h"`
+        ...
+}
+```
+
+Note: above uses `model.Duration` from [Prometheus common][src-prom-common-duration]
+as the case in Thanos.
+
+#### Invoke
+
+In `github.com/cortexproject/cortex/pkg/compactor.compactUsers()` ([source][src-compactor-cu])
+we add the business logic from `github.com/thanos-io/thanos/pkg/compact/downsample` 
+([source][src-thanos-compactor-ds]).
+
+
+### Open questions
+
+* Time zone handling
+* Query path
+* Defaults
+
 [tenants]: https://cortexmetrics.io/docs/guides/glossary/#tenant
 [tenant-deletion]: https://cortexmetrics.io/docs/proposals/tenant-deletion/
 [tenant-retention]: https://cortexmetrics.io/docs/proposals/tenant-retention/
 [parallel-compaction]: https://cortexmetrics.io/docs/proposals/parallel-compaction/
 [thanos-ds]: https://thanos.io/tip/components/compact.md/#downsampling
+[thanos-ds-res]: https://github.com/thanos-io/thanos/blob/main/docs/components/compact.md#downsampling
 [m3-ds]: https://github.com/m3db/m3/wiki/Downsampling-with-aggregation-instead-of-compaction
 [influxdb-ds]: https://docs.influxdata.com/influxdb/v2.0/process-data/common-tasks/downsample-data/
+[src-compactor-config]: https://github.com/cortexproject/cortex/blob/df9af3a999548e15fe44d807a96f7b74a3cfd9de/pkg/compactor/compactor.go#L91
+[src-prom-common-duration]: https://github.com/prometheus/common/blob/8d1c9f84e3f78cb628a20f8e7be531c508237848/model/time.go#L172
+[src-compactor-cu]: https://github.com/cortexproject/cortex/blob/df9af3a999548e15fe44d807a96f7b74a3cfd9de/pkg/compactor/compactor.go#L595
+[src-thanos-compactor-ds]: https://github.com/thanos-io/thanos/blob/main/pkg/compact/downsample/downsample.go
+

@@ -110,6 +110,24 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
+type emptyChunkStore struct {
+	sync.Mutex
+	called bool
+}
+
+func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	c.Lock()
+	defer c.Unlock()
+	c.called = true
+	return nil, nil
+}
+
+func (c *emptyChunkStore) IsCalled() bool {
+	c.Lock()
+	defer c.Unlock()
+	return c.called
+}
+
 func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
 	if querierTestConfig != nil {
 		// disable active query tracking for test
@@ -1196,8 +1214,8 @@ func TestSendAlerts(t *testing.T) {
 	}
 }
 
-// Tests for whether the Ruler is able to recover ALERTS_FOR_STATE state from Distributors only
-func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
+// Tests for whether the Ruler is able to recover ALERTS_FOR_STATE state
+func TestRecoverAlertsPostOutage(t *testing.T) {
 	// Test Setup
 	// alert FOR 30m, already ran for 10m, outage down at 15m prior to now(), outage tolerance set to 1hr
 	// EXPECTATION: for state for alert restores to 10m+(now-15m)
@@ -1250,6 +1268,11 @@ func TestRecoverAlertsPostOutageFromDistributors(t *testing.T) {
 	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
 	querierConfig := querier.DefaultQuerierConfig()
 	querierConfig.IngesterStreaming = false
+
+	// set up an empty store
+	queryables := []querier.QueryableWithFilter{
+		querier.UseAlwaysQueryable(querier.NewChunkStoreQueryable(querierConfig, &emptyChunkStore{})),
+	}
 
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
 	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d}, nil)

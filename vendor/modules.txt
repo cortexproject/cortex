@@ -294,9 +294,11 @@ github.com/googleapis/gax-go/v2
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20210817085554-1b69d2de136f
+# github.com/grafana/dskit v0.0.0-20210818123532-6645f87e9e12
 ## explicit
 github.com/grafana/dskit/backoff
+github.com/grafana/dskit/modules
+github.com/grafana/dskit/services
 # github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 ## explicit
 github.com/grpc-ecosystem/go-grpc-middleware

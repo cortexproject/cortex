@@ -28,6 +28,7 @@ type ShuffleShardingGrouper struct {
 	blocksMarkedForDeletion  prometheus.Counter
 	blocksMarkedForNoCompact prometheus.Counter
 	garbageCollectedBlocks   prometheus.Counter
+	remainingPlannedCompactions prometheus.Gauge
 	hashFunc                 metadata.HashFunc
 	compactions              *prometheus.CounterVec
 	compactionRunsStarted    *prometheus.CounterVec
@@ -46,6 +47,7 @@ func NewShuffleShardingGrouper(
 	blocksMarkedForDeletion prometheus.Counter,
 	blocksMarkedForNoCompact prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
+	remainingPlannedCompactions prometheus.Gauge,
 	hashFunc metadata.HashFunc,
 	compactorCfg Config,
 ) *ShuffleShardingGrouper {
@@ -62,6 +64,7 @@ func NewShuffleShardingGrouper(
 		blocksMarkedForDeletion:  blocksMarkedForDeletion,
 		blocksMarkedForNoCompact: blocksMarkedForNoCompact,
 		garbageCollectedBlocks:   garbageCollectedBlocks,
+		remainingPlannedCompactions: remainingPlannedCompactions,
 		hashFunc:                 hashFunc,
 		// Metrics are copied from Thanos DefaultGrouper constructor
 		compactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -103,6 +106,9 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	var outGroups []*compact.Group
 
 	i := 0
+	// Metrics for the remaining planned compactions
+	g.remainingPlannedCompactions.Set(0)
+
 	for _, mainBlocks := range mainGroups {
 		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {
 			// Nothing to do if we don't have at least 2 blocks.
@@ -113,6 +119,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			// TODO: Use the group's hash to determine whether a compactor should be responsible for compacting that group
 			groupHash := hashGroup(group.blocks[0].Thanos.Labels["__org_id__"], group.rangeStart, group.rangeEnd)
 
+			g.remainingPlannedCompactions.Inc()
 			groupKey := fmt.Sprintf("%v%d", groupHash, i)
 			i++
 

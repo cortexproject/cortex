@@ -160,7 +160,7 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 	require.Equal(t, http.StatusNoContent, resp.Code)
 
 	//cancel the previous request
-	requestID := getTombstoneRequestID(1000, 2000, []string{"node_exporter"})
+	requestID := getTombstoneHash(1000, 2000, []string{"node_exporter"})
 	paramsDelete := url.Values{
 		"request_id": []string{requestID},
 	}
@@ -245,7 +245,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 
 			//create the tombstone
 			tombstone := cortex_tsdb.NewTombstone(userID, tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, "request_id", tc.requestState)
-			err := tManager.WriteTombstoneFile(ctx, tombstone)
+			err := tManager.WriteTombstone(ctx, tombstone)
 			require.NoError(t, err)
 
 			params := url.Values{

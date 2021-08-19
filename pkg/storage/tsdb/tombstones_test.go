@@ -26,7 +26,7 @@ func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
 
 	//create the tombstone
 	tombstone := NewTombstone(username, 0, 0, 0, 1, []string{"match"}, requestID, StatePending)
-	err := tManager.WriteTombstoneFile(ctx, tombstone)
+	err := tManager.WriteTombstone(ctx, tombstone)
 	require.NoError(t, err)
 
 	filename := requestID + "." + string(StatePending) + ".json"
@@ -34,7 +34,7 @@ func TestTombstones_WritingSameTombstoneTwiceShouldFail(t *testing.T) {
 	require.True(t, exists)
 
 	// Creating the same tombstone twice should result in an error
-	err = tManager.WriteTombstoneFile(ctx, tombstone)
+	err = tManager.WriteTombstone(ctx, tombstone)
 	require.ErrorIs(t, err, ErrTombstoneAlreadyExists)
 
 }
@@ -167,10 +167,10 @@ func TestGetSingleTombstone(t *testing.T) {
 	tManager := NewTombstoneManager(bkt, tPending.UserID, nil, log.NewNopLogger())
 
 	// first add the tombstone files to the object store
-	require.NoError(t, tManager.WriteTombstoneFile(ctx, tPending))
-	require.NoError(t, tManager.WriteTombstoneFile(ctx, tProcessed))
+	require.NoError(t, tManager.WriteTombstone(ctx, tPending))
+	require.NoError(t, tManager.WriteTombstone(ctx, tProcessed))
 
-	tRetrieved, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
+	tRetrieved, err := tManager.GetTombstoneByIDForUser(ctx, requestID)
 	require.NoError(t, err)
 
 	//verify that all the information was read correctly
@@ -184,7 +184,7 @@ func TestGetSingleTombstone(t *testing.T) {
 	require.Equal(t, tProcessed.State, tRetrieved.State)
 
 	// Get single tombstone that doesn't exist should return nil
-	tRetrieved, err = tManager.GetDeleteRequestByIDForUser(ctx, "unknownRequestID")
+	tRetrieved, err = tManager.GetTombstoneByIDForUser(ctx, "unknownRequestID")
 	require.NoError(t, err)
 	require.Nil(t, tRetrieved)
 }
@@ -219,10 +219,10 @@ func TestGetAllTombstones(t *testing.T) {
 
 	// add all tombstones to the bkt
 	for _, ts := range tombstonesInput {
-		require.NoError(t, tManager.WriteTombstoneFile(ctx, ts))
+		require.NoError(t, tManager.WriteTombstone(ctx, ts))
 	}
 
-	tombstonesOutput, err := tManager.GetAllDeleteRequestsForUser(ctx)
+	tombstonesOutput, err := tManager.GetAllTombstonesForUser(ctx)
 	require.NoError(t, err)
 
 	outputMap := make(map[string]BlockDeleteRequestState)
@@ -249,21 +249,21 @@ func TestTombstoneReadWithInvalidFileName(t *testing.T) {
 
 	{
 		tInvalidPath := username + "/tombstones/" + requestID + "." + string(StatePending)
-		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
+		_, err := tManager.ReadTombstone(ctx, tInvalidPath)
 
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 
 	{
 		tInvalidPath := username + "/tombstones/" + requestID
-		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
+		_, err := tManager.ReadTombstone(ctx, tInvalidPath)
 
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 
 	{
 		tInvalidPath := username + "/tombstones/" + requestID + ".json." + string(StatePending)
-		_, err := tManager.ReadTombstoneFile(ctx, tInvalidPath)
+		_, err := tManager.ReadTombstone(ctx, tInvalidPath)
 		require.ErrorIs(t, err, ErrInvalidDeletionRequestState)
 	}
 

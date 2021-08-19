@@ -3,12 +3,12 @@ package purger
 import (
 	"context"
 	"crypto/md5"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	fmt "fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	strings "strings"
 	"time"
 
@@ -118,7 +118,7 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
 
-	requestID := getTombstoneRequestID(startTime, endTime, match)
+	requestID := getTombstoneHash(startTime, endTime, match)
 	// Since the request id is based on a hash of the parameters, there is a possibility that a tombstone could already exist for it
 	// if the request was previously cancelled, we need to remove the cancelled tombstone before adding the pending one
 	if err := tManager.RemoveCancelledStateIfExists(ctx, requestID); err != nil {
@@ -127,7 +127,7 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	prevT, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
+	prevT, err := tManager.GetTombstoneByIDForUser(ctx, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request by id", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -141,7 +141,7 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 	curTime := time.Now().Unix() * 1000
 	t := cortex_tsdb.NewTombstone(userID, curTime, curTime, startTime, endTime, match, requestID, cortex_tsdb.StatePending)
 
-	if err = tManager.WriteTombstoneFile(ctx, t); err != nil {
+	if err = tManager.WriteTombstone(ctx, t); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -158,7 +158,7 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 		return
 	}
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
-	deleteRequests, err := tManager.GetAllDeleteRequestsForUser(ctx)
+	deleteRequests, err := tManager.GetAllTombstonesForUser(ctx)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete requests from the block store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -186,7 +186,7 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	requestID := params.Get("request_id")
 
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
-	deleteRequest, err := tManager.GetDeleteRequestByIDForUser(ctx, requestID)
+	deleteRequest, err := tManager.GetTombstoneByIDForUser(ctx, requestID)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error getting delete request from the object store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -224,26 +224,25 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Calculates the tombstone file name based on a hash of the start time, end time and selectors
-func getTombstoneRequestID(startTime int64, endTime int64, selectors []string) string {
-	// First make a string of the tombstone info
-	var b strings.Builder
-	b.WriteString(strconv.FormatInt(startTime, 10))
-	b.WriteString(",")
-	b.WriteString(strconv.FormatInt(endTime, 10))
+func getTombstoneHash(startTime int64, endTime int64, selectors []string) string {
+	// Any delete request with the same start, end time and same selectors should result in the same hash
+
+	hash := md5.New()
+
+	bufStart := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bufStart, uint64(startTime))
+	bufEnd := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bufEnd, uint64(startTime))
+
+	hash.Write(bufStart)
+	hash.Write(bufEnd)
 
 	sort.Strings(selectors)
 	for _, s := range selectors {
-		b.WriteString(",")
-		b.WriteString(s)
+		hash.Write([]byte(s))
 	}
 
-	return getTombstoneHash(b.String())
-}
-
-func getTombstoneHash(s string) string {
-	data := []byte(s)
-	md5Bytes := md5.Sum(data)
+	md5Bytes := md5.Sum(nil)
 	return hex.EncodeToString(md5Bytes[:])
 }
 

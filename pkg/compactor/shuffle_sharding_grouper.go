@@ -18,6 +18,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 type ShuffleShardingGrouper struct {

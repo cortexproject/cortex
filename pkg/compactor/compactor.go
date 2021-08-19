@@ -145,7 +145,7 @@ type PlannerFactory func(
 ) compact.Planner
 
 // CompactorLimits defines limits used by the Compactor.
-type CompactorLimits interface {
+type CompactorLimits interface { //nolint
 	CompactorTenantShardSize(userID string) int
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -142,14 +143,20 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockRanges: testData.ranges,
 			}
 
+			registerer := prometheus.NewRegistry()
+			remainingPlannedCompactions := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+				Name: "cortex_compactor_remaining_planned_compactions",
+				Help: "Total number of plans that remain to be compacted.",
+			})
+
 			g := NewShuffleShardingGrouper(nil,
 				nil,
 				false, // Do not accept malformed indexes
 				true,  // Enable vertical compaction
-				prometheus.NewRegistry(),
+				registerer,
 				nil,
 				nil,
-				nil,
+				remainingPlannedCompactions,
 				metadata.NoneFunc,
 				*compactorCfg)
 			actual, err := g.Groups(testData.blocks)

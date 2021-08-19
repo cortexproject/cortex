@@ -54,6 +54,7 @@ Cortex currently supports shuffle sharding in the following services:
 - [Query-frontend / Query-scheduler](#query-frontend-and-query-scheduler-shuffle-sharding)
 - [Store-gateway](#store-gateway-shuffle-sharding)
 - [Ruler](#ruler-shuffle-sharding)
+- [Compactor](#compactor-shuffle-sharding)
 
 Shuffle sharding is **disabled by default** and needs to be explicitly enabled in the configuration.
 
@@ -153,6 +154,20 @@ Cortex ruler can run in three modes:
 3. **Shuffle sharding**, activated by using `-ruler.enable-sharding=true` and `-ruler.sharding-strategy=shuffle-sharding`. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (`-ruler.tenant-shard-size`, can also be set per tenant as `ruler_tenant_shard_size` in overrides).
 
 Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.
+
+### Compactor shuffle sharding
+
+Cortex compactor can run in three modes:
+
+1. **No sharding at all.** This is the most basic mode of the compactor. It is activated by using `-compactor.sharding-enabled=false` (default). In this mode every compactor will run every compaction.
+2. **Default sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=default` (default). In this mode compactors register themselves into the ring. Each compactor will then select and evaluate only those users that it "owns".
+3. **Shuffle sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=shuffle-sharding`. Similarly to default sharding, compactors use the ring to distribute workload, but compactions groups for each tenant can only be evaluated on limited number of compactors (`-compactor.tenant-shard-size`, can also be set per tenant as `compactor_tenant_shard_size` in overrides).
+
+The Cortex compactor by default shards by tenant ID when sharding is enabled.
+
+With shuffle sharding selected as the sharding strategy, a subset of the compactors will be used to handle a user based on the shard size.
+
+The idea behind using the shuffle sharding strategy for the compactor is to further enable horizontal scalability and build tolerance for compactions that may take longer than the compaction interval.
 
 ## FAQ
 

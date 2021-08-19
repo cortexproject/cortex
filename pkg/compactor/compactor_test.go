@@ -39,6 +39,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -90,34 +91,67 @@ func TestConfig_ShouldSupportCliFlags(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	tests := map[string]struct {
-		setup    func(cfg *Config)
-		expected string
+		setup      func(cfg *Config)
+		initLimits func(*validation.Limits)
+		expected   string
 	}{
 		"should pass with the default config": {
-			setup:    func(cfg *Config) {},
-			expected: "",
+			setup:      func(cfg *Config) {},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   "",
 		},
 		"should pass with only 1 block range period": {
 			setup: func(cfg *Config) {
 				cfg.BlockRanges = cortex_tsdb.DurationList{time.Hour}
 			},
-			expected: "",
+			initLimits: func(_ *validation.Limits) {},
+			expected:   "",
 		},
 		"should fail with non divisible block range periods": {
 			setup: func(cfg *Config) {
 				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour, 30 * time.Hour}
 			},
-			expected: errors.Errorf(errInvalidBlockRanges, 30*time.Hour, 24*time.Hour).Error(),
+
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf(errInvalidBlockRanges, 30*time.Hour, 24*time.Hour).Error(),
+		},
+		"should pass with valid shuffle sharding config": {
+			setup: func(cfg *Config) {
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
+				cfg.ShardingEnabled = true
+			},
+			initLimits: func(limits *validation.Limits) {
+				limits.CompactorTenantShardSize = 1
+			},
+			expected: "",
+		},
+		"should fail with shuffle sharding strategy selected without sharding enabled": {
+			setup: func(cfg *Config) {
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
+				cfg.ShardingEnabled = false
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errShardingRequired.Error(),
+		},
+		"should fail with bad compactor tenant shard size": {
+			setup: func(cfg *Config) {
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
+				cfg.ShardingEnabled = true
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errInvalidTenantShardSize.Error(),
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			cfg := &Config{}
-			flagext.DefaultValues(cfg)
+			limits := validation.Limits{}
+			flagext.DefaultValues(cfg, &limits)
 			testData.setup(cfg)
+			testData.initLimits(&limits)
 
-			if actualErr := cfg.Validate(); testData.expected != "" {
+			if actualErr := cfg.Validate(limits); testData.expected != "" {
 				assert.EqualError(t, actualErr, testData.expected)
 			} else {
 				assert.NoError(t, actualErr)
@@ -133,7 +167,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 	cfg := prepareConfig()
-	c, _, _, logs, registry := prepare(t, cfg, bucketClient)
+	c, _, _, logs, registry := prepare(t, cfg, bucketClient, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -283,7 +317,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient)
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
@@ -445,7 +479,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient)
+	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
 	tsdbPlannerMock.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, errors.New("Failed to plan"))
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -506,7 +540,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient)
+	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -642,7 +676,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -759,7 +793,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient)
+	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
 
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
@@ -808,7 +842,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/index", nil)
 	bucketClient.MockDelete("user-1/bucket-index.json.gz", nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -907,7 +941,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	cfg := prepareConfig()
 	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
-	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient)
+	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
 
 	tsdbCompac.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
 
@@ -985,7 +1019,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = ringStore
 
-	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient)
+	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -1073,7 +1107,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient)
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, nil)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 		compactors = append(compactors, c)
@@ -1104,6 +1138,166 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		require.NoError(t, err)
 		assert.Contains(t, l.String(), fmt.Sprintf(`level=info component=compactor msg="successfully compacted user blocks" user=%s`, userID))
 	}
+}
+
+func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWithShuffleShardingAndMultipleInstancesRunning(t *testing.T) {
+	t.Parallel()
+
+	numUsers := 3
+
+	// Setup user IDs
+	userIDs := make([]string, 0, numUsers)
+	for i := 1; i <= numUsers; i++ {
+		userIDs = append(userIDs, fmt.Sprintf("user-%d", i))
+	}
+
+	startTime := int64(1574776800000)
+	// Define blocks mapping block IDs to start and end times
+	blocks := map[string]map[string]int64{
+		"01DTVP434PA9VFXSW2JKB3392D": {
+			"startTime": startTime,
+			"endTime":   startTime + time.Hour.Milliseconds()*2,
+		},
+		"01DTVP434PA9VFXSW2JKB3392E": {
+			"startTime": startTime,
+			"endTime":   startTime + time.Hour.Milliseconds()*2,
+		},
+		"01DTVP434PA9VFXSW2JKB3392F": {
+			"startTime": startTime + time.Hour.Milliseconds()*2,
+			"endTime":   startTime + time.Hour.Milliseconds()*4,
+		},
+		"01DTVP434PA9VFXSW2JKB3392G": {
+			"startTime": startTime + time.Hour.Milliseconds()*2,
+			"endTime":   startTime + time.Hour.Milliseconds()*4,
+		},
+		// Add another new block as the final block so that the previous groups will be planned for compaction
+		"01DTVP434PA9VFXSW2JKB3392H": {
+			"startTime": startTime + time.Hour.Milliseconds()*4,
+			"endTime":   startTime + time.Hour.Milliseconds()*6,
+		},
+	}
+
+	// Mock the bucket to contain all users, each one with five blocks, 2 sets of overlapping blocks and 1 separate block.
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", userIDs, nil)
+
+	// Keys with a value greater than 1 will be groups that should be compacted
+	groupHashes := make(map[uint32]int)
+	for _, userID := range userIDs {
+		blockDirectory := []string{}
+
+		for blockID, blockTimes := range blocks {
+			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
+			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
+			blockDirectory = append(blockDirectory, userID+"/"+blockID)
+
+			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
+			groupHash := hashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
+			groupHashes[groupHash]++
+		}
+
+		bucketClient.MockIter(userID+"/", blockDirectory, nil)
+		bucketClient.MockIter(userID+"/markers/", nil, nil)
+		bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
+		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
+		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
+	}
+
+	// Create a shared KV Store
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Create four compactors
+	var compactors []*Compactor
+	var logs []*concurrency.SyncBuffer
+
+	for i := 1; i <= 4; i++ {
+		cfg := prepareConfig()
+		cfg.ShardingEnabled = true
+		cfg.ShardingStrategy = util.ShardingStrategyShuffle
+		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
+		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
+		cfg.ShardingRing.WaitStabilityMinDuration = 3 * time.Second
+		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
+		cfg.ShardingRing.KVStore.Mock = kvstore
+
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.CompactorTenantShardSize = 3
+
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, limits)
+		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
+
+		compactors = append(compactors, c)
+		logs = append(logs, l)
+
+		// Mock the planner as if there's no compaction to do,
+		// in order to simplify tests (all in all, we just want to
+		// test our logic and not TSDB compactor which we expect to
+		// be already tested).
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	}
+
+	// Start all compactors
+	for _, c := range compactors {
+		require.NoError(t, c.StartAsync(context.Background()))
+	}
+	// Wait for all the compactors to get into the Running state without errors.
+	// Cannot use StartAndAwaitRunning as this would cause the compactions to start before
+	// all the compactors are initialized
+	for _, c := range compactors {
+		require.NoError(t, c.AwaitRunning(context.Background()))
+	}
+
+	// Wait until a run has been completed on each compactor
+	for _, c := range compactors {
+		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() interface{} {
+			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		})
+	}
+
+	// Ensure that each group was only compacted by exactly one compactor
+	for groupHash, blockCount := range groupHashes {
+
+		l, found, err := checkLogsForCompaction(compactors, logs, groupHash)
+		require.NoError(t, err)
+
+		// If the blockCount < 2 then the group shouldn't have been compacted, therefore not found in the logs
+		if blockCount < 2 {
+			assert.False(t, found)
+		} else {
+			assert.Contains(t, l.String(), fmt.Sprintf(`msg="found compactable group for user" group_hash=%d`, groupHash))
+
+		}
+	}
+}
+
+// checkLogsForCompaction checks the logs to see if a compaction has happened on the groupHash,
+// if there has been a compaction it will return the logs of the compactor that handled the group
+// and will return true. Otherwise this function will return a nil value for the logs and false
+// as the group was not compacted
+func checkLogsForCompaction(compactors []*Compactor, logs []*concurrency.SyncBuffer, groupHash uint32) (*concurrency.SyncBuffer, bool, error) {
+	var log *concurrency.SyncBuffer
+
+	// Make sure that the group_hash is only owned by a single compactor
+	for _, l := range logs {
+		owned := strings.Contains(l.String(), fmt.Sprintf(`msg="found compactable group for user" group_hash=%d`, groupHash))
+
+		// Ensure the group is not owned by multiple compactors
+		if owned && log != nil {
+			return nil, false, fmt.Errorf("group with group_hash=%d owned by multiple compactors", groupHash)
+		}
+		if owned {
+			log = l
+		}
+	}
+
+	// Return an false if we've not been able to find it
+	if log == nil {
+		return nil, false, nil
+	}
+
+	return log, true, nil
 }
 
 func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
@@ -1283,7 +1477,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -1304,9 +1498,12 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
 
-	var limits validation.Limits
-	flagext.DefaultValues(&limits)
-	overrides, err := validation.NewOverrides(limits, nil)
+	if limits == nil {
+		limits = &validation.Limits{}
+		flagext.DefaultValues(limits)
+	}
+
+	overrides, err := validation.NewOverrides(*limits, nil)
 	require.NoError(t, err)
 
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
@@ -1322,7 +1519,14 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 			nil
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
+	var blocksGrouperFactory BlocksGrouperFactory
+	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		blocksGrouperFactory = ShuffleShardingGrouperFactory
+	} else {
+		blocksGrouperFactory = DefaultBlocksGrouperFactory
+	}
+
+	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry
@@ -1422,6 +1626,32 @@ func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	return string(content)
 }
 
+func mockBlockMetaJSONWithTime(id string, orgID string, minTime int64, maxTime int64) string {
+	meta := metadata.Meta{
+		Thanos: metadata.Thanos{
+			Labels: map[string]string{"__org_id__": orgID},
+		},
+	}
+
+	meta.BlockMeta = tsdb.BlockMeta{
+		Version: 1,
+		ULID:    ulid.MustParse(id),
+		MinTime: minTime,
+		MaxTime: maxTime,
+		Compaction: tsdb.BlockMetaCompaction{
+			Level:   1,
+			Sources: []ulid.ULID{ulid.MustParse(id)},
+		},
+	}
+
+	content, err := json.Marshal(meta)
+	if err != nil {
+		panic("failed to marshal mocked block meta")
+	}
+
+	return string(content)
+}
+
 func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	numUsers := 10
 
@@ -1457,7 +1687,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Each compactor will get its own temp dir for storing local files.
-		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem)
+		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
 		t.Cleanup(func() {
 			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 		})
@@ -1526,7 +1756,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	// Set ObservePeriod to longer than the timeout period to mock a timeout while waiting on ring to become ACTIVE
 	cfg.ShardingRing.ObservePeriod = time.Second * 10
 
-	c, _, _, logs, _ := prepare(t, cfg, bucketClient)
+	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil)
 
 	// Try to start the compactor with a bad consul kv-store. The
 	err := services.StartAndAwaitRunning(context.Background(), c)

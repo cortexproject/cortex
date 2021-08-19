@@ -4,11 +4,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
@@ -34,63 +37,63 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		map[ulid.ULID]*metadata.Meta{
 			block1ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block2ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 3 * time.Hour.Milliseconds(), MaxTime: 4 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block3ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block3ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block4ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block4ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block5ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block5ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "2"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block6ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block6ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "2"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block7ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block7ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block8ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block8ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "2"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block9ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block9ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "3"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "3"}},
 			},
 			block10ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block10ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "2"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block11ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block11ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "2"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block12ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block12ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block13ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block13ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block14ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block14ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block15ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block15ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"__org_id__": "1"}},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 		}
 
@@ -143,6 +146,23 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockRanges: testData.ranges,
 			}
 
+			limits := &validation.Limits{}
+			overrides, err := validation.NewOverrides(*limits, nil)
+			require.NoError(t, err)
+
+			// Setup mocking of the ring so that the grouper will own all the shards
+			rs := ring.ReplicationSet{
+				Instances: []ring.InstanceDesc{
+					{Addr: "test-addr"},
+				},
+			}
+			subring := &RingMock{}
+			subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
+			subring.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rs, nil)
+
+			ring := &RingMock{}
+			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
+
 			registerer := prometheus.NewRegistry()
 			remainingPlannedCompactions := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 				Name: "cortex_compactor_remaining_planned_compactions",
@@ -158,7 +178,11 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				nil,
 				remainingPlannedCompactions,
 				metadata.NoneFunc,
-				*compactorCfg)
+				*compactorCfg,
+				ring,
+				"test-addr",
+				overrides,
+				"")
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)
 			require.Len(t, actual, len(testData.expected))
@@ -502,3 +526,55 @@ func TestBlocksGroup_overlaps(t *testing.T) {
 		assert.Equal(t, tc.expected, tc.second.overlaps(tc.first))
 	}
 }
+
+type RingMock struct {
+	mock.Mock
+}
+
+func (r *RingMock) Collect(ch chan<- prometheus.Metric) {}
+
+func (r *RingMock) Describe(ch chan<- *prometheus.Desc) {}
+
+func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts, bufZones []string) (ring.ReplicationSet, error) {
+	args := r.Called(key, op, bufDescs, bufHosts, bufZones)
+	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
+func (r *RingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+	args := r.Called(op)
+	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
+func (r *RingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+	args := r.Called(op)
+	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
+func (r *RingMock) ReplicationFactor() int {
+	return 0
+}
+
+func (r *RingMock) InstancesCount() int {
+	return 0
+}
+
+func (r *RingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+	args := r.Called(identifier, size)
+	return args.Get(0).(ring.ReadRing)
+}
+
+func (r *RingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+	args := r.Called(instanceID)
+	return args.Get(0).(ring.InstanceState), args.Error(1)
+}
+
+func (r *RingMock) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
+	args := r.Called(identifier, size, lookbackPeriod, now)
+	return args.Get(0).(ring.ReadRing)
+}
+
+func (r *RingMock) HasInstance(instanceID string) bool {
+	return true
+}
+
+func (r *RingMock) CleanupShuffleShardCache(identifier string) {}

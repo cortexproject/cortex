@@ -1,4 +1,4 @@
-package util
+package modules
 
 import (
 	"context"
@@ -8,10 +8,13 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/services"
 )
 
-// This service wraps module service, and adds waiting for dependencies to start before starting,
+// ErrStopProcess is the error returned by a service as a hint to stop the server entirely.
+var ErrStopProcess = errors.New("stop process")
+
+// moduleService is a Service implementation that adds waiting for dependencies to start before starting,
 // and dependant modules to stop before stopping this module service.
 type moduleService struct {
 	services.Service

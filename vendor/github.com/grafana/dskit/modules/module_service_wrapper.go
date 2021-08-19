@@ -3,8 +3,7 @@ package modules
 import (
 	"github.com/go-kit/kit/log"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/grafana/dskit/services"
 )
 
 // This function wraps module service, and adds waiting for dependencies to start before starting,
@@ -21,7 +20,7 @@ func newModuleServiceWrapper(serviceMap map[string]services.Service, mod string,
 		return r
 	}
 
-	return util.NewModuleService(mod, logger, modServ,
+	return NewModuleService(mod, logger, modServ,
 		func(_ string) map[string]services.Service {
 			return getDeps(startDeps)
 		},

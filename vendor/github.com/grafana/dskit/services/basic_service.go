@@ -151,7 +151,7 @@ func (b *BasicService) mustSwitchState(from, to State, stateFn func()) {
 // Service is in Starting state when this method runs.
 // Entire lifecycle of the service happens here.
 func (b *BasicService) main() {
-	var err error = nil
+	var err error
 
 	if b.startFn != nil {
 		err = b.startFn(b.serviceContext)

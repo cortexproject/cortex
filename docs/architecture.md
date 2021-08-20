@@ -173,7 +173,7 @@ If an ingester process crashes or exits abruptly, all the in-memory series that 
 1. Replication
 2. Write-ahead log (WAL)
 
-The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
+The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series held by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
 
 The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
@@ -199,16 +199,16 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
 
-The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the `-querier.frontend-address` CLI flag) in order to allow them to connect to the query frontends.
+The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers need to be configured with the query frontend address (via the `-querier.frontend-address` CLI flag) in order to allow them to connect to the query frontends.
 
 Query frontends are **stateless**. However, due to how the internal queue works, it's recommended to run a few query frontend replicas to reap the benefit of fair scheduling. Two replicas should suffice in most cases.
 
 Flow of the query in the system when using query-frontend:
 
-1) Query is received by query frontend, which can optionally split it or serve from the cache.
+1) Query is received by the query frontend, which can optionally split it or serve from the cache.
 2) Query frontend stores the query into in-memory queue, where it waits for some querier to pick it up.
 3) Querier picks up the query, and executes it.
-4) Querier sends result back to query-frontend, which then forwards it to the client.
+4) Querier sends the result back to the query frontend, which then forwards it to the client.
 
 #### Queueing
 
@@ -228,7 +228,7 @@ The query frontend supports caching query results and reuses them on subsequent 
 
 ### Query Scheduler
 
-Query Scheduler is an **optional** service that moves the internal queue from query frontend into separate component.
+Query Scheduler is an **optional** service that moves the internal queue from the query frontend into a separate component.
 This enables independent scaling of query frontends and number of queues (query scheduler).
 
 In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address
@@ -236,11 +236,11 @@ In order to use query scheduler, both query frontend and queriers must be config
 
 Flow of the query in the system changes when using query scheduler:
 
-1) Query is received by query frontend, which can optionally split it or serve from the cache.
-2) Query frontend forwards the query to random query scheduler process.
+1) Query is received by the query frontend, which can optionally split it or serve from the cache.
+2) Query frontend forwards the query to a random query scheduler process.
 3) Query scheduler stores the query into in-memory queue, where it waits for some querier to pick it up.
 3) Querier picks up the query, and executes it.
-4) Querier sends result back to query-frontend, which then forwards it to the client.
+4) Querier sends the result back to the query frontend, which then forwards it to the client.
 
 Query schedulers are **stateless**. It is recommended to run two replicas to make sure queries can still be serviced while one replica is restarting.
 
@@ -268,7 +268,7 @@ If all of the alertmanager nodes failed simultaneously there would be a loss of 
 ### Configs API
 
 The **configs API** is an **optional service** managing the configuration of Rulers and Alertmanagers.
-It provides APIs to get/set/update the ruler and alertmanager configurations and store them into backend.
+It provides APIs to get/set/update the ruler and alertmanager configurations and store them into the backend.
 Current supported backend are PostgreSQL and in-memory.
 
 Configs API is **stateless**.

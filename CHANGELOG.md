@@ -48,6 +48,7 @@
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
 * [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
+* [FEATURE] Distributor: Add label `statusFamily` to metric `cortex_distributor_ingester_append_failures_total` #4441
 
 ## 1.10.0 / 2021-08-03
 

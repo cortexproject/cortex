@@ -36,7 +36,7 @@ _For more information about the bucket index, please refer to [bucket index docu
 
 ## Blocks sharding and replication
 
-The store-gateway optionally supports blocks sharding. Sharding can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
+The store-gateway optionally supports block sharding. Sharding can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
 
 When sharding is enabled, store-gateway instances builds an [hash ring](../architecture.md#the-hash-ring) and blocks get sharded and replicated across the pool of store-gateway instances registered within the ring.
 
@@ -144,7 +144,7 @@ For example, if you're running Memcached in Kubernetes, you may:
 
 ### Chunks cache
 
-Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
+Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if a user query hits the same series for the same time range.
 
 To enable chunks cache, please set `-blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
 
@@ -162,7 +162,7 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only the `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
 Additional options for configuring metadata cache have `-blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 

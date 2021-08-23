@@ -11,9 +11,9 @@ This page shares some tips and things to take in consideration when setting up a
 
 ### Ensure a high number of max open file descriptors
 
-The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed by a relatively large number of files which gets loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven't reached the retention period yet.
+The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed by a relatively large number of files which get loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven't reached the retention period yet.
 
-If your Cortex cluster has many tenants or ingester is running with a long `-blocks-storage.tsdb.retention-period`, the ingester may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or enabling [shuffle sharding](../guides/shuffle-sharding.md).
+If your Cortex cluster has many tenants or ingester is running with a long `-blocks-storage.tsdb.retention-period`, the ingester may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such cases, we recommend increasing the limit on your system or enabling [shuffle sharding](../guides/shuffle-sharding.md).
 
 The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
 
@@ -93,7 +93,7 @@ The compactor generally needs a lot of disk space in order to download source bl
 
 Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant global `markers/` location in the object store. If your Cortex cluster has been created with a Cortex version older than 1.7.0, the compactor needs to migrate deletion marks to the global location.
 
-The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
+The migration is a one-time operation run at the compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
 
 You can see that the initial migration is done by looking for the following message in the compactor's logs:
 `msg="migrated block deletion marks to the global markers location"`.
@@ -104,7 +104,7 @@ You can see that the initial migration is done by looking for the following mess
 
 The rule of thumb to ensure memcached is properly scaled is to make sure evictions happen infrequently. When that's not the case and they affect query performances, the suggestion is to scale out the memcached cluster adding more nodes or increasing the memory limit of existing ones.
 
-We also recommend to run a different memcached cluster for each cache type (metadata, index, chunks). It's not required, but suggested to not worry about the effect of memory pressure on a cache type against others.
+We also recommend running a different memcached cluster for each cache type (metadata, index, chunks). It's not required, but suggested to not worry about the effect of memory pressure on a cache type against others.
 
 ## Alertmanager
 

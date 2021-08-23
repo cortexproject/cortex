@@ -45,7 +45,7 @@ This feature can be enabled via `-compactor.sharding-enabled=true` and requires 
 
 In the event of a cluster cold start or scale up of 2+ compactor instances at the same time we may end up in a situation where each new compactor instance starts at a slightly different time and thus each one runs the first compaction based on a different state of the ring. This is not a critical condition, but may be inefficient, because multiple compactor replicas may start compacting the same tenant nearly at the same time.
 
-To reduce the likelihood this could happen, the compactor waits for a stable ring at startup. A ring is considered stable if no instance is added/removed to the ring for at least `-compactor.ring.wait-stability-min-duration`. If the ring keep getting changed after `-compactor.ring.wait-stability-max-duration`, the compactor will stop waiting for a stable ring and will proceed starting up normally.
+To reduce the likelihood this could happen, the compactor waits for a stable ring at startup. A ring is considered stable if no instance is added/removed to the ring for at least `-compactor.ring.wait-stability-min-duration`. If the ring keeps getting changed after `-compactor.ring.wait-stability-max-duration`, the compactor will stop waiting for a stable ring and will proceed starting up normally.
 
 To disable this waiting logic, you can start the compactor with `-compactor.ring.wait-stability-min-duration=0`.
 
@@ -71,7 +71,7 @@ Assuming `max_compaction_range_blocks_size` is the total size of blocks for the 
 min_disk_space_required = compactor.compaction-concurrency * max_compaction_range_blocks_size * 2
 ```
 
-Alternatively, assuming the largest `-compactor.block-ranges` is `24h` (default), you could consider 150GB of disk space every 10M active series owned by the largest tenant. For example, if your largest tenant has 30M active series and `-compactor.compaction-concurrency=1` we would recommend having a disk with at least 450GB available.
+Alternatively, assuming the largest `-compactor.block-ranges` is `24h` (default), you could consider 150GB of disk space for every 10M active series owned by the largest tenant. For example, if your largest tenant has 30M active series and `-compactor.compaction-concurrency=1` we would recommend having a disk with at least 450GB available.
 
 ## Compactor HTTP endpoints
 

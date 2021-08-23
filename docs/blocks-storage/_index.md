@@ -27,7 +27,7 @@ When running the Cortex blocks storage, the Cortex architecture doesn't signific
 ![Architecture](/images/blocks-storage/architecture.png)
 <!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
 
-The **[store-gateway](./store-gateway.md)** is responsible to query blocks and is used by the [querier](./querier.md) at query time. The store-gateway is required when running the blocks storage.
+The **[store-gateway](./store-gateway.md)** is responsible for query blocks and is used by the [querier](./querier.md) at query time. The store-gateway is required when running the blocks storage.
 
 The **[compactor](./compactor.md)** is responsible to merge and deduplicate smaller blocks into larger ones, in order to reduce the number of blocks stored in the long-term storage for a given tenant and query them more efficiently. It also keeps the [bucket index](./bucket-index.md) updated and, for this reason, it's a required component.
 
@@ -47,7 +47,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 The series sharding and replication done by the distributor doesn't change based on the storage engine.
 
-It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller compared to the chunks storage for the same exact series and samples.
+It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads to a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller compared to the chunks storage for the same exact series and samples.
 
 For more information, please refer to the following dedicated sections:
 

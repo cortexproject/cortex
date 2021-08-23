@@ -20,7 +20,7 @@ The querier needs to have an almost up-to-date view over the entire storage buck
 
 ### Bucket index disabled (default)
 
-At startup, **queriers** iterate over the entire storage bucket to discover all tenants blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
+At startup, **queriers** iterate over the entire storage bucket to discover all tenant blocks and download the `meta.json` for each block. During this initial bucket scanning phase, a querier is not ready to handle incoming queries yet and its `/ready` readiness probe endpoint will fail.
 
 While running, queriers periodically iterate over the storage bucket to discover new tenants and recently uploaded blocks. Queriers do **not** download any content from blocks except a small `meta.json` file containing the block's metadata (including the minimum and maximum timestamp of samples within the block).
 
@@ -28,7 +28,7 @@ Queriers use the metadata to compute the list of blocks that need to be queried 
 
 ### Bucket index enabled
 
-When [bucket index](./bucket-index.md) is enabled, queriers lazily download the bucket index upon the first query received for a given tenant, cache it in memory and periodically keep it update. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.
+When [bucket index](./bucket-index.md) is enabled, queriers lazily download the bucket index upon the first query received for a given tenant, cache it in memory and periodically keep it updated. The bucket index contains the list of blocks and block deletion marks of a tenant, which is later used during the query execution to find the set of blocks that need to be queried for the given query.
 
 Given the bucket index removes the need to scan the bucket, it brings few benefits:
 
@@ -80,7 +80,7 @@ Caching is optional, but **highly recommended** in a production environment. Ple
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only the `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
 
 Additional options for configuring metadata cache have `-blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 

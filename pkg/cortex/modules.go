@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -44,9 +46,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -827,7 +827,7 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Cortex) setupModuleManager() error {
-	mm := modules.NewManager()
+	mm := modules.NewManager(util_log.Logger)
 
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))

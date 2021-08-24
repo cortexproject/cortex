@@ -132,7 +132,7 @@ For security issues see https://github.com/cortexproject/cortex/security/policy
 
 ## Community Meetings
 
-The Cortex community call happens every three weeks on Thursday at 03:30pm – 04:15pm UTC to get calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring).
+The Cortex community call happens every two weeks on Thursday, alternating at 1200 UTC and 1700 UTC. To get a calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring) or check out [the CNCF community calendar](https://www.cncf.io/calendar/).
 
 Meeting notes are held [here](https://docs.google.com/document/d/1shtXSAqp3t7fiC-9uZcKkq3mgwsItAJlH6YW6x1joZo/edit).
 

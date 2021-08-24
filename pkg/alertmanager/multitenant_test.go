@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/pkg/labels"
@@ -46,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1330,7 +1330,7 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			if tt.expected {
 				expectedSyncs++
 			}
-			test.Poll(t, 5*time.Second, float64(expectedSyncs), func() interface{} {
+			test.Poll(t, 3*time.Second, float64(expectedSyncs), func() interface{} {
 				metrics := regs.BuildMetricFamiliesPerUser()
 				return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
 			})

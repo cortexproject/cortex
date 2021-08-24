@@ -23,6 +23,7 @@
 * [FEATURE] Ruler: Add new `-ruler.query-stats-enabled` which when enabled will report the `cortex_ruler_query_seconds_total` as a per-user metric that tracks the sum of the wall time of executing queries in the ruler in seconds. #4317
 * [FEATURE] Query Frontend: Add `cortex_query_fetched_series_total` and `cortex_query_fetched_chunks_bytes_total` per-user counters to expose the number of series and bytes fetched as part of queries. These metrics can be enabled with the `-frontend.query-stats-enabled` flag (or its respective YAML config option `query_stats_enabled`). #4343
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
+* [FEATURE] Distributor: Add label `statusFamily` to metric ``cortex_distributor_ingester_append_failures_total`` #4441
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341
 * [ENHANCEMENT] Ring: allow experimental configuration of disabling of heartbeat timeouts by setting the relevant configuration value to zero. Applies to the following: #4342
@@ -48,7 +49,6 @@
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
 * [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
-* [FEATURE] Distributor: Add label `statusFamily` to metric `cortex_distributor_ingester_append_failures_total` #4441
 
 ## 1.10.0 / 2021-08-03
 

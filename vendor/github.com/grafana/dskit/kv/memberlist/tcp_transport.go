@@ -14,14 +14,14 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
-	tlsutil "github.com/cortexproject/cortex/pkg/util/tls"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/kvtls"
 )
 
 type messageType uint8
@@ -56,8 +56,8 @@ type TCPTransportConfig struct {
 	MetricsRegisterer prometheus.Registerer `yaml:"-"`
 	MetricsNamespace  string                `yaml:"-"`
 
-	TLSEnabled bool                 `yaml:"tls_enabled"`
-	TLS        tlsutil.ClientConfig `yaml:",inline"`
+	TLSEnabled bool               `yaml:"tls_enabled"`
+	TLS        kvtls.ClientConfig `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.

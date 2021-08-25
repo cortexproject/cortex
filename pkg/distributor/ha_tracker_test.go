@@ -9,6 +9,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,8 +23,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -119,7 +119,10 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -303,7 +306,10 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	user := "user"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -349,7 +355,10 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -426,7 +435,10 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init HA tracker
 			codec := GetReplicaDescCodec()
-			mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+			kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+			mock := kv.PrefixClient(kvStore, "prefix")
 			c, err := newHATracker(HATrackerConfig{
 				EnableHATracker:        true,
 				KVStore:                kv.Config{Mock: mock},
@@ -522,7 +534,10 @@ func TestHAClustersLimit(t *testing.T) {
 	const userID = "user"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	limits := trackerLimits{maxClusters: 2}
 
 	t1, err := newHATracker(HATrackerConfig{
@@ -655,7 +670,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster",user="userB"} 10
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster1",user="userA"} 5
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster2",user="userA"} 8
-		
+
 		# HELP cortex_ha_tracker_kv_store_cas_total The total number of CAS calls to the KV store for a user ID/cluster.
 		# TYPE cortex_ha_tracker_kv_store_cas_total counter
 		cortex_ha_tracker_kv_store_cas_total{cluster="cluster",user="userB"} 10
@@ -688,7 +703,10 @@ func TestCheckReplicaCleanup(t *testing.T) {
 
 	reg := prometheus.NewPedanticRegistry()
 
-	mock := kv.PrefixClient(consul.NewInMemoryClient(GetReplicaDescCodec()), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(GetReplicaDescCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},

@@ -28,7 +28,7 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, os.RemoveAll(dirname))
 	}()
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
@@ -108,7 +108,7 @@ func TestWAL(t *testing.T) {
 }
 
 func TestCheckpointRepair(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
@@ -290,7 +290,7 @@ func BenchmarkWALReplay(b *testing.B) {
 		require.NoError(b, os.RemoveAll(dirname))
 	}()
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true

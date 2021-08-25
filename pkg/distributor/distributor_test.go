@@ -16,6 +16,8 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -36,8 +38,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -685,7 +685,11 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				})
 				defer stopAll(ds, r)
 				codec := GetReplicaDescCodec()
-				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+
+				ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+				mock := kv.PrefixClient(ringStore, "prefix")
 				d := ds[0]
 
 				if tc.enableTracker {
@@ -1582,7 +1586,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		b.Run(testName, func(b *testing.B) {
 
 			// Create an in-memory KV store for the ring with 1 ingester registered.
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			b.Cleanup(func() { assert.NoError(b, closer.Close()) })
+
 			err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
 				func(_ interface{}) (interface{}, bool, error) {
 					d := &ring.Desc{}
@@ -1931,7 +1937,9 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		ingestersByAddr[addr] = &ingesters[i]
 	}
 
-	kvStore := consul.NewInMemoryClient(ring.GetCodec())
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
 		func(_ interface{}) (interface{}, bool, error) {
 			return &ring.Desc{

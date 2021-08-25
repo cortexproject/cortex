@@ -310,7 +310,8 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.chunkSizeBytes.Observe(29 * base)
 	m.chunkSizeBytes.Observe(30 * base)
 
-	m.queriesDropped.Add(31 * base)
+	m.queriesDropped.WithLabelValues("chunks").Add(31 * base)
+	m.queriesDropped.WithLabelValues("series").Add(0)
 
 	m.seriesRefetches.Add(33 * base)
 
@@ -355,7 +356,7 @@ type mockedBucketStoreMetrics struct {
 	seriesRefetches       prometheus.Counter
 	resultSeriesCount     prometheus.Summary
 	chunkSizeBytes        prometheus.Histogram
-	queriesDropped        prometheus.Counter
+	queriesDropped        *prometheus.CounterVec
 
 	cachedPostingsCompressions           *prometheus.CounterVec
 	cachedPostingsCompressionErrors      *prometheus.CounterVec
@@ -442,10 +443,10 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		},
 	})
 
-	m.queriesDropped = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	m.queriesDropped = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_queries_dropped_total",
-		Help: "Number of queries that were dropped due to the sample limit.",
-	})
+		Help: "Number of queries that were dropped due to the limit.",
+	}, []string{"reason"})
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", 64*1024),

@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -46,7 +46,7 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 	require.NoError(t, os.Remove(tokensFile.Name()))
 
 	testDelegate := &mockDelegate{
-		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 			assert.False(t, instanceExists)
 			return JOINING, Tokens{1, 2, 3, 4, 5}
 		},
@@ -88,7 +88,7 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 	require.NoError(t, storedTokens.StoreToFile(tokensFile.Name()))
 
 	testDelegate := &mockDelegate{
-		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 			assert.True(t, instanceExists)
 			assert.Equal(t, ACTIVE, instanceDesc.GetState())
 			assert.Equal(t, storedTokens, Tokens(instanceDesc.GetTokens()))
@@ -125,9 +125,9 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 	tests := map[string]struct {
 		storedTokens   Tokens
-		initialState   IngesterState
+		initialState   InstanceState
 		initialTokens  Tokens
-		expectedState  IngesterState
+		expectedState  InstanceState
 		expectedTokens Tokens
 	}{
 		"instance already registered in the ring without tokens": {
@@ -157,7 +157,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 			registeredAt := time.Now().Add(-time.Hour)
 
 			testDelegate := &mockDelegate{
-				onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+				onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 					return instanceDesc.GetState(), instanceDesc.GetTokens()
 				},
 			}
@@ -198,7 +198,7 @@ func TestDelegatesChain(t *testing.T) {
 	// Chain delegates together.
 	var chain BasicLifecyclerDelegate
 	chain = &mockDelegate{
-		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+		onRegister: func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 			assert.False(t, instanceExists)
 			return JOINING, Tokens{1, 2, 3, 4, 5}
 		},

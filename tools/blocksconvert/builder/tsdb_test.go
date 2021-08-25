@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestTsdbBuilder(t *testing.T) {
@@ -43,7 +44,7 @@ func TestTsdbBuilder(t *testing.T) {
 	samplesCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 	inMemory := prometheus.NewGauge(prometheus.GaugeOpts{})
 
-	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, 33, util.Logger, seriesCounter, samplesCounter, inMemory)
+	b, err := newTsdbBuilder(dir, yesterdayStart, yesterdayEnd, 33, 0, util_log.Logger, seriesCounter, samplesCounter, inMemory)
 	require.NoError(t, err)
 
 	seriesCount := 200
@@ -80,7 +81,7 @@ func TestTsdbBuilder(t *testing.T) {
 	id, err := b.finishBlock("unit test", map[string]string{"ext_label": "12345"})
 	require.NoError(t, err)
 
-	db, err := tsdb.Open(dir, util.Logger, prometheus.NewRegistry(), tsdb.DefaultOptions())
+	db, err := tsdb.Open(dir, util_log.Logger, prometheus.NewRegistry(), tsdb.DefaultOptions(), nil)
 	require.NoError(t, err)
 
 	blocks := db.Blocks()

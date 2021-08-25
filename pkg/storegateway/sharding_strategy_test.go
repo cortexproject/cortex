@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -17,7 +18,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestDefaultShardingStrategy(t *testing.T) {
@@ -117,7 +117,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -137,7 +137,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -155,14 +155,14 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			setupRing: func(r *ring.Desc) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-2"] = ring.IngesterDesc{
+				r.Ingesters["instance-2"] = ring.InstanceDesc{
 					Addr:      "127.0.0.2",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
 					Tokens:    []uint32{block2Hash + 1, block3Hash + 1},
 				}
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -183,14 +183,14 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
 					Tokens:    []uint32{block3Hash + 1},
 				}
 
-				r.Ingesters["instance-4"] = ring.IngesterDesc{
+				r.Ingesters["instance-4"] = ring.InstanceDesc{
 					Addr:      "127.0.0.4",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -219,7 +219,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				"127.0.0.3": {block4},
 			},
 		},
-		"JOINING instance in the ring should get its shard blocks but they should also be replicated to another instance": {
+		"JOINING instance in the ring should get its shard blocks and they should not be replicated to another instance": {
 			replicationFactor: 1,
 			setupRing: func(r *ring.Desc) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
@@ -227,7 +227,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-3", "127.0.0.3", "", []uint32{block4Hash + 1}, ring.JOINING, registeredAt)
 			},
 			expectedBlocks: map[string][]ulid.ULID{
-				"127.0.0.1": {block1, block3 /* replicated: */, block4},
+				"127.0.0.1": {block1, block3},
 				"127.0.0.2": {block2},
 				"127.0.0.3": {block4},
 			},
@@ -257,7 +257,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -277,7 +277,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 					block4: {},
 				}
 
-				err = filter.FilterBlocks(ctx, "user-1", metas, synced)
+				err = filter.FilterBlocks(ctx, "user-1", metas, map[ulid.ULID]struct{}{}, synced)
 				require.NoError(t, err)
 
 				var actualBlocks []ulid.ULID
@@ -466,7 +466,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -492,7 +492,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -517,7 +517,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
 				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1}, ring.ACTIVE, registeredAt)
 
-				r.Ingesters["instance-3"] = ring.IngesterDesc{
+				r.Ingesters["instance-3"] = ring.InstanceDesc{
 					Addr:      "127.0.0.3",
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
@@ -554,7 +554,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				{instanceID: "instance-3", instanceAddr: "127.0.0.3", blocks: []ulid.ULID{block4}},
 			},
 		},
-		"JOINING instance in the ring should get its shard blocks but they should also be replicated to another instance": {
+		"JOINING instance in the ring should get its shard blocks and they should not be replicated to another instance": {
 			replicationFactor: 1,
 			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 2},
 			setupRing: func(r *ring.Desc) {
@@ -568,7 +568,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				{instanceID: "instance-3", instanceAddr: "127.0.0.3", users: []string{userID}},
 			},
 			expectedBlocks: []blocksExpectation{
-				{instanceID: "instance-1", instanceAddr: "127.0.0.1", blocks: []ulid.ULID{block1, block2, block3 /* replicated: */, block4}},
+				{instanceID: "instance-1", instanceAddr: "127.0.0.1", blocks: []ulid.ULID{block1, block2, block3}},
 				{instanceID: "instance-2", instanceAddr: "127.0.0.2", blocks: []ulid.ULID{ /* no blocks because not belonging to the shard */ }},
 				{instanceID: "instance-3", instanceAddr: "127.0.0.3", blocks: []ulid.ULID{block4}},
 			},
@@ -609,11 +609,12 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			}))
 
 			cfg := ring.Config{
-				ReplicationFactor: testData.replicationFactor,
-				HeartbeatTimeout:  time.Minute,
+				ReplicationFactor:    testData.replicationFactor,
+				HeartbeatTimeout:     time.Minute,
+				SubringCacheDisabled: true,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, &BlocksReplicationStrategy{})
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -640,7 +641,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 					block4: {},
 				}
 
-				err = filter.FilterBlocks(ctx, userID, metas, synced)
+				err = filter.FilterBlocks(ctx, userID, metas, map[ulid.ULID]struct{}{}, synced)
 				require.NoError(t, err)
 
 				var actualBlocks []ulid.ULID

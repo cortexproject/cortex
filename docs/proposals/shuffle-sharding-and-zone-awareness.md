@@ -8,7 +8,7 @@ slug: shuffle-sharding-and-zone-awareness
 - Author: @pracucci, @tomwilkie, @pstibrany
 - Reviewers:
 - Date: August 2020
-- Status: Proposed, implemented in [PR #3090](https://github.com/cortexproject/cortex/pull/3090)
+- Status: Accepted, implemented in [PR #3090](https://github.com/cortexproject/cortex/pull/3090)
 
 ## Shuffle sharding and zone awareness
 

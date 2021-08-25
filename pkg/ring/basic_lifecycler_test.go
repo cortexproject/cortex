@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -25,8 +25,8 @@ const (
 func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 	tests := map[string]struct {
 		initialInstanceID   string
-		initialInstanceDesc *IngesterDesc
-		registerState       IngesterState
+		initialInstanceDesc *InstanceDesc
+		registerState       InstanceState
 		registerTokens      Tokens
 	}{
 		"initial ring is empty": {
@@ -35,7 +35,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		},
 		"initial ring non empty (containing another instance)": {
 			initialInstanceID: "instance-1",
-			initialInstanceDesc: &IngesterDesc{
+			initialInstanceDesc: &InstanceDesc{
 				Addr:                "1.1.1.1",
 				State:               ACTIVE,
 				Tokens:              Tokens{6, 7, 8, 9, 10},
@@ -46,7 +46,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		},
 		"initial ring contains the same instance with different state, tokens and address (new one is 127.0.0.1)": {
 			initialInstanceID: testInstanceID,
-			initialInstanceDesc: &IngesterDesc{
+			initialInstanceDesc: &InstanceDesc{
 				Addr:                "1.1.1.1",
 				State:               ACTIVE,
 				Tokens:              Tokens{6, 7, 8, 9, 10},
@@ -57,7 +57,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		},
 		"initial ring contains the same instance with different address (new one is 127.0.0.1)": {
 			initialInstanceID: testInstanceID,
-			initialInstanceDesc: &IngesterDesc{
+			initialInstanceDesc: &InstanceDesc{
 				Addr:                "1.1.1.1",
 				State:               ACTIVE,
 				Tokens:              Tokens{1, 2, 3, 4, 5},
@@ -68,7 +68,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		},
 		"initial ring contains the same instance with registered timestamp == 0": {
 			initialInstanceID: testInstanceID,
-			initialInstanceDesc: &IngesterDesc{
+			initialInstanceDesc: &InstanceDesc{
 				Addr:                "1.1.1.1",
 				State:               ACTIVE,
 				Tokens:              Tokens{1, 2, 3, 4, 5},
@@ -99,7 +99,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 			}
 
 			// Assert on the lifecycler state once the instance register delegate function will be called.
-			delegate.onRegister = func(_ *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+			delegate.onRegister = func(_ *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 				assert.Equal(t, services.Starting, lifecycler.State())
 				assert.False(t, lifecycler.IsRegistered())
 				assert.Equal(t, testInstanceID, instanceID)
@@ -162,7 +162,7 @@ func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
 	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
 	require.NoError(t, err)
 
-	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (IngesterState, Tokens) {
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (InstanceState, Tokens) {
 		return ACTIVE, Tokens{1, 2, 3, 4, 5}
 	}
 	delegate.onStopping = func(_ *BasicLifecycler) {
@@ -262,7 +262,7 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
 	registerTokens := Tokens{1, 2, 3, 4, 5}
-	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (state IngesterState, tokens Tokens) {
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (state InstanceState, tokens Tokens) {
 		return ACTIVE, registerTokens
 	}
 
@@ -295,14 +295,14 @@ func TestBasicLifecycler_ChangeState(t *testing.T) {
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
-	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (IngesterState, Tokens) {
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (InstanceState, Tokens) {
 		return JOINING, Tokens{1, 2, 3, 4, 5}
 	}
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 	assert.Equal(t, JOINING, lifecycler.GetState())
 
-	for _, state := range []IngesterState{ACTIVE, LEAVING} {
+	for _, state := range []InstanceState{ACTIVE, LEAVING} {
 		assert.NoError(t, lifecycler.ChangeState(ctx, state))
 		assert.Equal(t, state, lifecycler.GetState())
 
@@ -322,7 +322,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
 	require.NoError(t, err)
 
-	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (IngesterState, Tokens) {
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (InstanceState, Tokens) {
 		return ACTIVE, Tokens{1, 2, 3, 4, 5}
 	}
 
@@ -363,7 +363,7 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
 	registerTokens := Tokens{1, 2, 3, 4, 5}
-	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ IngesterDesc) (state IngesterState, tokens Tokens) {
+	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (state InstanceState, tokens Tokens) {
 		return ACTIVE, registerTokens
 	}
 
@@ -379,7 +379,7 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 
 	// Run a noop update instance, but since the instance is not in the ring we do expect
 	// it will added back anyway.
-	require.NoError(t, lifecycler.updateInstance(ctx, func(_ *Desc, desc *IngesterDesc) bool {
+	require.NoError(t, lifecycler.updateInstance(ctx, func(_ *Desc, desc *InstanceDesc) bool {
 		return false
 	}))
 
@@ -416,13 +416,13 @@ func prepareBasicLifecyclerWithDelegate(cfg BasicLifecyclerConfig, delegate Basi
 }
 
 type mockDelegate struct {
-	onRegister      func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens)
+	onRegister      func(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens)
 	onTokensChanged func(lifecycler *BasicLifecycler, tokens Tokens)
 	onStopping      func(lifecycler *BasicLifecycler)
-	onHeartbeat     func(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc)
+	onHeartbeat     func(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc)
 }
 
-func (m *mockDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc IngesterDesc) (IngesterState, Tokens) {
+func (m *mockDelegate) OnRingInstanceRegister(lifecycler *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	if m.onRegister == nil {
 		return PENDING, Tokens{}
 	}
@@ -442,18 +442,18 @@ func (m *mockDelegate) OnRingInstanceStopping(lifecycler *BasicLifecycler) {
 	}
 }
 
-func (m *mockDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *IngesterDesc) {
+func (m *mockDelegate) OnRingInstanceHeartbeat(lifecycler *BasicLifecycler, ringDesc *Desc, instanceDesc *InstanceDesc) {
 	if m.onHeartbeat != nil {
 		m.onHeartbeat(lifecycler, ringDesc, instanceDesc)
 	}
 }
 
-func getInstanceFromStore(t *testing.T, store kv.Client, instanceID string) (IngesterDesc, bool) {
+func getInstanceFromStore(t *testing.T, store kv.Client, instanceID string) (InstanceDesc, bool) {
 	out, err := store.Get(context.Background(), testRingKey)
 	require.NoError(t, err)
 
 	if out == nil {
-		return IngesterDesc{}, false
+		return InstanceDesc{}, false
 	}
 
 	ringDesc := out.(*Desc)

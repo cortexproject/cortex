@@ -14,9 +14,12 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
+
+var sep = []byte{'\xff'}
 
 func noAllocString(buf []byte) string {
 	return *(*string)(unsafe.Pointer(&buf))
@@ -34,8 +37,19 @@ func ZLabelsFromPromLabels(lset labels.Labels) []ZLabel {
 
 // ZLabelsToPromLabels convert slice of labelpb.ZLabel to Prometheus labels in type unsafe manner.
 // It reuses the same memory. Caller should abort using passed []ZLabel.
+// NOTE: Use with care. ZLabels holds memory from the whole protobuf unmarshal, so the returned
+// Prometheus Labels will hold this memory as well.
 func ZLabelsToPromLabels(lset []ZLabel) labels.Labels {
 	return *(*labels.Labels)(unsafe.Pointer(&lset))
+}
+
+// ReAllocZLabelsStrings re-allocates all underlying bytes for string, detaching it from bigger memory pool.
+func ReAllocZLabelsStrings(lset *[]ZLabel) {
+	for j, l := range *lset {
+		// NOTE: This trick converts from string to byte without copy, but copy when creating string.
+		(*lset)[j].Name = string(noAllocBytes(l.Name))
+		(*lset)[j].Value = string(noAllocBytes(l.Value))
+	}
 }
 
 // LabelsFromPromLabels converts Prometheus labels to slice of labelpb.ZLabel in type unsafe manner.
@@ -61,7 +75,7 @@ func ZLabelSetsToPromLabelSets(lss ...ZLabelSet) []labels.Labels {
 
 // ZLabel is a Label (also easily transformable to Prometheus labels.Labels) that can be unmarshalled from protobuf
 // reusing the same memory address for string bytes.
-// NOTE: While unmarshal use exactly same bytes that were allocated for protobuf, this will mean that *whole* protobuf
+// NOTE: While unmarshalling it uses exactly same bytes that were allocated for protobuf. This mean that *whole* protobuf
 // bytes will be not GC-ed as long as ZLabels are referenced somewhere. Use it carefully, only for short living
 // protobuf message processing.
 type ZLabel Label
@@ -235,27 +249,35 @@ func (m *ZLabel) Compare(other ZLabel) int {
 	return strings.Compare(m.Value, other.Value)
 }
 
-// ExtendLabels extend given labels by extend in labels format.
+// ExtendSortedLabels extend given labels by extend in labels format.
 // The type conversion is done safely, which means we don't modify extend labels underlying array.
 //
 // In case of existing labels already present in given label set, it will be overwritten by external one.
-func ExtendLabels(lset labels.Labels, extend labels.Labels) labels.Labels {
-	overwritten := map[string]struct{}{}
-	for i, l := range lset {
-		if v := extend.Get(l.Name); v != "" {
-			lset[i].Value = v
-			overwritten[l.Name] = struct{}{}
+// NOTE: Labels and extend has to be sorted.
+func ExtendSortedLabels(lset, extend labels.Labels) labels.Labels {
+	ret := make(labels.Labels, 0, len(lset)+len(extend))
+
+	// Inject external labels in place.
+	for len(lset) > 0 && len(extend) > 0 {
+		d := strings.Compare(lset[0].Name, extend[0].Name)
+		if d == 0 {
+			// Duplicate, prefer external labels.
+			// NOTE(fabxc): Maybe move it to a prefixed version to still ensure uniqueness of series?
+			ret = append(ret, extend[0])
+			lset, extend = lset[1:], extend[1:]
+		} else if d < 0 {
+			ret = append(ret, lset[0])
+			lset = lset[1:]
+		} else if d > 0 {
+			ret = append(ret, extend[0])
+			extend = extend[1:]
 		}
 	}
 
-	for _, l := range extend {
-		if _, ok := overwritten[l.Name]; ok {
-			continue
-		}
-		lset = append(lset, l)
-	}
-	sort.Sort(lset)
-	return lset
+	// Append all remaining elements.
+	ret = append(ret, lset...)
+	ret = append(ret, extend...)
+	return ret
 }
 
 func PromLabelSetsToString(lsets []labels.Labels) string {
@@ -294,4 +316,57 @@ func DeepCopy(lbls []ZLabel) []ZLabel {
 		ret[i].Value = string(noAllocBytes(lbls[i].Value))
 	}
 	return ret
+}
+
+// HashWithPrefix returns a hash for the given prefix and labels.
+func HashWithPrefix(prefix string, lbls []ZLabel) uint64 {
+	// Use xxhash.Sum64(b) for fast path as it's faster.
+	b := make([]byte, 0, 1024)
+	b = append(b, prefix...)
+	b = append(b, sep[0])
+
+	for i, v := range lbls {
+		if len(b)+len(v.Name)+len(v.Value)+2 >= cap(b) {
+			// If labels entry is 1KB allocate do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, v := range lbls[i:] {
+				_, _ = h.WriteString(v.Name)
+				_, _ = h.Write(sep)
+				_, _ = h.WriteString(v.Value)
+				_, _ = h.Write(sep)
+			}
+			return h.Sum64()
+		}
+		b = append(b, v.Name...)
+		b = append(b, sep[0])
+		b = append(b, v.Value...)
+		b = append(b, sep[0])
+	}
+	return xxhash.Sum64(b)
+}
+
+// ZLabelSets is a sortable list of ZLabelSet. It assumes the label pairs in each ZLabelSet element are already sorted.
+type ZLabelSets []ZLabelSet
+
+func (z ZLabelSets) Len() int { return len(z) }
+
+func (z ZLabelSets) Swap(i, j int) { z[i], z[j] = z[j], z[i] }
+
+func (z ZLabelSets) Less(i, j int) bool {
+	l := 0
+	r := 0
+	var result int
+	lenI, lenJ := len(z[i].Labels), len(z[j].Labels)
+	for l < lenI && r < lenJ {
+		result = z[i].Labels[l].Compare(z[j].Labels[r])
+		if result == 0 {
+			l++
+			r++
+			continue
+		}
+		return result < 0
+	}
+
+	return l == lenI
 }

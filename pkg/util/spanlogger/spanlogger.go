@@ -9,10 +9,15 @@ import (
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type loggerCtxMarker struct{}
+
+const (
+	TenantIDTagName = "tenant_ids"
+)
 
 var (
 	loggerCtxKey = &loggerCtxMarker{}
@@ -26,7 +31,7 @@ type SpanLogger struct {
 
 // New makes a new SpanLogger, where logs will be sent to the global logger.
 func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
-	return NewWithLogger(ctx, util.Logger, method, kvps...)
+	return NewWithLogger(ctx, util_log.Logger, method, kvps...)
 }
 
 // NewWithLogger makes a new SpanLogger with a custom log.Logger to send logs
@@ -34,8 +39,11 @@ func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, 
 // retrieved with FromContext or FromContextWithFallback.
 func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
+	if ids, _ := tenant.TenantIDs(ctx); len(ids) > 0 {
+		span.SetTag(TenantIDTagName, ids)
+	}
 	logger := &SpanLogger{
-		Logger: log.With(util.WithContext(ctx, l), "method", method),
+		Logger: log.With(util_log.WithContext(ctx, l), "method", method),
 		Span:   span,
 	}
 	if len(kvps) > 0 {
@@ -51,7 +59,7 @@ func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...int
 // in the context. If the context doesn't have a logger, the global logger
 // is used.
 func FromContext(ctx context.Context) *SpanLogger {
-	return FromContextWithFallback(ctx, util.Logger)
+	return FromContextWithFallback(ctx, util_log.Logger)
 }
 
 // FromContextWithFallback returns a span logger using the current parent span.
@@ -68,7 +76,7 @@ func FromContextWithFallback(ctx context.Context, fallback log.Logger) *SpanLogg
 		sp = defaultNoopSpan
 	}
 	return &SpanLogger{
-		Logger: util.WithContext(ctx, logger),
+		Logger: util_log.WithContext(ctx, logger),
 		Span:   sp,
 	}
 }

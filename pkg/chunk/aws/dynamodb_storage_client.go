@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"golang.org/x/time/rate"
@@ -31,6 +32,8 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -58,7 +61,7 @@ type DynamoDBConfig struct {
 	Metrics                MetricsAutoScalingConfig `yaml:"metrics"`
 	ChunkGangSize          int                      `yaml:"chunk_gang_size"`
 	ChunkGetMaxParallelism int                      `yaml:"chunk_get_max_parallelism"`
-	BackoffConfig          util.BackoffConfig       `yaml:"backoff_config"`
+	BackoffConfig          backoff.Config           `yaml:"backoff_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -175,7 +178,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 	outstanding := input.(dynamoDBWriteBatch)
 	unprocessed := dynamoDBWriteBatch{}
 
-	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
+	backoff := backoff.New(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBWriteBatch{}
@@ -212,8 +215,8 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input chunk.Write
 				continue
 			} else if ok && awsErr.Code() == validationException {
 				// this write will never work, so the only option is to drop the offending items and continue.
-				level.Warn(util.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", awsErr)
-				level.Debug(util.Logger).Log("msg", "Dropped request details", "requests", requests)
+				level.Warn(log.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", awsErr)
+				level.Debug(log.Logger).Log("msg", "Dropped request details", "requests", requests)
 				util.Event().Log("msg", "ValidationException", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
@@ -431,7 +434,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 	result := []chunk.Chunk{}
 	unprocessed := dynamoDBReadRequest{}
-	backoff := util.NewBackoff(ctx, a.cfg.BackoffConfig)
+	backoff := backoff.New(ctx, a.cfg.BackoffConfig)
 
 	for outstanding.Len()+unprocessed.Len() > 0 && backoff.Ongoing() {
 		requests := dynamoDBReadRequest{}
@@ -684,11 +687,11 @@ func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, max int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
 	if max > 0 {
-		toFill = util.Min(inLen, max-outLen)
+		toFill = math.Min(inLen, max-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := util.Min(len(fromReqs), toFill)
+			taken := math.Min(len(fromReqs), toFill)
 			if taken > 0 {
 				b[tableName] = append(b[tableName], fromReqs[:taken]...)
 				from[tableName] = fromReqs[taken:]
@@ -731,11 +734,11 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, max int) {
 	outLen, inLen := b.Len(), from.Len()
 	toFill := inLen
 	if max > 0 {
-		toFill = util.Min(inLen, max-outLen)
+		toFill = math.Min(inLen, max-outLen)
 	}
 	for toFill > 0 {
 		for tableName, fromReqs := range from {
-			taken := util.Min(len(fromReqs.Keys), toFill)
+			taken := math.Min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
 					b[tableName] = &dynamodb.KeysAndAttributes{
@@ -788,7 +791,7 @@ func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
 	}
 	path := strings.TrimPrefix(awsURL.Path, "/")
 	if len(path) > 0 {
-		level.Warn(util.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
 	config, err := awscommon.ConfigFromURL(awsURL)
 	if err != nil {

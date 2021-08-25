@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -23,11 +24,11 @@ func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
 	frontend, err := New(config, limits{queriers: 3}, logger, nil)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
-	t.Cleanup(frontend.Close)
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), frontend))
+	})
 	return frontend, nil
 }
 

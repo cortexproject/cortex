@@ -15,11 +15,12 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -83,8 +84,40 @@ func (d *data) MergeContent() []string {
 	return out
 }
 
-func (d *data) RemoveTombstones(limit time.Time) {
-	// nothing to do
+// This method deliberately ignores zero limit, so that tests can observe LEFT state as well.
+func (d *data) RemoveTombstones(limit time.Time) (total, removed int) {
+	for n, m := range d.Members {
+		if m.State == LEFT {
+			if time.Unix(m.Timestamp, 0).Before(limit) {
+				// remove it
+				delete(d.Members, n)
+				removed++
+			} else {
+				total++
+			}
+		}
+	}
+	return
+}
+
+func (m member) clone() member {
+	out := member{
+		Timestamp: m.Timestamp,
+		Tokens:    make([]uint32, len(m.Tokens)),
+		State:     m.State,
+	}
+	copy(out.Tokens, m.Tokens)
+	return out
+}
+
+func (d *data) Clone() Mergeable {
+	out := &data{
+		Members: make(map[string]member, len(d.Members)),
+	}
+	for k, v := range d.Members {
+		out.Members[k] = v.clone()
+	}
+	return out
 }
 
 func (d *data) getAllTokens() []uint32 {
@@ -206,12 +239,12 @@ func TestBasicGetAndCas(t *testing.T) {
 	c := dataCodec{}
 
 	name := "Ing 1"
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-		},
-		Codecs: []codec.Codec{c},
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
 	}
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -264,10 +297,10 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 
 	c := dataCodec{}
 
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{},
-		Codecs:       []codec.Codec{c},
-	}
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{}
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -409,9 +442,9 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 func TestMultipleCAS(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{
-		Codecs: []codec.Codec{c},
-	}
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	mkv.maxCasRetries = 20
@@ -500,25 +533,20 @@ func TestMultipleClients(t *testing.T) {
 
 	for i := 0; i < members; i++ {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := KVConfig{
-			NodeName: id,
+		var cfg KVConfig
+		flagext.DefaultValues(&cfg)
+		cfg.NodeName = id
 
-			// some useful parameters when playing with higher number of members
-			// RetransmitMult:     2,
-			GossipInterval:   100 * time.Millisecond,
-			GossipNodes:      3,
-			PushPullInterval: 5 * time.Second,
-			// PacketDialTimeout:  5 * time.Second,
-			// StreamTimeout:      5 * time.Second,
-			// PacketWriteTimeout: 2 * time.Second,
+		cfg.GossipInterval = 100 * time.Millisecond
+		cfg.GossipNodes = 3
+		cfg.PushPullInterval = 5 * time.Second
 
-			TCPTransport: TCPTransportConfig{
-				BindAddrs: []string{"localhost"},
-				BindPort:  0, // randomize ports
-			},
-
-			Codecs: []codec.Codec{c},
+		cfg.TCPTransport = TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  0, // randomize ports
 		}
+
+		cfg.Codecs = []codec.Codec{c}
 
 		mkv := NewKV(cfg, log.NewNopLogger())
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -559,9 +587,6 @@ func TestMultipleClients(t *testing.T) {
 		return true // yes, keep watching
 	})
 	cancel() // make linter happy
-
-	// Let clients exchange messages for a while
-	close(stop)
 
 	t.Logf("Ring updates observed: %d", updates)
 
@@ -614,6 +639,9 @@ func TestMultipleClients(t *testing.T) {
 			}
 		}
 	}
+
+	// We cannot shutdown the KV until now in order for Get() to work reliably.
+	close(stop)
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
@@ -644,25 +672,25 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 
 	for i, port := range ports {
 		id := fmt.Sprintf("Member-%d", i)
-		cfg := KVConfig{
-			NodeName: id,
+		var cfg KVConfig
+		flagext.DefaultValues(&cfg)
+		cfg.NodeName = id
 
-			GossipInterval:   100 * time.Millisecond,
-			GossipNodes:      3,
-			PushPullInterval: 5 * time.Second,
+		cfg.GossipInterval = 100 * time.Millisecond
+		cfg.GossipNodes = 3
+		cfg.PushPullInterval = 5 * time.Second
 
-			MinJoinBackoff:   100 * time.Millisecond,
-			MaxJoinBackoff:   1 * time.Minute,
-			MaxJoinRetries:   10,
-			AbortIfJoinFails: true,
+		cfg.MinJoinBackoff = 100 * time.Millisecond
+		cfg.MaxJoinBackoff = 1 * time.Minute
+		cfg.MaxJoinRetries = 10
+		cfg.AbortIfJoinFails = true
 
-			TCPTransport: TCPTransportConfig{
-				BindAddrs: []string{"localhost"},
-				BindPort:  port,
-			},
-
-			Codecs: []codec.Codec{c},
+		cfg.TCPTransport = TCPTransportConfig{
+			BindAddrs: []string{"localhost"},
+			BindPort:  port,
 		}
+
+		cfg.Codecs = []codec.Codec{c}
 
 		if i == 0 {
 			// Add members to first KV config to join immediately on initialization.
@@ -731,21 +759,21 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 	ports, err := getFreePorts(1)
 	require.NoError(t, err)
 
-	cfg := KVConfig{
-		MinJoinBackoff:   100 * time.Millisecond,
-		MaxJoinBackoff:   100 * time.Millisecond,
-		MaxJoinRetries:   2,
-		AbortIfJoinFails: true,
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.MinJoinBackoff = 100 * time.Millisecond
+	cfg.MaxJoinBackoff = 100 * time.Millisecond
+	cfg.MaxJoinRetries = 2
+	cfg.AbortIfJoinFails = true
 
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  0,
-		},
-
-		JoinMembers: []string{fmt.Sprintf("127.0.0.1:%d", ports[0])},
-
-		Codecs: []codec.Codec{c},
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  0,
 	}
+
+	cfg.JoinMembers = []string{fmt.Sprintf("127.0.0.1:%d", ports[0])}
+
+	cfg.Codecs = []codec.Codec{c}
 
 	mkv := NewKV(cfg, log.NewNopLogger())
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
@@ -870,8 +898,17 @@ func (dc distributedCounter) MergeContent() []string {
 	return out
 }
 
-func (dc distributedCounter) RemoveTombstones(limit time.Time) {
+func (dc distributedCounter) RemoveTombstones(limit time.Time) (_, _ int) {
 	// nothing to do
+	return
+}
+
+func (dc distributedCounter) Clone() Mergeable {
+	out := make(distributedCounter, len(dc))
+	for k, v := range dc {
+		out[k] = v
+	}
+	return out
 }
 
 type distributedCounterCodec struct{}
@@ -897,16 +934,16 @@ func (d distributedCounterCodec) Encode(val interface{}) ([]byte, error) {
 var _ codec.Codec = &distributedCounterCodec{}
 
 func TestMultipleCodecs(t *testing.T) {
-	cfg := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  0, // randomize
-		},
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  0, // randomize
+	}
 
-		Codecs: []codec.Codec{
-			dataCodec{},
-			distributedCounterCodec{},
-		},
+	cfg.Codecs = []codec.Codec{
+		dataCodec{},
+		distributedCounterCodec{},
 	}
 
 	mkv1 := NewKV(cfg, log.NewNopLogger())
@@ -988,16 +1025,16 @@ func TestRejoin(t *testing.T) {
 	ports, err := getFreePorts(2)
 	require.NoError(t, err)
 
-	cfg1 := KVConfig{
-		TCPTransport: TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  ports[0],
-		},
-
-		RandomizeNodeName: true,
-		Codecs:            []codec.Codec{dataCodec{}},
-		AbortIfJoinFails:  false,
+	var cfg1 KVConfig
+	flagext.DefaultValues(&cfg1)
+	cfg1.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  ports[0],
 	}
+
+	cfg1.RandomizeNodeName = true
+	cfg1.Codecs = []codec.Codec{dataCodec{}}
+	cfg1.AbortIfJoinFails = false
 
 	cfg2 := cfg1
 	cfg2.TCPTransport.BindPort = ports[1]
@@ -1047,4 +1084,187 @@ func TestMessageBuffer(t *testing.T) {
 	buf, size = addMessageToBuffer(buf, size, 100, message{Size: 25})
 	assert.Len(t, buf, 2)
 	assert.Equal(t, size, 75)
+}
+
+func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
+	codec := dataCodec{}
+
+	cfg := KVConfig{}
+	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, codec)
+
+	kv := NewKV(cfg, log.NewNopLogger())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
+
+	client, err := NewClient(kv, codec)
+	require.NoError(t, err)
+
+	// No broadcast messages from KV at the beginning.
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	now := time.Now()
+
+	require.NoError(t, client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		d := getOrCreateData(in)
+		d.Members["a"] = member{Timestamp: now.Unix(), State: JOINING}
+		d.Members["b"] = member{Timestamp: now.Unix(), State: JOINING}
+		return d, true, nil
+	}))
+
+	// Check that new instance is broadcasted about just once.
+	assert.Equal(t, 1, len(kv.GetBroadcasts(0, math.MaxInt32)))
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	kv.NotifyMsg(marshalKeyValuePair(t, key, codec, &data{
+		Members: map[string]member{
+			"a": {Timestamp: now.Unix() - 5, State: ACTIVE},
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE},
+		}}))
+
+	// Check two things here:
+	// 1) state of value in KV store
+	// 2) broadcast message only has changed members
+
+	d := getData(t, client, key)
+	assert.Equal(t, &data{
+		Members: map[string]member{
+			"a": {Timestamp: now.Unix(), State: JOINING, Tokens: []uint32{}}, // unchanged, timestamp too old
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE, Tokens: []uint32{}},
+		}}, d)
+
+	bs := kv.GetBroadcasts(0, math.MaxInt32)
+	require.Equal(t, 1, len(bs))
+
+	d = decodeDataFromMarshalledKeyValuePair(t, bs[0], key, codec)
+	assert.Equal(t, &data{
+		Members: map[string]member{
+			// "a" is not here, because it wasn't changed by the message.
+			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+			"c": {Timestamp: now.Unix(), State: ACTIVE},
+		}}, d)
+}
+
+func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
+	codec := dataCodec{}
+
+	cfg := KVConfig{}
+	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+	cfg.RetransmitMult = 1
+	cfg.LeftIngestersTimeout = 5 * time.Minute
+	cfg.Codecs = append(cfg.Codecs, codec)
+
+	kv := NewKV(cfg, log.NewNopLogger())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
+
+	client, err := NewClient(kv, codec)
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// No broadcast messages from KV at the beginning.
+	require.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	for _, tc := range []struct {
+		name             string
+		valueBeforeSend  *data // value in KV store before sending messsage
+		msgToSend        *data
+		valueAfterSend   *data // value in KV store after sending message
+		broadcastMessage *data // broadcasted change, if not nil
+	}{
+		// These tests follow each other (end state of KV in state is starting point in the next state).
+		{
+			name:             "old tombstone, empty KV",
+			valueBeforeSend:  nil,
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() - int64(2*cfg.LeftIngestersTimeout.Seconds()), State: LEFT}}},
+			valueAfterSend:   nil, // no change to KV
+			broadcastMessage: nil, // no new message
+		},
+
+		{
+			name:             "recent tombstone, empty KV",
+			valueBeforeSend:  nil,
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT}}},
+			broadcastMessage: &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT}}},
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+		},
+
+		{
+			name:             "old tombstone, KV contains tombstone already",
+			valueBeforeSend:  &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() - 10, State: LEFT}}},
+			broadcastMessage: nil,
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+		},
+
+		{
+			name:             "fresh tombstone, KV contains tombstone already",
+			valueBeforeSend:  &data{Members: map[string]member{"instance": {Timestamp: now.Unix(), State: LEFT, Tokens: []uint32{}}}},
+			msgToSend:        &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT}}},
+			broadcastMessage: &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT}}},
+			valueAfterSend:   &data{Members: map[string]member{"instance": {Timestamp: now.Unix() + 10, State: LEFT, Tokens: []uint32{}}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := getData(t, client, key)
+			if tc.valueBeforeSend == nil {
+				require.True(t, d == nil || len(d.Members) == 0)
+			} else {
+				require.Equal(t, tc.valueBeforeSend, d, "valueBeforeSend")
+			}
+
+			kv.NotifyMsg(marshalKeyValuePair(t, key, codec, tc.msgToSend))
+
+			bs := kv.GetBroadcasts(0, math.MaxInt32)
+			if tc.broadcastMessage == nil {
+				require.Equal(t, 0, len(bs), "expected no broadcast message")
+			} else {
+				require.Equal(t, 1, len(bs), "expected broadcast message")
+				require.Equal(t, tc.broadcastMessage, decodeDataFromMarshalledKeyValuePair(t, bs[0], key, codec))
+			}
+
+			d = getData(t, client, key)
+			if tc.valueAfterSend == nil {
+				require.True(t, d == nil || len(d.Members) == 0)
+			} else {
+				require.Equal(t, tc.valueAfterSend, d, "valueAfterSend")
+			}
+		})
+	}
+}
+
+func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {
+	kvp := KeyValuePair{}
+	require.NoError(t, kvp.Unmarshal(marshalledKVP))
+	require.Equal(t, key, kvp.Key)
+
+	val, err := codec.Decode(kvp.Value)
+	require.NoError(t, err)
+	d, ok := val.(*data)
+	require.True(t, ok)
+	return d
+}
+
+func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value interface{}) []byte {
+	data, err := codec.Encode(value)
+	require.NoError(t, err)
+
+	kvp := KeyValuePair{Key: key, Codec: codec.CodecID(), Value: data}
+	data, err = kvp.Marshal()
+	require.NoError(t, err)
+	return data
+}
+
+func getOrCreateData(in interface{}) *data {
+	// Modify value that was passed as a parameter.
+	// Client takes care of concurrent modifications.
+	r, ok := in.(*data)
+	if !ok || r == nil {
+		return &data{Members: map[string]member{}}
+	}
+	return r
 }

@@ -23,8 +23,11 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.5.0         | 2020-10-26                                 | Chris Marchbanks (@csmarchbanks)            |
 | v1.6.0         | 2020-12-07                                 | Jacob Lisi (@jtlisi)                        |
 | v1.7.0         | 2021-01-18                                 | Ken Haines (@khaines)                       |
-| v1.8.0         | 2021-03-01                                 | Peter Štibraný (@pstibrany)                 |
-| v1.9.0         | 2021-04-12                                 | Goutham Veeramachaneni (@gouthamve)         |
+| v1.8.0         | 2021-03-08                                 | Peter Štibraný (@pstibrany)                 |
+| v1.9.0         | 2021-04-29                                 | Goutham Veeramachaneni (@gouthamve)         |
+| v1.10.0        | 2021-06-25                                 | Bryan Boreham (@bboreham)                   |
+| v1.11.0        | 2021-08-06                                 | Marco Pracucci (@pracucci)                  |
+| v1.12.0        | 2021-09-17                                 |                                             |
 
 ## Release shepherd responsibilities
 
@@ -85,8 +88,8 @@ Once your PR with release prepartion is approved, merge it to "release-X.Y" bran
 To publish a release candidate:
 
 1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
-1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
-1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+   1. Ensure the `VERSION` file has the `-rc.X` suffix (`X` starting from `0`)
+1. After merging your PR to release branch, `git tag` the new release (see [How to tag a release](#how-to-tag-a-release)) from release branch.
 1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a pre-release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
@@ -98,22 +101,23 @@ To publish a release candidate:
 To publish a stable release:
 
 1. Do not change the release branch directly; make a PR to the release-X.Y branch with VERSION and any CHANGELOG changes.
-1. Ensure the `VERSION` file has **no** `-rc.X` suffix
-1. Update the Cortex version in the following locations:
-   - Kubernetes manifests located at `k8s/`
-   - Documentation located at `docs/`
-1. `git tag` the new release (see [How to tag a release](#how-to-tag-a-release))
+   1. Ensure the `VERSION` file has **no** `-rc.X` suffix
+   1. Update the Cortex version in the following locations:
+      - Kubernetes manifests located at `k8s/`
+      - Documentation located at `docs/`
+1. After merging your PR to release branch, `git tag` the new release (see [How to tag a release](#how-to-tag-a-release)) from release branch.
 1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
 1. Merge the release branch `release-x.y` to `master`
-   - Merge to `master` in the local checkout
-   - Fix any conflict and `git commit -s`
-   - Temporarily disable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
-   - Push changes to upstream (please double check before pushing!)
-   - Re-enable "Include administrators" in the [`master` branch protection rule](https://github.com/cortexproject/cortex/settings/branch_protection_rules)
+   - Create `merge-release-X.Y-to-master` branch **from `release-X.Y` branch** locally
+   - Merge upstream `master` branch into your `merge-release-X.Y-to-master` and resolve conflicts
+   - Send PR for merging your `merge-release-X.Y-to-master` branch into `master`
+   - Once approved, merge the PR by using "Merge" commit.
+     - This can either be done by temporarily enabling "Allow merge commits" option in "Settings > Options".
+     - Alternatively, this can be done locally by merging `merge-release-X.Y-to-master` branch into `master`, and pushing resulting `master` to upstream repository. This doesn't break `master` branch protection, since PR has been approved already, and it also doesn't require removing the protection.
 1. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
 
 ### How to tag a release

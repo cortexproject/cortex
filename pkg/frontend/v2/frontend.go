@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,15 +25,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/grpcutil"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Config for a Frontend.
 type Config struct {
-	SchedulerAddress  string                   `yaml:"scheduler_address"`
-	DNSLookupPeriod   time.Duration            `yaml:"scheduler_dns_lookup_period"`
-	WorkerConcurrency int                      `yaml:"scheduler_worker_concurrency"`
-	GRPCClientConfig  grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	SchedulerAddress  string            `yaml:"scheduler_address"`
+	DNSLookupPeriod   time.Duration     `yaml:"scheduler_dns_lookup_period"`
+	WorkerConcurrency int               `yaml:"scheduler_worker_concurrency"`
+	GRPCClientConfig  grpcclient.Config `yaml:"grpc_client_config"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
 	InfNames []string `yaml:"instance_interface_names"`
@@ -100,7 +100,7 @@ type enqueueResult struct {
 	cancelCh chan<- uint64 // Channel that can be used for request cancellation. If nil, cancellation is not possible.
 }
 
-// New creates a new frontend.
+// NewFrontend creates a new frontend.
 func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 

@@ -2,6 +2,7 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -93,7 +95,7 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig) (*BlobStorage, error) {
-	util.WarnExperimentalUse("Azure Blob Storage")
+	log.WarnExperimentalUse("Azure Blob Storage")
 	blobStorage := &BlobStorage{
 		cfg: cfg,
 	}
@@ -135,6 +137,9 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	// Request access to the blob
 	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
+		if isObjNotFoundErr(err) {
+			return nil, chunk.ErrStorageObjectNotFound
+		}
 		return nil, err
 	}
 
@@ -245,6 +250,9 @@ func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
 	}
 
 	_, err = blockBlobURL.Delete(ctx, azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+	if err != nil && isObjNotFoundErr(err) {
+		return chunk.ErrStorageObjectNotFound
+	}
 	return err
 }
 
@@ -262,4 +270,14 @@ func (b *BlobStorage) selectBlobURLFmt() string {
 
 func (b *BlobStorage) selectContainerURLFmt() string {
 	return endpoints[b.cfg.Environment].containerURLFmt
+}
+
+// isObjNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
+func isObjNotFoundErr(err error) bool {
+	var e azblob.StorageError
+	if errors.As(err, &e) && e.ServiceCode() == azblob.ServiceCodeBlobNotFound {
+		return true
+	}
+
+	return false
 }

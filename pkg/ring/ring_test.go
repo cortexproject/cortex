@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -38,14 +38,14 @@ func BenchmarkBatch100x1000(b *testing.B) {
 	benchmarkBatch(b, 100, 1000)
 }
 
-func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
-	// Make a random ring with N ingesters, and M tokens per ingests
+func benchmarkBatch(b *testing.B, numInstances, numKeys int) {
+	// Make a random ring with N instances, and M tokens per ingests
 	desc := NewDesc()
 	takenTokens := []uint32{}
-	for i := 0; i < numIngester; i++ {
+	for i := 0; i < numInstances; i++ {
 		tokens := GenerateTokens(numTokens, takenTokens)
 		takenTokens = append(takenTokens, tokens...)
-		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("ingester%d", i), strconv.Itoa(i), tokens, ACTIVE, time.Now())
+		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("instance-%d", i), strconv.Itoa(i), tokens, ACTIVE, time.Now())
 	}
 
 	cfg := Config{}
@@ -53,11 +53,11 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	r := Ring{
 		cfg:      cfg,
 		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(true),
+		strategy: NewDefaultReplicationStrategy(),
 	}
 
 	ctx := context.Background()
-	callback := func(IngesterDesc, []int) error {
+	callback := func(InstanceDesc, []int) error {
 		return nil
 	}
 	cleanup := func() {
@@ -68,7 +68,7 @@ func benchmarkBatch(b *testing.B, numIngester, numKeys int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		generateKeys(rnd, numKeys, keys)
-		err := DoBatch(ctx, &r, keys, callback, cleanup)
+		err := DoBatch(ctx, Write, &r, keys, callback, cleanup)
 		require.NoError(b, err)
 	}
 }
@@ -79,13 +79,13 @@ func generateKeys(r *rand.Rand, numTokens int, dest []uint32) {
 	}
 }
 
-func TestDoBatchZeroIngesters(t *testing.T) {
+func TestDoBatchZeroInstances(t *testing.T) {
 	ctx := context.Background()
 	numKeys := 10
 	keys := make([]uint32, numKeys)
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	generateKeys(rnd, numKeys, keys)
-	callback := func(IngesterDesc, []int) error {
+	callback := func(InstanceDesc, []int) error {
 		return nil
 	}
 	cleanup := func() {
@@ -94,9 +94,9 @@ func TestDoBatchZeroIngesters(t *testing.T) {
 	r := Ring{
 		cfg:      Config{},
 		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(true),
+		strategy: NewDefaultReplicationStrategy(),
 	}
-	require.Error(t, DoBatch(ctx, &r, keys, callback, cleanup))
+	require.Error(t, DoBatch(ctx, Write, &r, keys, callback, cleanup))
 }
 
 func TestAddIngester(t *testing.T) {
@@ -121,7 +121,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	const ing1Name = "ing1"
 
 	// old tokens will be replaced
-	r.Ingesters[ing1Name] = IngesterDesc{
+	r.Ingesters[ing1Name] = InstanceDesc{
 		Tokens: []uint32{11111, 22222, 33333},
 	}
 
@@ -132,54 +132,131 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 	require.Equal(t, newTokens, r.Ingesters[ing1Name].Tokens)
 }
 
-func TestRing_Get_ZoneAwareness(t *testing.T) {
-	// Number of tests to run.
+func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 	const testCount = 10000
 
 	tests := map[string]struct {
-		numIngesters         int
-		numZones             int
-		replicationFactor    int
-		zoneAwarenessEnabled bool
-		expectedErr          string
-		expectedIngesters    int
+		replicationFactor int
+		expectedInstances int
+		expectedZones     int
 	}{
-		"should succeed if there are enough ingesters per zone on RF = 3": {
-			numIngesters:         16,
-			numZones:             3,
-			replicationFactor:    3,
-			zoneAwarenessEnabled: true,
-			expectedIngesters:    3,
+		"should succeed if there are enough instances per zone on RF = 3": {
+			replicationFactor: 3,
+			expectedInstances: 3,
+			expectedZones:     3,
 		},
-		"should fail if there are ingesters in 1 zone only on RF = 3": {
-			numIngesters:         16,
-			numZones:             1,
-			replicationFactor:    3,
-			zoneAwarenessEnabled: true,
-			expectedErr:          "at least 2 live replicas required across different availability zones, could only find 1",
-		},
-		"should succeed if there are ingesters in 2 zones on RF = 3": {
-			numIngesters:         16,
-			numZones:             2,
-			replicationFactor:    3,
-			zoneAwarenessEnabled: true,
-			expectedIngesters:    2,
-		},
-		"should succeed if there are ingesters in 1 zone only on RF = 3 but zone-awareness is disabled": {
-			numIngesters:         16,
-			numZones:             1,
-			replicationFactor:    3,
-			zoneAwarenessEnabled: false,
-			expectedIngesters:    3,
+		"should succeed if there are enough instances per zone on RF = 2": {
+			replicationFactor: 2,
+			expectedInstances: 2,
+			expectedZones:     2,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			// Add ingesters to the ring.
+			r := NewDesc()
+			instances := map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", State: ACTIVE},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-b", State: ACTIVE},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-c", State: LEAVING},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", State: ACTIVE},
+			}
+			var prevTokens []uint32
+			for id, instance := range instances {
+				ingTokens := GenerateTokens(128, prevTokens)
+				r.AddIngester(id, instance.Addr, instance.Zone, ingTokens, instance.State, time.Now())
+				prevTokens = append(prevTokens, ingTokens...)
+			}
+			instancesList := make([]InstanceDesc, 0, len(r.GetIngesters()))
+			for _, v := range r.GetIngesters() {
+				instancesList = append(instancesList, v)
+			}
+
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ReplicationFactor:    testData.replicationFactor,
+					ZoneAwarenessEnabled: true,
+				},
+				ringDesc:            r,
+				ringTokens:          r.GetTokens(),
+				ringTokensByZone:    r.getTokensByZone(),
+				ringInstanceByToken: r.getTokensInfo(),
+				ringZones:           getZones(r.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+			}
+
+			_, bufHosts, bufZones := MakeBuffersForGet()
+
+			// Use the GenerateTokens to get an array of random uint32 values.
+			testValues := GenerateTokens(testCount, nil)
+
+			for i := 0; i < testCount; i++ {
+				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
+				require.NoError(t, err)
+
+				distinctZones := map[string]int{}
+				for _, instance := range set.Instances {
+					distinctZones[instance.Zone]++
+				}
+
+				assert.Len(t, set.Instances, testData.expectedInstances)
+				assert.Len(t, distinctZones, testData.expectedZones)
+			}
+		})
+	}
+}
+
+func TestRing_Get_ZoneAwareness(t *testing.T) {
+	// Number of tests to run.
+	const testCount = 10000
+
+	tests := map[string]struct {
+		numInstances         int
+		numZones             int
+		replicationFactor    int
+		zoneAwarenessEnabled bool
+		expectedErr          string
+		expectedInstances    int
+	}{
+		"should succeed if there are enough instances per zone on RF = 3": {
+			numInstances:         16,
+			numZones:             3,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedInstances:    3,
+		},
+		"should fail if there are instances in 1 zone only on RF = 3": {
+			numInstances:         16,
+			numZones:             1,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedErr:          "at least 2 live replicas required across different availability zones, could only find 1",
+		},
+		"should succeed if there are instances in 2 zones on RF = 3": {
+			numInstances:         16,
+			numZones:             2,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: true,
+			expectedInstances:    2,
+		},
+		"should succeed if there are instances in 1 zone only on RF = 3 but zone-awareness is disabled": {
+			numInstances:         16,
+			numZones:             1,
+			replicationFactor:    3,
+			zoneAwarenessEnabled: false,
+			expectedInstances:    3,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Add instances to the ring.
 			r := NewDesc()
 			var prevTokens []uint32
-			for i := 0; i < testData.numIngesters; i++ {
+			for i := 0; i < testData.numInstances; i++ {
 				name := fmt.Sprintf("ing%v", i)
 				ingTokens := GenerateTokens(128, prevTokens)
 
@@ -188,24 +265,27 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				prevTokens = append(prevTokens, ingTokens...)
 			}
 
-			// Create a ring with the ingesters
+			// Create a ring with the instances
 			ring := Ring{
 				cfg: Config{
 					HeartbeatTimeout:     time.Hour,
 					ReplicationFactor:    testData.replicationFactor,
 					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 				},
-				ringDesc:         r,
-				ringTokens:       r.getTokens(),
-				ringTokensByZone: r.getTokensByZone(),
-				ringZones:        getZones(r.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            r,
+				ringTokens:          r.GetTokens(),
+				ringTokensByZone:    r.getTokensByZone(),
+				ringInstanceByToken: r.getTokensInfo(),
+				ringZones:           getZones(r.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
-			ingesters := make([]IngesterDesc, 0, len(r.GetIngesters()))
+			instances := make([]InstanceDesc, 0, len(r.GetIngesters()))
 			for _, v := range r.GetIngesters() {
-				ingesters = append(ingesters, v)
+				instances = append(instances, v)
 			}
+
+			_, bufHosts, bufZones := MakeBuffersForGet()
 
 			// Use the GenerateTokens to get an array of random uint32 values.
 			testValues := GenerateTokens(testCount, nil)
@@ -213,7 +293,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 			var set ReplicationSet
 			var err error
 			for i := 0; i < testCount; i++ {
-				set, err = ring.Get(testValues[i], Write, ingesters)
+				set, err = ring.Get(testValues[i], Write, instances, bufHosts, bufZones)
 				if testData.expectedErr != "" {
 					require.EqualError(t, err, testData.expectedErr)
 				} else {
@@ -225,17 +305,17 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 					continue
 				}
 
-				// Check that we have the expected number of ingesters for replication.
-				assert.Equal(t, testData.expectedIngesters, len(set.Ingesters))
+				// Check that we have the expected number of instances for replication.
+				assert.Equal(t, testData.expectedInstances, len(set.Instances))
 
-				// Ensure all ingesters are in a different zone (only if zone-awareness is enabled).
+				// Ensure all instances are in a different zone (only if zone-awareness is enabled).
 				if testData.zoneAwarenessEnabled {
 					zones := make(map[string]struct{})
-					for i := 0; i < len(set.Ingesters); i++ {
-						if _, ok := zones[set.Ingesters[i].Zone]; ok {
-							t.Fatal("found multiple ingesters in the same zone")
+					for i := 0; i < len(set.Instances); i++ {
+						if _, ok := zones[set.Instances[i].Zone]; ok {
+							t.Fatal("found multiple instances in the same zone")
 						}
-						zones[set.Ingesters[i].Zone] = struct{}{}
+						zones[set.Instances[i].Zone] = struct{}{}
 					}
 				}
 			}
@@ -248,7 +328,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 	now := time.Now()
 
 	tests := map[string]struct {
-		ringInstances           map[string]IngesterDesc
+		ringInstances           map[string]InstanceDesc
 		expectedErrForRead      error
 		expectedSetForRead      []string
 		expectedErrForWrite     error
@@ -263,7 +343,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 			expectedErrForReporting: ErrEmptyRing,
 		},
 		"should return all healthy instances for the given operation": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix()},
 				"instance-2": {Addr: "127.0.0.2", State: PENDING, Timestamp: now.Add(-10 * time.Second).Unix()},
 				"instance-3": {Addr: "127.0.0.3", State: JOINING, Timestamp: now.Add(-20 * time.Second).Unix()},
@@ -285,12 +365,13 @@ func TestRing_GetAllHealthy(t *testing.T) {
 			}
 
 			ring := Ring{
-				cfg:              Config{HeartbeatTimeout: heartbeatTimeout},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				cfg:                 Config{HeartbeatTimeout: heartbeatTimeout},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			set, err := ring.GetAllHealthy(Read)
@@ -309,11 +390,11 @@ func TestRing_GetAllHealthy(t *testing.T) {
 }
 
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
-	const heartbeatTimeout = time.Minute
 	now := time.Now()
 
 	tests := map[string]struct {
-		ringInstances           map[string]IngesterDesc
+		ringInstances           map[string]InstanceDesc
+		ringHeartbeatTimeout    time.Duration
 		ringReplicationFactor   int
 		expectedErrForRead      error
 		expectedSetForRead      []string
@@ -324,62 +405,81 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	}{
 		"should return error on empty ring": {
 			ringInstances:           nil,
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
 			expectedErrForRead:      ErrEmptyRing,
 			expectedErrForWrite:     ErrEmptyRing,
 			expectedErrForReporting: ErrEmptyRing,
 		},
 		"should succeed on all healthy instances and RF=1": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   1,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+		},
+		"should succeed on instances with old timestamps but heartbeat timeout disabled": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringHeartbeatTimeout:    0,
 			ringReplicationFactor:   1,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 		},
 		"should fail on 1 unhealthy instance and RF=1": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
-			expectedErrForRead:      ErrTooManyFailedIngesters,
-			expectedErrForWrite:     ErrTooManyFailedIngesters,
-			expectedErrForReporting: ErrTooManyFailedIngesters,
+			expectedErrForRead:      ErrTooManyUnhealthyInstances,
+			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
+			expectedErrForReporting: ErrTooManyUnhealthyInstances,
 		},
 		"should succeed on 1 unhealthy instances and RF=3": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 		},
 		"should fail on 2 unhealthy instances and RF=3": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
-			expectedErrForRead:      ErrTooManyFailedIngesters,
-			expectedErrForWrite:     ErrTooManyFailedIngesters,
-			expectedErrForReporting: ErrTooManyFailedIngesters,
+			expectedErrForRead:      ErrTooManyUnhealthyInstances,
+			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
+			expectedErrForReporting: ErrTooManyUnhealthyInstances,
 		},
 	}
 
@@ -393,14 +493,15 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 
 			ring := Ring{
 				cfg: Config{
-					HeartbeatTimeout:  heartbeatTimeout,
+					HeartbeatTimeout:  testData.ringHeartbeatTimeout,
 					ReplicationFactor: testData.ringReplicationFactor,
 				},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			set, err := ring.GetReplicationSetForOperation(Read)
@@ -420,7 +521,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 
 func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.T) {
 	tests := map[string]struct {
-		ringInstances               map[string]IngesterDesc
+		ringInstances               map[string]InstanceDesc
 		unhealthyInstances          []string
 		expectedAddresses           []string
 		replicationFactor           int
@@ -433,7 +534,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedError: ErrEmptyRing,
 		},
 		"RF=1, 1 zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
@@ -443,27 +544,27 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=1, 1 zone, one unhealthy instance": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
 			unhealthyInstances: []string{"instance-2"},
 			replicationFactor:  1,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 		"RF=1, 3 zones, one unhealthy instance": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			unhealthyInstances: []string{"instance-3"},
 			replicationFactor:  1,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 		"RF=2, 2 zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 			},
@@ -472,7 +573,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 1,
 		},
 		"RF=2, 2 zones, one unhealthy instance": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 			},
@@ -481,7 +582,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			replicationFactor:  2,
 		},
 		"RF=3, 3 zones, one instance per zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
@@ -492,7 +593,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 1,
 		},
 		"RF=3, 3 zones, one instance per zone, one instance unhealthy": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
@@ -504,27 +605,27 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=3, 3 zones, one instance per zone, two instances unhealthy in separate zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			unhealthyInstances: []string{"instance-1", "instance-2"},
 			replicationFactor:  3,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 		"RF=3, 3 zones, one instance per zone, all instances unhealthy": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
 			},
 			unhealthyInstances: []string{"instance-1", "instance-2", "instance-3"},
 			replicationFactor:  3,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 		"RF=3, 3 zones, two instances per zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -538,7 +639,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 1,
 		},
 		"RF=3, 3 zones, two instances per zone, two instances unhealthy in same zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -553,7 +654,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=3, 3 zones, three instances per zone, two instances unhealthy in same zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -571,7 +672,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=3, only 2 zones, two instances per zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -583,7 +684,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 1,
 		},
 		"RF=3, only 2 zones, two instances per zone, one instance unhealthy": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -596,7 +697,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=3, only 1 zone, two instances per zone": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
@@ -606,16 +707,16 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=3, only 1 zone, two instances per zone, one instance unhealthy": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
 			unhealthyInstances: []string{"instance-2"},
 			replicationFactor:  3,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 		"RF=5, 5 zones, two instances per zone except for one zone which has three": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3":  {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -635,7 +736,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 2,
 		},
 		"RF=5, 5 zones, two instances per zone except for one zone which has three, 2 unhealthy nodes in same zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3":  {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -655,7 +756,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 1,
 		},
 		"RF=5, 5 zones, two instances per zone except for one zone which has three, 2 unhealthy nodes in separate zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1":  {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2":  {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3":  {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -675,7 +776,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			expectedMaxUnavailableZones: 0,
 		},
 		"RF=5, 5 zones, one instances per zone, three unhealthy instances": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
@@ -684,7 +785,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			},
 			unhealthyInstances: []string{"instance-2", "instance-4", "instance-5"},
 			replicationFactor:  5,
-			expectedError:      ErrTooManyFailedIngesters,
+			expectedError:      ErrTooManyUnhealthyInstances,
 		},
 	}
 
@@ -713,11 +814,12 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 					ZoneAwarenessEnabled: true,
 					ReplicationFactor:    testData.replicationFactor,
 				},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Check the replication set has the correct settings
@@ -732,20 +834,20 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 			assert.Equal(t, testData.expectedMaxUnavailableZones, replicationSet.MaxUnavailableZones)
 
 			returnAddresses := []string{}
-			for _, instance := range replicationSet.Ingesters {
+			for _, instance := range replicationSet.Instances {
 				returnAddresses = append(returnAddresses, instance.Addr)
 			}
 			for _, addr := range testData.expectedAddresses {
 				assert.Contains(t, returnAddresses, addr)
 			}
-			assert.Equal(t, len(testData.expectedAddresses), len(replicationSet.Ingesters))
+			assert.Equal(t, len(testData.expectedAddresses), len(replicationSet.Instances))
 		})
 	}
 }
 
 func TestRing_ShuffleShard(t *testing.T) {
 	tests := map[string]struct {
-		ringInstances        map[string]IngesterDesc
+		ringInstances        map[string]InstanceDesc
 		shardSize            int
 		zoneAwarenessEnabled bool
 		expectedSize         int
@@ -759,7 +861,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{},
 		},
 		"single zone, shard size > num instances": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 			},
@@ -769,7 +871,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{2},
 		},
 		"single zone, shard size < num instances": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
@@ -780,7 +882,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{2},
 		},
 		"multiple zones, shard size < num zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", Tokens: GenerateTokens(128, nil)},
@@ -791,7 +893,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{1, 1, 1},
 		},
 		"multiple zones, shard size divisible by num zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -805,7 +907,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{1, 1, 1},
 		},
 		"multiple zones, shard size NOT divisible by num zones": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -819,7 +921,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 			expectedDistribution: []int{2, 2, 2},
 		},
 		"multiple zones, shard size NOT divisible by num zones, but zone awareness is disabled": {
-			ringInstances: map[string]IngesterDesc{
+			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", Tokens: GenerateTokens(128, nil)},
 				"instance-3": {Addr: "127.0.0.3", Zone: "zone-b", Tokens: GenerateTokens(128, nil)},
@@ -848,26 +950,27 @@ func TestRing_ShuffleShard(t *testing.T) {
 					HeartbeatTimeout:     time.Hour,
 					ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 				},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			shardRing := ring.ShuffleShard("tenant-id", testData.shardSize)
-			assert.Equal(t, testData.expectedSize, shardRing.IngesterCount())
+			assert.Equal(t, testData.expectedSize, shardRing.InstancesCount())
 
 			// Compute the actual distribution of instances across zones.
 			if testData.zoneAwarenessEnabled {
 				var actualDistribution []int
 
-				if shardRing.IngesterCount() > 0 {
+				if shardRing.InstancesCount() > 0 {
 					all, err := shardRing.GetAllHealthy(Read)
 					require.NoError(t, err)
 
 					countByZone := map[string]int{}
-					for _, instance := range all.Ingesters {
+					for _, instance := range all.Instances {
 						countByZone[instance.Zone]++
 					}
 
@@ -893,17 +996,18 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 	)
 
 	// Initialise the ring.
-	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
+	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones, 128)}
 	ring := Ring{
 		cfg: Config{
 			HeartbeatTimeout:     time.Hour,
 			ZoneAwarenessEnabled: true,
 		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	for i := 1; i <= numTenants; i++ {
@@ -919,7 +1023,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 				r := ring.ShuffleShard(tenantID, size)
 				actual, err := r.GetAllHealthy(Read)
 				require.NoError(t, err)
-				assert.ElementsMatch(t, expected.Ingesters, actual.Ingesters)
+				assert.ElementsMatch(t, expected.Instances, actual.Instances)
 			}
 		}
 	}
@@ -946,10 +1050,10 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 
 	// Initialise the ring instances. To have stable tests we generate tokens using a linear
 	// distribution. Tokens within the same zone are evenly distributed too.
-	instances := make(map[string]IngesterDesc, numInstances)
+	instances := make(map[string]InstanceDesc, numInstances)
 	for i := 0; i < numInstances; i++ {
 		id := fmt.Sprintf("instance-%d", i)
-		instances[id] = IngesterDesc{
+		instances[id] = InstanceDesc{
 			Addr:                fmt.Sprintf("127.0.0.%d", i),
 			Timestamp:           time.Now().Unix(),
 			RegisteredTimestamp: time.Now().Unix(),
@@ -966,11 +1070,12 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 			HeartbeatTimeout:     time.Hour,
 			ZoneAwarenessEnabled: true,
 		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Compute the shard for each tenant.
@@ -982,8 +1087,8 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 		set, err := r.GetAllHealthy(Read)
 		require.NoError(t, err)
 
-		instances := make([]string, 0, len(set.Ingesters))
-		for _, instance := range set.Ingesters {
+		instances := make([]string, 0, len(set.Instances))
+		for _, instance := range set.Instances {
 			instances = append(instances, instance.Addr)
 		}
 
@@ -1058,17 +1163,18 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 	for _, s := range scenarios {
 		t.Run(s.name, func(t *testing.T) {
 			// Initialise the ring.
-			ringDesc := &Desc{Ingesters: generateRingInstances(s.numInstances, s.numZones)}
+			ringDesc := &Desc{Ingesters: generateRingInstances(s.numInstances, s.numZones, 128)}
 			ring := Ring{
 				cfg: Config{
 					HeartbeatTimeout:     time.Hour,
 					ZoneAwarenessEnabled: true,
 				},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Compute the initial shard for each tenant.
@@ -1082,7 +1188,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// Update the ring.
 			switch s.ringChange {
 			case add:
-				newID, newDesc := generateRingInstance(s.numInstances+1, 0)
+				newID, newDesc := generateRingInstance(s.numInstances+1, 0, 128)
 				ringDesc.Ingesters[newID] = newDesc
 			case remove:
 				// Remove the first one.
@@ -1092,8 +1198,9 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				}
 			}
 
-			ring.ringTokens = ringDesc.getTokens()
+			ring.ringTokens = ringDesc.GetTokens()
 			ring.ringTokensByZone = ringDesc.getTokensByZone()
+			ring.ringInstanceByToken = ringDesc.getTokensInfo()
 			ring.ringZones = getZones(ringDesc.getTokensByZone())
 
 			// Compute the update shard for each tenant and compare it with the initial one.
@@ -1113,9 +1220,9 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 
 func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	// Create 30 instances in 3 zones.
-	ringInstances := map[string]IngesterDesc{}
+	ringInstances := map[string]InstanceDesc{}
 	for i := 0; i < 30; i++ {
-		name, desc := generateRingInstance(i, i%3)
+		name, desc := generateRingInstance(i, i%3, 128)
 		ringInstances[name] = desc
 	}
 
@@ -1126,72 +1233,73 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 			HeartbeatTimeout:     time.Hour,
 			ZoneAwarenessEnabled: true,
 		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Get the replication set with shard size = 3.
 	firstShard := ring.ShuffleShard("tenant-id", 3)
-	assert.Equal(t, 3, firstShard.IngesterCount())
+	assert.Equal(t, 3, firstShard.InstancesCount())
 
 	firstSet, err := firstShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// Increase shard size to 6.
 	secondShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, secondShard.IngesterCount())
+	assert.Equal(t, 6, secondShard.InstancesCount())
 
 	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 
 	// Increase shard size to 9.
 	thirdShard := ring.ShuffleShard("tenant-id", 9)
-	assert.Equal(t, 9, thirdShard.IngesterCount())
+	assert.Equal(t, 9, thirdShard.InstancesCount())
 
 	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
 	// Decrease shard size to 6.
 	fourthShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, fourthShard.IngesterCount())
+	assert.Equal(t, 6, fourthShard.InstancesCount())
 
 	fourthSet, err := fourthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 6.
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, fourthSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
 	// Decrease shard size to 3.
 	fifthShard := ring.ShuffleShard("tenant-id", 3)
-	assert.Equal(t, 3, fifthShard.IngesterCount())
+	assert.Equal(t, 3, fifthShard.InstancesCount())
 
 	fifthSet, err := fifthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// We expect to have the same exact instances we had when the shard size was 3.
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, fifthSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 }
 
 func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	// Create 20 instances in 2 zones.
-	ringInstances := map[string]IngesterDesc{}
+	ringInstances := map[string]InstanceDesc{}
 	for i := 0; i < 20; i++ {
-		name, desc := generateRingInstance(i, i%2)
+		name, desc := generateRingInstance(i, i%2, 128)
 		ringInstances[name] = desc
 	}
 
@@ -1202,61 +1310,63 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 			HeartbeatTimeout:     time.Hour,
 			ZoneAwarenessEnabled: true,
 		},
-		ringDesc:         ringDesc,
-		ringTokens:       ringDesc.getTokens(),
-		ringTokensByZone: ringDesc.getTokensByZone(),
-		ringZones:        getZones(ringDesc.getTokensByZone()),
-		strategy:         NewDefaultReplicationStrategy(true),
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
 	}
 
 	// Get the replication set with shard size = 2.
 	firstShard := ring.ShuffleShard("tenant-id", 2)
-	assert.Equal(t, 2, firstShard.IngesterCount())
+	assert.Equal(t, 2, firstShard.InstancesCount())
 
 	firstSet, err := firstShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
 	// Increase shard size to 4.
 	secondShard := ring.ShuffleShard("tenant-id", 4)
-	assert.Equal(t, 4, secondShard.IngesterCount())
+	assert.Equal(t, 4, secondShard.InstancesCount())
 
 	secondSet, err := secondShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, firstInstance := range firstSet.Ingesters {
+	for _, firstInstance := range firstSet.Instances {
 		assert.True(t, secondSet.Includes(firstInstance.Addr), "new replication set is expected to include previous instance %s", firstInstance.Addr)
 	}
 
 	// Scale up cluster, adding 10 instances in 1 new zone.
 	for i := 20; i < 30; i++ {
-		name, desc := generateRingInstance(i, 2)
+		name, desc := generateRingInstance(i, 2, 128)
 		ringInstances[name] = desc
 	}
 
 	ring.ringDesc.Ingesters = ringInstances
-	ring.ringTokens = ringDesc.getTokens()
+	ring.ringTokens = ringDesc.GetTokens()
 	ring.ringTokensByZone = ringDesc.getTokensByZone()
+	ring.ringInstanceByToken = ringDesc.getTokensInfo()
 	ring.ringZones = getZones(ringDesc.getTokensByZone())
 
 	// Increase shard size to 6.
 	thirdShard := ring.ShuffleShard("tenant-id", 6)
-	assert.Equal(t, 6, thirdShard.IngesterCount())
+	assert.Equal(t, 6, thirdShard.InstancesCount())
 
 	thirdSet, err := thirdShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, secondInstance := range secondSet.Ingesters {
+	for _, secondInstance := range secondSet.Instances {
 		assert.True(t, thirdSet.Includes(secondInstance.Addr), "new replication set is expected to include previous instance %s", secondInstance.Addr)
 	}
 
 	// Increase shard size to 9.
 	fourthShard := ring.ShuffleShard("tenant-id", 9)
-	assert.Equal(t, 9, fourthShard.IngesterCount())
+	assert.Equal(t, 9, fourthShard.InstancesCount())
 
 	fourthSet, err := fourthShard.GetAllHealthy(Read)
 	require.NoError(t, err)
 
-	for _, thirdInstance := range thirdSet.Ingesters {
+	for _, thirdInstance := range thirdSet.Instances {
 		assert.True(t, fourthSet.Includes(thirdInstance.Addr), "new replication set is expected to include previous instance %s", thirdInstance.Addr)
 	}
 }
@@ -1280,7 +1390,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	type event struct {
 		what         eventType
 		instanceID   string
-		instanceDesc IngesterDesc
+		instanceDesc InstanceDesc
 		shardSize    int
 		expected     []string
 	}
@@ -1453,17 +1563,18 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Initialise the ring.
-			ringDesc := &Desc{Ingesters: map[string]IngesterDesc{}}
+			ringDesc := &Desc{Ingesters: map[string]InstanceDesc{}}
 			ring := Ring{
 				cfg: Config{
 					HeartbeatTimeout:     time.Hour,
 					ZoneAwarenessEnabled: true,
 				},
-				ringDesc:         ringDesc,
-				ringTokens:       ringDesc.getTokens(),
-				ringTokensByZone: ringDesc.getTokensByZone(),
-				ringZones:        getZones(ringDesc.getTokensByZone()),
-				strategy:         NewDefaultReplicationStrategy(true),
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
 			}
 
 			// Replay the events on the timeline.
@@ -1472,14 +1583,16 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				case add:
 					ringDesc.Ingesters[event.instanceID] = event.instanceDesc
 
-					ring.ringTokens = ringDesc.getTokens()
+					ring.ringTokens = ringDesc.GetTokens()
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
+					ring.ringInstanceByToken = ringDesc.getTokensInfo()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
 				case remove:
 					delete(ringDesc.Ingesters, event.instanceID)
 
-					ring.ringTokens = ringDesc.getTokens()
+					ring.ringTokens = ringDesc.GetTokens()
 					ring.ringTokensByZone = ringDesc.getTokensByZone()
+					ring.ringInstanceByToken = ringDesc.getTokensInfo()
 					ring.ringZones = getZones(ringDesc.getTokensByZone())
 				case test:
 					rs, err := ring.ShuffleShardWithLookback(userID, event.shardSize, lookbackPeriod, time.Now()).GetAllHealthy(Read)
@@ -1514,18 +1627,19 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				t.Log("random generator seed:", seed)
 
 				// Initialise the ring.
-				ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
+				ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones, 128)}
 				ring := Ring{
 					cfg: Config{
 						HeartbeatTimeout:     time.Hour,
 						ZoneAwarenessEnabled: true,
 						ReplicationFactor:    3,
 					},
-					ringDesc:         ringDesc,
-					ringTokens:       ringDesc.getTokens(),
-					ringTokensByZone: ringDesc.getTokensByZone(),
-					ringZones:        getZones(ringDesc.getTokensByZone()),
-					strategy:         NewDefaultReplicationStrategy(true),
+					ringDesc:            ringDesc,
+					ringTokens:          ringDesc.GetTokens(),
+					ringTokensByZone:    ringDesc.getTokensByZone(),
+					ringInstanceByToken: ringDesc.getTokensInfo(),
+					ringZones:           getZones(ringDesc.getTokensByZone()),
+					strategy:            NewDefaultReplicationStrategy(),
 				}
 
 				// The simulation starts with the minimum shard size. Random events can later increase it.
@@ -1546,7 +1660,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 				// Simulate a progression of random events over the time and, at each iteration of the simuation,
 				// make sure the subring includes all non-removed instances picked from previous versions of the
 				// ring up until the lookback period.
-				nextIngesterID := len(ringDesc.Ingesters) + 1
+				nextInstanceID := len(ringDesc.Ingesters) + 1
 
 				for i := 1; i <= numEvents; i++ {
 					currTime = currTime.Add(delayBetweenEvents)
@@ -1554,42 +1668,44 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					switch r := rand.Intn(100); {
 					case r < 80:
 						// Scale up instances by 1.
-						instanceID := fmt.Sprintf("instance-%d", nextIngesterID)
-						zoneID := fmt.Sprintf("zone-%d", nextIngesterID%numZones)
-						nextIngesterID++
+						instanceID := fmt.Sprintf("instance-%d", nextInstanceID)
+						zoneID := fmt.Sprintf("zone-%d", nextInstanceID%numZones)
+						nextInstanceID++
 
 						ringDesc.Ingesters[instanceID] = generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(128, nil), currTime)
 
-						ring.ringTokens = ringDesc.getTokens()
+						ring.ringTokens = ringDesc.GetTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
+						ring.ringInstanceByToken = ringDesc.getTokensInfo()
 						ring.ringZones = getZones(ringDesc.getTokensByZone())
 					case r < 90:
 						// Scale down instances by 1. To make tests reproducible we get the instance IDs, sort them
 						// and then get a random index (using the random generator initialized with a constant seed).
-						ingesterIDs := make([]string, 0, len(ringDesc.Ingesters))
+						instanceIDs := make([]string, 0, len(ringDesc.Ingesters))
 						for id := range ringDesc.Ingesters {
-							ingesterIDs = append(ingesterIDs, id)
+							instanceIDs = append(instanceIDs, id)
 						}
 
-						sort.Strings(ingesterIDs)
+						sort.Strings(instanceIDs)
 
-						idxToRemove := rand.Intn(len(ingesterIDs))
-						idToRemove := ingesterIDs[idxToRemove]
+						idxToRemove := rand.Intn(len(instanceIDs))
+						idToRemove := instanceIDs[idxToRemove]
 						delete(ringDesc.Ingesters, idToRemove)
 
-						ring.ringTokens = ringDesc.getTokens()
+						ring.ringTokens = ringDesc.GetTokens()
 						ring.ringTokensByZone = ringDesc.getTokensByZone()
+						ring.ringInstanceByToken = ringDesc.getTokensInfo()
 						ring.ringZones = getZones(ringDesc.getTokensByZone())
 
 						// Remove the terminated instance from the history.
 						for ringTime, ringState := range history {
-							for idx, desc := range ringState.Ingesters {
+							for idx, desc := range ringState.Instances {
 								// In this simulation instance ID == instance address.
 								if desc.Addr != idToRemove {
 									continue
 								}
 
-								ringState.Ingesters = append(ringState.Ingesters[:idx], ringState.Ingesters[idx+1:]...)
+								ringState.Instances = append(ringState.Instances[:idx], ringState.Instances[idx+1:]...)
 								history[ringTime] = ringState
 								break
 							}
@@ -1634,7 +1750,7 @@ func BenchmarkRing_ShuffleShard(b *testing.B) {
 		for _, numZones := range []int{1, 3} {
 			for _, shardSize := range []int{3, 10, 30} {
 				b.Run(fmt.Sprintf("num instances = %d, num zones = %d, shard size = %d", numInstances, numZones, shardSize), func(b *testing.B) {
-					benchmarkShuffleSharding(b, numInstances, numZones, shardSize, false)
+					benchmarkShuffleSharding(b, numInstances, numZones, 128, shardSize, false)
 				})
 			}
 		}
@@ -1646,28 +1762,38 @@ func BenchmarkRing_ShuffleShardCached(b *testing.B) {
 		for _, numZones := range []int{1, 3} {
 			for _, shardSize := range []int{3, 10, 30} {
 				b.Run(fmt.Sprintf("num instances = %d, num zones = %d, shard size = %d", numInstances, numZones, shardSize), func(b *testing.B) {
-					benchmarkShuffleSharding(b, numInstances, numZones, shardSize, true)
+					benchmarkShuffleSharding(b, numInstances, numZones, 128, shardSize, true)
 				})
 			}
 		}
 	}
 }
 
-func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize int, cache bool) {
-	// Initialise the ring.
-	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones)}
-	ring := Ring{
-		cfg:                Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true},
-		ringDesc:           ringDesc,
-		ringTokens:         ringDesc.getTokens(),
-		ringTokensByZone:   ringDesc.getTokensByZone(),
-		ringZones:          getZones(ringDesc.getTokensByZone()),
-		strategy:           NewDefaultReplicationStrategy(true),
-		lastTopologyChange: time.Now(),
-	}
+func BenchmarkRing_ShuffleShard_512Tokens(b *testing.B) {
+	const (
+		numInstances = 30
+		numZones     = 3
+		numTokens    = 512
+		shardSize    = 9
+		cacheEnabled = false
+	)
 
-	if cache {
-		ring.shuffledSubringCache = map[subringCacheKey]*Ring{}
+	benchmarkShuffleSharding(b, numInstances, numZones, numTokens, shardSize, cacheEnabled)
+}
+
+func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, shardSize int, cache bool) {
+	// Initialise the ring.
+	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones, numTokens)}
+	ring := Ring{
+		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: !cache},
+		ringDesc:             ringDesc,
+		ringTokens:           ringDesc.GetTokens(),
+		ringTokensByZone:     ringDesc.getTokensByZone(),
+		ringInstanceByToken:  ringDesc.getTokensInfo(),
+		ringZones:            getZones(ringDesc.getTokensByZone()),
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		strategy:             NewDefaultReplicationStrategy(),
+		lastTopologyChange:   time.Now(),
 	}
 
 	b.ResetTimer()
@@ -1675,6 +1801,68 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, shardSize in
 	for n := 0; n < b.N; n++ {
 		ring.ShuffleShard("tenant-1", shardSize)
 	}
+}
+
+func BenchmarkRing_Get(b *testing.B) {
+	const (
+		numInstances      = 100
+		numZones          = 3
+		replicationFactor = 3
+	)
+
+	// Initialise the ring.
+	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones, numTokens)}
+	ring := Ring{
+		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: true, ReplicationFactor: replicationFactor},
+		ringDesc:             ringDesc,
+		ringTokens:           ringDesc.GetTokens(),
+		ringTokensByZone:     ringDesc.getTokensByZone(),
+		ringInstanceByToken:  ringDesc.getTokensInfo(),
+		ringZones:            getZones(ringDesc.getTokensByZone()),
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		strategy:             NewDefaultReplicationStrategy(),
+		lastTopologyChange:   time.Now(),
+	}
+
+	buf, bufHosts, bufZones := MakeBuffersForGet()
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
+		if err != nil || len(set.Instances) != replicationFactor {
+			b.Fatal()
+		}
+	}
+}
+
+func TestRing_Get_NoMemoryAllocations(t *testing.T) {
+	// Initialise the ring.
+	ringDesc := &Desc{Ingesters: generateRingInstances(3, 3, 128)}
+	ring := Ring{
+		cfg:                  Config{HeartbeatTimeout: time.Hour, ZoneAwarenessEnabled: true, SubringCacheDisabled: true, ReplicationFactor: 3},
+		ringDesc:             ringDesc,
+		ringTokens:           ringDesc.GetTokens(),
+		ringTokensByZone:     ringDesc.getTokensByZone(),
+		ringInstanceByToken:  ringDesc.getTokensInfo(),
+		ringZones:            getZones(ringDesc.getTokensByZone()),
+		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		strategy:             NewDefaultReplicationStrategy(),
+		lastTopologyChange:   time.Now(),
+	}
+
+	buf, bufHosts, bufZones := MakeBuffersForGet()
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	numAllocs := testing.AllocsPerRun(10, func() {
+		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
+		if err != nil || len(set.Instances) != 3 {
+			t.Fail()
+		}
+	})
+
+	assert.Equal(t, float64(0), numAllocs)
 }
 
 // generateTokensLinear returns tokens with a linear distribution.
@@ -1690,26 +1878,26 @@ func generateTokensLinear(instanceID, numInstances, numTokens int) []uint32 {
 	return tokens
 }
 
-func generateRingInstances(numInstances, numZones int) map[string]IngesterDesc {
-	instances := make(map[string]IngesterDesc, numInstances)
+func generateRingInstances(numInstances, numZones, numTokens int) map[string]InstanceDesc {
+	instances := make(map[string]InstanceDesc, numInstances)
 
 	for i := 1; i <= numInstances; i++ {
-		id, desc := generateRingInstance(i, i%numZones)
+		id, desc := generateRingInstance(i, i%numZones, numTokens)
 		instances[id] = desc
 	}
 
 	return instances
 }
 
-func generateRingInstance(id, zone int) (string, IngesterDesc) {
+func generateRingInstance(id, zone, numTokens int) (string, InstanceDesc) {
 	instanceID := fmt.Sprintf("instance-%d", id)
 	zoneID := fmt.Sprintf("zone-%d", zone)
 
-	return instanceID, generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(128, nil), time.Now())
+	return instanceID, generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(numTokens, nil), time.Now())
 }
 
-func generateRingInstanceWithInfo(addr, zone string, tokens []uint32, registeredAt time.Time) IngesterDesc {
-	return IngesterDesc{
+func generateRingInstanceWithInfo(addr, zone string, tokens []uint32, registeredAt time.Time) InstanceDesc {
+	return InstanceDesc{
 		Addr:                addr,
 		Timestamp:           time.Now().Unix(),
 		RegisteredTimestamp: registeredAt.Unix(),
@@ -1721,13 +1909,13 @@ func generateRingInstanceWithInfo(addr, zone string, tokens []uint32, registered
 
 // compareReplicationSets returns the list of instance addresses which differ between the two sets.
 func compareReplicationSets(first, second ReplicationSet) (added, removed []string) {
-	for _, instance := range first.Ingesters {
+	for _, instance := range first.Instances {
 		if !second.Includes(instance.Addr) {
 			added = append(added, instance.Addr)
 		}
 	}
 
-	for _, instance := range second.Ingesters {
+	for _, instance := range second.Instances {
 		if !first.Includes(instance.Addr) {
 			removed = append(removed, instance.Addr)
 		}
@@ -1753,21 +1941,21 @@ func TestRingUpdates(t *testing.T) {
 		_ = services.StopAndAwaitTerminated(context.Background(), ring)
 	})
 
-	require.Equal(t, 0, ring.IngesterCount())
+	require.Equal(t, 0, ring.InstancesCount())
 
 	lc1 := startLifecycler(t, cfg, 100*time.Millisecond, 1, 3)
 	test.Poll(t, 1*time.Second, 1, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
 	lc2 := startLifecycler(t, cfg, 100*time.Millisecond, 2, 3)
 	test.Poll(t, 1*time.Second, 2, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
 	lc3 := startLifecycler(t, cfg, 100*time.Millisecond, 3, 3)
 	test.Poll(t, 1*time.Second, 3, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
 	// Sleep for a few seconds (ring timestamp resolution is 1 second, so to verify that ring is updated in the background,
@@ -1778,23 +1966,23 @@ func TestRingUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	for _, ing := range rs.Ingesters {
+	for _, ing := range rs.Instances {
 		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
 	}
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))
 	test.Poll(t, 1*time.Second, 2, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc1))
 	test.Poll(t, 1*time.Second, 1, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc3))
 	test.Poll(t, 1*time.Second, 0, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 }
 
@@ -1807,7 +1995,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 		JoinAfter:            0,
 		Zone:                 fmt.Sprintf("zone-%d", lifecyclerID%zones),
 		Addr:                 fmt.Sprintf("addr-%d", lifecyclerID),
-		ID:                   fmt.Sprintf("ingester-%d", lifecyclerID),
+		ID:                   fmt.Sprintf("instance-%d", lifecyclerID),
 		UnregisterOnShutdown: true,
 	}
 
@@ -1850,7 +2038,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		_ = services.StartAndAwaitRunning(context.Background(), ring)
 	})
 
-	// We will stop <number of zones> ingesters later, to see that subring is recomputed.
+	// We will stop <number of zones> instances later, to see that subring is recomputed.
 	const numLifecyclers = 6
 	const zones = 3
 
@@ -1865,7 +2053,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
 		active := 0
 		rs, _ := ring.GetReplicationSetForOperation(Read)
-		for _, ing := range rs.Ingesters {
+		for _, ing := range rs.Instances {
 			if ing.State == ACTIVE {
 				active++
 			}
@@ -1873,7 +2061,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		return active
 	})
 
-	// Use shardSize = zones, to get one ingester from each zone.
+	// Use shardSize = zones, to get one instance from each zone.
 	const shardSize = zones
 	const user = "user"
 
@@ -1886,7 +2074,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	for i := 0; i < iters; i++ {
 		newSubring := ring.ShuffleShard(user, shardSize)
 		require.True(t, subring == newSubring, "cached subring reused")
-		require.Equal(t, shardSize, subring.IngesterCount())
+		require.Equal(t, shardSize, subring.InstancesCount())
 		time.Sleep(sleep)
 	}
 
@@ -1896,7 +2084,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		require.NoError(t, err)
 
 		now := time.Now()
-		for _, ing := range rs.Ingesters {
+		for _, ing := range rs.Instances {
 			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so we better give it some extra buffer.
 			assert.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
 		}
@@ -1908,20 +2096,30 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	}
 
 	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() interface{} {
-		return ring.IngesterCount()
+		return ring.InstancesCount()
 	})
 
-	// Change of ingesters -> new subring needed.
+	// Change of instances -> new subring needed.
 	newSubring := ring.ShuffleShard("user", zones)
 	require.False(t, subring == newSubring)
-	require.Equal(t, zones, subring.IngesterCount())
+	require.Equal(t, zones, subring.InstancesCount())
 
 	// Change of shard size -> new subring needed.
 	subring = newSubring
 	newSubring = ring.ShuffleShard("user", 1)
 	require.False(t, subring == newSubring)
-	// Zone-aware shuffle-shard gives all zones the same number of ingesters (at least one).
-	require.Equal(t, zones, newSubring.IngesterCount())
+	// Zone-aware shuffle-shard gives all zones the same number of instances (at least one).
+	require.Equal(t, zones, newSubring.InstancesCount())
+
+	// Verify that getting the same subring uses cached instance.
+	subring = newSubring
+	newSubring = ring.ShuffleShard("user", 1)
+	require.True(t, subring == newSubring)
+
+	// But after cleanup, it doesn't.
+	ring.CleanupShuffleShardCache("user")
+	newSubring = ring.ShuffleShard("user", 1)
+	require.False(t, subring == newSubring)
 }
 
 // User shuffle shard token.

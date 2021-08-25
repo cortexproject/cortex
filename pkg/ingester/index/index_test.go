@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestIndex(t *testing.T) {
@@ -26,7 +26,7 @@ func TestIndex(t *testing.T) {
 		{model.Metric{"foo": "baz", "flip": "flop"}, 1},
 		{model.Metric{"foo": "baz", "flip": "flap"}, 0},
 	} {
-		index.Add(client.FromMetricsToLabelAdapters(entry.m), entry.fp)
+		index.Add(cortexpb.FromMetricsToLabelAdapters(entry.m), entry.fp)
 	}
 
 	for _, tc := range []struct {
@@ -75,7 +75,7 @@ func BenchmarkSetRegexLookup(b *testing.B) {
 	for _, l := range seriesLabels {
 		for i := 0; i < seriesPerLabel; i++ {
 			lbls := labels.FromStrings("foo", l, "bar", strconv.Itoa(i))
-			idx.Add(client.FromLabelsToLabelAdapters(lbls), model.Fingerprint(lbls.Hash()))
+			idx.Add(cortexpb.FromLabelsToLabelAdapters(lbls), model.Fingerprint(lbls.Hash()))
 		}
 	}
 
@@ -133,4 +133,69 @@ func mustParseMatcher(s string) []*labels.Matcher {
 		panic(err)
 	}
 	return ms
+}
+
+func TestIndex_Delete(t *testing.T) {
+	index := New()
+
+	testData := []struct {
+		m  model.Metric
+		fp model.Fingerprint
+	}{
+		{model.Metric{"common": "label", "foo": "bar", "flip": "flop"}, 0},
+		{model.Metric{"common": "label", "foo": "bar", "flip": "flap"}, 1},
+		{model.Metric{"common": "label", "foo": "baz", "flip": "flop"}, 2},
+		{model.Metric{"common": "label", "foo": "baz", "flip": "flap"}, 3},
+	}
+	for _, entry := range testData {
+		index.Add(cortexpb.FromMetricsToLabelAdapters(entry.m), entry.fp)
+	}
+
+	for _, tc := range []struct {
+		name           string
+		labelsToDelete labels.Labels
+		fpToDelete     model.Fingerprint
+		expectedFPs    []model.Fingerprint
+	}{
+		{
+			name:           "existing labels and fp",
+			labelsToDelete: metricToLabels(testData[0].m),
+			fpToDelete:     testData[0].fp,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+		{
+			name:           "non-existing labels",
+			labelsToDelete: metricToLabels(model.Metric{"app": "fizz"}),
+			fpToDelete:     testData[1].fp,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+		{
+			name:           "non-existing fp",
+			labelsToDelete: metricToLabels(testData[1].m),
+			fpToDelete:     99,
+			expectedFPs:    []model.Fingerprint{1, 2, 3},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			index.Delete(tc.labelsToDelete, tc.fpToDelete)
+			assert.Equal(t, tc.expectedFPs, index.Lookup(mustParseMatcher(`{common="label"}`)))
+		})
+	}
+
+	assert.Equal(t, []string{"common", "flip", "foo"}, index.LabelNames())
+	assert.Equal(t, []string{"label"}, index.LabelValues("common"))
+	assert.Equal(t, []string{"bar", "baz"}, index.LabelValues("foo"))
+	assert.Equal(t, []string{"flap", "flop"}, index.LabelValues("flip"))
+}
+
+func metricToLabels(m model.Metric) labels.Labels {
+	ls := make(labels.Labels, 0, len(m))
+	for k, v := range m {
+		ls = append(ls, labels.Label{
+			Name:  string(k),
+			Value: string(v),
+		})
+	}
+
+	return ls
 }

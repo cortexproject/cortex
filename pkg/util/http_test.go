@@ -1,11 +1,23 @@
-package util
+package util_test
 
 import (
+	"bytes"
+	"context"
 	"html/template"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRenderHTTPResponse(t *testing.T) {
@@ -58,7 +70,7 @@ func TestRenderHTTPResponse(t *testing.T) {
 				request.Header.Add(k, v)
 			}
 
-			RenderHTTPResponse(writer, tt.value, tmpl, request)
+			util.RenderHTTPResponse(writer, tt.value, tmpl, request)
 
 			assert.Equal(t, tt.expectedContentType, writer.Header().Get("Content-Type"))
 			assert.Equal(t, 200, writer.Code)
@@ -70,9 +82,140 @@ func TestRenderHTTPResponse(t *testing.T) {
 func TestWriteTextResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 
-	WriteTextResponse(w, "hello world")
+	util.WriteTextResponse(w, "hello world")
 
 	assert.Equal(t, 200, w.Code)
 	assert.Equal(t, "hello world", w.Body.String())
 	assert.Equal(t, "text/plain", w.Header().Get("Content-Type"))
+}
+
+func TestStreamWriteYAMLResponse(t *testing.T) {
+	type testStruct struct {
+		Name  string `yaml:"name"`
+		Value int    `yaml:"value"`
+	}
+	tt := struct {
+		name                string
+		headers             map[string]string
+		expectedOutput      string
+		expectedContentType string
+		value               map[string]*testStruct
+	}{
+		name: "Test Stream Render YAML",
+		headers: map[string]string{
+			"Content-Type": "application/yaml",
+		},
+		expectedContentType: "application/yaml",
+		value:               make(map[string]*testStruct),
+	}
+
+	// Generate some data to serialize.
+	for i := 0; i < rand.Intn(100)+1; i++ {
+		ts := testStruct{
+			Name:  "testName" + strconv.Itoa(i),
+			Value: i,
+		}
+		tt.value[ts.Name] = &ts
+	}
+	d, err := yaml.Marshal(tt.value)
+	require.NoError(t, err)
+	tt.expectedOutput = string(d)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	iter := make(chan interface{})
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
+		close(done)
+	}()
+	for k, v := range tt.value {
+		iter <- map[string]*testStruct{k: v}
+	}
+	close(iter)
+	<-done
+	assert.Equal(t, tt.expectedContentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, 200, w.Code)
+	assert.YAMLEq(t, tt.expectedOutput, w.Body.String())
+}
+
+func TestParseProtoReader(t *testing.T) {
+	// 47 bytes compressed and 53 uncompressed
+	req := &cortexpb.PreallocWriteRequest{
+		WriteRequest: cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
+				{
+					TimeSeries: &cortexpb.TimeSeries{
+						Labels: []cortexpb.LabelAdapter{
+							{Name: "foo", Value: "bar"},
+						},
+						Samples: []cortexpb.Sample{
+							{Value: 10, TimestampMs: 1},
+							{Value: 20, TimestampMs: 2},
+							{Value: 30, TimestampMs: 3},
+						},
+						Exemplars: []cortexpb.Exemplar{},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range []struct {
+		name           string
+		compression    util.CompressionType
+		maxSize        int
+		expectErr      bool
+		useBytesBuffer bool
+	}{
+		{"rawSnappy", util.RawSnappy, 53, false, false},
+		{"noCompression", util.NoCompression, 53, false, false},
+		{"too big rawSnappy", util.RawSnappy, 10, true, false},
+		{"too big decoded rawSnappy", util.RawSnappy, 50, true, false},
+		{"too big noCompression", util.NoCompression, 10, true, false},
+
+		{"bytesbuffer rawSnappy", util.RawSnappy, 53, false, true},
+		{"bytesbuffer noCompression", util.NoCompression, 53, false, true},
+		{"bytesbuffer too big rawSnappy", util.RawSnappy, 10, true, true},
+		{"bytesbuffer too big decoded rawSnappy", util.RawSnappy, 50, true, true},
+		{"bytesbuffer too big noCompression", util.NoCompression, 10, true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			assert.Nil(t, util.SerializeProtoResponse(w, req, tt.compression))
+			var fromWire cortexpb.PreallocWriteRequest
+
+			reader := w.Result().Body
+			if tt.useBytesBuffer {
+				buf := bytes.Buffer{}
+				_, err := buf.ReadFrom(reader)
+				assert.Nil(t, err)
+				reader = bytesBuffered{Buffer: &buf}
+			}
+
+			err := util.ParseProtoReader(context.Background(), reader, 0, tt.maxSize, &fromWire, tt.compression)
+			if tt.expectErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, req, &fromWire)
+		})
+	}
+}
+
+type bytesBuffered struct {
+	*bytes.Buffer
+}
+
+func (b bytesBuffered) Close() error {
+	return nil
+}
+
+func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
+	return b.Buffer
+}
+
+func TestIsRequestBodyTooLargeRegression(t *testing.T) {
+	_, err := ioutil.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), ioutil.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
+	assert.True(t, util.IsRequestBodyTooLarge(err))
 }

@@ -4,9 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkGetNextRequest(b *testing.B) {
@@ -17,7 +22,10 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	queues := make([]*RequestQueue, 0, b.N)
 
 	for n := 0; n < b.N; n++ {
-		queue := NewRequestQueue(maxOutstandingPerTenant, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
+		queue := NewRequestQueue(maxOutstandingPerTenant, 0,
+			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		)
 		queues = append(queues, queue)
 
 		for ix := 0; ix < queriers; ix++ {
@@ -71,7 +79,10 @@ func BenchmarkQueueRequest(b *testing.B) {
 	requests := make([]string, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}))
+		q := NewRequestQueue(maxOutstandingPerTenant, 0,
+			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		)
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
@@ -96,4 +107,46 @@ func BenchmarkQueueRequest(b *testing.B) {
 			}
 		}
 	}
+}
+
+func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
+	const forgetDelay = 3 * time.Second
+
+	queue := NewRequestQueue(1, forgetDelay,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}))
+
+	// Start the queue service.
+	ctx := context.Background()
+	require.NoError(t, services.StartAndAwaitRunning(ctx, queue))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, queue))
+	})
+
+	// Two queriers connect.
+	queue.RegisterQuerierConnection("querier-1")
+	queue.RegisterQuerierConnection("querier-2")
+
+	// Querier-2 waits for a new request.
+	querier2wg := sync.WaitGroup{}
+	querier2wg.Add(1)
+	go func() {
+		defer querier2wg.Done()
+		_, _, err := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-2")
+		require.NoError(t, err)
+	}()
+
+	// Querier-1 crashes (no graceful shutdown notification).
+	queue.UnregisterQuerierConnection("querier-1")
+
+	// Enqueue a request from an user which would be assigned to querier-1.
+	// NOTE: "user-1" hash falls in the querier-1 shard.
+	require.NoError(t, queue.EnqueueRequest("user-1", "request", 1, nil))
+
+	startTime := time.Now()
+	querier2wg.Wait()
+	waitTime := time.Since(startTime)
+
+	// We expect that querier-2 got the request only after querier-1 forget delay is passed.
+	assert.GreaterOrEqual(t, waitTime.Milliseconds(), forgetDelay.Milliseconds())
 }

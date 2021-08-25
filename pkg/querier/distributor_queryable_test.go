@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -179,13 +180,13 @@ func TestIngesterStreaming(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "bar", Value: "baz"},
 					},
 					Chunks: clientChunks,
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
 					Chunks: clientChunks,
@@ -219,21 +220,21 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		mint = 0
 		maxt = 10000
 	)
-	s1 := []client.Sample{
+	s1 := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2, TimestampMs: 2000},
 		{Value: 3, TimestampMs: 3000},
 		{Value: 4, TimestampMs: 4000},
 		{Value: 5, TimestampMs: 5000},
 	}
-	s2 := []client.Sample{
+	s2 := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2.5, TimestampMs: 2500},
 		{Value: 3, TimestampMs: 3000},
 		{Value: 5.5, TimestampMs: 5500},
 	}
 
-	mergedSamplesS1S2 := []client.Sample{
+	mergedSamplesS1S2 := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2, TimestampMs: 2000},
 		{Value: 2.5, TimestampMs: 2500},
@@ -248,22 +249,22 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Labels: []client.LabelAdapter{{Name: labels.MetricName, Value: "one"}},
+					Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "one"}},
 					Chunks: convertToChunks(t, s1),
 				},
 				{
-					Labels: []client.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
+					Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
 					Chunks: convertToChunks(t, s1),
 				},
 			},
 
-			Timeseries: []client.TimeSeries{
+			Timeseries: []cortexpb.TimeSeries{
 				{
-					Labels:  []client.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
+					Labels:  []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "two"}},
 					Samples: s2,
 				},
 				{
-					Labels:  []client.LabelAdapter{{Name: labels.MetricName, Value: "three"}},
+					Labels:  []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "three"}},
 					Samples: s1,
 				},
 			},
@@ -291,7 +292,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 	require.NoError(t, seriesSet.Err())
 }
 
-func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []client.Sample) {
+func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []cortexpb.Sample) {
 	require.Equal(t, l, series.Labels())
 
 	it := series.Iterator()
@@ -305,8 +306,32 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 	require.False(t, it.Next())
 	require.Nil(t, it.Err())
 }
+func TestDistributorQuerier_LabelNames(t *testing.T) {
+	someMatchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}
+	labelNames := []string{"foo", "job"}
 
-func convertToChunks(t *testing.T, samples []client.Sample) []client.Chunk {
+	t.Run("with matchers", func(t *testing.T) {
+		metrics := []metric.Metric{
+			{Metric: model.Metric{"foo": "bar"}},
+			{Metric: model.Metric{"job": "baz"}},
+			{Metric: model.Metric{"job": "baz", "foo": "boom"}},
+		}
+		d := &mockDistributor{}
+		d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).
+			Return(metrics, nil)
+
+		queryable := newDistributorQueryable(d, false, nil, 0)
+		querier, err := queryable.Querier(context.Background(), mint, maxt)
+		require.NoError(t, err)
+
+		names, warnings, err := querier.LabelNames(someMatchers...)
+		require.NoError(t, err)
+		assert.Empty(t, warnings)
+		assert.Equal(t, labelNames, names)
+	})
+}
+
+func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
 	// We need to make sure that there is atleast one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.Bigchunk)
@@ -334,12 +359,16 @@ func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matche
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(model.Matrix), args.Error(1)
 }
+func (m *mockDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
+	args := m.Called(ctx, from, to, matchers)
+	return args.Get(0).(*client.ExemplarQueryResponse), args.Error(1)
+}
 func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
 }
-func (m *mockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName) ([]string, error) {
-	args := m.Called(ctx, from, to, lbl)
+func (m *mockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
+	args := m.Called(ctx, from, to, lbl, matchers)
 	return args.Get(0).([]string), args.Error(1)
 }
 func (m *mockDistributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {

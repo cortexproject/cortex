@@ -7,14 +7,15 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -36,9 +37,10 @@ type LoaderConfig struct {
 type Loader struct {
 	services.Service
 
-	bkt    objstore.Bucket
-	logger log.Logger
-	cfg    LoaderConfig
+	bkt         objstore.Bucket
+	logger      log.Logger
+	cfg         LoaderConfig
+	cfgProvider bucket.TenantConfigProvider
 
 	indexesMx sync.RWMutex
 	indexes   map[string]*cachedIndex
@@ -51,12 +53,13 @@ type Loader struct {
 }
 
 // NewLoader makes a new Loader.
-func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *Loader {
+func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *Loader {
 	l := &Loader{
-		bkt:     bucketClient,
-		logger:  logger,
-		cfg:     cfg,
-		indexes: map[string]*cachedIndex{},
+		bkt:         bucketClient,
+		logger:      logger,
+		cfg:         cfg,
+		cfgProvider: cfgProvider,
+		indexes:     map[string]*cachedIndex{},
 
 		loadAttempts: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_bucket_index_loads_total",
@@ -104,16 +107,18 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 
 	startTime := time.Now()
 	l.loadAttempts.Inc()
-	idx, err := ReadIndex(ctx, l.bkt, userID, l.logger)
+	idx, err := ReadIndex(ctx, l.bkt, userID, l.cfgProvider, l.logger)
 	if err != nil {
 		// Cache the error, to avoid hammering the object store in case of persistent issues
 		// (eg. corrupted bucket index or not existing).
 		l.cacheIndex(userID, nil, err)
 
-		l.loadFailures.Inc()
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
 		} else {
+			// We don't track ErrIndexNotFound as failure because it's a legit case (eg. a tenant just
+			// started to remote write and its blocks haven't uploaded to storage yet).
+			l.loadFailures.Inc()
 			level.Error(l.logger).Log("msg", "unable to load bucket index", "user", userID, "err", err)
 		}
 
@@ -166,12 +171,17 @@ func (l *Loader) checkCachedIndexesToUpdateAndDelete() (toUpdate, toDelete []str
 	defer l.indexesMx.RUnlock()
 
 	for userID, entry := range l.indexes {
+		// Given ErrIndexNotFound is a legit case and assuming UpdateOnErrorInterval is lower than
+		// UpdateOnStaleInterval, we don't consider ErrIndexNotFound as an error with regards to the
+		// refresh interval and so it will updated once stale.
+		isError := entry.err != nil && !errors.Is(entry.err, ErrIndexNotFound)
+
 		switch {
 		case now.Sub(entry.getRequestedAt()) >= l.cfg.IdleTimeout:
 			toDelete = append(toDelete, userID)
-		case entry.err != nil && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnErrorInterval:
+		case isError && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnErrorInterval:
 			toUpdate = append(toUpdate, userID)
-		case entry.err == nil && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnStaleInterval:
+		case !isError && now.Sub(entry.getUpdatedAt()) >= l.cfg.UpdateOnStaleInterval:
 			toUpdate = append(toUpdate, userID)
 		}
 	}
@@ -185,19 +195,8 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 
 	l.loadAttempts.Inc()
 	startTime := time.Now()
-	idx, err := ReadIndex(readCtx, l.bkt, userID, l.logger)
-
-	if errors.Is(err, ErrIndexNotFound) {
-		level.Info(l.logger).Log("msg", "unloaded bucket index", "user", userID, "reason", "not found during periodic check")
-
-		// Remove from cache.
-		l.indexesMx.Lock()
-		delete(l.indexes, userID)
-		l.indexesMx.Unlock()
-
-		return
-	}
-	if err != nil {
+	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
+	if err != nil && !errors.Is(err, ErrIndexNotFound) {
 		l.loadFailures.Inc()
 		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
 		return
@@ -205,10 +204,12 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 
 	l.loadDuration.Observe(time.Since(startTime).Seconds())
 
-	// Cache it.
+	// We cache it either it was successfully refreshed or wasn't found. An use case for caching the ErrIndexNotFound
+	// is when a tenant has rules configured but hasn't started remote writing yet. Rules will be evaluated and
+	// bucket index loaded by the ruler.
 	l.indexesMx.Lock()
 	l.indexes[userID].index = idx
-	l.indexes[userID].err = nil
+	l.indexes[userID].err = err
 	l.indexes[userID].setUpdatedAt(startTime)
 	l.indexesMx.Unlock()
 }

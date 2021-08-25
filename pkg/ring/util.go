@@ -6,11 +6,13 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
+
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // GenerateTokens make numTokens unique random tokens, none of which clash
-// with takenTokens.
+// with takenTokens. Generated tokens are sorted.
 func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	if numTokens <= 0 {
 		return []uint32{}
@@ -23,7 +25,7 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		used[v] = true
 	}
 
-	tokens := []uint32{}
+	tokens := make([]uint32, 0, numTokens)
 	for i := 0; i < numTokens; {
 		candidate := r.Uint32()
 		if used[candidate] {
@@ -33,6 +35,11 @@ func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 		tokens = append(tokens, candidate)
 		i++
 	}
+
+	// Ensure returned tokens are sorted.
+	sort.Slice(tokens, func(i, j int) bool {
+		return tokens[i] < tokens[j]
+	})
 
 	return tokens
 }
@@ -64,8 +71,8 @@ func GetInstancePort(configPort, listenPort int) int {
 
 // WaitInstanceState waits until the input instanceID is registered within the
 // ring matching the provided state. A timeout should be provided within the context.
-func WaitInstanceState(ctx context.Context, r *Ring, instanceID string, state IngesterState) error {
-	backoff := util.NewBackoff(ctx, util.BackoffConfig{
+func WaitInstanceState(ctx context.Context, r ReadRing, instanceID string, state InstanceState) error {
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
 		MaxRetries: 0,
@@ -116,9 +123,17 @@ func WaitRingStability(ctx context.Context, r *Ring, op Operation, minStability,
 	}
 }
 
+// MakeBuffersForGet returns buffers to use with Ring.Get().
+func MakeBuffersForGet() (bufDescs []InstanceDesc, bufHosts, bufZones []string) {
+	bufDescs = make([]InstanceDesc, 0, GetBufferSize)
+	bufHosts = make([]string, 0, GetBufferSize)
+	bufZones = make([]string, 0, GetBufferSize)
+	return
+}
+
 // getZones return the list zones from the provided tokens. The returned list
 // is guaranteed to be sorted.
-func getZones(tokens map[string][]TokenDesc) []string {
+func getZones(tokens map[string][]uint32) []string {
 	var zones []string
 
 	for zone := range tokens {
@@ -130,9 +145,9 @@ func getZones(tokens map[string][]TokenDesc) []string {
 }
 
 // searchToken returns the offset of the tokens entry holding the range for the provided key.
-func searchToken(tokens []TokenDesc, key uint32) int {
+func searchToken(tokens []uint32, key uint32) int {
 	i := sort.Search(len(tokens), func(x int) bool {
-		return tokens[x].Token > key
+		return tokens[x] > key
 	})
 	if i >= len(tokens) {
 		i = 0

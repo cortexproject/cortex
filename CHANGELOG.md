@@ -39,9 +39,13 @@
 * [BUGFIX] Ingester: When using block storage, prevent any reads or writes while the ingester is stopping. This will prevent accessing TSDB blocks once they have been already closed. #4304
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> Update for 1.10.0-rc.0 release candidate
 =======
+=======
+* [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
+>>>>>>> fixing bug in chuck cache that can cause panic during shutdown (#4398)
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
 >>>>>>> Fix bug where querier may not be able to achieve max-concurrent (#4417)
 

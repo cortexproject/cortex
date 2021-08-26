@@ -39,8 +39,6 @@ type ccResolverWrapper struct {
 	resolver   resolver.Resolver
 	done       *grpcsync.Event
 	curState   resolver.State
-
-	incomingMu sync.Mutex // Synchronizes all the incoming calls.
 }
 
 // newCCResolverWrapper uses the resolver.Builder to build a Resolver and
@@ -92,8 +90,6 @@ func (ccr *ccResolverWrapper) close() {
 }
 
 func (ccr *ccResolverWrapper) UpdateState(s resolver.State) error {
-	ccr.incomingMu.Lock()
-	defer ccr.incomingMu.Unlock()
 	if ccr.done.HasFired() {
 		return nil
 	}
@@ -109,8 +105,6 @@ func (ccr *ccResolverWrapper) UpdateState(s resolver.State) error {
 }
 
 func (ccr *ccResolverWrapper) ReportError(err error) {
-	ccr.incomingMu.Lock()
-	defer ccr.incomingMu.Unlock()
 	if ccr.done.HasFired() {
 		return
 	}
@@ -120,8 +114,6 @@ func (ccr *ccResolverWrapper) ReportError(err error) {
 
 // NewAddress is called by the resolver implementation to send addresses to gRPC.
 func (ccr *ccResolverWrapper) NewAddress(addrs []resolver.Address) {
-	ccr.incomingMu.Lock()
-	defer ccr.incomingMu.Unlock()
 	if ccr.done.HasFired() {
 		return
 	}
@@ -136,8 +128,6 @@ func (ccr *ccResolverWrapper) NewAddress(addrs []resolver.Address) {
 // NewServiceConfig is called by the resolver implementation to send service
 // configs to gRPC.
 func (ccr *ccResolverWrapper) NewServiceConfig(sc string) {
-	ccr.incomingMu.Lock()
-	defer ccr.incomingMu.Unlock()
 	if ccr.done.HasFired() {
 		return
 	}

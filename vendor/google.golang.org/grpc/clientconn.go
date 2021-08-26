@@ -711,12 +711,7 @@ func (cc *ClientConn) switchBalancer(name string) {
 		return
 	}
 	if cc.balancerWrapper != nil {
-		// Don't hold cc.mu while closing the balancers. The balancers may call
-		// methods that require cc.mu (e.g. cc.NewSubConn()). Holding the mutex
-		// would cause a deadlock in that case.
-		cc.mu.Unlock()
 		cc.balancerWrapper.close()
-		cc.mu.Lock()
 	}
 
 	builder := balancer.Get(name)
@@ -1051,11 +1046,11 @@ func (cc *ClientConn) Close() error {
 
 	cc.blockingpicker.close()
 
-	if bWrapper != nil {
-		bWrapper.close()
-	}
 	if rWrapper != nil {
 		rWrapper.close()
+	}
+	if bWrapper != nil {
+		bWrapper.close()
 	}
 
 	for ac := range conns {

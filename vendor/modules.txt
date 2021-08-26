@@ -298,6 +298,7 @@ github.com/gorilla/websocket
 ## explicit
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/modules
+github.com/grafana/dskit/runtimeconfig
 github.com/grafana/dskit/services
 # github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
 ## explicit

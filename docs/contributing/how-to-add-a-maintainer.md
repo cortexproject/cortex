@@ -5,7 +5,7 @@ weight: 10
 slug: how-to-add-a-maintainer
 ---
 
-New maintainers are proposed by an existing maintainer and are elected by [majority vote](./_index.md#changes-in-maintainership). Once the vote passed, the following steps should be done to add a new member to the maintainers team:
+New maintainers are proposed by an existing maintainer and are elected by [majority vote](./governance.md#voting). Once the vote passed, the following steps should be done to add a new member to the maintainers team:
 
 1. Submit a PR to add the new member to `MAINTAINERS`
 2. Invite to [GitHub organization](https://github.com/orgs/cortexproject/people)

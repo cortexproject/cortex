@@ -55,6 +55,7 @@ type Memcached struct {
 
 	wg      sync.WaitGroup
 	inputCh chan *work
+	quit    chan struct{}
 
 	logger log.Logger
 }
@@ -83,19 +84,24 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 	}
 
 	c.inputCh = make(chan *work)
+	c.quit = make(chan struct{})
 	c.wg.Add(cfg.Parallelism)
 
 	for i := 0; i < cfg.Parallelism; i++ {
 		go func() {
-			for input := range c.inputCh {
-				res := &result{
-					batchID: input.batchID,
+			defer c.wg.Done()
+			for {
+				select {
+				case <-c.quit:
+					return
+				case input := <-c.inputCh:
+					res := &result{
+						batchID: input.batchID,
+					}
+					res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
+					input.resultCh <- res
 				}
-				res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
-				input.resultCh <- res
 			}
-
-			c.wg.Done()
 		}()
 	}
 
@@ -187,11 +193,15 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
 			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
-			c.inputCh <- &work{
+			select {
+			case <-c.quit:
+				return
+			case c.inputCh <- &work{
 				keys:     batchKeys,
 				ctx:      ctx,
 				resultCh: resultsCh,
 				batchID:  j,
+			}:
 			}
 			j++
 		}
@@ -205,13 +215,21 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	// We need to order found by the input keys order.
 	results := make([]*result, numResults)
+loopResults:
 	for i := 0; i < numResults; i++ {
-		result := <-resultsCh
-		results[result.batchID] = result
+		select {
+		case <-c.quit:
+			break loopResults
+		case result := <-resultsCh:
+			results[result.batchID] = result
+		}
 	}
 	close(resultsCh)
 
 	for _, result := range results {
+		if result == nil {
+			continue
+		}
 		found = append(found, result.found...)
 		bufs = append(bufs, result.bufs...)
 		missed = append(missed, result.missed...)
@@ -239,11 +257,15 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
 
 // Stop does nothing.
 func (c *Memcached) Stop() {
-	if c.inputCh == nil {
+	if c.quit == nil {
 		return
 	}
 
-	close(c.inputCh)
+	select {
+	case <-c.quit:
+	default:
+		close(c.quit)
+	}
 	c.wg.Wait()
 }
 

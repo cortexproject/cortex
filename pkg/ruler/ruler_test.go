@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -42,7 +43,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func defaultRulerConfig(store rulestore.RuleStore) (Config, func()) {

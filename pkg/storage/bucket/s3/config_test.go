@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestSSEConfig_Validate(t *testing.T) {

@@ -8,8 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-
+	"github.com/grafana/dskit/flagext"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/v3client"
 

@@ -5,10 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/hashicorp/memberlist"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestPage(t *testing.T) {

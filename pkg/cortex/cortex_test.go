@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -31,7 +32,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestCortex(t *testing.T) {
@@ -39,6 +39,14 @@ func TestCortex(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{
+		// Include the network names here explicitly. When CLI flags are registered
+		// these values are set as defaults but since we aren't registering them, we
+		// need to include the defaults here. These were hardcoded in a previous version
+		// of weaveworks server.
+		Server: server.Config{
+			GRPCListenNetwork: server.DefaultNetwork,
+			HTTPListenNetwork: server.DefaultNetwork,
+		},
 		Storage: storage.Config{
 			Engine: storage.StorageEngineBlocks, // makes config easier
 		},
@@ -267,6 +275,9 @@ func getServerConfig(t *testing.T) server.Config {
 	require.NoError(t, err)
 
 	return server.Config{
+		HTTPListenNetwork: server.DefaultNetwork,
+		GRPCListenNetwork: server.DefaultNetwork,
+
 		GRPCListenAddress: host,
 		GRPCListenPort:    portNum,
 

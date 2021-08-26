@@ -25,14 +25,14 @@ require (
 	github.com/go-redis/redis/v8 v8.9.0
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.2
-	github.com/gogo/status v1.0.3
+	github.com/gogo/status v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/golang/protobuf v1.5.2
-	github.com/golang/snappy v0.0.3
-	github.com/gorilla/mux v1.7.3
-	github.com/grafana/dskit v0.0.0-20210818123532-6645f87e9e12
-	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
-	github.com/hashicorp/consul/api v1.8.1
+	github.com/golang/snappy v0.0.4
+	github.com/gorilla/mux v1.8.0
+	github.com/grafana/dskit v0.0.0-20210824090727-039d9afd9208
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/hashicorp/consul/api v1.9.1
 	github.com/hashicorp/go-cleanhttp v0.5.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.2.3
@@ -55,19 +55,19 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.2.2
 	github.com/stretchr/testify v1.7.0
-	github.com/thanos-io/thanos v0.19.1-0.20210729154440-aa148f8fdb28
+	github.com/thanos-io/thanos v0.22.0
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
-	github.com/weaveworks/common v0.0.0-20210419092856-009d1eebd624
-	go.etcd.io/bbolt v1.3.5
-	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
+	github.com/weaveworks/common v0.0.0-20210722103813-e649eff5ab4a
+	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/etcd v3.3.25+incompatible
 	go.etcd.io/etcd/client/v3 v3.5.0
-	go.etcd.io/etcd/server/v3 v3.5.0-alpha.0.0.20210225194612-fa82d11a958a
+	go.etcd.io/etcd/server/v3 v3.5.0
 	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20210610132358-84b48f89b13b
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6
-	google.golang.org/api v0.48.0
-	google.golang.org/grpc v1.38.0
+	google.golang.org/api v0.50.0
+	google.golang.org/grpc v1.39.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	sigs.k8s.io/yaml v1.2.0
@@ -85,3 +85,6 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
+
+// TODO review the change introduced by https://github.com/grpc/grpc-go/pull/4416 before upgrading to 1.39.0
+replace google.golang.org/grpc => google.golang.org/grpc v1.38.0

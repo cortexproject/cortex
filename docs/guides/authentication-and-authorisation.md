@@ -24,7 +24,7 @@ In trusted environments, Prometheus can send the `X-Scope-OrgID` header itself
 by configuring the `headers` field in its [`remote_write` configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write):
 ```
 remote_write:
-  - url: http://<cortex>/api/v1/push
+  - url: http://<cortex>/prometheus/api/v1/push
     headers:
       X-Scope-OrgID: <org>
 ```

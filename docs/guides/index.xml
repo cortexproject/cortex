@@ -200,12 +200,17 @@ of protection.&lt;/p>
 &lt;p>Typically this means you run Cortex behind a reverse proxy, and you must
 ensure that all callers, both machines sending data over the &lt;code>remote_write&lt;/code>
 interface and humans sending queries from GUIs, supply credentials
-which identify them and confirm they are authorised.&lt;/p>
-&lt;p>When configuring the &lt;code>remote_write&lt;/code> API in Prometheus there is no way to
-add extra headers. The user and password fields of http Basic auth, or
-Bearer token, can be used to convey the tenant ID and/or credentials.
-See the &lt;strong>Cortex-Tenant&lt;/strong> section below for one way to solve this.&lt;/p>
-&lt;p>To disable the multi-tenant functionality, you can pass the argument
+which identify them and confirm they are authorised. When configuring the
+&lt;code>remote_write&lt;/code> API in Prometheus, the user and password fields of http Basic
+auth, or Bearer token, can be used to convey the tenant ID and/or credentials.
+See the &lt;a href="#cortex-tenant">Cortex-Tenant&lt;/a> section below for one way to solve this.&lt;/p>
+&lt;p>In trusted environments, Prometheus can send the &lt;code>X-Scope-OrgID&lt;/code> header itself
+by configuring the &lt;code>headers&lt;/code> field in its &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write">&lt;code>remote_write&lt;/code> configuration&lt;/a>:&lt;/p>
+&lt;pre>&lt;code>remote_write:
+- url: http://&amp;lt;cortex&amp;gt;/prometheus/api/v1/push
+headers:
+X-Scope-OrgID: &amp;lt;org&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>To disable the multi-tenant functionality, you can pass the argument
 &lt;code>-auth.enabled=false&lt;/code> to every Cortex component, which will set the OrgID
 to the string &lt;code>fake&lt;/code> for every request.&lt;/p>
 &lt;p>Note that the tenant ID that is used to write the series to the datastore

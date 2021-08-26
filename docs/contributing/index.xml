@@ -118,7 +118,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>
-&lt;p>New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/#changes-in-maintainership">majority vote&lt;/a>. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p>
+&lt;p>New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting">majority vote&lt;/a>. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p>
 &lt;ol>
 &lt;li>Submit a PR to add the new member to &lt;code>MAINTAINERS&lt;/code>&lt;/li>
 &lt;li>Invite to &lt;a href="https://github.com/orgs/cortexproject/people">GitHub organization&lt;/a>&lt;/li>

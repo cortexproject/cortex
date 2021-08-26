@@ -124,7 +124,7 @@ func TestDistributor_Push(t *testing.T) {
 		expectedResponse *cortexpb.WriteResponse
 		expectedError    error
 		expectedMetrics  string
-		ingesterError	 error
+		ingesterError    error
 	}{
 		"A push of no samples shouldn't block or return error, even if ingesters are sad": {
 			numIngesters:     3,
@@ -204,7 +204,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",statusFamily="5xx",type="samples"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="samples"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
 				cortex_distributor_ingester_appends_total{ingester="0",type="samples"} 1
@@ -223,7 +223,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",statusFamily="5xx",type="metadata"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="metadata"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
 				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
@@ -242,7 +242,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",statusFamily="4xx",type="metadata"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="4xx",type="metadata"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
 				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
@@ -1939,15 +1939,15 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		})
 	}
 	for i := cfg.happyIngesters; i < cfg.numIngesters; i++ {
-		mi := mockIngester{
-			queryDelay: cfg.queryDelay,
-			errFail: errFail,
-		}
+		miError := errFail
 		if cfg.errFail != nil {
-			mi.errFail = cfg.errFail
+			miError = cfg.errFail
 		}
 
-		ingesters = append(ingesters, mi)
+		ingesters = append(ingesters, mockIngester{
+			queryDelay: cfg.queryDelay,
+			failResp:   miError,
+		})
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
@@ -2178,7 +2178,7 @@ type mockIngester struct {
 	client.IngesterClient
 	grpc_health_v1.HealthClient
 	happy      bool
-	errFail	   error
+	failResp   error
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*cortexpb.PreallocTimeseries
 	metadata   map[uint32]map[cortexpb.MetricMetadata]struct{}
@@ -2217,7 +2217,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 	i.trackCall("Push")
 
 	if !i.happy {
-		return nil, i.errFail
+		return nil, i.failResp
 	}
 
 	if i.timeseries == nil {

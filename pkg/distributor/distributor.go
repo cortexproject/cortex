@@ -57,9 +57,6 @@ const (
 	typeSamples  = "samples"
 	typeMetadata = "metadata"
 
-	statusFamily5xx = "5xx"
-	statusFamily4xx = "4xx"
-
 	instanceIngestionRateTickInterval = time.Second
 )
 
@@ -303,7 +300,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_ingester_append_failures_total",
 			Help:      "The total number of failed batch appends sent to ingesters.",
-		}, []string{"ingester", "type", "statusFamily"}),
+		}, []string{"ingester", "type", "status"}),
 		ingesterQueries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_ingester_queries_total",
@@ -822,27 +819,27 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata, getStatusFamily(err)).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeMetadata, getErrorStatus(err)).Inc()
 		}
 	}
 	if len(timeseries) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeSamples).Inc()
 		if err != nil {
-			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples, getStatusFamily(err)).Inc()
+			d.ingesterAppendFailures.WithLabelValues(ingester.Addr, typeSamples, getErrorStatus(err)).Inc()
 		}
 	}
 
 	return err
 }
 
-func getStatusFamily(err error) string {
-	statusFamily := statusFamily5xx
+func getErrorStatus(err error) string {
+	status := "5xx"
 	httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok && httpResp.Code/100 == 4 {
-		statusFamily = statusFamily4xx
+		status = "4xx"
 	}
 
-	return statusFamily
+	return status
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.

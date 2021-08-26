@@ -36,7 +36,7 @@ _For more information about the bucket index, please refer to [bucket index docu
 
 ## Blocks sharding and replication
 
-The store-gateway optionally supports block sharding. Sharding can be used to horizontally scale blocks in a large cluster without hitting any vertical scalability limit.
+The store-gateway optionally supports sharding to horizontally scale a large cluster without hitting any vertical scalability limit.
 
 When sharding is enabled, store-gateway instances builds an [hash ring](../architecture.md#the-hash-ring) and blocks get sharded and replicated across the pool of store-gateway instances registered within the ring.
 

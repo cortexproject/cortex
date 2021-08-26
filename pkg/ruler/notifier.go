@@ -107,7 +107,7 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 		// hosts provided follow this specification: _service._proto.name
 		// e.g. _http._tcp.alertmanager.com
 		if rulerConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
-			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form _portname._tcp.service.fqdn (is %q)", url.Host)
+			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form http://_portname._tcp.service.fqdn (is %q)", url.Host)
 		}
 
 		validURLs = append(validURLs, url)

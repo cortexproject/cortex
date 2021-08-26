@@ -1470,7 +1470,8 @@ storage:
 # Comma-separated list of URL(s) of the Alertmanager(s) to send notifications
 # to. Each Alertmanager URL is treated as a separate group in the configuration.
 # Multiple Alertmanagers in HA per group can be supported by using DNS
-# resolution via -ruler.alertmanager-discovery.
+# resolution via -ruler.alertmanager-discovery. URLs should be in the form of
+# http://_portname._tcp.service.fqdn
 # CLI flag: -ruler.alertmanager-url
 [alertmanager_url: <string> | default = ""]
 

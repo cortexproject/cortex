@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -1926,7 +1927,8 @@ func compareReplicationSets(first, second ReplicationSet) (added, removed []stri
 
 // This test verifies that ring is getting updates, even after extending check in the loop method.
 func TestRingUpdates(t *testing.T) {
-	inmem := consul.NewInMemoryClient(GetCodec())
+	inmem, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{
 		KVStore:           kv.Config{Mock: inmem},
@@ -2019,10 +2021,11 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
 		MaxCasRetries: 20,
 		CasRetryDelay: 500 * time.Millisecond,
-	})
+	}, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},

@@ -18,15 +18,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {

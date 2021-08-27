@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/kv/etcd"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +21,6 @@ import (
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 )
 
 func TestKVList(t *testing.T) {
@@ -117,7 +118,9 @@ func TestKVWatchAndDelete(t *testing.T) {
 	})
 }
 
-func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client {
+func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client {
+	t.Helper()
+
 	etcdSvc := e2edb.NewETCD()
 	require.NoError(t, scenario.StartAndWaitReady(etcdSvc))
 
@@ -131,13 +134,15 @@ func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) 
 				MaxRetries:  5,
 			},
 		},
-	}, stringCodec{}, reg)
+	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
 
 	return etcdKv
 }
 
-func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client {
+func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client {
+	t.Helper()
+
 	consulSvc := e2edb.NewConsul()
 	require.NoError(t, scenario.StartAndWaitReady(consulSvc))
 
@@ -152,14 +157,14 @@ func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer
 				WatchKeyRateLimit: 1,
 			},
 		},
-	}, stringCodec{}, reg)
+	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
 
 	return consulKv
 }
 
 func testKVs(t *testing.T, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
-	setupFns := map[string]func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client{
+	setupFns := map[string]func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client{
 		"etcd":   setupEtcd,
 		"consul": setupConsul,
 	}
@@ -171,13 +176,13 @@ func testKVs(t *testing.T, testFn func(t *testing.T, client kv.Client, reg *prom
 	}
 }
 
-func testKVScenario(t *testing.T, kvSetupFn func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
+func testKVScenario(t *testing.T, kvSetupFn func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
 
 	reg := prometheus.NewRegistry()
-	client := kvSetupFn(t, s, reg)
+	client := kvSetupFn(t, s, prometheus.WrapRegistererWithPrefix("cortex_", reg), log.NewNopLogger())
 	testFn(t, client, reg)
 }
 

@@ -125,4 +125,10 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 	// single ingester and so we have 1 block shipped from ingesters and loaded by both store-gateways.
 	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+
+	// Make sure that no DNS failures occurred.
+	// No actual DNS lookups are necessarily performed, so we can't really assert on that.
+	mlMatcher := labels.MustNewMatcher(labels.MatchEqual, "name", "memberlist")
+	require.NoError(t, cortex1.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_dns_failures_total"}, e2e.WithLabelMatchers(mlMatcher)))
+	require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_dns_failures_total"}, e2e.WithLabelMatchers(mlMatcher)))
 }

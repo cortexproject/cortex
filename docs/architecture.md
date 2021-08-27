@@ -228,7 +228,7 @@ The query frontend supports caching query results and reuses them on subsequent 
 
 ### Query Scheduler
 
-Query Scheduler is an **optional** service that moves the internal queue from the query frontend into a separate component.
+Query Scheduler is an **optional** service that moves the internal queue from the query-frontend into a separate component.
 This enables independent scaling of query frontends and number of queues (query scheduler).
 
 In order to use query scheduler, both query frontend and queriers must be configured with query scheduler address

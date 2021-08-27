@@ -205,7 +205,7 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 Flow of the query in the system when using query-frontend:
 
-1) Query is received by the query frontend, which can optionally split it or serve from the cache.
+1) Query is received by the query-frontend, which can optionally split it or serve from the cache.
 2) Query frontend stores the query into in-memory queue, where it waits for some querier to pick it up.
 3) Querier picks up the query, and executes it.
 4) Querier sends the result back to the query frontend, which then forwards it to the client.

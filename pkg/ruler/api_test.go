@@ -21,7 +21,7 @@ import (
 )
 
 func TestRuler_rules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -78,7 +78,7 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockSpecialCharRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -135,7 +135,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -171,7 +171,7 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -262,7 +262,7 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRulesNamespaces))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -301,7 +301,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -356,7 +356,7 @@ rules:
 }
 
 func TestRuler_RulerGroupLimits(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)

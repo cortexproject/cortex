@@ -19,6 +19,8 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -36,8 +38,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
@@ -45,12 +45,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-func defaultRulerConfig(store rulestore.RuleStore) (Config, func()) {
+func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) (Config, func()) {
+	t.Helper()
+
 	// Create a new temporary directory for the rules, so that
 	// each test will run in isolation.
 	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
+
 	codec := ring.GetCodec()
-	consul := consul.NewInMemoryClient(codec)
+	consul, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.RulePath = rulesDir
@@ -179,7 +184,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	defer ts.Close()
 
 	// We create an empty rule store so that the ruler will not load any rule from it.
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(nil))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(nil))
 	defer cleanup()
 
 	cfg.AlertmanagerURL = ts.URL
@@ -211,7 +216,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)
@@ -639,7 +644,8 @@ func TestSharding(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
 				cfg := Config{
@@ -847,7 +853,7 @@ type ruleGroupKey struct {
 }
 
 func TestRuler_ListAllRules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
 	r, rcleanup := newTestRuler(t, cfg)

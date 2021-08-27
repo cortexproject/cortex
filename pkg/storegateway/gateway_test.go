@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -37,7 +38,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -130,7 +130,9 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
 			storageCfg := mockStorageConfig(t)
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			bucketClient := &bucket.ClientMock{}
 
 			// Setup the initial instance state in the ring.
@@ -199,7 +201,9 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = true
 	storageCfg := mockStorageConfig(t)
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	bucketClient := &bucket.ClientMock{}
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
@@ -299,10 +303,11 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 				t.Log("random generator seed:", seed)
 
 				ctx := context.Background()
-				ringStore := consul.NewInMemoryClientWithConfig(ring.GetCodec(), consul.Config{
+				ringStore, closer := consul.NewInMemoryClientWithConfig(ring.GetCodec(), consul.Config{
 					MaxCasRetries: 20,
 					CasRetryDelay: 500 * time.Millisecond,
-				})
+				}, log.NewNopLogger())
+				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 				// Create the configured number of gateways.
 				var gateways []*StoreGateway
@@ -401,7 +406,8 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 	t.Log("random generator seed:", seed)
 
 	ctx := context.Background()
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create the configured number of gateways.
 	var initialGateways []*StoreGateway
@@ -563,7 +569,9 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 			gatewayCfg.ShardingRing.TokensFilePath = tokensFile.Name()
 
 			storageCfg := mockStorageConfig(t)
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
@@ -688,7 +696,9 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			storageCfg.BucketStore.SyncInterval = time.Hour // Do not trigger the periodic sync in this test.
 
 			reg := prometheus.NewPedanticRegistry()
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
 
@@ -747,7 +757,9 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 
 	storageCfg := mockStorageConfig(t)
 
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 

@@ -3810,9 +3810,7 @@ The `memberlist_config` configures the Gossip memberlist.
 [compression_enabled: <boolean> | default = true]
 
 # Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format (see
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
-# for more details).
+# IP, hostname or an entry specified in the DNS Service Discovery format.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = []]
 

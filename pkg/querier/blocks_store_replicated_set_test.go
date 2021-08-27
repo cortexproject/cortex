@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -328,7 +328,9 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			ctx := context.Background()
 
 			// Setup the ring state.
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
 				d := ring.NewDesc()
 				testData.setup(d)
@@ -386,7 +388,9 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	block1 := ulid.MustNew(1, nil)
 
 	// Create a ring.
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
 		d := ring.NewDesc()
 		for n := 1; n <= numInstances; n++ {

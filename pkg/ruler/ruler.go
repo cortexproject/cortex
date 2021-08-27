@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -282,7 +282,8 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, "ruler"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")

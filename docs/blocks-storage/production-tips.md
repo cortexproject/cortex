@@ -93,7 +93,7 @@ The compactor generally needs a lot of disk space in order to download source bl
 
 Cortex 1.7.0 introduced a change to store block deletion marks in a per-tenant global `markers/` location in the object store. If your Cortex cluster has been created with a Cortex version older than 1.7.0, the compactor needs to migrate deletion marks to the global location.
 
-The migration is a one-time operation run at the compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
+The migration is a one-time operation run at compactor startup. Running it at every compactor startup is a waste of resources and increases the compactor startup time so, once it successfully run once, you should disable it via `-compactor.block-deletion-marks-migration-enabled=false` (or its respective YAML config option).
 
 You can see that the initial migration is done by looking for the following message in the compactor's logs:
 `msg="migrated block deletion marks to the global markers location"`.

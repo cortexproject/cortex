@@ -240,7 +240,7 @@ Flow of the query in the system changes when using query scheduler:
 2) Query-frontend forwards the query to a random query scheduler process.
 3) Query scheduler stores the query into in-memory queue, where it waits for some querier to pick it up.
 3) Querier picks up the query, and executes it.
-4) Querier sends the result back to the query frontend, which then forwards it to the client.
+4) Querier sends the result back to the query-frontend, which then forwards it to the client.
 
 Query schedulers are **stateless**. It is recommended to run two replicas to make sure queries can still be serviced while one replica is restarting.
 

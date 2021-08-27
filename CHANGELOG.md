@@ -18,7 +18,7 @@
 * [CHANGE] Memberlist: the `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
 * [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
   * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
-* [CHANGE] Some files and directories created by Mimir components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394
+* [CHANGE] Some files and directories created by Cortex components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394
 * [CHANGE] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
 * [CHANGE] Memberlist: forward only changes, not entire original message. #4419
 * [CHANGE] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420

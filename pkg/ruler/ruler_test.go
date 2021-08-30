@@ -17,11 +17,12 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/mock"
+
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/mock"
 
 	"go.uber.org/atomic"
 
@@ -138,10 +139,10 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(ctx, mint, maxt)
 		}
-	} else {
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-			return storage.NoopQuerier(), nil
-		}
+	}
+
+	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return storage.NoopQuerier(), nil
 	}
 }
 
@@ -1241,7 +1242,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// NEXT, set up ruler config with outage tolerance = 1hr
-	rulerCfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	rulerCfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
 	defer cleanup()
 

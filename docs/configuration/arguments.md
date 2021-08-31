@@ -142,6 +142,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
 
+   **Warning**: disabling this flag can lead to a much less balanced distribution of load among the ingesters.
+
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.
 

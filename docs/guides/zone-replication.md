@@ -30,7 +30,7 @@ The Cortex time-series replication is used to hold multiple (typically 3) replic
 
 The `-distributor.shard-by-all-labels` setting has an impact on read availability. When enabled, a metric is sharded across all ingesters and querier needs to fetch series from all ingesters while, when disabled, a metric is sharded only across `<replication factor>` ingesters.
 
-In the event of a large outage impacting ingesters in more than 1 zone, when `-distributor.shard-by-all-labels=true` all queries will fail, while when disabled some queries may still succeed if the ingesters holding the required metric are not impacted by the outage. Note that disabling this flag may have other down-sides, such as a less balanced load among the ingesters.
+In the event of a large outage impacting ingesters in more than 1 zone, when `-distributor.shard-by-all-labels=true` all queries will fail, while when disabled some queries may still succeed if the ingesters holding the required metric are not impacted by the outage. To learn more about this flag, please refer to [distributor arguments](../configuration/arguments.md#distributor).
 
 ## Store-gateways: blocks replication
 

@@ -1276,7 +1276,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d}, nil)
+	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 	defer rcleanup()
 

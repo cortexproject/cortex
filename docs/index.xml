@@ -7245,6 +7245,7 @@ It&amp;rsquo;s also advised to increase downstream concurrency controls as well 
 &lt;p>Set this flag to &lt;code>true&lt;/code> for the new behaviour.&lt;/p>
 &lt;p>Important to note is that when setting this flag to &lt;code>true&lt;/code>, it has to be set on both the distributor and the querier (called &lt;code>-distributor.shard-by-all-labels&lt;/code> on Querier as well). If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.&lt;/p>
 &lt;p>&lt;strong>Upgrade notes&lt;/strong>: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you&amp;rsquo;ll see a spike in the number of active series as the writes are &amp;ldquo;reshuffled&amp;rdquo; amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.&lt;/p>
+&lt;p>&lt;strong>Warning&lt;/strong>: disabling this flag can lead to a much less balanced distribution of load among the ingesters.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>&lt;code>-distributor.extra-query-delay&lt;/code>

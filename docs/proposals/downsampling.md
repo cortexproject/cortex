@@ -7,7 +7,7 @@ slug: downsampling
 
 - Author: [Michael Hausenblas](https://github.com/mhausenblas)
 - Reviewers:
-- Date: August 2021
+- Date: September 2021
 - Status: Proposed
 
 ## Problem Statement
@@ -183,18 +183,36 @@ type Config struct {
 Note: above uses `model.Duration` from [Prometheus common][src-prom-common-duration]
 as the case in Thanos.
 
-#### Invoke
+#### Write path
 
 In `github.com/cortexproject/cortex/pkg/compactor.compactUsers()` ([source][src-compactor-cu])
 we add the business logic from `github.com/thanos-io/thanos/pkg/compact/downsample` 
 ([source][src-thanos-compactor-ds]).
 
 
-### Open questions
+#### Query path
 
-* Time zone handling
-* Query path
-* Defaults
+##### Research
+
+In Thanos' query path, downsampled data is taken into account as follows:
+
+1. In `github.com/thanos-io/thanos/pkg/api/v1/QueryAPI.parseDownsamplingParamMillis()`
+   ([source][src-thanos-queryapi]) the parsing resolution is determined (`max_resolution` parameter).
+1. Next, in `github.com/thanos-io/thanos/pkg/query/querier.selectFn()` ([source][src-thanos-querier]),
+   in the context of the PromQL query parsing and evaluation, data from storage
+   is selected with the querier taking hints about what functions are used, informing
+   what downsampling aggregations will be used, if at all (cf. `aggrsFromFunc(hints.Func)`).
+1. Then, still in `github.com/thanos-io/thanos/pkg/query/querier.selectFn()` ([source][src-thanos-querier]),
+   it fans out to further store APIs with the aggregations request (cf
+   `q.proxy.Series()`, first to proxy (fanout) component, then it passes it on to 
+   the underlying components such as the Store Gateway. The aggregation is best effort,
+   that is, if a component has downsampled data, it returns this, however if it
+   only has raw data, that will be returned.
+1. Finally, only the Store Gateway supports downsampled data: in  
+   `github.com/thanos-io/thanos/pkg/store/BucketStore.Series()` ([source][src-thanos-bucket])
+   the blocks are chosen (cf. `bs.getFor()`) and in case of downsampled data,
+   hints/aggregations from the requests are used to fetch proper chunks.
+
 
 [tenants]: https://cortexmetrics.io/docs/guides/glossary/#tenant
 [tenant-deletion]: https://cortexmetrics.io/docs/proposals/tenant-deletion/
@@ -208,4 +226,6 @@ we add the business logic from `github.com/thanos-io/thanos/pkg/compact/downsamp
 [src-prom-common-duration]: https://github.com/prometheus/common/blob/8d1c9f84e3f78cb628a20f8e7be531c508237848/model/time.go#L172
 [src-compactor-cu]: https://github.com/cortexproject/cortex/blob/df9af3a999548e15fe44d807a96f7b74a3cfd9de/pkg/compactor/compactor.go#L595
 [src-thanos-compactor-ds]: https://github.com/thanos-io/thanos/blob/main/pkg/compact/downsample/downsample.go
-
+[src-thanos-queryapi]: https://github.com/thanos-io/thanos/blob/8862ad53f63b12f6d642ecd8633f369be84889e8/pkg/api/query/v1.go#L244
+[src-thanos-querier]: https://github.com/thanos-io/thanos/blob/07b377f47229c853290fcb9520a05696376d870d/pkg/query/querier.go#L258
+[src-thanos-bucket]: https://github.com/thanos-io/thanos/blob/4acc744582a40deb76e22d7cea775f810e789c3c/pkg/store/bucket.go#L998

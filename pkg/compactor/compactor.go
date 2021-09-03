@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	dto "github.com/prometheus/client_model/go"
 	"hash/fnv"
 	"io/ioutil"
 	"math/rand"
@@ -45,7 +46,7 @@ var (
 	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
 	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, garbageCollectedBlocks prometheus.Counter, blocksMarkedForNoCompact prometheus.Counter) compact.Grouper {
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
@@ -54,6 +55,7 @@ var (
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
+			blocksMarkedForNoCompact,
 			metadata.NoneFunc)
 	}
 
@@ -77,6 +79,7 @@ type BlocksGrouperFactory func(
 	reg prometheus.Registerer,
 	blocksMarkedForDeletion prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
+	blocksMarkedForNoCompact prometheus.Counter,
 ) compact.Grouper
 
 // BlocksCompactorFactory builds and returns the compactor and planner to use to compact a tenant's blocks.
@@ -218,10 +221,21 @@ type Compactor struct {
 	compactionRunInterval          prometheus.Gauge
 	blocksMarkedForDeletion        prometheus.Counter
 	garbageCollectedBlocks         prometheus.Counter
+	blocksMarkedForNoCompact       prometheus.Counter
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
 }
+
+type noOpsCounter struct {
+}
+
+func (noOpsCounter) Inc()                             {}
+func (noOpsCounter) Add(float64)                      {}
+func (noOpsCounter) Write(*dto.Metric) error          { return nil }
+func (noOpsCounter) Desc() *prometheus.Desc           { return nil }
+func (noOpsCounter) Describe(chan<- *prometheus.Desc) {}
+func (noOpsCounter) Collect(chan<- prometheus.Metric) {}
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer) (*Compactor, error) {
@@ -315,6 +329,7 @@ func newCompactor(
 			Name: "cortex_compactor_garbage_collected_blocks_total",
 			Help: "Total number of blocks marked for deletion by compactor.",
 		}),
+		blocksMarkedForNoCompact: noOpsCounter{},
 	}
 
 	if len(compactorCfg.EnabledTenants) > 0 {
@@ -650,12 +665,13 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks),
+		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.garbageCollectedBlocks, c.blocksMarkedForNoCompact),
 		c.blocksPlanner,
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
+		false,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

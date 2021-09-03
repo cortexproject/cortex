@@ -265,6 +265,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_blocks_marked_for_no_compact_total",
 	))
 }
 
@@ -411,6 +412,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_blocks_marked_for_no_compact_total",
 	))
 }
 

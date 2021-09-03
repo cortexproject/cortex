@@ -10,15 +10,9 @@
   - `-memberlist.gossip-nodes`
   - `-memberlist.gossip-to-dead-nodes-time`
   - `-memberlist.dead-node-reclaim-time`
-* [CHANGE] Update Go version to 1.16.6. #4362
-* [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
-* [CHANGE] Memberlist: the `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
-* [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
-  * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
+* [CHANGE] `-querier.max-fetched-chunks-per-query` previously applied to chunks from ingesters and store separately; now the two combined should not exceed the limit. #4260
+* [CHANGE] Memberlist: the metric `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
 * [CHANGE] Some files and directories created by Cortex components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394
-* [CHANGE] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
-* [CHANGE] Memberlist: forward only changes, not entire original message. #4419
-* [CHANGE] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
 * [CHANGE] The metric `cortex_deprecated_flags_inuse_total` has been renamed to `deprecated_flags_inuse_total` as part of using grafana/dskit functionality. #4443
 * [FEATURE] Ruler: Add new `-ruler.query-stats-enabled` which when enabled will report the `cortex_ruler_query_seconds_total` as a per-user metric that tracks the sum of the wall time of executing queries in the ruler in seconds. #4317
 * [FEATURE] Query Frontend: Add `cortex_query_fetched_series_total` and `cortex_query_fetched_chunks_bytes_total` per-user counters to expose the number of series and bytes fetched as part of queries. These metrics can be enabled with the `-frontend.query-stats-enabled` flag (or its respective YAML config option `query_stats_enabled`). #4343
@@ -41,13 +35,17 @@
   * `-store-gateway.sharding-ring.heartbeat-period`
 * [ENHANCEMENT] Memberlist: optimized receive path for processing ring state updates, to help reduce CPU utilization in large clusters. #4345
 * [ENHANCEMENT] Memberlist: expose configuration of memberlist packet compression via `-memberlist.compression=enabled`. #4346
+* [ENHANCEMENT] Update Go version to 1.16.6. #4362
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
+* [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
 * [BUGFIX] HA Tracker: when cleaning up obsolete elected replicas from KV store, tracker didn't update number of cluster per user correctly. #4336
 * [BUGFIX] Ruler: fixed counting of PromQL evaluation errors as user-errors when updating `cortex_ruler_queries_failed_total`. #4335
 * [BUGFIX] Ingester: When using block storage, prevent any reads or writes while the ingester is stopping. This will prevent accessing TSDB blocks once they have been already closed. #4304
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
 * [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
+* [BUGFIX] Memberlist: forward only changes, not entire original message. #4419
+* [BUGFIX] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
 
 ## 1.10.0 / 2021-08-03
 

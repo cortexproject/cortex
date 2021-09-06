@@ -24,9 +24,9 @@ type observableVecCollector struct {
 	v prometheus.ObserverVec
 }
 
-func (observableVecCollector) Register()                             {}
-func (observableVecCollector) Before(method string, start time.Time) {}
-func (o observableVecCollector) After(method, statusCode string, start time.Time) {
+func (observableVecCollector) Register()                                                  {}
+func (observableVecCollector) Before(ctx context.Context, method string, start time.Time) {}
+func (o observableVecCollector) After(ctx context.Context, method, statusCode string, start time.Time) {
 	o.v.WithLabelValues(method, statusCode).Observe(time.Since(start).Seconds())
 }
 

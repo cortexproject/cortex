@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -135,20 +136,20 @@ func TestSplitQuery(t *testing.T) {
 				Start: 0,
 				End:   2 * 24 * 3600 * seconds,
 				Step:  15 * seconds,
-				Query: "foo",
+				Query: "foo @ start()",
 			},
 			expected: []Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
-					Query: "foo",
+					Query: "foo @ 0.000",
 				},
 				&PrometheusRequest{
 					Start: 24 * 3600 * seconds,
 					End:   2 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
-					Query: "foo",
+					Query: "foo @ 0.000",
 				},
 			},
 			interval: day,
@@ -236,14 +237,14 @@ func TestSplitQuery(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			days := splitQuery(tc.input, tc.interval)
+			days, err := splitQuery(tc.input, tc.interval)
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, days)
 		})
 	}
 }
 
 func TestSplitByDay(t *testing.T) {
-
 	mergedResponse, err := PrometheusCodec.MergeResponse(parsedResponse, parsedResponse)
 	require.NoError(t, err)
 
@@ -260,7 +261,6 @@ func TestSplitByDay(t *testing.T) {
 		{query, string(mergedHTTPResponseBody), 2},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-
 			var actualCount atomic.Int32
 			s := httptest.NewServer(
 				middleware.AuthenticateUser.Wrap(
@@ -295,6 +295,57 @@ func TestSplitByDay(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBody, string(bs))
 			require.Equal(t, tc.expectedQueryCount, actualCount.Load())
+		})
+	}
+}
+
+func Test_evaluateAtModifier(t *testing.T) {
+	const (
+		start, end = int64(1546300800), int64(1646300800)
+	)
+	for _, tt := range []struct {
+		in, expected string
+	}{
+		{"topk(5, rate(http_requests_total[1h] @ start()))", "topk(5, rate(http_requests_total[1h] @ 1546300.800))"},
+		{"topk(5, rate(http_requests_total[1h] @ 0))", "topk(5, rate(http_requests_total[1h] @ 0.000))"},
+		{"http_requests_total[1h] @ 10.001", "http_requests_total[1h] @ 10.001"},
+		{
+			`min_over_time(
+				sum by(cluster) (
+					rate(http_requests_total[5m] @ end())
+				)[10m:]
+			)
+			or
+			max_over_time(
+				stddev_over_time(
+					deriv(
+						rate(http_requests_total[10m] @ start())
+					[5m:1m])
+				[2m:])
+			[10m:])`,
+			`min_over_time(
+				sum by(cluster) (
+					rate(http_requests_total[5m] @ 1646300.800)
+				)[10m:]
+			)
+			or
+			max_over_time(
+				stddev_over_time(
+					deriv(
+						rate(http_requests_total[10m] @ 1546300.800)
+					[5m:1m])
+				[2m:])
+			[10m:])`,
+		},
+	} {
+		tt := tt
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			expectedExpr, err := parser.ParseExpr(tt.expected)
+			require.NoError(t, err)
+			out, err := evaluateAtModifierFunction(tt.in, start, end)
+			require.NoError(t, err)
+			require.Equal(t, expectedExpr.String(), out)
 		})
 	}
 }

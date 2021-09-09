@@ -191,6 +191,7 @@ func verifyClientMetricsHistogram(t *testing.T, reg *prometheus.Registry, metric
 	metrics, err := reg.Gather()
 	require.NoError(t, err)
 
+	var metricToVerify *dto.MetricFamily
 	for _, metric := range metrics {
 		if metric.GetName() != metricNameToVerify {
 			continue

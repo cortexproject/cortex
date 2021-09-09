@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -40,7 +41,7 @@ func TestKVList(t *testing.T) {
 		sort.Strings(keys)
 		require.Equal(t, keysToCreate, keys, "returned key paths did not match created paths")
 
-		verifyClientMetrics(t, reg, map[string]uint64{
+		verifyClientMetricsHistogram(t, reg, "cortex_kv_request_duration_seconds", map[string]uint64{
 			"List": 1,
 			"CAS":  3,
 		})
@@ -64,7 +65,7 @@ func TestKVDelete(t *testing.T) {
 		require.NoError(t, err, "unexpected error")
 		require.Nil(t, v, "object was not deleted")
 
-		verifyClientMetrics(t, reg, map[string]uint64{
+		verifyClientMetricsHistogram(t, reg, "cortex_kv_request_duration_seconds", map[string]uint64{
 			"Delete": 1,
 			"CAS":    1,
 			"GET":    1,
@@ -186,13 +187,19 @@ func testKVScenario(t *testing.T, kvSetupFn func(t *testing.T, scenario *e2e.Sce
 	testFn(t, client, reg)
 }
 
-func verifyClientMetrics(t *testing.T, reg *prometheus.Registry, sampleCounts map[string]uint64) {
+func verifyClientMetricsHistogram(t *testing.T, reg *prometheus.Registry, metricNameToVerify string, sampleCounts map[string]uint64) {
 	metrics, err := reg.Gather()
 	require.NoError(t, err)
 
-	require.Len(t, metrics, 1)
-	require.Equal(t, "cortex_kv_request_duration_seconds", metrics[0].GetName())
-	require.Equal(t, dto.MetricType_HISTOGRAM, metrics[0].GetType())
+	for _, metric := range metrics {
+		if metric.GetName() != metricNameToVerify {
+			continue
+		}
+		metricToVerify = metric
+		break
+	}
+	require.NotNilf(t, metricToVerify, "Metric %s not found in registry", metricNameToVerify)
+	require.Equal(t, dto.MetricType_HISTOGRAM, metricToVerify.GetType())
 
 	getMetricOperation := func(labels []*dto.LabelPair) (string, error) {
 		for _, l := range labels {
@@ -203,9 +210,8 @@ func verifyClientMetrics(t *testing.T, reg *prometheus.Registry, sampleCounts ma
 		return "", errors.New("no operation")
 	}
 
-	for _, metric := range metrics[0].GetMetric() {
+	for _, metric := range metricToVerify.GetMetric() {
 		op, err := getMetricOperation(metric.Label)
-
 		require.NoErrorf(t, err, "No operation label found in metric %v", metric.String())
 		assert.Equal(t, sampleCounts[op], metric.GetHistogram().GetSampleCount(), op)
 	}

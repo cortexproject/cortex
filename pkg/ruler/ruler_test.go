@@ -57,7 +57,7 @@ func defaultRulerConfig(t testing.TB, store rulestore.RuleStore) (Config, func()
 	rulesDir, _ := ioutil.TempDir("/tmp", "ruler-tests")
 
 	codec := ring.GetCodec()
-	consul, closer := consul.NewInMemoryClient(codec, log.NewNopLogger())
+	consul, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{}
@@ -351,7 +351,7 @@ func TestGetRules(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
 			allRulesByUser := map[string]rulespb.RuleGroupList{}
 			allRulesByRuler := map[string]rulespb.RuleGroupList{}
@@ -851,7 +851,7 @@ func TestSharding(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {

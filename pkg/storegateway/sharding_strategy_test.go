@@ -242,7 +242,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Initialize the ring state.
@@ -600,7 +600,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Initialize the ring state.

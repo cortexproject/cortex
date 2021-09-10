@@ -296,7 +296,7 @@ github.com/googleapis/gax-go/v2
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.4.2
 github.com/gorilla/websocket
-# github.com/grafana/dskit v0.0.0-20210827060659-9daca2f00327
+# github.com/grafana/dskit v0.0.0-20210908150159-fcf48cb19aa4
 ## explicit
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/closer

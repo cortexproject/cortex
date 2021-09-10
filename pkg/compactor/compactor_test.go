@@ -813,7 +813,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
-	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := prepareConfig()
@@ -893,7 +893,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 
 	// Create a shared KV Store
-	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
@@ -1216,7 +1216,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	}
 
 	// Create a shared KV Store
-	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
@@ -1291,7 +1291,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
-	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := prepareConfig()

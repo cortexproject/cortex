@@ -29,7 +29,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/gorilla/mux v1.8.0
-	github.com/grafana/dskit v0.0.0-20210827060659-9daca2f00327
+	github.com/grafana/dskit v0.0.0-20210908150159-fcf48cb19aa4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/json-iterator/go v1.1.11
 	github.com/lib/pq v1.3.0

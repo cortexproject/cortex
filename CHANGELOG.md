@@ -50,6 +50,7 @@
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
 * [BUGFIX] Memberlist: forward only changes, not entire original message. #4419
 * [BUGFIX] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
+* [BUGFIX] Querier: querier panics when query exemplars. #4469
 
 ## 1.10.0 / 2021-08-03
 

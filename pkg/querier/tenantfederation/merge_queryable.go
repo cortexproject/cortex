@@ -21,7 +21,6 @@ import (
 const (
 	defaultTenantLabel   = "__tenant_id__"
 	retainExistingPrefix = "original_"
-	maxConcurrency       = 60
 )
 
 // NewQueryable returns a queryable that iterates through all the tenant IDs
@@ -36,8 +35,8 @@ const (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool) storage.Queryable {
-	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier)
+func NewQueryable(upstream storage.Queryable, byPassWithSingleQuerier bool, cfg Config) storage.Queryable {
+	return NewMergeQueryable(defaultTenantLabel, tenantQuerierCallback(upstream), byPassWithSingleQuerier, cfg)
 }
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
@@ -80,11 +79,12 @@ type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool) storage.Queryable {
+func NewMergeQueryable(idLabelName string, callback MergeQuerierCallback, byPassWithSingleQuerier bool, cfg Config) storage.Queryable {
 	return &mergeQueryable{
 		idLabelName:             idLabelName,
 		callback:                callback,
 		byPassWithSingleQuerier: byPassWithSingleQuerier,
+		cfg:                     cfg,
 	}
 }
 
@@ -92,6 +92,7 @@ type mergeQueryable struct {
 	idLabelName             string
 	byPassWithSingleQuerier bool
 	callback                MergeQuerierCallback
+	cfg                     Config
 }
 
 // Querier returns a new mergeQuerier, which aggregates results from multiple
@@ -111,10 +112,11 @@ func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (s
 	}
 
 	return &mergeQuerier{
-		ctx:         ctx,
-		idLabelName: m.idLabelName,
-		queriers:    queriers,
-		ids:         ids,
+		ctx:            ctx,
+		idLabelName:    m.idLabelName,
+		queriers:       queriers,
+		ids:            ids,
+		maxConcurrency: m.cfg.MaxConcurrency,
 	}, nil
 }
 
@@ -125,10 +127,11 @@ func (m *mergeQueryable) Querier(ctx context.Context, mint int64, maxt int64) (s
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively
 type mergeQuerier struct {
-	ctx         context.Context
-	queriers    []storage.Querier
-	idLabelName string
-	ids         []string
+	ctx            context.Context
+	queriers       []storage.Querier
+	idLabelName    string
+	ids            []string
+	maxConcurrency int
 }
 
 // LabelValues returns all potential values for a label name.  It is not safe
@@ -248,7 +251,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(f stringSliceFunc, te
 		return nil
 	}
 
-	err := concurrency.ForEach(m.ctx, jobs, maxConcurrency, run)
+	err := concurrency.ForEach(m.ctx, jobs, m.maxConcurrency, run)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -334,7 +337,7 @@ func (m *mergeQuerier) Select(sortSeries bool, hints *storage.SelectHints, match
 		return nil
 	}
 
-	err := concurrency.ForEach(ctx, jobs, maxConcurrency, run)
+	err := concurrency.ForEach(ctx, jobs, m.maxConcurrency, run)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}

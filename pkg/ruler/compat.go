@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"time"
 
 	"github.com/go-kit/log"
@@ -60,14 +59,12 @@ func (a *PusherAppender) Append(_ uint64, l labels.Labels, t int64, v float64) (
 
 	userID := a.userID
 	if tenant.IsCompositeTenantID(userID) {
-		// Set seed based on a hash of the series so same series always goes to same subtenant
-		src := rand.NewSource(int64(l.Copy().Hash()))
-		r := rand.New(src)
 		userIDs, err := tenant.TenantIDsFromOrgID(userID)
 		if err != nil {
 			return 0, err
 		}
-		i := r.Intn(len(userIDs))
+		// Mod the hash of the series so same series always goes to same subtenant
+		i := int(l.Copy().Hash()) % len(userIDs)
 		userID = userIDs[i]
 	}
 	a.samples[userID] = append(a.samples[userID], cortexpb.Sample{

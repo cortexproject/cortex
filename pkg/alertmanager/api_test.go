@@ -630,6 +630,24 @@ func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
 
 func TestAMConfigListUserConfig(t *testing.T) {
 	testCases := map[string]*UserConfig{
+		"user1": {
+			AlertmanagerConfig: `
+global:
+  resolve_timeout: 5m
+route:
+  receiver: route1
+  group_by:
+  - '...'
+  continue: false
+receivers:
+- name: route1
+  webhook_configs:
+  - send_resolved: true
+    http_config: {}
+    url: http://alertmanager/api/notifications?orgId=1&rrid=7
+    max_alerts: 0
+`,
+		},
 		"user1|user2|user3": {
 			AlertmanagerConfig: `
 global:
@@ -693,7 +711,7 @@ receivers:
 
 	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
 	require.NoError(t, err)
-	require.Len(t, am.alertmanagers, 2)
+	require.Len(t, am.alertmanagers, 3)
 
 	router := mux.NewRouter()
 	router.Path("/multitenant_alertmanager/configs").Methods(http.MethodGet).HandlerFunc(am.ListAllConfigs)

@@ -257,7 +257,9 @@ type mergeQueryableScenario struct {
 
 func (s *mergeQueryableScenario) init() (storage.Querier, error) {
 	// initialize with default tenant label
-	q := NewQueryable(&s.queryable, !s.doNotByPassSingleQuerier)
+	q := NewQueryable(&s.queryable, !s.doNotByPassSingleQuerier, Config{
+		MaxConcurrency: 16,
+	})
 
 	// inject tenants into context
 	ctx := context.Background()
@@ -334,7 +336,9 @@ type labelValuesScenario struct {
 func TestMergeQueryable_Querier(t *testing.T) {
 	t.Run("querying without a tenant specified should error", func(t *testing.T) {
 		queryable := &mockTenantQueryableWithFilter{}
-		q := NewQueryable(queryable, false /* byPassWithSingleQuerier */)
+		q := NewQueryable(queryable, false /* bypasswithsinglequerier */, Config{
+			MaxConcurrency: 16,
+		})
 		// Create a context with no tenant specified.
 		ctx := context.Background()
 
@@ -873,7 +877,9 @@ func TestTracingMergeQueryable(t *testing.T) {
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	filter := mockTenantQueryableWithFilter{}
-	q := NewQueryable(&filter, false)
+	q := NewQueryable(&filter, false, Config{
+		MaxConcurrency: 16,
+	})
 	// retrieve querier if set
 	querier, err := q.Querier(ctx, mint, maxt)
 	require.NoError(t, err)

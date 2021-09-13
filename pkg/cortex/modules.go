@@ -238,7 +238,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// single tenant. This allows for a less impactful enabling of tenant
 		// federation.
 		byPassForSingleQuerier := true
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, byPassForSingleQuerier))
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, byPassForSingleQuerier, t.Cfg.TenantFederation))
 	}
 	return nil, nil
 }
@@ -662,7 +662,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 	// TODO: Consider wrapping logger to differentiate from querier module logger
 	queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
-	mq := tenantfederation.NewQueryable(queryable, false)
+	mq := tenantfederation.NewQueryable(queryable, false, t.Cfg.TenantFederation)
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, mq, engine, t.Overrides, prometheus.DefaultRegisterer)
 	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)

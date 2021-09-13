@@ -967,7 +967,6 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 			return nil, err
 		}
 		req := &ingester_client.MetricsMetadataRequest{}
-		// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
 		resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			return client.MetricsMetadata(ctx, req)
 		})

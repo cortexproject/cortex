@@ -65,7 +65,7 @@ func NewPrometheusLogger(l logging.Level, format logging.Format) (log.Logger, er
 	if format.String() == "json" {
 		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
 	}
-	logger = level.NewFilter(logger, LogFilter(l.String()))
+	logger = level.NewFilter(logger, LevelFilter(l.String()))
 
 	// Initialise counters for all supported levels:
 	for _, level := range supportedLevels {
@@ -110,7 +110,7 @@ func CheckFatal(location string, err error) {
 
 // TODO(dannyk): remove once weaveworks/common updates to go-kit/log
 //                                     -> we can then revert to using Level.Gokit
-func LogFilter(l string) level.Option {
+func LevelFilter(l string) level.Option {
 	switch l {
 	case "debug":
 		return level.AllowDebug()

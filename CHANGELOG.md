@@ -55,6 +55,7 @@
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
 * [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
+* [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
 * [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
 * [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
 * [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328

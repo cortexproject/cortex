@@ -20,6 +20,7 @@ There are two primary use cases for allowing federated rules which query data fr
 In the case of the administration of cortex, when running Cortex within a large organization, there may be metrics spanning across tenants which might be desired to be monitored e.g. administrative metrics of the cortex system like `prometheus_rule_evaluation_failures_total` aggregated by `__tenant_id__`. In this case, a team e.g. `infra` may wish to be able to create a rule, owned by `infra` which queries multiple tenants `t0|t1|...|ti` and stores resulting series in `infra`. More generally a tenant `A` may wish to query data from other tenants `B|C|D` and store the data in a tenant which may be `A`, but could be `E`.
 
 Additionally an organization may wish to treat several cortex tenants `t0|t1|...|ti` as one logical tenant due to compactor scalability. In this case a composite tenant `t0|t1|...|ti` would own a federated rule, which queries each subtenant `t0` thru `ti`. The resulting data could be sent to a specific tenant e.g. `admin` or as the composite tenant treats each subtenant uniformly, a random, but consistent subtenant can be chosen to store the resulting series in, in this case `tj` where 0 <= j <= i.
+More explicitly, for a given recording rule and the produced series `foobarbaz` which is owned by the composite tenant `0|1|2|3`, a subtenant `0`, `1`, `2` or `3` is chosen to always store the series `foobarbaz` in, lets say `2`. Another rule and produced series `fizzbuzz` owned by the same composite tenant `0|1|2|3` makes this same chose of subtenant, in our case chosing `0`.
 
 ## Challenges
 
@@ -55,7 +56,7 @@ A single tenant rule always queries the tenant which owns the rule. This 1 -> 1 
 
 #### Proposal
 
-As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed. In the case of a composite tenant where a set of tenants `A|B|C|...|Z` are being treated as a single logical tenant when querying this explicit assignment of destination tenant is explicitly called for, but could prove useful.
+As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed. In the case of a composite tenant where a set of tenants `A|B|C|...|Z` are being treated as a single logical tenant when querying this explicit assignment of destination tenant isn't explicitly called for, but could prove useful.
 
 To support both of these use cases, we suggest an additional field `source_tenant_ids` on the rule containing an OrgID string e.g. `t0|t1|...|ti` which when present determines which tenants to query for the given rule. In the case of a composite tenant this field would be optional, as ownership of a rule by a composite tenant implies source tenants e.g. for the composite tenant `t0|t1|...|ti` the natural source sub tenants would be `t0`, `t1`, `t2` etc.
 

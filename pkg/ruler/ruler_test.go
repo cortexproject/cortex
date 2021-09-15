@@ -427,11 +427,14 @@ func TestGetRules(t *testing.T) {
 					require.NoError(t, err)
 					require.Equal(t, len(allRulesByUser[u]), len(rules))
 					if tc.sharding {
-						mockPoolLClient := r.clientsPool.(*mockRulerClientsPool)
+						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
-						// Right now we are calling all rules even with shuffle sharding
-						require.Equal(t, int32(len(rulerAddrMap)), mockPoolLClient.numberOfCalls.Load())
-						mockPoolLClient.numberOfCalls.Store(0)
+						if tc.shardingStrategy == util.ShardingStrategyShuffle {
+							require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
+						} else {
+							require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
+						}
+						mockPoolClient.numberOfCalls.Store(0)
 					}
 				})
 			}

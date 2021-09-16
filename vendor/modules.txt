@@ -67,7 +67,7 @@ github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.38.68
+# github.com/aws/aws-sdk-go v1.40.11
 ## explicit
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -130,7 +130,7 @@ github.com/blang/semver/v4
 # github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 ## explicit
 github.com/bradfitz/gomemcache/memcache
-# github.com/cenkalti/backoff/v4 v4.1.0
+# github.com/cenkalti/backoff/v4 v4.1.1
 github.com/cenkalti/backoff/v4
 # github.com/cespare/xxhash v1.1.0
 ## explicit
@@ -197,7 +197,7 @@ github.com/go-openapi/jsonpointer
 github.com/go-openapi/jsonreference
 # github.com/go-openapi/loads v0.20.2
 github.com/go-openapi/loads
-# github.com/go-openapi/runtime v0.19.28
+# github.com/go-openapi/runtime v0.19.29
 github.com/go-openapi/runtime
 github.com/go-openapi/runtime/flagext
 github.com/go-openapi/runtime/logger
@@ -346,8 +346,9 @@ github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/go-sockaddr v1.0.2
 github.com/hashicorp/go-sockaddr
 # github.com/hashicorp/golang-lru v0.5.4
+github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
-# github.com/hashicorp/memberlist v0.2.3
+# github.com/hashicorp/memberlist v0.2.4
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.5
 github.com/hashicorp/serf/coordinate
@@ -450,7 +451,7 @@ github.com/opentracing/opentracing-go/mocktracer
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus/alertmanager v0.22.3-0.20210726110322-3d86bd709df8
+# github.com/prometheus/alertmanager v0.23.1-0.20210914172521-e35efbddb66a
 ## explicit
 github.com/prometheus/alertmanager/api
 github.com/prometheus/alertmanager/api/metrics
@@ -507,7 +508,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.2.0
 ## explicit
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.29.0
+# github.com/prometheus/common v0.30.0
 ## explicit
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -517,6 +518,8 @@ github.com/prometheus/common/route
 github.com/prometheus/common/version
 # github.com/prometheus/common/sigv4 v0.1.0
 github.com/prometheus/common/sigv4
+# github.com/prometheus/exporter-toolkit v0.6.1
+github.com/prometheus/exporter-toolkit/web
 # github.com/prometheus/node_exporter v1.0.0-rc.0.0.20200428091818-01054558c289
 github.com/prometheus/node_exporter/https
 # github.com/prometheus/procfs v0.6.0
@@ -568,7 +571,7 @@ github.com/prometheus/prometheus/util/strutil
 github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/web/api/v1
-# github.com/rs/cors v1.7.0
+# github.com/rs/cors v1.8.0
 github.com/rs/cors
 # github.com/rs/xid v1.2.1
 github.com/rs/xid
@@ -901,7 +904,7 @@ golang.org/x/lint/golint
 # golang.org/x/mod v0.4.2
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20210610132358-84b48f89b13b
+# golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985
 ## explicit
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -948,7 +951,7 @@ golang.org/x/text/width
 # golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.1.4
+# golang.org/x/tools v0.1.5
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/go/ast/astutil
 golang.org/x/tools/go/gcexportdata

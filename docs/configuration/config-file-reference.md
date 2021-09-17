@@ -4765,7 +4765,8 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
-      # Use memcached auto-discovery instead of DNS resolution
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 
@@ -4816,7 +4817,8 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
-      # Use memcached auto-discovery instead of DNS resolution
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 
@@ -4885,7 +4887,8 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
-      # Use memcached auto-discovery instead of DNS resolution
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 

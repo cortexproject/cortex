@@ -83,10 +83,15 @@
 =======
 * [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> fix querier panics when query exemplars (#4473)
 =======
+=======
+* [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
+>>>>>>> [querier] honor querier mint,maxt if no SelectHints are passed to Select (#4413)
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
 >>>>>>> Fixed panic while collecting Prometheus metrics (#4483)
+
 
 ## 1.10.0 / 2021-08-03
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,7 +25,7 @@ func TestRuler_rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -81,7 +82,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -138,7 +139,7 @@ func TestRuler_alerts(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer r.StopAsync()
 
@@ -174,7 +175,7 @@ func TestRuler_Create(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -265,7 +266,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -304,11 +305,11 @@ func TestRuler_LimitsPerGroup(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
@@ -359,11 +360,11 @@ func TestRuler_RulerGroupLimits(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 

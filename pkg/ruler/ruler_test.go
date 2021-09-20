@@ -9,11 +9,20 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
+
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/mock"
+
+	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"go.uber.org/atomic"
 
@@ -102,7 +111,42 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
-func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, func()) {
+type emptyChunkStore struct {
+	sync.Mutex
+	called bool
+}
+
+func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+	c.Lock()
+	defer c.Unlock()
+	c.called = true
+	return nil, nil
+}
+
+func (c *emptyChunkStore) IsCalled() bool {
+	c.Lock()
+	defer c.Unlock()
+	return c.called
+}
+
+func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
+	if querierTestConfig != nil {
+		// disable active query tracking for test
+		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
+
+		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, purger.NewTombstonesLoader(nil, nil), reg, logger)
+		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+			return q.Querier(ctx, mint, maxt)
+		}
+	}
+
+	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return storage.NoopQuerier(), nil
+	}
+}
+
+func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer, func()) {
 	dir, err := ioutil.TempDir("", filepath.Base(t.Name()))
 	assert.NoError(t, err)
 	cleanup := func() {
@@ -117,10 +161,6 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 		Timeout:            2 * time.Minute,
 	})
 
-	noopQueryable := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return storage.NoopQuerier(), nil
-	})
-
 	// Mock the pusher
 	pusher := newPusherMock()
 	pusher.MockPush(&cortexpb.WriteResponse{}, nil)
@@ -128,12 +168,15 @@ func testSetup(t *testing.T, cfg Config) (*promql.Engine, storage.QueryableFunc,
 	l := log.NewLogfmtLogger(os.Stdout)
 	l = level.NewFilter(l, level.AllowInfo())
 
-	return engine, noopQueryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, cleanup
+	reg := prometheus.NewRegistry()
+	queryable := testQueryableFunc(querierTestConfig, reg, l)
+
+	return engine, queryable, pusher, l, ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg, cleanup
 }
 
 func newManager(t *testing.T, cfg Config) (*DefaultMultiTenantManager, func()) {
-	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides, nil), prometheus.NewRegistry(), logger)
+	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, nil)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
 	require.NoError(t, err)
 
 	return manager, cleanup
@@ -177,31 +220,30 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, cfg Config, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
-	engine, noopQueryable, pusher, logger, overrides, cleanup := testSetup(t, cfg)
-	storage, err := NewLegacyRuleStore(cfg.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
+	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
-	reg := prometheus.NewRegistry()
-	managerFactory := DefaultTenantManagerFactory(cfg, pusher, noopQueryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, reg, log.NewNopLogger())
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
-		cfg,
+		rulerConfig,
 		manager,
 		reg,
 		logger,
 		storage,
 		overrides,
-		newMockClientsPool(cfg, logger, reg, rulerAddrMap),
+		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
 	)
 	require.NoError(t, err)
 	return ruler, cleanup
 }
 
-func newTestRuler(t *testing.T, cfg Config) (*Ruler, func()) {
-	ruler, cleanup := buildRuler(t, cfg, nil)
+func newTestRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig) (*Ruler, func()) {
+	ruler, cleanup := buildRuler(t, rulerConfig, querierTestConfig, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
@@ -261,7 +303,7 @@ func TestRuler_Rules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -373,7 +415,7 @@ func TestGetRules(t *testing.T) {
 					},
 				}
 
-				r, cleanUp := buildRuler(t, cfg, rulerAddrMap)
+				r, cleanUp := buildRuler(t, cfg, nil, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				t.Cleanup(cleanUp)
 				rulerAddrMap[id] = r
@@ -876,7 +918,7 @@ func TestSharding(t *testing.T) {
 					DisabledTenants:  tc.disabledUsers,
 				}
 
-				r, cleanup := buildRuler(t, cfg, nil)
+				r, cleanup := buildRuler(t, cfg, nil, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				t.Cleanup(cleanup)
 
@@ -1076,7 +1118,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -1171,4 +1213,119 @@ func TestSendAlerts(t *testing.T) {
 			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
 		})
 	}
+}
+
+// Tests for whether the Ruler is able to recover ALERTS_FOR_STATE state
+func TestRecoverAlertsPostOutage(t *testing.T) {
+	// Test Setup
+	// alert FOR 30m, already ran for 10m, outage down at 15m prior to now(), outage tolerance set to 1hr
+	// EXPECTATION: for state for alert restores to 10m+(now-15m)
+
+	// FIRST set up 1 Alert rule with 30m FOR duration
+	alertForDuration, _ := time.ParseDuration("30m")
+	mockRules := map[string]rulespb.RuleGroupList{
+		"user1": {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "namespace1",
+				User:      "user1",
+				Rules: []*rulespb.RuleDesc{
+					{
+						Alert: "UP_ALERT",
+						Expr:  "1", // always fire for this test
+						For:   alertForDuration,
+					},
+				},
+				Interval: interval,
+			},
+		},
+	}
+
+	// NEXT, set up ruler config with outage tolerance = 1hr
+	rulerCfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
+	defer cleanup()
+
+	// NEXT, set up mock distributor containing sample,
+	// metric: ALERTS_FOR_STATE{alertname="UP_ALERT"}, ts: time.now()-15m, value: time.now()-25m
+	currentTime := time.Now().UTC()
+	downAtTime := currentTime.Add(time.Minute * -15)
+	downAtTimeMs := downAtTime.UnixNano() / int64(time.Millisecond)
+	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
+	downAtActiveSec := downAtActiveAtTime.Unix()
+	d := &querier.MockDistributor{}
+	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		model.Matrix{
+			&model.SampleStream{
+				Metric: model.Metric{
+					labels.MetricName: "ALERTS_FOR_STATE",
+					// user1's only alert rule
+					labels.AlertName: model.LabelValue(mockRules["user1"][0].GetRules()[0].Alert),
+				},
+				Values: []model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
+			},
+		},
+		nil)
+	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
+	querierConfig := querier.DefaultQuerierConfig()
+	querierConfig.IngesterStreaming = false
+
+	// set up an empty store
+	queryables := []querier.QueryableWithFilter{
+		querier.UseAlwaysQueryable(querier.NewChunkStoreQueryable(querierConfig, &emptyChunkStore{})),
+	}
+
+	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
+	r, rcleanup := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, nil)
+	r.syncRules(context.Background(), rulerSyncReasonInitial)
+	defer rcleanup()
+
+	// assert initial state of rule group
+	ruleGroup := r.manager.GetRules("user1")[0]
+	require.Equal(t, time.Time{}, ruleGroup.GetLastEvaluation())
+	require.Equal(t, "group1", ruleGroup.Name())
+	require.Equal(t, 1, len(ruleGroup.Rules()))
+
+	// assert initial state of rule within rule group
+	alertRule := ruleGroup.Rules()[0]
+	require.Equal(t, time.Time{}, alertRule.GetEvaluationTimestamp())
+	require.Equal(t, "UP_ALERT", alertRule.Name())
+	require.Equal(t, promRules.HealthUnknown, alertRule.Health())
+
+	// NEXT, evaluate the rule group the first time and assert
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	ruleGroup.Eval(ctx, currentTime)
+
+	// since the eval is done at the current timestamp, the activeAt timestamp of alert should equal current timestamp
+	require.Equal(t, "UP_ALERT", alertRule.Name())
+	require.Equal(t, promRules.HealthGood, alertRule.Health())
+
+	activeMapRaw := reflect.ValueOf(alertRule).Elem().FieldByName("active")
+	activeMapKeys := activeMapRaw.MapKeys()
+	require.True(t, len(activeMapKeys) == 1)
+
+	activeAlertRuleRaw := activeMapRaw.MapIndex(activeMapKeys[0]).Elem()
+	activeAtTimeRaw := activeAlertRuleRaw.FieldByName("ActiveAt")
+
+	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), currentTime)
+
+	// NEXT, restore the FOR state and assert
+	ruleGroup.RestoreForState(currentTime)
+
+	require.Equal(t, "UP_ALERT", alertRule.Name())
+	require.Equal(t, promRules.HealthGood, alertRule.Health())
+	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), downAtActiveAtTime.Add(currentTime.Sub(downAtTime)))
+
+	// NEXT, 20 minutes is expected to be left, eval timestamp at currentTimestamp +20m
+	currentTime = currentTime.Add(time.Minute * 20)
+	ruleGroup.Eval(ctx, currentTime)
+
+	// assert alert state after alert is firing
+	firedAtRaw := activeAlertRuleRaw.FieldByName("FiredAt")
+	firedAtTime := reflect.NewAt(firedAtRaw.Type(), unsafe.Pointer(firedAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
+	require.Equal(t, firedAtTime, currentTime)
+
+	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 }

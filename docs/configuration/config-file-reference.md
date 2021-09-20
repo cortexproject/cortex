@@ -268,6 +268,10 @@ query_scheduler:
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
 ```yaml
+# HTTP server listen network, default tcp
+# CLI flag: -server.http-listen-network
+[http_listen_network: <string> | default = "tcp"]
+
 # HTTP server listen address.
 # CLI flag: -server.http-listen-address
 [http_listen_address: <string> | default = ""]
@@ -279,6 +283,10 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Maximum number of simultaneous http connections, <=0 to disable
 # CLI flag: -server.http-conn-limit
 [http_listen_conn_limit: <int> | default = 0]
+
+# gRPC server listen network
+# CLI flag: -server.grpc-listen-network
+[grpc_listen_network: <string> | default = "tcp"]
 
 # gRPC server listen address.
 # CLI flag: -server.grpc-listen-address
@@ -563,12 +571,12 @@ ring:
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which distributors are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -distributor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -662,6 +670,7 @@ lifecycler:
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
+    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -678,7 +687,7 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul.
+  # Period at which to heartbeat to consul. 0 = disabled.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -776,7 +785,7 @@ lifecycler:
 
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled
-[active_series_metrics_enabled: <boolean> | default = false]
+[active_series_metrics_enabled: <boolean> | default = true]
 
 # How often to update active series metrics.
 # CLI flag: -ingester.active-series-metrics-update-period
@@ -810,6 +819,13 @@ instance_limits:
   # tenants). Additional requests will be rejected. 0 = unlimited.
   # CLI flag: -ingester.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+# Comma-separated list of metric names, for which
+# -ingester.max-series-per-metric and -ingester.max-global-series-per-metric
+# limits will be ignored. Does not affect max-series-per-user or
+# max-global-series-per-metric limits.
+# CLI flag: -ingester.ignore-series-limit-for-metric-names
+[ignore_series_limit_for_metric_names: <string> | default = ""]
 ```
 
 ### `querier_config`
@@ -1573,12 +1589,12 @@ ring:
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which rulers are considered unhealthy within the
-  # ring.
+  # ring. 0 = never (timeout disabled).
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1609,6 +1625,11 @@ ring:
 # processing will ignore them instead. Subject to sharding.
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+# Report the wall time for ruler queries to complete as a per user metric and as
+# an info level log message.
+# CLI flag: -ruler.query-stats-enabled
+[query_stats_enabled: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`
@@ -1894,12 +1915,12 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -alertmanager.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which alertmanagers are considered unhealthy
-  # within the ring.
+  # within the ring. 0 = never (timeout disabled).
   # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -2708,7 +2729,7 @@ chunk_tables_provisioning:
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
 
 ```yaml
-# The storage engine to use: chunks or blocks.
+# The storage engine to use: chunks (deprecated) or blocks.
 # CLI flag: -store.engine
 [engine: <string> | default = "chunks"]
 
@@ -3689,6 +3710,14 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # Skip validating server certificate.
 # CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Etcd username.
+# CLI flag: -<prefix>.etcd.username
+[username: <string> | default = ""]
+
+# Etcd password.
+# CLI flag: -<prefix>.etcd.password
+[password: <string> | default = ""]
 ```
 
 ### `consul_config`
@@ -3746,40 +3775,42 @@ The `memberlist_config` configures the Gossip memberlist.
 [randomize_node_name: <boolean> | default = true]
 
 # The timeout for establishing a connection with a remote node, and for
-# read/write operations. Uses memberlist LAN defaults if 0.
+# read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 0s]
+[stream_timeout: <duration> | default = 10s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
-[retransmit_factor: <int> | default = 0]
+[retransmit_factor: <int> | default = 4]
 
-# How often to use pull/push sync. Uses memberlist LAN defaults if 0.
+# How often to use pull/push sync.
 # CLI flag: -memberlist.pullpush-interval
-[pull_push_interval: <duration> | default = 0s]
+[pull_push_interval: <duration> | default = 30s]
 
-# How often to gossip. Uses memberlist LAN defaults if 0.
+# How often to gossip.
 # CLI flag: -memberlist.gossip-interval
-[gossip_interval: <duration> | default = 0s]
+[gossip_interval: <duration> | default = 200ms]
 
-# How many nodes to gossip to. Uses memberlist LAN defaults if 0.
+# How many nodes to gossip to.
 # CLI flag: -memberlist.gossip-nodes
-[gossip_nodes: <int> | default = 0]
+[gossip_nodes: <int> | default = 3]
 
 # How long to keep gossiping to dead nodes, to give them chance to refute their
-# death. Uses memberlist LAN defaults if 0.
+# death.
 # CLI flag: -memberlist.gossip-to-dead-nodes-time
-[gossip_to_dead_nodes_time: <duration> | default = 0s]
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
 
-# How soon can dead node's name be reclaimed with new address. Defaults to 0,
-# which is disabled.
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
 # CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
+# Enable message compression. This can be used to reduce bandwidth usage at the
+# cost of slightly more CPU utilization.
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
+
 # Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format (see
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
-# for more details).
+# IP, hostname or an entry specified in the DNS Service Discovery format.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = []]
 
@@ -4028,11 +4059,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_chunks_per_query: <int> | default = 2000000]
 
 # Maximum number of chunks that can be fetched in a single query from ingesters
-# and long-term storage: the total number of actual fetched chunks could be 2x
-# the limit, being independently applied when querying ingesters and long-term
-# storage. This limit is enforced in the ingester (if chunks streaming is
-# enabled), querier, ruler and store-gateway. Takes precedence over the
-# deprecated -store.query-chunk-limit. 0 to disable.
+# and long-term storage. This limit is enforced in the querier, ruler and
+# store-gateway. Takes precedence over the deprecated -store.query-chunk-limit.
+# 0 to disable.
 # CLI flag: -querier.max-fetched-chunks-per-query
 [max_fetched_chunks_per_query: <int> | default = 0]
 
@@ -4154,7 +4183,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover.
+# wechat, slack, victorops, pushover, sns.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 
@@ -4172,6 +4201,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # uploaded via Alertmanager API. 0 = no limit.
 # CLI flag: -alertmanager.max-template-size-bytes
 [alertmanager_max_template_size_bytes: <int> | default = 0]
+
+# Maximum number of aggregation groups in Alertmanager's dispatcher that a
+# tenant can have. Each active aggregation group uses single goroutine. When the
+# limit is reached, dispatcher will not dispatch alerts that belong to
+# additional aggregation groups, but existing groups will keep working properly.
+# 0 = no limit.
+# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
+[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
+
+# Maximum number of alerts that a single user can have. Inserting more alerts
+# will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-count
+[alertmanager_max_alerts_count: <int> | default = 0]
+
+# Maximum total size of alerts that a single user can have, alert size is the
+# sum of the bytes of its labels, annotations and generatorURL. Inserting more
+# alerts will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-size-bytes
+[alertmanager_max_alerts_size_bytes: <int> | default = 0]
 ```
 
 ### `redis_config`
@@ -5142,12 +5190,12 @@ sharding_ring:
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring.
+  # the ring. 0 = never (timeout disabled).
   # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -5156,13 +5204,17 @@ sharding_ring:
   [wait_stability_min_duration: <duration> | default = 1m]
 
   # Maximum time to wait for ring stability at startup. If the compactor ring
-  # keep changing after this period of time, the compactor will start anyway.
+  # keeps changing after this period of time, the compactor will start anyway.
   # CLI flag: -compactor.ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
 
   # Name of network interface to read address from.
   # CLI flag: -compactor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # Timeout for waiting on compactor to become ACTIVE in the ring.
+  # CLI flag: -compactor.ring.wait-active-instance-timeout
+  [wait_active_instance_timeout: <duration> | default = 10m]
 ```
 
 ### `store_gateway_config`
@@ -5216,13 +5268,13 @@ sharding_ring:
       # CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring.
+  # Period at which to heartbeat to the ring. 0 = disabled.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which store gateways are considered unhealthy
-  # within the ring. This option needs be set both on the store-gateway and
-  # querier when running in microservices mode.
+  # within the ring. 0 = never (timeout disabled). This option needs be set both
+  # on the store-gateway and querier when running in microservices mode.
   # CLI flag: -store-gateway.sharding-ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -5240,6 +5292,16 @@ sharding_ring:
   # availability zones.
   # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # Minimum time to wait for ring stability at startup. 0 to disable.
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
+  [wait_stability_min_duration: <duration> | default = 1m]
+
+  # Maximum time to wait for ring stability at startup. If the store-gateway
+  # ring keeps changing after this period of time, the store-gateway will start
+  # anyway.
+  # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
+  [wait_stability_max_duration: <duration> | default = 5m]
 
   # Name of network interface to read address from.
   # CLI flag: -store-gateway.sharding-ring.instance-interface-names

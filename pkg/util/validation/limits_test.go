@@ -3,17 +3,17 @@ package validation
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/relabel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // mockTenantLimits exposes per-tenant limits based on a provided map
@@ -165,6 +165,15 @@ func TestLimitsLoadingFromJson(t *testing.T) {
 
 	assert.Equal(t, 0.5, l.IngestionRate, "from json")
 	assert.Equal(t, 100, l.MaxLabelNameLength, "from defaults")
+
+	// Unmarshal should fail if input contains unknown struct fields and
+	// the decoder flag `json.Decoder.DisallowUnknownFields()` is set
+	inp = `{"unknown_fields": 100}`
+	l = Limits{}
+	dec := json.NewDecoder(strings.NewReader(inp))
+	dec.DisallowUnknownFields()
+	err = dec.Decode(&l)
+	assert.Error(t, err)
 }
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {

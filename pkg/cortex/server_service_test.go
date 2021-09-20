@@ -5,11 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestServerStopViaContext(t *testing.T) {
@@ -20,7 +19,7 @@ func TestServerStopViaContext(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -41,7 +40,7 @@ func TestServerStopViaShutdown(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	s := NewServerService(serv, func() []services.Service { return nil })
@@ -62,7 +61,7 @@ func TestServerStopViaStop(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	s := NewServerService(serv, func() []services.Service { return nil })

@@ -23,11 +23,11 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.5.0         | 2020-10-26                                 | Chris Marchbanks (@csmarchbanks)            |
 | v1.6.0         | 2020-12-07                                 | Jacob Lisi (@jtlisi)                        |
 | v1.7.0         | 2021-01-18                                 | Ken Haines (@khaines)                       |
-| v1.8.0         | 2021-03-01                                 | Peter Štibraný (@pstibrany)                 |
-| v1.9.0         | 2021-04-12                                 | Goutham Veeramachaneni (@gouthamve)         |
-| v1.10.0        | 2021-06-06                                 | Marco Pracucci (@pracucci)                  |
-| v1.11.0        | 2021-07-18                                 | Bryan Boreham (@bboreham)                   |
-| v1.12.0        | 2021-08-29                                 |                                             |
+| v1.8.0         | 2021-03-08                                 | Peter Štibraný (@pstibrany)                 |
+| v1.9.0         | 2021-04-29                                 | Goutham Veeramachaneni (@gouthamve)         |
+| v1.10.0        | 2021-06-25                                 | Bryan Boreham (@bboreham)                   |
+| v1.11.0        | 2021-08-06                                 | Marco Pracucci (@pracucci)                  |
+| v1.12.0        | 2021-09-17                                 |                                             |
 
 ## Release shepherd responsibilities
 

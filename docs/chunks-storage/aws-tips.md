@@ -5,6 +5,8 @@ weight: 10
 slug: aws-tips
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 This page shares some tips and things to take in consideration when running Cortex chunks storage on AWS.
 
 ## AWS Credentials

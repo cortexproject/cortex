@@ -27,6 +27,11 @@ func (m *IngesterServerMock) QueryStream(r *QueryRequest, s Ingester_QueryStream
 	return args.Error(0)
 }
 
+func (m *IngesterServerMock) QueryExemplars(ctx context.Context, r *ExemplarQueryRequest) (*ExemplarQueryResponse, error) {
+	args := m.Called(ctx, r)
+	return args.Get(0).(*ExemplarQueryResponse), args.Error(1)
+}
+
 func (m *IngesterServerMock) LabelValues(ctx context.Context, r *LabelValuesRequest) (*LabelValuesResponse, error) {
 	args := m.Called(ctx, r)
 	return args.Get(0).(*LabelValuesResponse), args.Error(1)

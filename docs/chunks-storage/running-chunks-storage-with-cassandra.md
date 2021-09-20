@@ -5,6 +5,8 @@ weight: 2
 slug: running-chunks-storage-with-cassandra
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 This guide covers how to run a single local Cortex instance - with the [**chunks storage**](../chunks-storage/_index.md) engine - storing time series chunks and index in Cassandra.
 
 In this guide we're going to:
@@ -109,12 +111,12 @@ storage:
 ```
 
 The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is `v1.9.0`).
+to find the latest stable version tag and use it in the command below (currently it is `v1.10.0`).
 
 Run Cortex using the latest stable version:
 
 ```
-docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.9.0 -config.file=/etc/single-process-config.yaml
+docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.10.0 -config.file=/etc/single-process-config.yaml
 ```
 In case you prefer to run the master version, please follow this [documentation](./chunks-storage-getting-started.md) on how to build Cortex from source.
 

@@ -614,8 +614,10 @@ func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers 
 func (m *testMatrix) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (m *testMatrix) Close() error                                    { return nil }
+func (m *testMatrix) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+func (m *testMatrix) Close() error { return nil }
 
 func newSeries(metric labels.Labels, generator func(float64) float64) *promql.StorageSeries {
 	sort.Sort(metric)

@@ -11,14 +11,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -390,11 +391,11 @@ func TestRing_GetAllHealthy(t *testing.T) {
 }
 
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
-	const heartbeatTimeout = time.Minute
 	now := time.Now()
 
 	tests := map[string]struct {
 		ringInstances           map[string]InstanceDesc
+		ringHeartbeatTimeout    time.Duration
 		ringReplicationFactor   int
 		expectedErrForRead      error
 		expectedSetForRead      []string
@@ -405,6 +406,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	}{
 		"should return error on empty ring": {
 			ringInstances:           nil,
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
 			expectedErrForRead:      ErrEmptyRing,
 			expectedErrForWrite:     ErrEmptyRing,
@@ -418,6 +420,21 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-40 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   1,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+		},
+		"should succeed on instances with old timestamps but heartbeat timeout disabled": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringHeartbeatTimeout:    0,
 			ringReplicationFactor:   1,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
@@ -431,6 +448,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   1,
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
@@ -444,6 +462,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
 			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
@@ -457,6 +476,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
 			},
+			ringHeartbeatTimeout:    time.Minute,
 			ringReplicationFactor:   3,
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
@@ -474,7 +494,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 
 			ring := Ring{
 				cfg: Config{
-					HeartbeatTimeout:  heartbeatTimeout,
+					HeartbeatTimeout:  testData.ringHeartbeatTimeout,
 					ReplicationFactor: testData.ringReplicationFactor,
 				},
 				ringDesc:            ringDesc,
@@ -1907,7 +1927,8 @@ func compareReplicationSets(first, second ReplicationSet) (added, removed []stri
 
 // This test verifies that ring is getting updates, even after extending check in the loop method.
 func TestRingUpdates(t *testing.T) {
-	inmem := consul.NewInMemoryClient(GetCodec())
+	inmem, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{
 		KVStore:           kv.Config{Mock: inmem},
@@ -2000,10 +2021,11 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
 		MaxCasRetries: 20,
 		CasRetryDelay: 500 * time.Millisecond,
-	})
+	}, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},

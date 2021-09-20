@@ -2,12 +2,7 @@ package e2edb
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
-
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	awscommon "github.com/weaveworks/common/aws"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	"github.com/cortexproject/cortex/integration/e2e/images"
@@ -19,18 +14,22 @@ const (
 )
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(port int, bktName string) *e2e.HTTPService {
+func NewMinio(port int, bktNames ...string) *e2e.HTTPService {
 	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
 	commands := []string{
-		"curl -sSL --tlsv1.2 -O '%s/root.key'	-O '%s/root.cert'",
-		"mkdir -p /data/%s && minio server --address :%v --quiet /data",
+		fmt.Sprintf("curl -sSL --tlsv1.2 -O '%s/root.key' -O '%s/root.cert'", minioKESGithubContent, minioKESGithubContent),
 	}
+
+	for _, bkt := range bktNames {
+		commands = append(commands, fmt.Sprintf("mkdir -p /data/%s", bkt))
+	}
+	commands = append(commands, fmt.Sprintf("minio server --address :%v --quiet /data", port))
 
 	m := e2e.NewHTTPService(
 		fmt.Sprintf("minio-%v", port),
 		images.Minio,
 		// Create the "cortex" bucket before starting minio
-		e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(strings.Join(commands, " && "), minioKESGithubContent, minioKESGithubContent, bktName, port)),
+		e2e.NewCommandWithoutEntrypoint("sh", "-c", strings.Join(commands, " && ")),
 		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200, 200),
 		port,
 	)
@@ -70,26 +69,6 @@ func NewETCD() *e2e.HTTPService {
 	)
 }
 
-func NewDynamoClient(endpoint string) (*dynamodb.DynamoDB, error) {
-	dynamoURL, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	dynamoConfig, err := awscommon.ConfigFromURL(dynamoURL)
-	if err != nil {
-		return nil, err
-	}
-
-	dynamoConfig = dynamoConfig.WithMaxRetries(0)
-	dynamoSession, err := session.NewSession(dynamoConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return dynamodb.New(dynamoSession), nil
-}
-
 func NewDynamoDB() *e2e.HTTPService {
 	return e2e.NewHTTPService(
 		"dynamodb",
@@ -98,37 +77,5 @@ func NewDynamoDB() *e2e.HTTPService {
 		// DynamoDB doesn't have a readiness probe, so we check if the / works even if returns 400
 		e2e.NewHTTPReadinessProbe(8000, "/", 400, 400),
 		8000,
-	)
-}
-
-// while using Bigtable emulator as index store make sure you set BIGTABLE_EMULATOR_HOST environment variable to host:9035 for all the services which access stores
-func NewBigtable() *e2e.HTTPService {
-	return e2e.NewHTTPService(
-		"bigtable",
-		images.BigtableEmulator,
-		nil,
-		nil,
-		9035,
-	)
-}
-
-func NewCassandra() *e2e.HTTPService {
-	return e2e.NewHTTPService(
-		"cassandra",
-		images.Cassandra,
-		nil,
-		// readiness probe inspired from https://github.com/kubernetes/examples/blob/b86c9d50be45eaf5ce74dee7159ce38b0e149d38/cassandra/image/files/ready-probe.sh
-		e2e.NewCmdReadinessProbe(e2e.NewCommand("bash", "-c", "nodetool status | grep UN")),
-		9042,
-	)
-}
-
-func NewSwiftStorage() *e2e.HTTPService {
-	return e2e.NewHTTPService(
-		"swift",
-		images.SwiftEmulator,
-		nil,
-		e2e.NewHTTPReadinessProbe(8080, "/", 404, 404),
-		8080,
 	)
 }

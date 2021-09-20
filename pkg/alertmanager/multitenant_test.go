@@ -20,6 +20,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/pkg/labels"
@@ -41,12 +44,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -611,7 +611,9 @@ func TestMultitenantAlertmanager_deleteUnusedLocalUserState(t *testing.T) {
 func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 	ctx := context.Background()
 	alertStore := prepareInMemoryAlertStore()
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	const (
 		user1 = "user1"
 		user2 = "user2"
@@ -689,7 +691,8 @@ func TestMultitenantAlertmanager_deleteUnusedRemoteUserState(t *testing.T) {
 	)
 
 	alertStore := prepareInMemoryAlertStore()
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	createInstance := func(i int) *MultitenantAlertmanager {
 		reg := prometheus.NewPedanticRegistry()
@@ -1005,7 +1008,8 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 			ctx := context.Background()
 			amConfig := mockAlertmanagerConfig(t)
 			amConfig.ShardingEnabled = true
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Use an alert store with a mocked backend.
 			bkt := &bucket.ClientMock{}
@@ -1109,7 +1113,9 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			alertStore := prepareInMemoryAlertStore()
 
 			var instances []*MultitenantAlertmanager
@@ -1296,7 +1302,9 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 			amConfig.ShardingRing.RingCheckPeriod = 100 * time.Millisecond
 			amConfig.PollInterval = time.Hour // Don't trigger the periodic check.
 
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			alertStore := prepareInMemoryAlertStore()
 
 			reg := prometheus.NewPedanticRegistry()
@@ -1325,18 +1333,15 @@ func TestMultitenantAlertmanager_SyncOnRingTopologyChanges(t *testing.T) {
 				return ringDesc, true, nil
 			}))
 
-			// Assert if we expected a sync or not.
+			// Assert if we expected an additional sync or not.
+			expectedSyncs := 1
 			if tt.expected {
-				test.Poll(t, time.Second, float64(2), func() interface{} {
-					metrics := regs.BuildMetricFamiliesPerUser()
-					return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
-				})
-			} else {
-				time.Sleep(250 * time.Millisecond)
-
-				metrics := regs.BuildMetricFamiliesPerUser()
-				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total"))
+				expectedSyncs++
 			}
+			test.Poll(t, 3*time.Second, float64(expectedSyncs), func() interface{} {
+				metrics := regs.BuildMetricFamiliesPerUser()
+				return metrics.GetSumOfCounters("cortex_alertmanager_sync_configs_total")
+			})
 		})
 	}
 }
@@ -1350,7 +1355,9 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 	amConfig.ShardingRing.HeartbeatPeriod = 100 * time.Millisecond
 	amConfig.ShardingRing.HeartbeatTimeout = heartbeatTimeout
 
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	alertStore := prepareInMemoryAlertStore()
 
 	am, err := createMultitenantAlertmanager(amConfig, nil, nil, alertStore, ringStore, nil, log.NewNopLogger(), nil)
@@ -1382,7 +1389,8 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Mock the store to fail listing configs.
 	bkt := &bucket.ClientMock{}
@@ -1404,7 +1412,9 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 
 func TestAlertmanager_ReplicasPosition(t *testing.T) {
 	ctx := context.Background()
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	mockStore := prepareInMemoryAlertStore()
 	require.NoError(t, mockStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 		User:      "user-1",
@@ -1503,7 +1513,9 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			mockStore := prepareInMemoryAlertStore()
 			clientPool := newPassthroughAlertmanagerClientPool()
 			externalURL := flagext.URLValue{}
@@ -1696,7 +1708,9 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			mockStore := prepareInMemoryAlertStore()
 			clientPool := newPassthroughAlertmanagerClientPool()
 			externalURL := flagext.URLValue{}
@@ -1820,7 +1834,14 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 			{
 				metrics := registries.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(1), metrics.GetSumOfGauges("cortex_alertmanager_silences"))
-				assert.Equal(t, float64(1), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total"))
+			}
+			// 2.c. Wait for the silence replication to be attempted; note this is asynchronous.
+			{
+				test.Poll(t, 5*time.Second, float64(1), func() interface{} {
+					metrics := registries.BuildMetricFamiliesPerUser()
+					return metrics.GetSumOfCounters("cortex_alertmanager_state_replication_total")
+				})
+				metrics := registries.BuildMetricFamiliesPerUser()
 				assert.Equal(t, float64(0), metrics.GetSumOfCounters("cortex_alertmanager_state_replication_failed_total"))
 			}
 
@@ -2019,11 +2040,14 @@ func (f *passthroughAlertmanagerClientPool) GetClientFor(addr string) (Client, e
 }
 
 type mockAlertManagerLimits struct {
-	emailNotificationRateLimit rate.Limit
-	emailNotificationBurst     int
-	maxConfigSize              int
-	maxTemplatesCount          int
-	maxSizeOfTemplate          int
+	emailNotificationRateLimit     rate.Limit
+	emailNotificationBurst         int
+	maxConfigSize                  int
+	maxTemplatesCount              int
+	maxSizeOfTemplate              int
+	maxDispatcherAggregationGroups int
+	maxAlertsCount                 int
+	maxAlertsSizeBytes             int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
@@ -2052,4 +2076,16 @@ func (m *mockAlertManagerLimits) NotificationRateLimit(_ string, integration str
 
 func (m *mockAlertManagerLimits) NotificationBurstSize(_ string, integration string) int {
 	return m.emailNotificationBurst
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxDispatcherAggregationGroups(_ string) int {
+	return m.maxDispatcherAggregationGroups
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsCount(_ string) int {
+	return m.maxAlertsCount
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsSizeBytes(_ string) int {
+	return m.maxAlertsSizeBytes
 }

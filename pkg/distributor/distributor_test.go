@@ -15,6 +15,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -34,21 +38,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
-	errFail       = fmt.Errorf("Fail")
+	errFail       = httpgrpc.Errorf(http.StatusInternalServerError, "Fail")
 	emptyResponse = &cortexpb.WriteResponse{}
 )
 
@@ -124,6 +124,7 @@ func TestDistributor_Push(t *testing.T) {
 		expectedResponse *cortexpb.WriteResponse
 		expectedError    error
 		expectedMetrics  string
+		ingesterError    error
 	}{
 		"A push of no samples shouldn't block or return error, even if ingesters are sad": {
 			numIngesters:     3,
@@ -203,7 +204,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",type="samples"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="samples"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
 				cortex_distributor_ingester_appends_total{ingester="0",type="samples"} 1
@@ -218,10 +219,30 @@ func TestDistributor_Push(t *testing.T) {
 			metadata:         1,
 			metricNames:      []string{distributorAppend, distributorAppendFailure},
 			expectedResponse: emptyResponse,
+			ingesterError:    httpgrpc.Errorf(http.StatusInternalServerError, "Fail"),
 			expectedMetrics: `
 				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_append_failures_total counter
-				cortex_distributor_ingester_append_failures_total{ingester="2",type="metadata"} 1
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="5xx",type="metadata"} 1
+				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_appends_total counter
+				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+				cortex_distributor_ingester_appends_total{ingester="2",type="metadata"} 1
+			`,
+		},
+		"A push to overloaded ingesters should report the correct metrics": {
+			numIngesters:     3,
+			happyIngesters:   2,
+			samples:          samplesIn{num: 0, startTimestampMs: 123456789000},
+			metadata:         1,
+			metricNames:      []string{distributorAppend, distributorAppendFailure},
+			expectedResponse: emptyResponse,
+			ingesterError:    httpgrpc.Errorf(http.StatusTooManyRequests, "Fail"),
+			expectedMetrics: `
+				# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+				# TYPE cortex_distributor_ingester_append_failures_total counter
+				cortex_distributor_ingester_append_failures_total{ingester="2",status="4xx",type="metadata"} 1
 				# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
 				# TYPE cortex_distributor_ingester_appends_total counter
 				cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
@@ -243,6 +264,7 @@ func TestDistributor_Push(t *testing.T) {
 					numDistributors:  1,
 					shardByAllLabels: shardByAllLabels,
 					limits:           limits,
+					errFail:          tc.ingesterError,
 				})
 				defer stopAll(ds, r)
 
@@ -685,7 +707,11 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				})
 				defer stopAll(ds, r)
 				codec := GetReplicaDescCodec()
-				mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+
+				ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+				mock := kv.PrefixClient(ringStore, "prefix")
 				d := ds[0]
 
 				if tc.enableTracker {
@@ -912,6 +938,8 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 		shardByAllLabels: true,
 		limits:           limits,
 	})
+
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, maxChunksLimit))
 	defer stopAll(ds, r)
 
 	// Push a number of series below the max chunks limit. Each series has 1 sample,
@@ -957,7 +985,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	ctx := user.InjectOrgID(context.Background(), "user")
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0, 0))
 
 	// Prepare distributors.
 	ds, _, r, _ := prepare(t, prepConfig{
@@ -1012,12 +1040,15 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	flagext.DefaultValues(limits)
 
 	// Prepare distributors.
+	// Use replication factor of 2 to always read all the chunks from both ingesters,
+	// this guarantees us to always read the same chunks and have a stable test.
 	ds, _, r, _ := prepare(t, prepConfig{
-		numIngesters:     3,
-		happyIngesters:   3,
-		numDistributors:  1,
-		shardByAllLabels: true,
-		limits:           limits,
+		numIngesters:      2,
+		happyIngesters:    2,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		limits:            limits,
+		replicationFactor: 2,
 	})
 	defer stopAll(ds, r)
 
@@ -1040,7 +1071,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	var maxBytesLimit = (seriesToAdd) * responseChunkSize
 
 	// Update the limiter with the calculated limits.
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit, 0))
 
 	// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
 	writeReq = makeWriteRequest(0, seriesToAdd-1, 0)
@@ -1577,7 +1608,9 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		b.Run(testName, func(b *testing.B) {
 
 			// Create an in-memory KV store for the ring with 1 ingester registered.
-			kvStore := consul.NewInMemoryClient(ring.GetCodec())
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			b.Cleanup(func() { assert.NoError(b, closer.Close()) })
+
 			err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
 				func(_ interface{}) (interface{}, bool, error) {
 					d := &ring.Desc{}
@@ -1893,6 +1926,8 @@ type prepConfig struct {
 	skipLabelNameValidation      bool
 	maxInflightRequests          int
 	maxIngestionRate             float64
+	replicationFactor            int
+	errFail                      error
 }
 
 func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *ring.Ring, []*prometheus.Registry) {
@@ -1904,8 +1939,14 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		})
 	}
 	for i := cfg.happyIngesters; i < cfg.numIngesters; i++ {
+		miError := errFail
+		if cfg.errFail != nil {
+			miError = cfg.errFail
+		}
+
 		ingesters = append(ingesters, mockIngester{
 			queryDelay: cfg.queryDelay,
+			failResp:   miError,
 		})
 	}
 
@@ -1925,7 +1966,9 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 		ingestersByAddr[addr] = &ingesters[i]
 	}
 
-	kvStore := consul.NewInMemoryClient(ring.GetCodec())
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	err := kvStore.CAS(context.Background(), ring.IngesterRingKey,
 		func(_ interface{}) (interface{}, bool, error) {
 			return &ring.Desc{
@@ -1935,12 +1978,18 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 	)
 	require.NoError(t, err)
 
+	// Use a default replication factor of 3 if there isn't a provided replication factor.
+	rf := cfg.replicationFactor
+	if rf == 0 {
+		rf = 3
+	}
+
 	ingestersRing, err := ring.New(ring.Config{
 		KVStore: kv.Config{
 			Mock: kvStore,
 		},
 		HeartbeatTimeout:  60 * time.Minute,
-		ReplicationFactor: 3,
+		ReplicationFactor: rf,
 	}, ring.IngesterRingKey, ring.IngesterRingKey, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
@@ -2129,6 +2178,7 @@ type mockIngester struct {
 	client.IngesterClient
 	grpc_health_v1.HealthClient
 	happy      bool
+	failResp   error
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*cortexpb.PreallocTimeseries
 	metadata   map[uint32]map[cortexpb.MetricMetadata]struct{}
@@ -2167,7 +2217,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 	i.trackCall("Push")
 
 	if !i.happy {
-		return nil, errFail
+		return nil, i.failResp
 	}
 
 	if i.timeseries == nil {

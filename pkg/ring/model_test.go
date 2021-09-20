@@ -136,8 +136,16 @@ func TestDesc_Ready(t *testing.T) {
 		t.Fatal("expected ready, got", err)
 	}
 
+	if err := r.Ready(now, 0); err != nil {
+		t.Fatal("expected ready, got", err)
+	}
+
 	if err := r.Ready(now.Add(5*time.Minute), 10*time.Second); err == nil {
 		t.Fatal("expected !ready (no heartbeat from active ingester), but got no error")
+	}
+
+	if err := r.Ready(now.Add(5*time.Minute), 0); err != nil {
+		t.Fatal("expected ready (no heartbeat but timeout disabled), got", err)
 	}
 
 	r = &Desc{

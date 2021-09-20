@@ -71,8 +71,27 @@ Currently experimental features are:
   - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
 - Instance limits in ingester and distributor
 - Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (`-blocks-storage.tsdb.max-exemplars`)
-- Alertmanager: notification rate limits. (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)
 - Querier limits:
   - `-querier.max-fetched-chunks-per-query`
   - `-querier.max-fetched-chunk-bytes-per-query`
   - `-querier.max-fetched-series-per-query`
+- Alertmanager limits
+  - notification rate (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)
+  - dispatcher groups (`-alertmanager.max-dispatcher-aggregation-groups`)
+  - user config size (`-alertmanager.max-config-size-bytes`)
+  - templates count in user config (`-alertmanager.max-templates-count`)
+  - max template size (`-alertmanager.max-template-size-bytes`)
+- Disabling ring heartbeat timeouts
+  - `-distributor.ring.heartbeat-timeout=0`
+  - `-ring.heartbeat-timeout=0`
+  - `-ruler.ring.heartbeat-timeout=0`
+  - `-alertmanager.sharding-ring.heartbeat-timeout=0`
+  - `-compactor.ring.heartbeat-timeout=0`
+  - `-store-gateway.sharding-ring.heartbeat-timeout=0`
+- Disabling ring heartbeats
+  - `-distributor.ring.heartbeat-period=0`
+  - `-ingester.heartbeat-period=0`
+  - `-ruler.ring.heartbeat-period=0`
+  - `-alertmanager.sharding-ring.heartbeat-period=0`
+  - `-compactor.ring.heartbeat-period=0`
+  - `-store-gateway.sharding-ring.heartbeat-period=0`

@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-
-	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/kv/memberlist"
 )
 
 // ByAddr is a sortable list of InstanceDesc.
@@ -101,7 +100,7 @@ func (d *Desc) FindIngestersByState(state InstanceState) []InstanceDesc {
 func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
 	numTokens := 0
 	for id, ingester := range d.Ingesters {
-		if now.Sub(time.Unix(ingester.Timestamp, 0)) > heartbeatTimeout {
+		if !ingester.IsHeartbeatHealthy(heartbeatTimeout, now) {
 			return fmt.Errorf("instance %s past heartbeat timeout", id)
 		} else if ingester.State != ACTIVE {
 			return fmt.Errorf("instance %s in state %v", id, ingester.State)
@@ -136,7 +135,16 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
 	healthy := op.IsInstanceInStateHealthy(i.State)
 
-	return healthy && now.Unix()-i.Timestamp <= heartbeatTimeout.Milliseconds()/1000
+	return healthy && i.IsHeartbeatHealthy(heartbeatTimeout, now)
+}
+
+// IsHeartbeatHealthy returns whether the heartbeat timestamp for the ingester is within the
+// specified timeout period. A timeout of zero disables the timeout; the heartbeat is ignored.
+func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now time.Time) bool {
+	if heartbeatTimeout == 0 {
+		return true
+	}
+	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
@@ -387,6 +395,11 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 		}
 	}
 	return
+}
+
+// Clone returns a deep copy of the ring state.
+func (d *Desc) Clone() memberlist.Mergeable {
+	return proto.Clone(d).(*Desc)
 }
 
 func (d *Desc) getTokensInfo() map[uint32]instanceInfo {

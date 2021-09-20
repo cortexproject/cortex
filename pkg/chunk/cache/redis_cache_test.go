@@ -63,5 +63,5 @@ func mockRedisCache() (*RedisCache, error) {
 			Addrs: []string{redisServer.Addr()},
 		}),
 	}
-	return NewRedisCache("mock", redisClient, log.NewNopLogger()), nil
+	return NewRedisCache("mock", redisClient, nil, log.NewNopLogger()), nil
 }

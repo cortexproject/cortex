@@ -531,6 +531,12 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, err)
 				err = c3.SendAlertToAlermanager(context.Background(), alert(3, 2))
 				require.NoError(t, err)
+
+				// Wait for the alerts to be received by every replica.
+				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+					e2e.Equals(float64(3*testCfg.replicationFactor)),
+					[]string{"cortex_alertmanager_alerts_received_total"},
+					e2e.SkipMissingMetrics))
 			}
 
 			// Endpoint: GET /v1/alerts

@@ -2,7 +2,10 @@ package distributor
 
 import (
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -105,4 +108,53 @@ func TestMergeSamplesIntoFirstNilB(t *testing.T) {
 	b := mergeSamples(a, nil)
 
 	require.Equal(t, b, a)
+}
+
+func TestMergeExemplarSets(t *testing.T) {
+	now := timestamp.FromTime(time.Now())
+	exemplar1 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-1")), TimestampMs: now, Value: 1}
+	exemplar2 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-2")), TimestampMs: now + 1, Value: 2}
+	exemplar3 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-3")), TimestampMs: now + 4, Value: 3}
+	exemplar4 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now + 8, Value: 7}
+	exemplar5 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-4")), TimestampMs: now, Value: 7}
+
+	for _, c := range []struct {
+		exemplarsA []cortexpb.Exemplar
+		exemplarsB []cortexpb.Exemplar
+		expected   []cortexpb.Exemplar
+	}{
+		{
+			exemplarsA: []cortexpb.Exemplar{},
+			exemplarsB: []cortexpb.Exemplar{},
+			expected:   []cortexpb.Exemplar{},
+		},
+		{
+			exemplarsA: []cortexpb.Exemplar{exemplar1},
+			exemplarsB: []cortexpb.Exemplar{},
+			expected:   []cortexpb.Exemplar{exemplar1},
+		},
+		{
+			exemplarsA: []cortexpb.Exemplar{},
+			exemplarsB: []cortexpb.Exemplar{exemplar1},
+			expected:   []cortexpb.Exemplar{exemplar1},
+		},
+		{
+			exemplarsA: []cortexpb.Exemplar{exemplar1},
+			exemplarsB: []cortexpb.Exemplar{exemplar1},
+			expected:   []cortexpb.Exemplar{exemplar1},
+		},
+		{
+			exemplarsA: []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3},
+			exemplarsB: []cortexpb.Exemplar{exemplar1, exemplar3, exemplar4},
+			expected:   []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3, exemplar4},
+		},
+		{ // Ensure that when there are exemplars with duplicate timestamps, the first one wins.
+			exemplarsA: []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3},
+			exemplarsB: []cortexpb.Exemplar{exemplar5, exemplar3, exemplar4},
+			expected:   []cortexpb.Exemplar{exemplar1, exemplar2, exemplar3, exemplar4},
+		},
+	} {
+		e := mergeExemplarSets(c.exemplarsA, c.exemplarsB)
+		require.Equal(t, c.expected, e)
+	}
 }

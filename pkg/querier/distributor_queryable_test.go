@@ -8,7 +8,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -29,7 +28,7 @@ const (
 )
 
 func TestDistributorQuerier(t *testing.T) {
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
 			// Matrixes are unsorted, so this tests that the labels get sorted.
@@ -117,7 +116,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 	for _, streamingEnabled := range []bool{false, true} {
 		for testName, testData := range tests {
 			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
-				distributor := &mockDistributor{}
+				distributor := &MockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
@@ -127,10 +126,10 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
-				// Select hints are not passed by Prometheus when querying /series.
+				// Select hints are passed by Prometheus when querying /series.
 				var hints *storage.SelectHints
-				if !testData.querySeries {
-					hints = &storage.SelectHints{Start: testData.queryMinT, End: testData.queryMaxT}
+				if testData.querySeries {
+					hints = &storage.SelectHints{Func: "series"}
 				}
 
 				seriesSet := querier.Select(true, hints)
@@ -149,7 +148,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 }
 
 func TestDistributorQueryableFilter(t *testing.T) {
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	dq := newDistributorQueryable(d, false, nil, 1*time.Hour)
 
 	now := time.Now()
@@ -175,7 +174,7 @@ func TestIngesterStreaming(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
@@ -244,7 +243,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		{Value: 5.5, TimestampMs: 5500},
 	}
 
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
@@ -306,6 +305,30 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 	require.False(t, it.Next())
 	require.Nil(t, it.Err())
 }
+func TestDistributorQuerier_LabelNames(t *testing.T) {
+	someMatchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}
+	labelNames := []string{"foo", "job"}
+
+	t.Run("with matchers", func(t *testing.T) {
+		metrics := []metric.Metric{
+			{Metric: model.Metric{"foo": "bar"}},
+			{Metric: model.Metric{"job": "baz"}},
+			{Metric: model.Metric{"job": "baz", "foo": "boom"}},
+		}
+		d := &MockDistributor{}
+		d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).
+			Return(metrics, nil)
+
+		queryable := newDistributorQueryable(d, false, nil, 0)
+		querier, err := queryable.Querier(context.Background(), mint, maxt)
+		require.NoError(t, err)
+
+		names, warnings, err := querier.LabelNames(someMatchers...)
+		require.NoError(t, err)
+		assert.Empty(t, warnings)
+		assert.Equal(t, labelNames, names)
+	})
+}
 
 func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
 	// We need to make sure that there is atleast one chunk present,
@@ -325,34 +348,4 @@ func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
 	require.NoError(t, err)
 
 	return clientChunks
-}
-
-type mockDistributor struct {
-	mock.Mock
-}
-
-func (m *mockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).(model.Matrix), args.Error(1)
-}
-func (m *mockDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
-	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).(*client.QueryStreamResponse), args.Error(1)
-}
-func (m *mockDistributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, lbl model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
-	args := m.Called(ctx, from, to, lbl, matchers)
-	return args.Get(0).([]string), args.Error(1)
-}
-func (m *mockDistributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
-	args := m.Called(ctx, from, to)
-	return args.Get(0).([]string), args.Error(1)
-}
-func (m *mockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).([]metric.Metric), args.Error(1)
-}
-
-func (m *mockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
-	args := m.Called(ctx)
-	return args.Get(0).([]scrape.MetricMetadata), args.Error(1)
 }

@@ -11,6 +11,8 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
+**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 ## Querier
 
 - `-querier.max-concurrent`
@@ -20,7 +22,7 @@ Duration arguments should be specified with a unit like `5s` or `3h`. Valid time
 
 - `-querier.query-parallelism`
 
-   This refers to database queries against the store (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
+   This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
 
 - `-querier.timeout`
 
@@ -139,6 +141,8 @@ The ingester query API was improved over time, but defaults to the old behaviour
    Important to note is that when setting this flag to `true`, it has to be set on both the distributor and the querier (called `-distributor.shard-by-all-labels` on Querier as well). If the flag is only set on the distributor and not on the querier, you will get incomplete query results because not all ingesters are queried.
 
    **Upgrade notes**: As this flag also makes all queries always read from all ingesters, the upgrade path is pretty trivial; just enable the flag. When you do enable it, you'll see a spike in the number of active series as the writes are "reshuffled" amongst the ingesters, but over the next stale period all the old series will be flushed, and you should end up with much better load balancing. With this flag enabled in the queriers, reads will always catch all the data from all ingesters.
+
+   **Warning**: disabling this flag can lead to a much less balanced distribution of load among the ingesters.
 
 - `-distributor.extra-query-delay`
    This is used by a component with an embedded distributor (Querier and Ruler) to control how long to wait until sending more than the minimum amount of queries needed for a successful response.

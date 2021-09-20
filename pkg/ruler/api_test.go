@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -13,18 +14,18 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestRuler_rules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -78,10 +79,10 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockSpecialCharRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -135,10 +136,10 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer r.StopAsync()
 
@@ -171,10 +172,10 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -262,10 +263,10 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRulesNamespaces))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
@@ -301,14 +302,14 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
@@ -356,14 +357,14 @@ rules:
 }
 
 func TestRuler_RulerGroupLimits(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 

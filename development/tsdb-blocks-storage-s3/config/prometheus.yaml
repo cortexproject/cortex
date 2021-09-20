@@ -55,3 +55,4 @@ scrape_configs:
 
 remote_write:
   - url: http://distributor:8001/api/v1/push
+    send_exemplars: true

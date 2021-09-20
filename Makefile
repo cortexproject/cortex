@@ -119,7 +119,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= build-image-multiarch-1d2497ff6
+LATEST_BUILD_IMAGE_TAG ?= 20210713_update-go-1.16.6-178ab0c4f
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -176,7 +176,7 @@ lint:
 	# Configured via .golangci.yml.
 	golangci-lint run
 
-	# Ensure no blacklisted package is imported.
+	# Ensure no blocklisted package is imported.
 	GOFLAGS="-tags=requires_docker" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
@@ -212,10 +212,6 @@ lint:
 		./pkg/flusher/... \
 		./pkg/querier/... \
 		./pkg/ruler/...
-
-	# Validate Kubernetes spec files. Requires:
-	# https://kubeval.instrumenta.dev
-	kubeval ./k8s/*
 
 test:
 	go test -tags netgo -timeout 30m -race -count 1 ./...
@@ -261,7 +257,6 @@ doc: clean-doc
 	go run ./tools/doc-generator ./docs/blocks-storage/querier.template              > ./docs/blocks-storage/querier.md
 	go run ./tools/doc-generator ./docs/guides/encryption-at-rest.template           > ./docs/guides/encryption-at-rest.md
 	embedmd -w docs/operations/requests-mirroring-to-secondary-cluster.md
-	embedmd -w docs/configuration/single-process-config.md
 	embedmd -w docs/guides/overrides-exporter.md
 
 endif
@@ -364,7 +359,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/deb/control/prerm \
 			--package dist/cortex-$(VERSION)_$$arch.deb \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/deb/default/cortex=/etc/default/cortex \
 			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 		$(FPM_OPTS) -t rpm  \
@@ -373,7 +368,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/rpm/control/preun \
 			--package dist/cortex-$(VERSION)_$$arch.rpm \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/configuration/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
 			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 	done

@@ -8,9 +8,9 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6
+      image: quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -32,9 +32,9 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-white-noise
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6
+      image: quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f
     services:
       cassandra:
         image: cassandra:3.11
@@ -53,9 +53,9 @@ jobs:
         run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6
+      image: quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -93,13 +93,13 @@ jobs:
 
   integration:
     needs: build
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Upgrade golang
         run: |
           cd /tmp
-          wget https://dl.google.com/go/go1.16.3.linux-amd64.tar.gz
-          tar -zxvf go1.16.3.linux-amd64.tar.gz
+          wget https://dl.google.com/go/go1.16.6.linux-amd64.tar.gz
+          tar -zxvf go1.16.6.linux-amd64.tar.gz
           sudo rm -fr /usr/local/go
           sudo mv /tmp/go /usr/local/go
           cd -
@@ -140,6 +140,7 @@ jobs:
           docker pull quay.io/cortexproject/cortex:v1.7.0
           docker pull quay.io/cortexproject/cortex:v1.8.0
           docker pull quay.io/cortexproject/cortex:v1.9.0
+          docker pull quay.io/cortexproject/cortex:v1.10.0
           docker pull shopify/bigtable-emulator:0.1.0
           docker pull rinscy/cassandra:3.11.0
           docker pull memcached:1.6.1
@@ -157,7 +158,7 @@ jobs:
 
   integration-configs-db:
     needs: build
-    runs-on: ubuntu-16.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -174,14 +175,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6
+      image: quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -216,9 +217,9 @@ jobs:
   deploy:
     needs: [build, test, lint, integration, integration-configs-db]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:build-image-multiarch-1d2497ff6
+      image: quay.io/cortexproject/build-image:20210713_update-go-1.16.6-178ab0c4f
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2

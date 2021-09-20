@@ -18,6 +18,9 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,12 +36,9 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -581,10 +581,12 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 
+	// Block that has just been marked for deletion. It will not be deleted just yet, and it also will not be compacted.
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
 	bucketClient.MockGet("user-1/markers/01DTVP434PA9VFXSW2JKB3392D-deletion-mark.json", mockDeletionMarkJSON("01DTVP434PA9VFXSW2JKB3392D", time.Now()), nil)
 
+	// This block will be deleted by cleaner.
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
 	bucketClient.MockGet("user-1/markers/01DTW0ZCPDDNV4BV83Q2SV4QAZ-deletion-mark.json", mockDeletionMarkJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ", time.Now().Add(-cfg.DeletionDelay)), nil)
@@ -608,12 +610,6 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient)
 
-	// Mock the planner as if there's no compaction to do,
-	// in order to simplify tests (all in all, we just want to
-	// test our logic and not TSDB compactor which we expect to
-	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
-
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
@@ -623,8 +619,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	// Only one user's block is compacted.
-	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 1)
+	// Since both blocks are marked for deletion, none of them are going to be compacted.
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 0)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -817,11 +813,14 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
-	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
+	cfg.ShardingRing.KVStore.Mock = ringStore
 
 	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient)
 
@@ -894,7 +893,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 
 	// Create a shared KV Store
-	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
 	var compactors []*Compactor
@@ -958,7 +958,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 		MinBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
 		MaxBlockDuration:  int64(2 * 60 * 60 * 1000), // 2h period
 		RetentionDuration: int64(15 * 86400 * 1000),  // 15 days
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	db.DisableCompactions()
@@ -1092,6 +1092,9 @@ func prepareConfig() Config {
 	compactorCfg.ShardingRing.WaitStabilityMinDuration = 0
 	compactorCfg.ShardingRing.WaitStabilityMaxDuration = 0
 
+	// Set lower timeout for waiting on compactor to become ACTIVE in the ring for unit tests
+	compactorCfg.ShardingRing.WaitActiveInstanceTimeout = 5 * time.Second
+
 	return compactorCfg
 }
 
@@ -1213,7 +1216,8 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	}
 
 	// Create a shared KV Store
-	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
 	var compactors []*Compactor
@@ -1278,4 +1282,37 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	// Now compactor 1 should have cleaned old sync files.
 	require.NotEqual(t, numUsers, c1Users)
 	require.Equal(t, numUsers, c1Users+c2Users)
+}
+
+func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
+	t.Parallel()
+
+	// Mock the bucket
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{}, nil)
+
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	cfg := prepareConfig()
+	cfg.ShardingEnabled = true
+	cfg.ShardingRing.InstanceID = "compactor-1"
+	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
+	cfg.ShardingRing.KVStore.Mock = ringStore
+
+	// Set ObservePeriod to longer than the timeout period to mock a timeout while waiting on ring to become ACTIVE
+	cfg.ShardingRing.ObservePeriod = time.Second * 10
+
+	c, _, _, logs, _ := prepare(t, cfg, bucketClient)
+
+	// Try to start the compactor with a bad consul kv-store. The
+	err := services.StartAndAwaitRunning(context.Background(), c)
+
+	// Assert that the compactor timed out
+	assert.Equal(t, context.DeadlineExceeded, err)
+
+	assert.ElementsMatch(t, []string{
+		`level=info component=compactor msg="waiting until compactor is ACTIVE in the ring"`,
+		`level=error component=compactor msg="compactor failed to become ACTIVE in the ring" err="context deadline exceeded"`,
+	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }

@@ -101,7 +101,7 @@ func (m mockQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]st
 	return nil, nil, nil
 }
 
-func (m mockQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (m mockQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

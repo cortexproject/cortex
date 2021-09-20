@@ -5,6 +5,8 @@ weight: 2
 slug: schema-configuration
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 Cortex chunks storage stores indexes and chunks in table-based data storages. When such a storage type is used, multiple tables are created over the time: each table - also called periodic table - contains the data for a specific time range. The table-based storage layout is configured through a configuration file called **schema config**.
 
 _The schema config is used only by the chunks storage, while it's **not** used by the [blocks storage](../blocks-storage/_index.md) engine._

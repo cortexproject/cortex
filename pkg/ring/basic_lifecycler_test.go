@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -83,7 +83,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			ctx := context.Background()
 			cfg := prepareBasicLifecyclerConfig()
-			lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+			lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -159,7 +159,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 
 	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (InstanceState, Tokens) {
@@ -195,7 +195,7 @@ func TestBasicLifecycler_HeartbeatWhileRunning(t *testing.T) {
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
 
-	lifecycler, _, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, _, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
@@ -219,7 +219,7 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
 
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
@@ -257,7 +257,7 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
 
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -291,7 +291,7 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 func TestBasicLifecycler_ChangeState(t *testing.T) {
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -319,7 +319,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 	cfg.NumTokens = 5
 	cfg.TokensObservePeriod = time.Second
 
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 
 	delegate.onRegister = func(_ *BasicLifecycler, _ Desc, _ bool, _ string, _ InstanceDesc) (InstanceState, Tokens) {
@@ -358,7 +358,7 @@ func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExist
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = time.Hour // No heartbeat during the test.
 
-	lifecycler, delegate, store, err := prepareBasicLifecycler(cfg)
+	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -403,14 +403,20 @@ func prepareBasicLifecyclerConfig() BasicLifecyclerConfig {
 	}
 }
 
-func prepareBasicLifecycler(cfg BasicLifecyclerConfig) (*BasicLifecycler, *mockDelegate, kv.Client, error) {
+func prepareBasicLifecycler(t testing.TB, cfg BasicLifecyclerConfig) (*BasicLifecycler, *mockDelegate, kv.Client, error) {
+	t.Helper()
+
 	delegate := &mockDelegate{}
-	lifecycler, store, err := prepareBasicLifecyclerWithDelegate(cfg, delegate)
+	lifecycler, store, err := prepareBasicLifecyclerWithDelegate(t, cfg, delegate)
 	return lifecycler, delegate, store, err
 }
 
-func prepareBasicLifecyclerWithDelegate(cfg BasicLifecyclerConfig, delegate BasicLifecyclerDelegate) (*BasicLifecycler, kv.Client, error) {
-	store := consul.NewInMemoryClient(GetCodec())
+func prepareBasicLifecyclerWithDelegate(t testing.TB, cfg BasicLifecyclerConfig, delegate BasicLifecyclerDelegate) (*BasicLifecycler, kv.Client, error) {
+	t.Helper()
+
+	store, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	lifecycler, err := NewBasicLifecycler(cfg, testRingName, testRingKey, store, delegate, log.NewNopLogger(), nil)
 	return lifecycler, store, err
 }

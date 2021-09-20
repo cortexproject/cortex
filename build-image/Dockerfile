@@ -1,4 +1,4 @@
-FROM golang:1.16.3-buster
+FROM golang:1.16.6-buster
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
 RUN apt-get update && apt-get install -y curl python-requests python-yaml file jq unzip protobuf-compiler libprotobuf-dev && \
@@ -38,11 +38,6 @@ RUN GO111MODULE=on go get \
 		github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 \
 		github.com/fatih/faillint@v1.5.0 \
 		github.com/campoy/embedmd@v1.0.0 \
-	&& rm -rf /go/pkg /go/src /root/.cache
-
-# Cannot get it to run together in above go get.
-RUN GO111MODULE=on go get  \
-		github.com/instrumenta/kubeval@v0.16.1 \
 	&& rm -rf /go/pkg /go/src /root/.cache
 
 ENV NODE_PATH=/usr/lib/node_modules

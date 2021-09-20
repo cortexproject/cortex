@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -19,12 +23,8 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -119,7 +119,10 @@ func TestWatchPrefixAssignment(t *testing.T) {
 	replica := "r1"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -303,7 +306,10 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 	user := "user"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -349,7 +355,10 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 	cluster := "c1"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -426,7 +435,10 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init HA tracker
 			codec := GetReplicaDescCodec()
-			mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+			kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+			mock := kv.PrefixClient(kvStore, "prefix")
 			c, err := newHATracker(HATrackerConfig{
 				EnableHATracker:        true,
 				KVStore:                kv.Config{Mock: mock},
@@ -522,7 +534,10 @@ func TestHAClustersLimit(t *testing.T) {
 	const userID = "user"
 
 	codec := GetReplicaDescCodec()
-	mock := kv.PrefixClient(consul.NewInMemoryClient(codec), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	limits := trackerLimits{maxClusters: 2}
 
 	t1, err := newHATracker(HATrackerConfig{
@@ -552,6 +567,28 @@ func TestHAClustersLimit(t *testing.T) {
 
 	assert.NoError(t, t1.checkReplica(context.Background(), userID, "b", "b2", now))
 	waitForClustersUpdate(t, 2, t1, userID)
+
+	// Mark cluster "a" for deletion (it was last updated 5 seconds ago)
+	// We use seconds timestamp resolution here, to avoid cleaning up 'b'. (In KV store, we only store seconds).
+	t1.cleanupOldReplicas(context.Background(), time.Unix(now.Unix(), 0))
+	waitForClustersUpdate(t, 1, t1, userID)
+
+	// Now adding cluster "c" works.
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "c", "c1", now))
+	waitForClustersUpdate(t, 2, t1, userID)
+
+	// But yet another cluster doesn't.
+	assert.EqualError(t, t1.checkReplica(context.Background(), userID, "a", "a2", now), "too many HA clusters (limit: 2)")
+
+	now = now.Add(5 * time.Second)
+
+	// clean all replicas
+	t1.cleanupOldReplicas(context.Background(), now)
+	waitForClustersUpdate(t, 0, t1, userID)
+
+	// Now "a" works again.
+	assert.NoError(t, t1.checkReplica(context.Background(), userID, "a", "a1", now))
+	waitForClustersUpdate(t, 1, t1, userID)
 }
 
 func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID string) {
@@ -560,7 +597,7 @@ func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID str
 		tr.electedLock.RLock()
 		defer tr.electedLock.RUnlock()
 
-		return tr.clusters[userID]
+		return len(tr.clusters[userID])
 	})
 }
 
@@ -633,7 +670,7 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster",user="userB"} 10
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster1",user="userA"} 5
 		cortex_ha_tracker_elected_replica_timestamp_seconds{cluster="cluster2",user="userA"} 8
-		
+
 		# HELP cortex_ha_tracker_kv_store_cas_total The total number of CAS calls to the KV store for a user ID/cluster.
 		# TYPE cortex_ha_tracker_kv_store_cas_total counter
 		cortex_ha_tracker_kv_store_cas_total{cluster="cluster",user="userB"} 10
@@ -666,7 +703,10 @@ func TestCheckReplicaCleanup(t *testing.T) {
 
 	reg := prometheus.NewPedanticRegistry()
 
-	mock := kv.PrefixClient(consul.NewInMemoryClient(GetReplicaDescCodec()), "prefix")
+	kvStore, closer := consul.NewInMemoryClient(GetReplicaDescCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mock := kv.PrefixClient(kvStore, "prefix")
 	c, err := newHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
@@ -686,26 +726,31 @@ func TestCheckReplicaCleanup(t *testing.T) {
 
 	// Replica is not marked for deletion yet.
 	checkReplicaDeletionState(t, time.Second, c, userID, cluster, true, true, false)
+	checkUserClusters(t, time.Second, c, userID, 1)
 
 	// This will mark replica for deletion (with time.Now())
 	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
 
 	// Verify marking for deletion.
 	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, true, true)
+	checkUserClusters(t, time.Second, c, userID, 0)
 
 	// This will "revive" the replica.
 	now = time.Now()
 	err = c.checkReplica(context.Background(), userID, cluster, replica, now)
 	assert.NoError(t, err)
 	checkReplicaTimestamp(t, time.Second, c, userID, cluster, replica, now) // This also checks that entry is not marked for deletion.
+	checkUserClusters(t, time.Second, c, userID, 1)
 
 	// This will mark replica for deletion again (with new time.Now())
 	c.cleanupOldReplicas(ctx, now.Add(1*time.Second))
 	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, true, true)
+	checkUserClusters(t, time.Second, c, userID, 0)
 
 	// Delete entry marked for deletion completely.
 	c.cleanupOldReplicas(ctx, time.Now().Add(5*time.Second))
 	checkReplicaDeletionState(t, time.Second, c, userID, cluster, false, false, false)
+	checkUserClusters(t, time.Second, c, userID, 0)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_ha_tracker_replicas_cleanup_marked_for_deletion_total Number of elected replicas marked for deletion.
@@ -723,6 +768,21 @@ func TestCheckReplicaCleanup(t *testing.T) {
 		"cortex_ha_tracker_replicas_cleanup_deleted_total",
 		"cortex_ha_tracker_replicas_cleanup_delete_failed_total",
 	))
+}
+
+func checkUserClusters(t *testing.T, duration time.Duration, c *haTracker, user string, expectedClusters int) {
+	t.Helper()
+	test.Poll(t, duration, nil, func() interface{} {
+		c.electedLock.RLock()
+		cl := len(c.clusters[user])
+		c.electedLock.RUnlock()
+
+		if cl != expectedClusters {
+			return fmt.Errorf("expected clusters: %d, got %d", expectedClusters, cl)
+		}
+
+		return nil
+	})
 }
 
 func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *haTracker, user, cluster string, expectedExistsInMemory, expectedExistsInKV, expectedMarkedForDeletion bool) {

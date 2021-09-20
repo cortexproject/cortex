@@ -5,6 +5,8 @@ weight: 5
 slug: ingesters-with-wal
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 By default, ingesters running with the chunks storage, store all their data in memory. If there is a crash, there could be loss of data. The Write-Ahead Log (WAL) helps fill this gap in reliability.
 
 To use WAL, there are some changes that needs to be made in the deployment.

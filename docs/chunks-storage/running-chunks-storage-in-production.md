@@ -5,6 +5,8 @@ weight: 1
 slug: running-chunks-storage-in-production
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 This document builds on the [getting started guide](../getting-started/_index.md) and specifies the steps needed to get Cortex [**chunks storage**](../chunks-storage/_index.md) into production.
 Ensure you have completed all the steps in the [getting started guide](../getting-started/_index.md) and read about [the Cortex architecture](../architecture.md) before you start this one.
 

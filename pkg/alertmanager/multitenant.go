@@ -326,6 +326,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 			cluster.DefaultTcpTimeout,
 			cluster.DefaultProbeTimeout,
 			cluster.DefaultProbeInterval,
+			nil,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize gossip mesh")

@@ -1,13 +1,11 @@
 package purger
 
 import (
-	"bytes"
 	"context"
 	math "math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -17,7 +15,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -272,79 +269,6 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			exists, _ := tManager.TombstoneExists(ctx, "request_id", cortex_tsdb.StateCancelled)
 			require.Equal(t, tc.cancelledFileExists, exists)
 
-		})
-	}
-}
-
-func TestDeleteTenant(t *testing.T) {
-	bkt := objstore.NewInMemBucket()
-	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
-
-	{
-		resp := httptest.NewRecorder()
-		api.DeleteTenant(resp, &http.Request{})
-		require.Equal(t, http.StatusUnauthorized, resp.Code)
-	}
-
-	{
-		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, userID)
-
-		req := &http.Request{}
-		resp := httptest.NewRecorder()
-		api.DeleteTenant(resp, req.WithContext(ctx))
-
-		require.Equal(t, http.StatusOK, resp.Code)
-		objs := bkt.Objects()
-		require.NotNil(t, objs[path.Join(userID, tsdb.TenantDeletionMarkPath)])
-	}
-}
-
-func TestDeleteTenantStatus(t *testing.T) {
-	const username = "user"
-
-	for name, tc := range map[string]struct {
-		objects               map[string][]byte
-		expectedBlocksDeleted bool
-	}{
-		"empty": {
-			objects:               nil,
-			expectedBlocksDeleted: true,
-		},
-
-		"no user objects": {
-			objects: map[string][]byte{
-				"different-user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
-			},
-			expectedBlocksDeleted: true,
-		},
-
-		"non-block files": {
-			objects: map[string][]byte{
-				"user/deletion-mark.json": []byte("data"),
-			},
-			expectedBlocksDeleted: true,
-		},
-
-		"block files": {
-			objects: map[string][]byte{
-				"user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
-			},
-			expectedBlocksDeleted: false,
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			bkt := objstore.NewInMemBucket()
-			// "upload" objects
-			for objName, data := range tc.objects {
-				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
-			}
-
-			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
-
-			res, err := api.isBlocksForUserDeleted(context.Background(), username)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedBlocksDeleted, res)
 		})
 	}
 }

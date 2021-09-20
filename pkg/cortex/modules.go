@@ -802,8 +802,23 @@ func (t *Cortex) initChunksPurger() (services.Service, error) {
 	return t.Purger, nil
 }
 
-func (t *Cortex) initBlocksPurger() (services.Service, error) {
+func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
+		return nil, nil
+	}
+
+	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
+	tenantDeletionAPI, err := purger.NewTenantDeletionAPI(t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	t.API.RegisterTenantDeletion(tenantDeletionAPI)
+	return nil, nil
+}
+
+func (t *Cortex) initBlocksPurger() (services.Service, error) {
+	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks || !t.Cfg.PurgerConfig.EnableSeriesDeletion {
 		return nil, nil
 	}
 
@@ -813,7 +828,7 @@ func (t *Cortex) initBlocksPurger() (services.Service, error) {
 		return nil, err
 	}
 
-	t.API.RegisterBlocksPurger(blockPurger, t.Cfg.PurgerConfig.EnableSeriesDeletion)
+	t.API.RegisterBlocksPurger(blockPurger)
 	return nil, nil
 }
 
@@ -859,6 +874,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(ChunksPurger, t.initChunksPurger, modules.UserInvisibleModule)
+	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(BlocksPurger, t.initBlocksPurger, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
@@ -893,8 +909,9 @@ func (t *Cortex) setupModuleManager() error {
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		ChunksPurger:             {Store, DeleteRequestsStore, API},
+		TenantDeletion:           {Store, API, Overrides},
 		BlocksPurger:             {Store, API, Overrides},
-		Purger:                   {ChunksPurger, BlocksPurger},
+		Purger:                   {ChunksPurger, TenantDeletion, BlocksPurger},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
 	}

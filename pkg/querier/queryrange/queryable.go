@@ -30,7 +30,7 @@ func (q *ShardedQueryable) Querier(ctx context.Context, mint, maxt int64) (stora
 	return q.sharededQuerier, nil
 }
 
-func (q *ShardedQueryable) getResponseHeaders() []*PrometheusResponseHeader {
+func (q *ShardedQueryable) getResponseHeaders() []*PrometheusHeader {
 	q.sharededQuerier.ResponseHeadersMtx.Lock()
 	defer q.sharededQuerier.ResponseHeadersMtx.Unlock()
 
@@ -117,7 +117,7 @@ func (q *ShardedQuerier) handleEmbeddedQuery(encoded string) storage.SeriesSet {
 	return NewSeriesSet(samples)
 }
 
-func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusResponseHeader) {
+func (q *ShardedQuerier) setResponseHeaders(headers []*PrometheusHeader) {
 	q.ResponseHeadersMtx.Lock()
 	defer q.ResponseHeadersMtx.Unlock()
 
@@ -145,9 +145,9 @@ func (q *ShardedQuerier) Close() error {
 	return nil
 }
 
-func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusResponseHeader) {
+func headersMapToPrometheusResponseHeaders(headersMap map[string][]string) (prs []*PrometheusHeader) {
 	for h, v := range headersMap {
-		prs = append(prs, &PrometheusResponseHeader{Name: h, Values: v})
+		prs = append(prs, &PrometheusHeader{Name: h, Values: v})
 	}
 
 	return

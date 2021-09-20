@@ -94,7 +94,7 @@ type Request interface {
 type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
-	GetHeaders() []*PrometheusResponseHeader
+	GetHeaders() []*PrometheusHeader
 }
 
 type prometheusCodec struct{}
@@ -178,7 +178,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	}
 
 	if len(resultsCacheGenNumberHeaderValues) != 0 {
-		response.Headers = []*PrometheusResponseHeader{{
+		response.Headers = []*PrometheusHeader{{
 			Name:   ResultsCacheGenNumberHeaderName,
 			Values: resultsCacheGenNumberHeaderValues,
 		}}
@@ -222,6 +222,16 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
 
+	// Include the headers from http request in prometheusRequest.
+	// We don't include the following header in the codec -
+	// accept-encoding - defaultroundtripper uses the response_compression_enabled setting to inflate/deflate responses
+	for h, hv := range r.Header {
+		if strings.ToLower(h) == "accept-encoding" {
+			continue
+		}
+		result.Headers = append(result.Headers, &PrometheusHeader{Name: h, Values: hv})
+	}
+
 	for _, value := range r.Header.Values(cacheControlHeader) {
 		if strings.Contains(value, noStoreValue) {
 			result.CachingOptions.Disabled = true
@@ -247,12 +257,23 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 		Path:     promReq.Path,
 		RawQuery: params.Encode(),
 	}
+	h := make(http.Header)
+
+	for _, hv := range promReq.Headers {
+		if hv == nil {
+			continue
+		}
+		for _, v := range hv.Values {
+			h.Add(hv.Name, v)
+		}
+	}
+
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
 		Body:       http.NoBody,
-		Header:     http.Header{},
+		Header:     h,
 	}
 
 	return req.WithContext(ctx), nil
@@ -279,7 +300,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	}
 
 	for h, hv := range r.Header {
-		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
+		resp.Headers = append(resp.Headers, &PrometheusHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
 }

@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Querier: Headers from request are lost in decoding http requests to PrometheusRequests by prometheusCodec. #4416
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`

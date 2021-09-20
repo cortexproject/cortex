@@ -18,6 +18,8 @@ import (
 )
 
 func TestRequest(t *testing.T) {
+	r := *parsedRequest
+	r.Headers = reqHeaders
 	for i, tc := range []struct {
 		url         string
 		expected    Request
@@ -25,7 +27,7 @@ func TestRequest(t *testing.T) {
 	}{
 		{
 			url:      query,
-			expected: parsedRequest,
+			expected: &r,
 		},
 		{
 			url:         "api/v1/query_range?start=foo",
@@ -55,9 +57,10 @@ func TestRequest(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			r, err := http.NewRequest("GET", tc.url, nil)
 			require.NoError(t, err)
+			r.Header.Add("Test-Header", "test")
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			r = r.WithContext(ctx)
+			r = r.Clone(ctx)
 
 			req, err := PrometheusCodec.DecodeRequest(ctx, r)
 			if err != nil {

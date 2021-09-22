@@ -8,9 +8,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
+
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
 )
 
 // mapper is designed to enusre the provided rule sets are identical

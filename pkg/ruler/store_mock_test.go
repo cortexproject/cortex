@@ -110,6 +110,25 @@ var (
 			},
 		},
 	}
+
+	mockFederatedRules = map[string]rulespb.RuleGroupList{
+		"federated_user": {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "namespace1",
+				User:      "federated_user",
+				Rules: []*rulespb.RuleDesc{
+					{
+						Record:     "UP_RULE",
+						Expr:       "up",
+						SrcTenants: "src1|src2",
+						DestTenant: "dstTenant",
+					},
+				},
+				Interval: interval,
+			},
+		},
+	}
 )
 
 func newMockRuleStore(rules map[string]rulespb.RuleGroupList) *mockRuleStore {

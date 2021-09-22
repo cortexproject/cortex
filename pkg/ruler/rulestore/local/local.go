@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	promRules "github.com/prometheus/prometheus/rules"
 
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -30,10 +30,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 //  cfg.Directory / userID / namespace
 type Client struct {
 	cfg    Config
-	loader promRules.GroupLoader
+	loader rules.GroupLoader
 }
 
-func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, error) {
+func NewLocalRulesClient(cfg Config, loader rules.GroupLoader) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")
 	}

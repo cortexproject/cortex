@@ -16,11 +16,11 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -77,6 +77,8 @@ type alertingRule struct {
 	State          string        `json:"state"`
 	Name           string        `json:"name"`
 	Query          string        `json:"query"`
+	SrcTenants     string        `json:"srcTenants,omitempty"`
+	DestTenant     string        `json:"destTenant,omitempty"`
 	Duration       float64       `json:"duration"`
 	Labels         labels.Labels `json:"labels"`
 	Annotations    labels.Labels `json:"annotations"`
@@ -91,6 +93,8 @@ type alertingRule struct {
 type recordingRule struct {
 	Name           string        `json:"name"`
 	Query          string        `json:"query"`
+	SrcTenants     string        `json:"srcTenants,omitempty"`
+	DestTenant     string        `json:"destTenant,omitempty"`
 	Labels         labels.Labels `json:"labels"`
 	Health         string        `json:"health"`
 	LastError      string        `json:"lastError"`
@@ -190,6 +194,8 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 					LastEvaluation: rl.GetEvaluationTimestamp(),
 					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
 					Type:           v1.RuleTypeAlerting,
+					SrcTenants:     rl.Rule.GetSrcTenants(),
+					DestTenant:     rl.Rule.GetDestTenant(),
 				}
 			} else {
 				grp.Rules[i] = recordingRule{
@@ -201,6 +207,8 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 					LastEvaluation: rl.GetEvaluationTimestamp(),
 					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
 					Type:           v1.RuleTypeRecording,
+					SrcTenants:     rl.Rule.GetSrcTenants(),
+					DestTenant:     rl.Rule.GetDestTenant(),
 				}
 			}
 		}
@@ -492,6 +500,12 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
 		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := a.ruler.AssertValidFederation(userID, rg.Rules); err != nil {
+		level.Error(logger).Log("msg", "rule federation failure", "err", err.Error(), "rules", rg.Rules)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

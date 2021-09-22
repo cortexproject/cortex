@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -69,7 +69,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	client, err := NewLocalRulesClient(Config{
 		Directory: dir,
-	}, promRules.FileLoader{})
+	}, rules.FileLoader{})
 	require.NoError(t, err)
 
 	ctx := context.Background()

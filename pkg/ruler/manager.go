@@ -14,11 +14,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -218,8 +218,8 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 	return n.notifier, nil
 }
 
-func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
-	var groups []*promRules.Group
+func (r *DefaultMultiTenantManager) GetRules(userID string) []*rules.Group {
+	var groups []*rules.Group
 	r.userManagerMtx.Lock()
 	if mngr, exists := r.userManagers[userID]; exists {
 		groups = mngr.RuleGroups()

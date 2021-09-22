@@ -166,7 +166,8 @@ func populateManager(base float64) *prometheus.Registry {
 	return r
 }
 
-// Copied from github.com/prometheus/rules/manager.go
+// TODO import the one from pkg/ruler/rules to use here
+// Copied originally from github.com/prometheus/rules/manager.go
 type groupMetrics struct {
 	evalDuration         prometheus.Summary
 	iterationDuration    prometheus.Summary

@@ -12,11 +12,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 
 	legacy_promql "github.com/cortexproject/cortex/pkg/configs/legacy_promql"
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 

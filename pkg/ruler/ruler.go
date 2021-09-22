@@ -21,14 +21,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -59,6 +59,10 @@ const (
 	// Limit errors
 	errMaxRuleGroupsPerUserLimitExceeded        = "per-user rule groups limit (limit: %d actual: %d) exceeded"
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
+
+	// Federation errors
+	errRulerFederationNotEnabled = "ruler federation not enabled and federated rule detected (src_tenant: %s dest_tenant: %s)"
+	errFederatedRulesNotAllowed  = "ruler federation not allowed for user (userID: %s)"
 
 	// errors
 	errListAllUser = "unable to list the ruler users"
@@ -116,6 +120,10 @@ type Config struct {
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	EnableQueryStats bool `yaml:"query_stats_enabled"`
+
+	EnableFederatedRules       bool                   `yaml:"enable_federated_rules"`
+	AllowedFederatedTenants    flagext.StringSliceCSV `yaml:"allowed_federated_tenants"`
+	DisallowedFederatedTenants flagext.StringSliceCSV `yaml:"disallowed_federated_tenants"`
 }
 
 // Validate config and returns error on failure
@@ -180,6 +188,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
 
+	f.BoolVar(&cfg.EnableFederatedRules, "ruler.enable-federated-rules", false, "Allow federated rules for ruler.")
+	f.Var(&cfg.AllowedFederatedTenants, "ruler.allowed-federated-tenants", "Comma separated list of tenants that are allowed to have federated rules which query data from multiple tenants.")
+	f.Var(&cfg.DisallowedFederatedTenants, "ruler.disallowed-federated-tenants", "Comma separated list of tenants that are not allowed to have federated rules which query data from multiple tenants.")
+
 	cfg.RingCheckPeriod = 5 * time.Second
 }
 
@@ -189,7 +201,7 @@ type MultiTenantManager interface {
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
 	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList)
 	// GetRules fetches rules for a particular tenant (userID).
-	GetRules(userID string) []*promRules.Group
+	GetRules(userID string) []*rules.Group
 	// Stop stops all Manager components.
 	Stop()
 	// ValidateRuleGroup validates a rulegroup
@@ -241,7 +253,8 @@ type Ruler struct {
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
 
-	allowedTenants *util.AllowedTenants
+	allowedTenants   *util.AllowedTenants
+	federatedTenants *util.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
@@ -254,14 +267,15 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:            cfg,
-		store:          ruleStore,
-		manager:        manager,
-		registry:       reg,
-		logger:         logger,
-		limits:         limits,
-		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		cfg:              cfg,
+		store:            ruleStore,
+		manager:          manager,
+		registry:         reg,
+		logger:           logger,
+		limits:           limits,
+		clientsPool:      clientPool,
+		allowedTenants:   util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		federatedTenants: util.NewAllowedTenants(cfg.AllowedFederatedTenants, cfg.DisallowedFederatedTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -371,8 +385,8 @@ type sender interface {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
+func SendAlerts(n sender, externalURL string) rules.NotifyFunc {
+	return func(ctx context.Context, expr string, alerts ...*rules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {
@@ -692,7 +706,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
-			case *promRules.AlertingRule:
+			case *rules.AlertingRule:
 				rule.ActiveAlerts()
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
@@ -715,6 +729,8 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 						For:         rule.HoldDuration(),
 						Labels:      cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
 						Annotations: cortexpb.FromLabelsToLabelAdapters(rule.Annotations()),
+						SrcTenants:  rule.GetSrcTenants(),
+						DestTenant:  rule.GetDestTenant(),
 					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),
@@ -723,12 +739,14 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationTimestamp: rule.GetEvaluationTimestamp(),
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
-			case *promRules.RecordingRule:
+			case *rules.RecordingRule:
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
-						Record: rule.Name(),
-						Expr:   rule.Query().String(),
-						Labels: cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
+						Record:     rule.Name(),
+						Expr:       rule.Query().String(),
+						Labels:     cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
+						SrcTenants: rule.GetSrcTenants(),
+						DestTenant: rule.GetDestTenant(),
 					},
 					Health:              string(rule.Health()),
 					LastError:           lastError,
@@ -838,6 +856,22 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 		return nil
 	}
 	return fmt.Errorf(errMaxRulesPerRuleGroupPerUserLimitExceeded, limit, rules)
+}
+
+// AssertValidFederation check whether the rules are federated, and if so
+// whether federation is enabled for the ruler and the given tenant
+func (r *Ruler) AssertValidFederation(userID string, rules []rulefmt.RuleNode) error {
+	for _, rule := range rules {
+		if rule.IsFederated() {
+			if !r.cfg.EnableFederatedRules {
+				return fmt.Errorf(errRulerFederationNotEnabled, rule.SrcTenants.Value, rule.DestTenant.Value)
+			}
+			if !r.federatedTenants.IsAllowed(userID) {
+				return fmt.Errorf(errFederatedRulesNotAllowed, userID)
+			}
+		}
+	}
+	return nil
 }
 
 func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {

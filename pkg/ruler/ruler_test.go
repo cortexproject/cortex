@@ -39,9 +39,7 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"github.com/prometheus/prometheus/promql"
-	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,6 +49,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rules"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
@@ -222,7 +222,7 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
 	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
-	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, rules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
@@ -1153,11 +1153,11 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 
 func TestSendAlerts(t *testing.T) {
 	testCases := []struct {
-		in  []*promRules.Alert
+		in  []*rules.Alert
 		exp []*notifier.Alert
 	}{
 		{
-			in: []*promRules.Alert{
+			in: []*rules.Alert{
 				{
 					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
 					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
@@ -1177,7 +1177,7 @@ func TestSendAlerts(t *testing.T) {
 			},
 		},
 		{
-			in: []*promRules.Alert{
+			in: []*rules.Alert{
 				{
 					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
 					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
@@ -1197,7 +1197,7 @@ func TestSendAlerts(t *testing.T) {
 			},
 		},
 		{
-			in: []*promRules.Alert{},
+			in: []*rules.Alert{},
 		},
 	}
 
@@ -1290,7 +1290,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	alertRule := ruleGroup.Rules()[0]
 	require.Equal(t, time.Time{}, alertRule.GetEvaluationTimestamp())
 	require.Equal(t, "UP_ALERT", alertRule.Name())
-	require.Equal(t, promRules.HealthUnknown, alertRule.Health())
+	require.Equal(t, rules.HealthUnknown, alertRule.Health())
 
 	// NEXT, evaluate the rule group the first time and assert
 	ctx := user.InjectOrgID(context.Background(), "user1")
@@ -1298,7 +1298,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 
 	// since the eval is done at the current timestamp, the activeAt timestamp of alert should equal current timestamp
 	require.Equal(t, "UP_ALERT", alertRule.Name())
-	require.Equal(t, promRules.HealthGood, alertRule.Health())
+	require.Equal(t, rules.HealthGood, alertRule.Health())
 
 	activeMapRaw := reflect.ValueOf(alertRule).Elem().FieldByName("active")
 	activeMapKeys := activeMapRaw.MapKeys()
@@ -1307,15 +1307,15 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	activeAlertRuleRaw := activeMapRaw.MapIndex(activeMapKeys[0]).Elem()
 	activeAtTimeRaw := activeAlertRuleRaw.FieldByName("ActiveAt")
 
-	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, rules.StatePending, rules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), currentTime)
 
 	// NEXT, restore the FOR state and assert
 	ruleGroup.RestoreForState(currentTime)
 
 	require.Equal(t, "UP_ALERT", alertRule.Name())
-	require.Equal(t, promRules.HealthGood, alertRule.Health())
-	require.Equal(t, promRules.StatePending, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, rules.HealthGood, alertRule.Health())
+	require.Equal(t, rules.StatePending, rules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 	require.Equal(t, reflect.NewAt(activeAtTimeRaw.Type(), unsafe.Pointer(activeAtTimeRaw.UnsafeAddr())).Elem().Interface().(time.Time), downAtActiveAtTime.Add(currentTime.Sub(downAtTime)))
 
 	// NEXT, 20 minutes is expected to be left, eval timestamp at currentTimestamp +20m
@@ -1327,5 +1327,5 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	firedAtTime := reflect.NewAt(firedAtRaw.Type(), unsafe.Pointer(firedAtRaw.UnsafeAddr())).Elem().Interface().(time.Time)
 	require.Equal(t, firedAtTime, currentTime)
 
-	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+	require.Equal(t, rules.StateFiring, rules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
 }

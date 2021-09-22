@@ -5,10 +5,10 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb" //lint:ignore faillint allowed to import other protobuf
+	"github.com/cortexproject/cortex/pkg/ruler/rulefmt"
 )
 
 // ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
@@ -33,6 +33,8 @@ func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
 			For:         time.Duration(rls[i].For),
 			Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
 			Annotations: cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
+			SrcTenants:  rls[i].SrcTenants.Value,
+			DestTenant:  rls[i].DestTenant.Value,
 		}
 	}
 
@@ -66,6 +68,16 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 			alertNode := yaml.Node{}
 			alertNode.SetString(rl.GetAlert())
 			newRule.Alert = alertNode
+		}
+		if rl.GetSrcTenants() != "" {
+			srcNode := yaml.Node{}
+			srcNode.SetString(rl.GetSrcTenants())
+			newRule.SrcTenants = srcNode
+		}
+		if rl.GetDestTenant() != "" {
+			destNode := yaml.Node{}
+			destNode.SetString(rl.GetDestTenant())
+			newRule.DestTenant = destNode
 		}
 
 		formattedRuleGroup.Rules[i] = newRule

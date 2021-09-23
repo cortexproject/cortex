@@ -60,6 +60,7 @@ func NewShuffleShardingGrouper(
 		blocksMarkedForDeletion:  blocksMarkedForDeletion,
 		garbageCollectedBlocks:   garbageCollectedBlocks,
 		hashFunc:                 hashFunc,
+		// Metrics are copied from Thanos DefaultGrouper constructor
 		compactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "thanos_compact_group_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block.",

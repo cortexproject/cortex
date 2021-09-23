@@ -375,10 +375,15 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
 		instance := r.ringDesc.Ingesters[info.InstanceID]
-
+		state := instance.State
+		// Heartbeat unhealthy instance also needs to extend replication.
+		// Since the ring will not update instance state automatically, changing the state to LEFT instead.
+		if !instance.IsHeartbeatHealthy(r.cfg.HeartbeatTimeout, time.Now()) {
+			state = LEFT
+		}
 		// Check whether the replica set should be extended given we're including
 		// this instance.
-		if op.ShouldExtendReplicaSetOnState(instance.State) {
+		if op.ShouldExtendReplicaSetOnState(state) {
 			n++
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only add the zone if we are not going to extend,

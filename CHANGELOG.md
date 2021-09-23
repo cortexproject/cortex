@@ -50,6 +50,13 @@
 * [BUGFIX] Ingester: When using block storage, prevent any reads or writes while the ingester is stopping. This will prevent accessing TSDB blocks once they have been already closed. #4304
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
 * [FEATURE] Memberlist: expose configuration of memberlist handoff queue depth via `-memberlist.handoff-queue-depth`. #4402
+* [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
+* [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
+* [BUGFIX] Memberlist: forward only changes, not entire original message. #4419
+* [BUGFIX] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
+* [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
+* [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
+* [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
 
 ## 1.10.0 / 2021-08-03
 

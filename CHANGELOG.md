@@ -85,6 +85,7 @@
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
 * [BUGFIX] Update go-kit package to fix spurious log messages #4544
 
+
 ## 1.10.0 / 2021-08-03
 
 * [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)

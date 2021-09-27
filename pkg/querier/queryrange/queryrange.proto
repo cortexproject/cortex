@@ -12,6 +12,10 @@ import "google/protobuf/any.proto";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
+message PrometheusRequestHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}
 message PrometheusRequest {
   string path = 1;
   int64 start = 2;
@@ -20,10 +24,10 @@ message PrometheusRequest {
   google.protobuf.Duration timeout = 5 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
   string query = 6;
   CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
-  repeated PrometheusHeader Headers = 8 [(gogoproto.jsontag) = "-"];
+  repeated PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
 }
 
-message PrometheusHeader {
+message PrometheusResponseHeader {
   string Name = 1 [(gogoproto.jsontag) = "-"];
   repeated string Values = 2 [(gogoproto.jsontag) = "-"];
 }
@@ -33,7 +37,7 @@ message PrometheusResponse {
   PrometheusData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
-  repeated PrometheusHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  repeated PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
 }
 
 message PrometheusData {

@@ -32,7 +32,7 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
-	reqHeaders = []*PrometheusHeader{
+	reqHeaders = []*PrometheusRequestHeader{
 		{
 			Name:   "Test-Header",
 			Values: []string{"test"},
@@ -46,7 +46,7 @@ var (
 		Query:          "sum(container_memory_rss) by (namespace)",
 		CachingOptions: CachingOptions{Disabled: true},
 	}
-	respHeaders = []*PrometheusHeader{
+	respHeaders = []*PrometheusResponseHeader{
 		{
 			Name:   "Content-Type",
 			Values: []string{"application/json"},
@@ -128,7 +128,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "does not contain the cacheControl header",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
 						Values: []string{},
@@ -141,7 +141,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "does contain the cacheControl header which has the value",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
 						Values: []string{noStoreValue},
@@ -154,7 +154,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheControl header contains extra values but still good",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
 						Values: []string{"foo", noStoreValue},
@@ -173,7 +173,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "nil headers",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{nil},
+				Headers: []*PrometheusResponseHeader{nil},
 			}),
 			expected: true,
 		},
@@ -181,7 +181,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "had cacheControl header but no values",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{{Name: cacheControlHeader}},
+				Headers: []*PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
 			expected: true,
 		},
@@ -191,7 +191,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheGenNumber not set in both header and store",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
 						Values: []string{},
@@ -204,7 +204,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheGenNumber set in store but not in header",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
 						Values: []string{},
@@ -218,7 +218,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheGenNumber set in header but not in store",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
 						Values: []string{"1"},
@@ -231,7 +231,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheGenNumber in header and store are the same",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
 						Values: []string{"1", "1"},
@@ -245,7 +245,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "inconsistency between cacheGenNumber in header and store",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
 						Values: []string{"1", "2"},
@@ -259,7 +259,7 @@ func TestShouldCache(t *testing.T) {
 			name:    "cacheControl header says not to catch and cacheGenNumbers in store and headers have consistency",
 			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
-				Headers: []*PrometheusHeader{
+				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
 						Values: []string{noStoreValue},

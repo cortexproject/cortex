@@ -94,7 +94,7 @@ type Request interface {
 type Response interface {
 	proto.Message
 	// GetHeaders returns the HTTP headers in the response.
-	GetHeaders() []*PrometheusHeader
+	GetHeaders() []*PrometheusResponseHeader
 }
 
 type prometheusCodec struct{}
@@ -178,7 +178,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	}
 
 	if len(resultsCacheGenNumberHeaderValues) != 0 {
-		response.Headers = []*PrometheusHeader{{
+		response.Headers = []*PrometheusResponseHeader{{
 			Name:   ResultsCacheGenNumberHeaderName,
 			Values: resultsCacheGenNumberHeaderValues,
 		}}
@@ -229,7 +229,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 		if strings.ToLower(h) == "accept-encoding" {
 			continue
 		}
-		result.Headers = append(result.Headers, &PrometheusHeader{Name: h, Values: hv})
+		result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
 	}
 
 	for _, value := range r.Header.Values(cacheControlHeader) {
@@ -257,12 +257,9 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 		Path:     promReq.Path,
 		RawQuery: params.Encode(),
 	}
-	h := make(http.Header)
+	var h = http.Header{}
 
 	for _, hv := range promReq.Headers {
-		if hv == nil {
-			continue
-		}
 		for _, v := range hv.Values {
 			h.Add(hv.Name, v)
 		}
@@ -300,7 +297,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	}
 
 	for h, hv := range r.Header {
-		resp.Headers = append(resp.Headers, &PrometheusHeader{Name: h, Values: hv})
+		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
 }

@@ -210,7 +210,12 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 				// We are deleting entry "now", and should not keep old timestamp, because there may already be pending
 				// message in the gossip network with newer timestamp (but still older than "now").
 				// Such message would "resurrect" this deleted entry.
-				ting.Timestamp = now.Unix()
+				// If timestamp on the ring is in "the future" we need to use the timestamp of the ring
+				// otherwise the gossip message will be ignored by the peers.
+				// see https://github.com/cortexproject/cortex/blob/d3f46c53616dcdf5c670f3e3a4d371e44b10683e/pkg/ring/model.go#L192-L200
+				if ting.Timestamp < now.Unix() {
+					ting.Timestamp = now.Unix()
+				}
 				thisIngesterMap[name] = ting
 
 				updated = append(updated, name)

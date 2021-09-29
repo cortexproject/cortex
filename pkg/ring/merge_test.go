@@ -356,7 +356,27 @@ func TestMergeRemoveMissing(t *testing.T) {
 			Ingesters: map[string]InstanceDesc{
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
-				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
+				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT},
+			},
+		}
+	}
+
+	thirdRing := func() *Desc {
+		return &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
+				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{5, 10, 20, 100, 200}},
+				"Ing 3": {Addr: "addr3", Timestamp: now + 50, State: LEAVING, Tokens: []uint32{5, 10, 20, 100, 200}},
+			},
+		}
+	}
+
+	expectedThirdSecondMerge := func() *Desc {
+		return &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
+				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
+				"Ing 3": {Addr: "addr3", Timestamp: now + 50, State: LEFT},
 			},
 		}
 	}
@@ -367,7 +387,18 @@ func TestMergeRemoveMissing(t *testing.T) {
 		assert.Equal(t, &Desc{
 			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
-				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time depends on value passed to merge function.
+				"Ing 3": {Addr: "addr3", Timestamp: now + 3, State: LEFT}, // When deleting, time  is recent between now and current timestamp
+			},
+		}, ch) // entire second ring is new
+	}
+
+	{
+		our, ch := mergeLocalCAS(thirdRing(), secondRing(), now+10)
+		assert.Equal(t, expectedThirdSecondMerge(), our)
+		assert.Equal(t, &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 2": {Addr: "addr2", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{5, 10, 20, 100, 200}},
+				"Ing 3": {Addr: "addr3", Timestamp: now + 50, State: LEFT}, // When deleting, time  is recent between now and current timestamp
 			},
 		}, ch) // entire second ring is new
 	}

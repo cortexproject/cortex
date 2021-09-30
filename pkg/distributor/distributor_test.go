@@ -1082,7 +1082,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
-		inputSeries    labels.Labels
+		inputSeries    []labels.Labels
 		expectedSeries labels.Labels
 		removeReplica  bool
 		removeLabels   []string
@@ -1093,11 +1093,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{
 			removeReplica: true,
 			removeLabels:  []string{"cluster"},
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 			},
@@ -1106,13 +1106,13 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{
 			removeReplica: true,
 			removeLabels:  []string{"foo", "some"},
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
 				{Name: "foo", Value: "bar"},
 				{Name: "some", Value: "thing"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
@@ -1121,11 +1121,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		// Don't remove any labels.
 		{
 			removeReplica: false,
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "__replica__", Value: "two"},
 				{Name: "cluster", Value: "one"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "__replica__", Value: "two"},
@@ -1169,16 +1169,16 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		inputSeries    labels.Labels
+		inputSeries    []labels.Labels
 		expectedSeries labels.Labels
 		expectedToken  uint32
 	}{
 		"metric_1 with value_1": {
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1187,12 +1187,12 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped label due to config": {
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
 				{Name: "dropped", Value: "unused"}, // will be dropped, doesn't need to be in correct order
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1201,12 +1201,12 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped HA replica label": {
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
 				{Name: "__replica__", Value: "replica_1"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1215,10 +1215,10 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_2 with value_1": {
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "metric_2"},
 				{Name: "key", Value: "value_1"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_2"},
 				{Name: "key", Value: "value_1"},
@@ -1226,10 +1226,10 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xa60906f2,
 		},
 		"metric_1 with value_2": {
-			inputSeries: labels.Labels{
+			inputSeries: []labels.Labels{{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "key", Value: "value_2"},
-			},
+			}},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "key", Value: "value_2"},
@@ -1280,24 +1280,24 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	tests := map[string]struct {
-		inputLabels                labels.Labels
+		inputLabels                []labels.Labels
 		skipLabelNameValidationCfg bool
 		skipLabelNameValidationReq bool
 		errExpected                bool
 		errMessage                 string
 	}{
 		"label name validation is on by default": {
-			inputLabels: inputLabels,
+			inputLabels: []labels.Labels{inputLabels},
 			errExpected: true,
 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
 		},
 		"label name validation can be skipped via config": {
-			inputLabels:                inputLabels,
+			inputLabels:                []labels.Labels{inputLabels},
 			skipLabelNameValidationCfg: true,
 			errExpected:                false,
 		},
 		"label name validation can be skipped via WriteRequest parameter": {
-			inputLabels:                inputLabels,
+			inputLabels:                []labels.Labels{inputLabels},
 			skipLabelNameValidationReq: true,
 			errExpected:                false,
 		},
@@ -1790,7 +1790,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "test")
 
 			for _, series := range fixtures {
-				req := mockWriteRequest(series.lbls, series.value, series.timestamp)
+				req := mockWriteRequest([]labels.Labels{series.lbls}, series.value, series.timestamp)
 				_, err := ds[0].Push(ctx, req)
 				require.NoError(t, err)
 			}
@@ -1875,15 +1875,16 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	return m
 }
 
-func mockWriteRequest(lbls labels.Labels, value float64, timestampMs int64) *cortexpb.WriteRequest {
-	samples := []cortexpb.Sample{
-		{
+func mockWriteRequest(lbls []labels.Labels, value float64, timestampMs int64) *cortexpb.WriteRequest {
+	samples := make([]cortexpb.Sample, len(lbls))
+	for i := range lbls {
+		samples[i] = cortexpb.Sample{
 			TimestampMs: timestampMs,
 			Value:       value,
-		},
+		}
 	}
 
-	return cortexpb.ToWriteRequest([]labels.Labels{lbls}, samples, nil, cortexpb.API)
+	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
 }
 
 type prepConfig struct {
@@ -2641,20 +2642,24 @@ func TestSortLabels(t *testing.T) {
 }
 
 func TestDistributor_Push_Relabel(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), "user")
+	const orgID = "user"
+	ctx := user.InjectOrgID(context.Background(), orgID)
 
 	type testcase struct {
-		inputSeries          labels.Labels
+		name                 string
+		inputSeries          []labels.Labels
 		expectedSeries       labels.Labels
 		metricRelabelConfigs []*relabel.Config
 	}
 
 	cases := []testcase{
-		// No relabel config.
 		{
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "foo"},
-				{Name: "cluster", Value: "one"},
+			name: "with no relabel config",
+			inputSeries: []labels.Labels{
+				{
+					{Name: "__name__", Value: "foo"},
+					{Name: "cluster", Value: "one"},
+				},
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "foo"},
@@ -2662,9 +2667,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			},
 		},
 		{
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "foo"},
-				{Name: "cluster", Value: "one"},
+			name: "with hardcoded replace",
+			inputSeries: []labels.Labels{
+				{
+					{Name: "__name__", Value: "foo"},
+					{Name: "cluster", Value: "one"},
+				},
 			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "foo"},
@@ -2680,36 +2688,63 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "with drop action",
+			inputSeries: []labels.Labels{
+				{
+					{Name: "__name__", Value: "foo"},
+					{Name: "cluster", Value: "one"},
+				},
+				{
+					{Name: "__name__", Value: "bar"},
+					{Name: "cluster", Value: "two"},
+				},
+			},
+			expectedSeries: labels.Labels{
+				{Name: "__name__", Value: "bar"},
+				{Name: "cluster", Value: "two"},
+			},
+			metricRelabelConfigs: []*relabel.Config{
+				{
+					SourceLabels: []model.LabelName{"__name__"},
+					Action:       relabel.Drop,
+					Regex:        relabel.MustNewRegexp("(foo)"),
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {
-		var err error
-		var limits validation.Limits
-		flagext.DefaultValues(&limits)
-		limits.MetricRelabelConfigs = tc.metricRelabelConfigs
+		t.Run(tc.name, func(t *testing.T) {
+			var err error
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+			limits.MetricRelabelConfigs = tc.metricRelabelConfigs
 
-		ds, ingesters, _ := prepare(t, prepConfig{
-			numIngesters:     2,
-			happyIngesters:   2,
-			numDistributors:  1,
-			shardByAllLabels: true,
-			limits:           &limits,
-		})
+			ds, ingesters,  _ := prepare(t, prepConfig{
+				numIngesters:     2,
+				happyIngesters:   2,
+				numDistributors:  1,
+				shardByAllLabels: true,
+				limits:           &limits,
+			})
 
-		// Push the series to the distributor
-		req := mockWriteRequest(tc.inputSeries, 1, 1)
-		_, err = ds[0].Push(ctx, req)
-		require.NoError(t, err)
 
-		// Since each test pushes only 1 series, we do expect the ingester
-		// to have received exactly 1 series
-		for i := range ingesters {
-			timeseries := ingesters[i].series()
-			assert.Equal(t, 1, len(timeseries))
-			for _, v := range timeseries {
-				assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+			// Push the series to the distributor
+			req := mockWriteRequest(tc.inputSeries, 1, 1)
+			_, err = ds[0].Push(ctx, req)
+			require.NoError(t, err)
+
+			// Since each test pushes only 1 series, we do expect the ingester
+			// to have received exactly 1 series
+			for i := range ingesters {
+				timeseries := ingesters[i].series()
+				assert.Equal(t, 1, len(timeseries))
+				for _, v := range timeseries {
+					assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+				}
 			}
-		}
+		})
 	}
 }
 

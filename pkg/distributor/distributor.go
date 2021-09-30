@@ -94,7 +94,7 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
-	discardedSamples                  *prometheus.CounterVec
+	discardedSamples                 *prometheus.CounterVec
 	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec

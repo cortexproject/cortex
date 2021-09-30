@@ -2748,6 +2748,65 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 	}
 }
 
+func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing.T) {
+	metricRelabelConfigs := []*relabel.Config{
+		{
+			SourceLabels: []model.LabelName{"__name__"},
+			Action:       relabel.Drop,
+			Regex:        relabel.MustNewRegexp("(foo)"),
+		},
+	}
+
+	inputSeries := []labels.Labels{
+		{
+			{Name: "__name__", Value: "foo"},
+			{Name: "cluster", Value: "one"},
+		},
+		{
+			{Name: "__name__", Value: "bar"},
+			{Name: "cluster", Value: "two"},
+		},
+	}
+
+	var err error
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.MetricRelabelConfigs = metricRelabelConfigs
+
+	ds, ingesters, r, regs := prepare(t, prepConfig{
+		numIngesters:     2,
+		happyIngesters:   2,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           &limits,
+	})
+	reg := regs[0]
+	defer stopAll(ds, r)
+
+	// Push the series to the distributor
+	req := mockWriteRequest(inputSeries, 1, 1)
+	ctx := user.InjectOrgID(context.Background(), "user")
+	_, err = ds[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Since each test pushes only 1 series, we do expect the ingester
+	// to have received exactly 1 series
+	for i := range ingesters {
+		timeseries := ingesters[i].series()
+		assert.Equal(t, 1, len(timeseries))
+	}
+
+	metrics := []string{"cortex_distributor_received_samples_total", "cortex_distributor_discarded_samples_total"}
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+		# TYPE cortex_distributor_received_samples_total counter
+		cortex_distributor_received_samples_total{user="user"} 1
+		# HELP cortex_distributor_discarded_samples_total The total number of samples which were discarded due to relabel configuration.
+		# TYPE cortex_distributor_discarded_samples_total counter
+		cortex_distributor_discarded_samples_total{user="user"} 1
+		`), metrics...))
+}
+
 func countMockIngestersCalls(ingesters []mockIngester, name string) int {
 	count := 0
 	for i := 0; i < len(ingesters); i++ {

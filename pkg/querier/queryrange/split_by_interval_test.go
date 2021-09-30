@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"github.com/weaveworks/common/httpgrpc"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -346,6 +347,34 @@ func Test_evaluateAtModifier(t *testing.T) {
 			out, err := evaluateAtModifierFunction(tt.in, start, end)
 			require.NoError(t, err)
 			require.Equal(t, expectedExpr.String(), out)
+		})
+	}
+}
+
+func Test_evaluateAtModifier_Error(t *testing.T) {
+	const (
+		start, end = int64(1546300800), int64(1646300800)
+	)
+	for _, tt := range []struct {
+		in string
+	}{
+		{
+			// parse error: missing unit character in duration
+			"http_requests_total[5] @ 10.001",
+		},
+		{
+			// parse error: @ modifier must be preceded by an instant vector selector or range vector selector or a subquery
+			"sum(http_requests_total[5m]) @ 10.001",
+		},
+	} {
+		tt := tt
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			_, err := evaluateAtModifierFunction(tt.in, start, end)
+			require.Error(t, err)
+			httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "returned error is not an httpgrpc response")
+			require.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 		})
 	}
 }

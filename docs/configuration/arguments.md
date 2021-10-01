@@ -528,15 +528,15 @@ Valid ingester instance limits are (with their corresponding flags):
 
 - `max_ingestion_rate` \ `--ingester.instance-limits.max-ingestion-rate`
 
-  Limit the ingestion rate in samples per second for an ingester.
+  Limit the ingestion rate in samples per second for an ingester. When this limit is reached, new requests will fail with an HTTP 500 error.
 
 - `max_series` \ `-ingester.instance-limits.max-series`
 
-  Limit the total number of series that an ingester keeps in memory, across all users.
+  Limit the total number of series that an ingester keeps in memory, across all users. When this limit is reached, requests that create new series will fail with an HTTP 500 error.
 
 - `max_tenants` \ `-ingester.instance-limits.max-tenants`
 
-  Limit the maximum number of users an ingester will accept metrics for.
+  Limit the maximum number of users an ingester will accept metrics for. When this limit is reached, requests from new users will fail with an HTTP 500 error.
 
 - `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
 

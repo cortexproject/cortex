@@ -244,6 +244,7 @@ type ClientConn struct {
 	cond            *sync.Cond // hold mu; broadcast on flow/closed changes
 	flow            flow       // our conn-level flow control quota (cs.flow is per stream)
 	inflow          flow       // peer's conn-level flow control
+	doNotReuse      bool       // whether conn is marked to not be reused for any future requests
 	closing         bool
 	closed          bool
 	wantSettingsAck bool                     // we sent a SETTINGS frame and haven't heard back
@@ -385,8 +386,13 @@ func (cs *clientStream) abortRequestBodyWrite(err error) {
 	}
 	cc := cs.cc
 	cc.mu.Lock()
-	cs.stopReqBody = err
-	cc.cond.Broadcast()
+	if cs.stopReqBody == nil {
+		cs.stopReqBody = err
+		if cs.req.Body != nil {
+			cs.req.Body.Close()
+		}
+		cc.cond.Broadcast()
+	}
 	cc.mu.Unlock()
 }
 
@@ -558,6 +564,10 @@ func canRetryError(err error) bool {
 		return true
 	}
 	if se, ok := err.(StreamError); ok {
+		if se.Code == ErrCodeProtocol && se.Cause == errFromPeer {
+			// See golang/go#47635, golang/go#42777
+			return true
+		}
 		return se.Code == ErrCodeRefusedStream
 	}
 	return false
@@ -709,6 +719,13 @@ func (cc *ClientConn) healthCheck() {
 	}
 }
 
+// SetDoNotReuse marks cc as not reusable for future HTTP requests.
+func (cc *ClientConn) SetDoNotReuse() {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.doNotReuse = true
+}
+
 func (cc *ClientConn) setGoAway(f *GoAwayFrame) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -771,6 +788,7 @@ func (cc *ClientConn) idleStateLocked() (st clientConnIdleState) {
 	}
 
 	st.canTakeNewRequest = cc.goAway == nil && !cc.closed && !cc.closing && maxConcurrentOkay &&
+		!cc.doNotReuse &&
 		int64(cc.nextStreamID)+2*int64(cc.pendingRequests) < math.MaxInt32 &&
 		!cc.tooIdleLocked()
 	st.freshConn = cc.nextStreamID == 1 && st.canTakeNewRequest
@@ -1110,40 +1128,28 @@ func (cc *ClientConn) roundTrip(req *http.Request) (res *http.Response, gotErrAf
 		return res, false, nil
 	}
 
+	handleError := func(err error) (*http.Response, bool, error) {
+		if !hasBody || bodyWritten {
+			cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
+		} else {
+			bodyWriter.cancel()
+			cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
+			<-bodyWriter.resc
+		}
+		cc.forgetStreamID(cs.ID)
+		return nil, cs.getStartedWrite(), err
+	}
+
 	for {
 		select {
 		case re := <-readLoopResCh:
 			return handleReadLoopResponse(re)
 		case <-respHeaderTimer:
-			if !hasBody || bodyWritten {
-				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-			} else {
-				bodyWriter.cancel()
-				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
-				<-bodyWriter.resc
-			}
-			cc.forgetStreamID(cs.ID)
-			return nil, cs.getStartedWrite(), errTimeout
+			return handleError(errTimeout)
 		case <-ctx.Done():
-			if !hasBody || bodyWritten {
-				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-			} else {
-				bodyWriter.cancel()
-				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
-				<-bodyWriter.resc
-			}
-			cc.forgetStreamID(cs.ID)
-			return nil, cs.getStartedWrite(), ctx.Err()
+			return handleError(ctx.Err())
 		case <-req.Cancel:
-			if !hasBody || bodyWritten {
-				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
-			} else {
-				bodyWriter.cancel()
-				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
-				<-bodyWriter.resc
-			}
-			cc.forgetStreamID(cs.ID)
-			return nil, cs.getStartedWrite(), errRequestCanceled
+			return handleError(errRequestCanceled)
 		case <-cs.peerReset:
 			// processResetStream already removed the
 			// stream from the streams map; no need for
@@ -1290,7 +1296,13 @@ func (cs *clientStream) writeRequestBody(body io.Reader, bodyCloser io.Closer) (
 		// Request.Body is closed by the Transport,
 		// and in multiple cases: server replies <=299 and >299
 		// while still writing request body
-		cerr := bodyCloser.Close()
+		var cerr error
+		cc.mu.Lock()
+		if cs.stopReqBody == nil {
+			cs.stopReqBody = errStopReqBodyWrite
+			cerr = bodyCloser.Close()
+		}
+		cc.mu.Unlock()
 		if err == nil {
 			err = cerr
 		}
@@ -2420,10 +2432,17 @@ func (rl *clientConnReadLoop) processResetStream(f *RSTStreamFrame) error {
 		// which closes this, so there
 		// isn't a race.
 	default:
-		err := streamError(cs.ID, f.ErrCode)
-		cs.resetErr = err
+		serr := streamError(cs.ID, f.ErrCode)
+		if f.ErrCode == ErrCodeProtocol {
+			rl.cc.SetDoNotReuse()
+			serr.Cause = errFromPeer
+			// TODO(bradfitz): increment a varz here, once Transport
+			// takes an optional interface-typed field that expvar.Map.Add
+			// implements.
+		}
+		cs.resetErr = serr
 		close(cs.peerReset)
-		cs.bufPipe.CloseWithError(err)
+		cs.bufPipe.CloseWithError(serr)
 		cs.cc.cond.Broadcast() // wake up checkResetOrDone via clientStream.awaitFlowControl
 	}
 	return nil

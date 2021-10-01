@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"

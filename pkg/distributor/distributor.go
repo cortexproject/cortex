@@ -94,7 +94,6 @@ type Distributor struct {
 	// Metrics
 	queryDuration                    *instrument.HistogramCollector
 	receivedSamples                  *prometheus.CounterVec
-	discardedSamples                 *prometheus.CounterVec
 	receivedExemplars                *prometheus.CounterVec
 	receivedMetadata                 *prometheus.CounterVec
 	incomingSamples                  *prometheus.CounterVec
@@ -250,11 +249,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_received_samples_total",
 			Help:      "The total number of received samples, excluding rejected and deduped samples.",
-		}, []string{"user"}),
-		discardedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_discarded_samples_total",
-			Help:      "The total number of samples which were discarded due to relabel configuration.",
 		}, []string{"user"}),
 		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -643,6 +637,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			if l == nil {
+				// all labels are gone, therefore the __name__ label is not present, metric will be discarded
+				validation.DiscardedSamples.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Samples)))
+			}
 			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
 		}
 
@@ -658,8 +659,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 
 		if len(ts.Labels) == 0 {
-			// the __name__ label is not present, metric will be discarded
-			d.discardedSamples.WithLabelValues(userID).Add(float64(len(ts.Samples)))
 			continue
 		}
 

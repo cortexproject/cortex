@@ -2781,6 +2781,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		limits:           &limits,
 	})
 	reg := regs[0]
+	reg.MustRegister(validation.DiscardedSamples)
 	defer stopAll(ds, r)
 
 	// Push the series to the distributor
@@ -2796,14 +2797,14 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		assert.Equal(t, 1, len(timeseries))
 	}
 
-	metrics := []string{"cortex_distributor_received_samples_total", "cortex_distributor_discarded_samples_total"}
+	metrics := []string{"cortex_distributor_received_samples_total", "cortex_discarded_samples_total"}
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+		# TYPE cortex_discarded_samples_total counter
+		cortex_discarded_samples_total{reason="relabel_configuration",user="user"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{user="user"} 1
-		# HELP cortex_distributor_discarded_samples_total The total number of samples which were discarded due to relabel configuration.
-		# TYPE cortex_distributor_discarded_samples_total counter
-		cortex_distributor_discarded_samples_total{user="user"} 1
 		`), metrics...))
 }
 

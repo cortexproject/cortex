@@ -531,7 +531,7 @@ Valid ingester instance limits are (with their corresponding flags):
   Limit the ingestion rate in samples per second for an ingester.
 
 - `max_series` \ `-ingester.instance-limits.max-series`
- 
+
   Limit the total number of series that an ingester keeps in memory, across all users.
 
 - `max_tenants` \ `-ingester.instance-limits.max-tenants`
@@ -540,7 +540,7 @@ Valid ingester instance limits are (with their corresponding flags):
 
 - `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
 
-  Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. 
+  Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs.
 
 ## Storage
 

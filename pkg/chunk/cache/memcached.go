@@ -89,7 +89,14 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 						batchID: input.batchID,
 					}
 					res.found, res.bufs, res.missed = c.fetch(input.ctx, input.keys)
-					input.resultCh <- res
+					// No-one will be reading from resultCh if we were asked to quit
+					// during the fetch, so check again before writing to it.
+					select {
+					case <-c.quit:
+						return
+					default:
+						input.resultCh <- res
+					}
 				}
 			}
 		}()
@@ -214,7 +221,6 @@ loopResults:
 			results[result.batchID] = result
 		}
 	}
-	close(resultsCh)
 
 	for _, result := range results {
 		if result == nil {

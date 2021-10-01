@@ -54,6 +54,7 @@ var (
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
+			prometheus.NewCounter(prometheus.CounterOpts{}),
 			metadata.NoneFunc)
 	}
 
@@ -656,6 +657,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
+		false,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

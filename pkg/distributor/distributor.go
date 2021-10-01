@@ -637,12 +637,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
-			if l == nil {
+			if len(l) == 0 {
 				// all labels are gone, therefore the __name__ label is not present, metric will be discarded
 				validation.DiscardedSamples.WithLabelValues(
 					validation.DroppedByRelabelConfiguration,
 					userID,
 				).Add(float64(len(ts.Samples)))
+				continue
 			}
 			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
 		}
@@ -656,10 +657,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 		for _, labelName := range d.limits.DropLabels(userID) {
 			removeLabel(labelName, &ts.Labels)
-		}
-
-		if len(ts.Labels) == 0 {
-			continue
 		}
 
 		// We rely on sorted labels in different places:

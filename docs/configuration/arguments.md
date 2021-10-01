@@ -404,7 +404,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
 
-At the moment, three components use runtime configuration: per-user limits, multi KV store, and ingester instance limits.
+At the moment runtime configuration may contain per-user limits, multi KV store, and ingester instance limits.
 
 Example runtime configuration file:
 
@@ -540,7 +540,7 @@ Valid ingester instance limits are (with their corresponding flags):
 
 - `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
 
-  Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs.
+  Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.
 
 ## Storage
 

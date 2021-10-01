@@ -704,27 +704,10 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 					numDistributors:  1,
 					shardByAllLabels: shardByAllLabels,
 					limits:           &limits,
+					enableTracker:    tc.enableTracker,
 				})
-				defer stopAll(ds, r)
-				codec := GetReplicaDescCodec()
 
-				ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
-				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
-
-				mock := kv.PrefixClient(ringStore, "prefix")
 				d := ds[0]
-
-				if tc.enableTracker {
-					r, err := newHATracker(HATrackerConfig{
-						EnableHATracker: true,
-						KVStore:         kv.Config{Mock: mock},
-						UpdateTimeout:   100 * time.Millisecond,
-						FailoverTimeout: time.Second,
-					}, trackerLimits{maxClusters: 100}, nil, log.NewNopLogger())
-					require.NoError(t, err)
-					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
-					d.HATracker = r
-				}
 
 				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
@@ -1927,6 +1910,7 @@ type prepConfig struct {
 	maxInflightRequests          int
 	maxIngestionRate             float64
 	replicationFactor            int
+	enableTracker                bool
 	errFail                      error
 }
 
@@ -2030,6 +2014,20 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, *rin
 			distributorCfg.ShuffleShardingLookbackPeriod = time.Hour
 
 			cfg.limits.IngestionTenantShardSize = cfg.shuffleShardSize
+		}
+
+		if cfg.enableTracker {
+			codec := GetReplicaDescCodec()
+			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+			mock := kv.PrefixClient(ringStore, "prefix")
+			distributorCfg.HATrackerConfig = HATrackerConfig{
+				EnableHATracker: true,
+				KVStore:         kv.Config{Mock: mock},
+				UpdateTimeout:   100 * time.Millisecond,
+				FailoverTimeout: time.Second,
+			}
+			cfg.limits.HAMaxClusters = 100
 		}
 
 		overrides, err := validation.NewOverrides(*cfg.limits, nil)

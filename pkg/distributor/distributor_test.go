@@ -1082,7 +1082,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
-		inputSeries    []labels.Labels
+		inputSeries    labels.Labels
 		expectedSeries labels.Labels
 		removeReplica  bool
 		removeLabels   []string
@@ -1093,11 +1093,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{
 			removeReplica: true,
 			removeLabels:  []string{"cluster"},
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 			},
@@ -1106,13 +1106,13 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		{
 			removeReplica: true,
 			removeLabels:  []string{"foo", "some"},
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
 				{Name: "__replica__", Value: "two"},
 				{Name: "foo", Value: "bar"},
 				{Name: "some", Value: "thing"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "cluster", Value: "one"},
@@ -1121,11 +1121,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		// Don't remove any labels.
 		{
 			removeReplica: false,
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "__replica__", Value: "two"},
 				{Name: "cluster", Value: "one"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "some_metric"},
 				{Name: "__replica__", Value: "two"},
@@ -1150,7 +1150,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		})
 
 		// Push the series to the distributor
-		req := mockWriteRequest(tc.inputSeries, 1, 1)
+		req := mockWriteRequest([]labels.Labels{tc.inputSeries}, 1, 1)
 		_, err = ds[0].Push(ctx, req)
 		require.NoError(t, err)
 
@@ -1169,16 +1169,16 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
-		inputSeries    []labels.Labels
+		inputSeries    labels.Labels
 		expectedSeries labels.Labels
 		expectedToken  uint32
 	}{
 		"metric_1 with value_1": {
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1187,12 +1187,12 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped label due to config": {
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
 				{Name: "dropped", Value: "unused"}, // will be dropped, doesn't need to be in correct order
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1201,12 +1201,12 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_1 with value_1 and dropped HA replica label": {
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
 				{Name: "key", Value: "value_1"},
 				{Name: "__replica__", Value: "replica_1"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "cluster", Value: "cluster_1"},
@@ -1215,10 +1215,10 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xec0a2e9d,
 		},
 		"metric_2 with value_1": {
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_2"},
 				{Name: "key", Value: "value_1"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_2"},
 				{Name: "key", Value: "value_1"},
@@ -1226,10 +1226,10 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			expectedToken: 0xa60906f2,
 		},
 		"metric_1 with value_2": {
-			inputSeries: []labels.Labels{{
+			inputSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "key", Value: "value_2"},
-			}},
+			},
 			expectedSeries: labels.Labels{
 				{Name: "__name__", Value: "metric_1"},
 				{Name: "key", Value: "value_2"},
@@ -1254,7 +1254,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 			})
 
 			// Push the series to the distributor
-			req := mockWriteRequest(testData.inputSeries, 1, 1)
+			req := mockWriteRequest([]labels.Labels{testData.inputSeries}, 1, 1)
 			_, err := ds[0].Push(ctx, req)
 			require.NoError(t, err)
 
@@ -1280,24 +1280,24 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	tests := map[string]struct {
-		inputLabels                []labels.Labels
+		inputLabels                labels.Labels
 		skipLabelNameValidationCfg bool
 		skipLabelNameValidationReq bool
 		errExpected                bool
 		errMessage                 string
 	}{
 		"label name validation is on by default": {
-			inputLabels: []labels.Labels{inputLabels},
+			inputLabels: inputLabels,
 			errExpected: true,
 			errMessage:  `sample invalid label: "999.illegal" metric "foo{999.illegal=\"baz\"}"`,
 		},
 		"label name validation can be skipped via config": {
-			inputLabels:                []labels.Labels{inputLabels},
+			inputLabels:                inputLabels,
 			skipLabelNameValidationCfg: true,
 			errExpected:                false,
 		},
 		"label name validation can be skipped via WriteRequest parameter": {
-			inputLabels:                []labels.Labels{inputLabels},
+			inputLabels:                inputLabels,
 			skipLabelNameValidationReq: true,
 			errExpected:                false,
 		},
@@ -1312,7 +1312,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 				shuffleShardSize:        1,
 				skipLabelNameValidation: tc.skipLabelNameValidationCfg,
 			})
-			req := mockWriteRequest(tc.inputLabels, 42, 100000)
+			req := mockWriteRequest([]labels.Labels{tc.inputLabels}, 42, 100000)
 			req.SkipLabelNameValidation = tc.skipLabelNameValidationReq
 			_, err := ds[0].Push(ctx, req)
 			if tc.errExpected {
@@ -2642,8 +2642,7 @@ func TestSortLabels(t *testing.T) {
 }
 
 func TestDistributor_Push_Relabel(t *testing.T) {
-	const orgID = "user"
-	ctx := user.InjectOrgID(context.Background(), orgID)
+	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
 		name                 string

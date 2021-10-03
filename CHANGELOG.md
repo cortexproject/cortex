@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4494
 
 ## 1.11.0-rc.0 in progress
 

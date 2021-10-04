@@ -851,7 +851,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 		}
 	}
 
-	for _, pathToRemove := range filesToRemove {
+	for _, pathToRemove := range pathsToRemove {
 		err := os.Remove(pathToRemove)
 		if err != nil {
 			level.Warn(am.logger).Log("msg", "failed to remove file", "file", pathToRemove, "err", err)

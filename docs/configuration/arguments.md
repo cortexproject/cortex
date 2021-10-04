@@ -404,7 +404,7 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 Cortex has a concept of "runtime config" file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
 
-At the moment, two components use runtime configuration: limits and multi KV store.
+At the moment runtime configuration may contain per-user limits, multi KV store, and ingester instance limits.
 
 Example runtime configuration file:
 
@@ -422,6 +422,10 @@ overrides:
 multi_kv_config:
     mirror_enabled: false
     primary: memberlist
+
+ingester_limits:
+  max_ingestion_rate: 42000
+  max_inflight_push_requests: 10000
 ```
 
 When running Cortex on Kubernetes, store this file in a config map and mount it in each services' containers.  When changing the values there is no need to restart the services, unless otherwise specified.
@@ -505,6 +509,38 @@ Valid per-tenant limits are (with their corresponding flags for default values):
    Like `max_metadata_per_user` and `max_metadata_per_metric`, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the `-distributor.shard-by-all-labels` setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.
 
    Requires `-distributor.replication-factor`, `-distributor.shard-by-all-labels`, `-distributor.sharding-strategy` and `-distributor.zone-awareness-enabled` set for the ingesters too.
+
+## Ingester Instance Limits
+
+Cortex ingesters support limits that are applied per-instance, meaning they apply to each ingester process. These can be used to ensure individual ingesters are not overwhelmed regardless of any per-user limits. These limits can be set under the `ingester.instance_limits` block in the global configuration file, with command line flags, or under the `ingester_limits` field in the runtime configuration file.
+
+An example as part of the runtime configuration file:
+
+```yaml
+ingester_limits:
+  max_ingestion_rate: 20000
+  max_series: 1500000
+  max_tenants: 1000
+  max_inflight_push_requests: 30000
+```
+
+Valid ingester instance limits are (with their corresponding flags):
+
+- `max_ingestion_rate` \ `--ingester.instance-limits.max-ingestion-rate`
+
+  Limit the ingestion rate in samples per second for an ingester. When this limit is reached, new requests will fail with an HTTP 500 error.
+
+- `max_series` \ `-ingester.instance-limits.max-series`
+
+  Limit the total number of series that an ingester keeps in memory, across all users. When this limit is reached, requests that create new series will fail with an HTTP 500 error.
+
+- `max_tenants` \ `-ingester.instance-limits.max-tenants`
+
+  Limit the maximum number of users an ingester will accept metrics for. When this limit is reached, requests from new users will fail with an HTTP 500 error.
+
+- `max_inflight_push_requests` \ `-ingester.instance-limits.max-inflight-push-requests`
+
+  Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.
 
 ## Storage
 

@@ -42,6 +42,7 @@
 * [ENHANCEMENT] Memberlist: expose configuration of memberlist packet compression via `-memberlist.compression=enabled`. #4346
 * [ENHANCEMENT] Update Go version to 1.16.6. #4362
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
+* [ENHANCEMENT] Querier: performance improvements in socket and memory handling. #4429 #4377
 * [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
 * [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466

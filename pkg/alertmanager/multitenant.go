@@ -828,20 +828,22 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var userTemplateDir = filepath.Join(am.getTenantDirectory(cfg.User), templatesDir)
 	var pathsToRemove = make(map[string]struct{})
 
+	// List existing files to keep track the ones to be removed
 	if oldTemplateFiles, err := ioutil.ReadDir(userTemplateDir); err == nil {
 		for _, file := range oldTemplateFiles {
-			filesToRemove[file.Name()] = filepath.Join(userTemplateDir, file.Name())
+			pathsToRemove[filepath.Join(userTemplateDir, file.Name())] = struct{}{}
 		}
 	}
 
 	for _, tmpl := range cfg.Templates {
-		templateFilepath, err := safeTemplateFilepath(userTemplateDir, tmpl.Filename)
+		templateFilePath, err := safeTemplateFilepath(userTemplateDir, tmpl.Filename)
 		if err != nil {
 			return err
 		}
 
+		// Removing from pathsToRemove map the files that still exists in the config
 		delete(pathsToRemove, templateFilePath)
-		hasChanged, err := storeTemplateFile(templateFilepath, tmpl.Body)
+		hasChanged, err := storeTemplateFile(templateFilePath, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -851,7 +853,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 		}
 	}
 
-	for _, pathToRemove := range pathsToRemove {
+	for pathToRemove := range pathsToRemove {
 		err := os.Remove(pathToRemove)
 		if err != nil {
 			level.Warn(am.logger).Log("msg", "failed to remove file", "file", pathToRemove, "err", err)

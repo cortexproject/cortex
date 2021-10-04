@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"google.golang.org/grpc/status"
+
 	"go.uber.org/atomic"
 )
 
@@ -25,7 +27,20 @@ type itemTracker struct {
 	minSuccess  int
 	maxFailures int
 	succeeded   atomic.Int32
-	failed      atomic.Int32
+	failed4xx   atomic.Int32
+	failed5xx   atomic.Int32
+	remaining   atomic.Int32
+	err         atomic.Error
+}
+
+func (i *itemTracker) recordError(err error) int32 {
+	i.err.Store(err)
+
+	if status, ok := status.FromError(err); ok && status.Code()/100 == 4 {
+		return i.failed4xx.Inc()
+	}
+
+	return i.failed5xx.Inc()
 }
 
 // DoBatch request against a set of keys in the ring, handling replication and
@@ -62,6 +77,7 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		}
 		itemTrackers[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
 		itemTrackers[i].maxFailures = replicationSet.MaxErrors
+		itemTrackers[i].remaining.Store(int32(len(replicationSet.Instances)))
 
 		for _, desc := range replicationSet.Instances {
 			curr, found := instances[desc.Addr]
@@ -122,15 +138,28 @@ func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
 	// The use of atomic increments here guarantees only a single sendSamples
 	// goroutine will write to either channel.
 	for i := range sampleTrackers {
+		verifyIfShouldReturn := func() {
+			if sampleTrackers[i].remaining.Dec() == 0 {
+				if b.rpcsFailed.Inc() == 1 {
+					b.err <- sampleTrackers[i].err.Load()
+				}
+			}
+		}
+
 		if err != nil {
-			if sampleTrackers[i].failed.Inc() <= int32(sampleTrackers[i].maxFailures) {
+			errCount := sampleTrackers[i].recordError(err)
+
+			if errCount <= int32(sampleTrackers[i].maxFailures) {
+				verifyIfShouldReturn()
 				continue
 			}
+
 			if b.rpcsFailed.Inc() == 1 {
 				b.err <- err
 			}
 		} else {
 			if sampleTrackers[i].succeeded.Inc() != int32(sampleTrackers[i].minSuccess) {
+				verifyIfShouldReturn()
 				continue
 			}
 			if b.rpcsPending.Dec() == 0 {

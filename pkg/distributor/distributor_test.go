@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -24,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -487,6 +490,106 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPush_QuorumError(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+
+	limits.IngestionRate = math.MaxFloat64
+
+	dists, ingesters, r, _ := prepare(t, prepConfig{
+		numDistributors:     1,
+		numIngesters:        3,
+		happyIngesters:      0,
+		shuffleShardSize:    3,
+		shardByAllLabels:    true,
+		shuffleShardEnabled: true,
+		limits:              &limits,
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	d := dists[0]
+
+	// Using 489 just to make sure we are not hitting the &limits
+	// Simulating 2 4xx and 1 5xx -> Should return 4xx
+	ingesters[0].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[1].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+	ingesters[2].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+
+	for i := 0; i < 1000; i++ {
+		request := makeWriteRequest(0, 30, 20)
+		_, err := d.Push(ctx, request)
+		status, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(489), status.Code())
+	}
+
+	// Simulating 2 5xx and 1 4xx -> Should return 5xx
+	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+	ingesters[1].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[2].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+
+	for i := 0; i < 10000; i++ {
+		request := makeWriteRequest(0, 300, 200)
+		_, err := d.Push(ctx, request)
+		status, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(500), status.Code())
+	}
+
+	// Simulating 2 different errors and 1 success -> This case we may return any of the errors
+	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+	ingesters[1].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[2].happy.Store(true)
+
+	for i := 0; i < 1000; i++ {
+		request := makeWriteRequest(0, 30, 20)
+		_, err := d.Push(ctx, request)
+		status, ok := status.FromError(err)
+		require.True(t, ok)
+		require.True(t, status.Code() == 489 || status.Code() == 500)
+	}
+
+	// Simulating 1 error -> Should return 2xx
+	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+	ingesters[1].happy.Store(true)
+	ingesters[2].happy.Store(true)
+
+	for i := 0; i < 1000; i++ {
+		request := makeWriteRequest(0, 30, 20)
+		_, err := d.Push(ctx, request)
+		require.NoError(t, err)
+	}
+
+	// Simulating an unhealthy ingester (ingester 2)
+	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
+	ingesters[1].happy.Store(true)
+	ingesters[2].happy.Store(true)
+
+	err := r.KVClient.CAS(context.Background(), ring.IngesterRingKey, func(in interface{}) (interface{}, bool, error) {
+		r := in.(*ring.Desc)
+		ingester2 := r.Ingesters["2"]
+		ingester2.State = ring.LEFT
+		ingester2.Timestamp = time.Now().Unix()
+		r.Ingesters["2"] = ingester2
+		return in, true, nil
+	})
+
+	require.NoError(t, err)
+
+	// Give time to the ring get updated with the KV value
+	time.Sleep(5 * time.Second)
+
+	for i := 0; i < 1000; i++ {
+		request := makeWriteRequest(0, 30, 20)
+		_, err := d.Push(ctx, request)
+		require.Error(t, err)
+		status, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(500), status.Code())
 	}
 }
 
@@ -1949,7 +2052,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, []*p
 	ingesters := []mockIngester{}
 	for i := 0; i < cfg.happyIngesters; i++ {
 		ingesters = append(ingesters, mockIngester{
-			happy:      true,
+			happy:      *atomic.NewBool(true),
 			queryDelay: cfg.queryDelay,
 		})
 	}
@@ -1961,7 +2064,7 @@ func prepare(t *testing.T, cfg prepConfig) ([]*Distributor, []mockIngester, []*p
 
 		ingesters = append(ingesters, mockIngester{
 			queryDelay: cfg.queryDelay,
-			failResp:   miError,
+			failResp:   *atomic.NewError(miError),
 		})
 	}
 
@@ -2208,8 +2311,8 @@ type mockIngester struct {
 	sync.Mutex
 	client.IngesterClient
 	grpc_health_v1.HealthClient
-	happy      bool
-	failResp   error
+	happy      atomic.Bool
+	failResp   atomic.Error
 	stats      client.UsersStatsResponse
 	timeseries map[uint32]*cortexpb.PreallocTimeseries
 	metadata   map[uint32]map[cortexpb.MetricMetadata]struct{}
@@ -2247,8 +2350,8 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 
 	i.trackCall("Push")
 
-	if !i.happy {
-		return nil, i.failResp
+	if !i.happy.Load() {
+		return nil, i.failResp.Load()
 	}
 
 	if i.timeseries == nil {
@@ -2305,7 +2408,7 @@ func (i *mockIngester) Query(ctx context.Context, req *client.QueryRequest, opts
 
 	i.trackCall("Query")
 
-	if !i.happy {
+	if !i.happy.Load() {
 		return nil, errFail
 	}
 
@@ -2331,7 +2434,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 
 	i.trackCall("QueryStream")
 
-	if !i.happy {
+	if !i.happy.Load() {
 		return nil, errFail
 	}
 
@@ -2395,7 +2498,7 @@ func (i *mockIngester) MetricsForLabelMatchers(ctx context.Context, req *client.
 
 	i.trackCall("MetricsForLabelMatchers")
 
-	if !i.happy {
+	if !i.happy.Load() {
 		return nil, errFail
 	}
 
@@ -2421,7 +2524,7 @@ func (i *mockIngester) MetricsMetadata(ctx context.Context, req *client.MetricsM
 
 	i.trackCall("MetricsMetadata")
 
-	if !i.happy {
+	if !i.happy.Load() {
 		return nil, errFail
 	}
 

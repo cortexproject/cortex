@@ -18,6 +18,8 @@ import (
 )
 
 func TestRequest(t *testing.T) {
+	// Copy parsedRequest to assign the expected headers to the request
+	//https://github.com/cortexproject/cortex/blob/62022c83aede47a32f87d0b57326e073d5095262/pkg/querier/queryrange/results_cache_test.go#L34
 	r := *parsedRequest
 	r.Headers = reqHeaders
 	for i, tc := range []struct {

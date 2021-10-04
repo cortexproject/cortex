@@ -840,7 +840,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 			return err
 		}
 
-		delete(filesToRemove, tmpl.Filename)
+		delete(pathsToRemove, templateFilePath)
 		hasChanged, err := storeTemplateFile(templateFilepath, tmpl.Body)
 		if err != nil {
 			return err

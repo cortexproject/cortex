@@ -826,7 +826,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var err error
 	var hasTemplateChanges bool
 	var userTemplateDir = filepath.Join(am.getTenantDirectory(cfg.User), templatesDir)
-	var filesToRemove = make(map[string]string)
+	var pathsToRemove = make(map[string]struct{})
 
 	if oldTemplateFiles, err := ioutil.ReadDir(userTemplateDir); err == nil {
 		for _, file := range oldTemplateFiles {

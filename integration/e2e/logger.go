@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 )
 
 // Global logger to use in integration tests. We use a global logger to simplify

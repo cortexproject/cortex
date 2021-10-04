@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+
+## 1.11.0-rc.0 in progress
+
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`
@@ -19,6 +22,7 @@
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
 * [FEATURE] Distributor: Add label `status` to metric `cortex_distributor_ingester_append_failures_total` #4442
 * [ENHANCEMENT] Querier: Retain Headers from request while decoding http requests to PrometheusRequests by prometheusCodec. #4416
+* [FEATURE] Queries: Added `present_over_time` PromQL function, also some TSDB optimisations. #4505
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341
 * [ENHANCEMENT] Ring: allow experimental configuration of disabling of heartbeat timeouts by setting the relevant configuration value to zero. Applies to the following: #4342
@@ -42,6 +46,7 @@
 * [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
 * [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
+* [ENHANCEMENT] Support memcached auto-discovery via `auto-discovery` flag, introduced by thanos in https://github.com/thanos-io/thanos/pull/4487. Both AWS and Google Cloud memcached service support auto-discovery, which returns a list of nodes of the memcached cluster. #4412
 * [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
 * [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
 * [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328

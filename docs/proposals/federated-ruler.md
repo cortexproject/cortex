@@ -32,7 +32,7 @@ Federated tenant rules and alerts will not be a good fit for organization and sh
 
 #### Proposal
 
-For federated rules owned by a single tenant, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag `tenant-federation.enabled`.
+For federated rules owned by a single tenant, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag `ruler.enable_federated_rules`
 
 To support composite tenants, if tenant federation is enabled for ruler and alertmanager via `tenant-federation.enabled`, then ruler use a `mergeQueryable` to aggregate the results of querying multiple tenants. The ruler and alertmanager APIs should be updated to always call `tenant.GetTenantIDs` instead of `tenant.GetTenantID`, which will use the MultiTenantResolver when tenant federation is enabled.
 
@@ -44,9 +44,7 @@ For many organizations, the ability for any tenant to write a rule querying any 
 
 #### Proposal
 
-Since the current default is that a tenant should only be able to write rules against itself, we suggest a config option `tenant-federation.ruler-federated-tenant-allow-list`, a string slice of OrgIDs like `infra` or `0|1|2|3|4` which are allowed to write rules against all tenants. If a tenant `bar` attempts to create a federated rule, an error should be returned by the ruler api. If a tenant `bar` contains a federated rule in the rule store, but is not in the allow list, an error should be logged and the federated rule should not be evaluated.
-
-If more fine grained access control is required, we suggest implementing a similar config option `tenant-federation.ruler-federated-tenant-allow-map` containing a json string -> string map of OrgID -> Permitted OrgIDs e.g. a value of `{"infra":"0|1|2|3|4", "0|1|2":"0|1|2"}` should allow `infra` to query any combination of the tenants `0`, `1`, `2`, `3`, and `4`. Behavior for creation and execution of not permitted federated rules should be similar to the above.
+Since the current default is that a tenant should only be able to write rules against itself, we suggest a config option `ruler.allowed-federated-tenants`, a string slice of OrgIDs like `infra` or `0|1|2|3|4` which are allowed to write rules against all tenants. If a tenant `bar` attempts to create a federated rule, an error should be returned by the ruler api. Similarly an option `ruler.disallowed-federated-tenants` explicitly states a list of tenants for which federated rules are not allowed. Combining these in a `util.AllowedTenants` should allow us to quickly determine if federation is enabled or disabled for a given tenant at rule creation.
 
 ### Where to store resulting series of federated rule
 

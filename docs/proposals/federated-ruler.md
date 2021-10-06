@@ -13,6 +13,8 @@ slug: "Ruler Tenant Federation
 
 This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after refered to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.
 
+A federated rule is any rule which containers either `src_tenant_ids`, `dest_tenant_id`, or both `src_tenant_ids` and `dest_tenant_id` fields.
+
 ## Reasoning
 
 There are two primary use cases for allowing federated rules which query data from multiple tenants; administration of cortex and composite tenants.

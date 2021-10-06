@@ -81,4 +81,8 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 // TODO review the change introduced by https://github.com/grpc/grpc-go/pull/4416 before upgrading to 1.39.0
 replace google.golang.org/grpc => google.golang.org/grpc v1.38.0
 
+// We only pin this version to avoid problems with running go get: github.com/thanos-io/thanos@main. That
+// currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
+// confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
+// is v0.19.1. We pin version from late september here. Feel free to remove when updating to later version.
 replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20210923155558-c15594a03c45

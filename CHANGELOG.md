@@ -9,6 +9,7 @@
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
 =======
 
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
 
 ## 1.11.0-rc.0 in progress
 

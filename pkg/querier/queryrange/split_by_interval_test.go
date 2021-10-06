@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
@@ -304,13 +306,23 @@ func Test_evaluateAtModifier(t *testing.T) {
 		start, end = int64(1546300800), int64(1646300800)
 	)
 	for _, tt := range []struct {
-		in, expected string
+		in, expected      string
+		expectedErrorCode int
 	}{
-		{"topk(5, rate(http_requests_total[1h] @ start()))", "topk(5, rate(http_requests_total[1h] @ 1546300.800))"},
-		{"topk(5, rate(http_requests_total[1h] @ 0))", "topk(5, rate(http_requests_total[1h] @ 0.000))"},
-		{"http_requests_total[1h] @ 10.001", "http_requests_total[1h] @ 10.001"},
 		{
-			`min_over_time(
+			in:       "topk(5, rate(http_requests_total[1h] @ start()))",
+			expected: "topk(5, rate(http_requests_total[1h] @ 1546300.800))",
+		},
+		{
+			in:       "topk(5, rate(http_requests_total[1h] @ 0))",
+			expected: "topk(5, rate(http_requests_total[1h] @ 0.000))",
+		},
+		{
+			in:       "http_requests_total[1h] @ 10.001",
+			expected: "http_requests_total[1h] @ 10.001",
+		},
+		{
+			in: `min_over_time(
 				sum by(cluster) (
 					rate(http_requests_total[5m] @ end())
 				)[10m:]
@@ -323,7 +335,7 @@ func Test_evaluateAtModifier(t *testing.T) {
 					[5m:1m])
 				[2m:])
 			[10m:])`,
-			`min_over_time(
+			expected: `min_over_time(
 				sum by(cluster) (
 					rate(http_requests_total[5m] @ 1646300.800)
 				)[10m:]
@@ -337,15 +349,32 @@ func Test_evaluateAtModifier(t *testing.T) {
 				[2m:])
 			[10m:])`,
 		},
+		{
+			// parse error: missing unit character in duration
+			in:                "http_requests_total[5] @ 10.001",
+			expectedErrorCode: http.StatusBadRequest,
+		},
+		{
+			// parse error: @ modifier must be preceded by an instant vector selector or range vector selector or a subquery
+			in:                "sum(http_requests_total[5m]) @ 10.001",
+			expectedErrorCode: http.StatusBadRequest,
+		},
 	} {
 		tt := tt
 		t.Run(tt.in, func(t *testing.T) {
 			t.Parallel()
-			expectedExpr, err := parser.ParseExpr(tt.expected)
-			require.NoError(t, err)
 			out, err := evaluateAtModifierFunction(tt.in, start, end)
-			require.NoError(t, err)
-			require.Equal(t, expectedExpr.String(), out)
+			if tt.expectedErrorCode != 0 {
+				require.Error(t, err)
+				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+				require.True(t, ok, "returned error is not an httpgrpc response")
+				require.Equal(t, tt.expectedErrorCode, int(httpResp.Code))
+			} else {
+				require.NoError(t, err)
+				expectedExpr, err := parser.ParseExpr(tt.expected)
+				require.NoError(t, err)
+				require.Equal(t, expectedExpr.String(), out)
+			}
 		})
 	}
 }

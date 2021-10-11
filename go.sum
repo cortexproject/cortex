@@ -212,7 +212,6 @@ github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuy
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d/go.mod h1:rBZYJk541a8SKzHPHnH3zbiI+7dagKZ0cgpgrD7Fyho=
-github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15 h1:AUNCr9CiJuwrRYS3XieqF+Z9B9gNxo/eANAJCF2eiN4=
 github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15/go.mod h1:OMCwj8VM1Kc9e19TLln2VL61YJF0x1XFtfdL4JdbSyE=
 github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922 h1:8ypNbf5sd3Sm3cKJ9waOGoQv6dKAFiFty9L6NP1AqJ4=
 github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922/go.mod h1:OMCwj8VM1Kc9e19TLln2VL61YJF0x1XFtfdL4JdbSyE=
@@ -1619,7 +1618,6 @@ github.com/prometheus/common v0.21.0/go.mod h1:U+gB1OBLb1lF3O42bTCL+FK18tX9Oar16
 github.com/prometheus/common v0.23.0/go.mod h1:H6QK/N6XVT42whUeIdI3dp36w49c+/iMDk7UAI2qm7Q=
 github.com/prometheus/common v0.26.0/go.mod h1:M7rCNAaPfAosfx8veZJCuw84e35h3Cfd9VFqTh1DIvc=
 github.com/prometheus/common v0.29.0/go.mod h1:vu+V0TpY+O6vW9J44gczi3Ap/oXXR10b+M/gUGO4Hls=
-github.com/prometheus/common v0.30.0 h1:JEkYlQnpzrzQFxi6gnukFPdQ+ac82oRhzMcIduJu/Ug=
 github.com/prometheus/common v0.30.0/go.mod h1:vu+V0TpY+O6vW9J44gczi3Ap/oXXR10b+M/gUGO4Hls=
 github.com/prometheus/common v0.31.1 h1:d18hG4PkHnNAKNMOmFuXFaiY8Us0nird/2m60uS1AMs=
 github.com/prometheus/common v0.31.1/go.mod h1:vu+V0TpY+O6vW9J44gczi3Ap/oXXR10b+M/gUGO4Hls=
@@ -1669,7 +1667,6 @@ github.com/prometheus/prometheus v1.8.2-0.20210315220929-1cba1741828b/go.mod h1:
 github.com/prometheus/prometheus v1.8.2-0.20210324152458-c7a62b95cea0/go.mod h1:sf7j/iAbhZahjeC0s3wwMmp5dksrJ/Za1UKdR+j6Hmw=
 github.com/prometheus/prometheus v1.8.2-0.20210519120135-d95b0972505f/go.mod h1:yUzDYX0hIYu5YVHmpj/JXLOclB6QcLNDgmagD3FUnSU=
 github.com/prometheus/prometheus v1.8.2-0.20210720123808-b1ed4a0a663d/go.mod h1:o6V+A4iPEWjLG0rSEKeev3OzfBZwP+ay+4iS4dkfLI4=
-github.com/prometheus/prometheus v1.8.2-0.20210914090109-37468d88dce8 h1:U8ZpFGP11pZi0ZavWWGeAqck3dVT9AY6zbr4fbBftjA=
 github.com/prometheus/prometheus v1.8.2-0.20210914090109-37468d88dce8/go.mod h1:02eURgmH1YsgJ2TtWNUGMQMCnLxmtHH9nOgvYxIjGAo=
 github.com/prometheus/prometheus v1.8.2-0.20211011171444-354d8d2ecfac h1:emphJoDK6yZ1GxyFbyYa7ByoWkl3dXfOmPvHAy0L0XI=
 github.com/prometheus/prometheus v1.8.2-0.20211011171444-354d8d2ecfac/go.mod h1:wP6L5BiOZ1JZYadRh17u5RujSS19zNSGZfGUi/MZUpM=

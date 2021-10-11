@@ -5583,7 +5583,7 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;/ul>
 &lt;h2 id="runtime-configuration-file">Runtime Configuration file&lt;/h2>
 &lt;p>Cortex has a concept of &amp;ldquo;runtime config&amp;rdquo; file, which is simply a file that is reloaded while Cortex is running. It is used by some Cortex components to allow operator to change some aspects of Cortex configuration without restarting it. File is specified by using &lt;code>-runtime-config.file=&amp;lt;filename&amp;gt;&lt;/code> flag and reload period (which defaults to 10 seconds) can be changed by &lt;code>-runtime-config.reload-period=&amp;lt;duration&amp;gt;&lt;/code> flag. Previously this mechanism was only used by limits overrides, and flags were called &lt;code>-limits.per-user-override-config=&amp;lt;filename&amp;gt;&lt;/code> and &lt;code>-limits.per-user-override-period=10s&lt;/code> respectively. These are still used, if &lt;code>-runtime-config.file=&amp;lt;filename&amp;gt;&lt;/code> is not specified.&lt;/p>
-&lt;p>At the moment runtime configuration may contain per-user limits, multi KV store, and ingester instance limits.&lt;/p>
+&lt;p>At the moment, two components use runtime configuration: limits and multi KV store.&lt;/p>
 &lt;p>Example runtime configuration file:&lt;/p>
 &lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">tenant1&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5598,10 +5598,6 @@ Duration after which a flush should timeout.&lt;/p>
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">multi_kv_config&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">mirror_enabled&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">primary&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>memberlist&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingester_limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">42000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_inflight_push_requests&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>When running Cortex on Kubernetes, store this file in a config map and mount it in each services&amp;rsquo; containers. When changing the values there is no need to restart the services, unless otherwise specified.&lt;/p>
 &lt;p>The &lt;code>/runtime_config&lt;/code> endpoint returns the whole runtime configuration, including the overrides. In case you want to get only the non-default values of the configuration you can pass the &lt;code>mode&lt;/code> parameter with the &lt;code>diff&lt;/code> value.&lt;/p>
 &lt;h2 id="ingester-distributor--querier-limits">Ingester, Distributor &amp;amp; Querier limits.&lt;/h2>
@@ -5692,33 +5688,6 @@ When running Cortex with blocks storage this limit is enforced in the queriers o
 &lt;p>&lt;code>max_global_metadata_per_metric&lt;/code> / &lt;code>-ingester.max-global-metadata-per-metric&lt;/code>&lt;/p>
 &lt;p>Like &lt;code>max_metadata_per_user&lt;/code> and &lt;code>max_metadata_per_metric&lt;/code>, but the limit is enforced across the cluster. Each ingester is configured with a local limit based on the replication factor, the &lt;code>-distributor.shard-by-all-labels&lt;/code> setting and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.&lt;/p>
 &lt;p>Requires &lt;code>-distributor.replication-factor&lt;/code>, &lt;code>-distributor.shard-by-all-labels&lt;/code>, &lt;code>-distributor.sharding-strategy&lt;/code> and &lt;code>-distributor.zone-awareness-enabled&lt;/code> set for the ingesters too.&lt;/p>
-&lt;/li>
-&lt;/ul>
-&lt;h2 id="ingester-instance-limits">Ingester Instance Limits&lt;/h2>
-&lt;p>Cortex ingesters support limits that are applied per-instance, meaning they apply to each ingester process. These can be used to ensure individual ingesters are not overwhelmed regardless of any per-user limits. These limits can be set under the &lt;code>ingester.instance_limits&lt;/code> block in the global configuration file, with command line flags, or under the &lt;code>ingester_limits&lt;/code> field in the runtime configuration file.&lt;/p>
-&lt;p>An example as part of the runtime configuration file:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">ingester_limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">20000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1500000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_tenants&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_inflight_push_requests&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">30000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Valid ingester instance limits are (with their corresponding flags):&lt;/p>
-&lt;ul>
-&lt;li>
-&lt;p>&lt;code>max_ingestion_rate&lt;/code> \ &lt;code>--ingester.instance-limits.max-ingestion-rate&lt;/code>&lt;/p>
-&lt;p>Limit the ingestion rate in samples per second for an ingester. When this limit is reached, new requests will fail with an HTTP 500 error.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>max_series&lt;/code> \ &lt;code>-ingester.instance-limits.max-series&lt;/code>&lt;/p>
-&lt;p>Limit the total number of series that an ingester keeps in memory, across all users. When this limit is reached, requests that create new series will fail with an HTTP 500 error.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>max_tenants&lt;/code> \ &lt;code>-ingester.instance-limits.max-tenants&lt;/code>&lt;/p>
-&lt;p>Limit the maximum number of users an ingester will accept metrics for. When this limit is reached, requests from new users will fail with an HTTP 500 error.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>max_inflight_push_requests&lt;/code> \ &lt;code>-ingester.instance-limits.max-inflight-push-requests&lt;/code>&lt;/p>
-&lt;p>Limit the maximum number of requests being handled by an ingester at once. This setting is critical for preventing ingesters from using an excessive amount of memory during high load or temporary slow downs. When this limit is reached, new requests will fail with an HTTP 500 error.&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h2 id="storage">Storage&lt;/h2>

@@ -104,10 +104,10 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 		}
 
 		// Given we only support SRV lookups as part of service discovery, we need to ensure
-		// hosts provided follow this specification: http://_service._proto.name
+		// hosts provided follow this specification: _service._proto.name
 		// e.g. _http._tcp.alertmanager.com
 		if rulerConfig.AlertmanagerDiscovery && !srvDNSregexp.MatchString(url.Host) {
-			return nil, fmt.Errorf("when alertmanager-discovery is on, host name must be of the form http://_portname._tcp.service.fqdn (is %q)", url.Host)
+			return nil, fmt.Errorf("when alertmanager-discovery is on, alertmanager_url must be of the form scheme://_portname._tcp.service.fqdn (Scheme is %q, Host is %q)", url.Scheme, url.Host)
 		}
 
 		validURLs = append(validURLs, url)

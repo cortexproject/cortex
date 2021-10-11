@@ -94,8 +94,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					select {
 					case <-c.quit:
 						return
-					default:
-						input.resultCh <- res
+					case input.resultCh <- res:
 					}
 				}
 			}

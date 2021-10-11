@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.13.0
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/alecthomas/units v0.0.0-20210208195552-ff826a37aa15
+	github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922
 	github.com/alicebob/miniredis/v2 v2.14.3
 	github.com/aws/aws-sdk-go v1.40.37
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
@@ -44,8 +44,8 @@ require (
 	github.com/prometheus/alertmanager v0.23.1-0.20210914172521-e35efbddb66a
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/client_model v0.2.0
-	github.com/prometheus/common v0.30.0
-	github.com/prometheus/prometheus v1.8.2-0.20210914090109-37468d88dce8
+	github.com/prometheus/common v0.31.1
+	github.com/prometheus/prometheus v1.8.2-0.20211011171444-354d8d2ecfac
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.3.4

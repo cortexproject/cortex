@@ -176,6 +176,10 @@ func NewHead(r prometheus.Registerer, l log.Logger, wal *wal.WAL, opts *HeadOpti
 		stats = NewHeadStats()
 	}
 
+	if !opts.EnableExemplarStorage {
+		opts.MaxExemplars.Store(0)
+	}
+
 	h := &Head{
 		wal:    wal,
 		logger: l,
@@ -211,7 +215,16 @@ func NewHead(r prometheus.Registerer, l log.Logger, wal *wal.WAL, opts *HeadOpti
 
 func (h *Head) resetInMemoryState() error {
 	var err error
-	em := NewExemplarMetrics(h.reg)
+	var em *ExemplarMetrics
+	if h.exemplars != nil {
+		ce, ok := h.exemplars.(*CircularExemplarStorage)
+		if ok {
+			em = ce.metrics
+		}
+	}
+	if em == nil {
+		em = NewExemplarMetrics(h.reg)
+	}
 	es, err := NewCircularExemplarStorage(h.opts.MaxExemplars.Load(), em)
 	if err != nil {
 		return err
@@ -736,6 +749,11 @@ func (h *Head) Truncate(mint int64) (err error) {
 	return h.truncateWAL(mint)
 }
 
+// OverlapsClosedInterval returns true if the head overlaps [mint, maxt].
+func (h *Head) OverlapsClosedInterval(mint, maxt int64) bool {
+	return h.MinTime() <= maxt && mint <= h.MaxTime()
+}
+
 // truncateMemory removes old data before mint from the head.
 func (h *Head) truncateMemory(mint int64) (err error) {
 	h.chunkSnapshotMtx.Lock()
@@ -1100,6 +1118,10 @@ func (h *Head) gc() int64 {
 
 	// Remove deleted series IDs from the postings lists.
 	h.postings.Delete(deleted)
+
+	// Remove tombstones referring to the deleted series.
+	h.tombstones.DeleteTombstones(deleted)
+	h.tombstones.TruncateBefore(mint)
 
 	if h.wal != nil {
 		_, last, _ := wal.Segments(h.wal.Dir())

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/grafana/dskit/runutil"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"

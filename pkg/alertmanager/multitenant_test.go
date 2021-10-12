@@ -319,6 +319,23 @@ templates:
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+
+	// Removed template files should be cleaned up
+	user3Cfg.Templates = []*alertspb.TemplateDesc{
+		{
+			Filename: "first.tpl",
+			Body:     `{{ define "t1" }}Template 1 ... {{end}}`,
+		},
+	}
+
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
+
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.False(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 }
 
 func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {

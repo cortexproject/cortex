@@ -61,6 +61,7 @@
 * [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
 * [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
+* [BUGFIX] AlertManager: remove stale template files. #4495
 
 
 ## 1.10.0 / 2021-08-03

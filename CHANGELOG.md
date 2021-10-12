@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
+* [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
 
 ## 1.11.0-rc.0 in progress
 

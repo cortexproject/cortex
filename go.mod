@@ -29,8 +29,7 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/gorilla/mux v1.8.0
-	github.com/grafana/dskit v0.0.0-20210908150159-fcf48cb19aa4
-	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/grafana/dskit v0.0.0-20211007183133-4c566019f311
 	github.com/json-iterator/go v1.1.11
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10
@@ -52,7 +51,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/thanos-io/thanos v0.22.0
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
-	github.com/weaveworks/common v0.0.0-20210901124008-1fa3f9fa874c
+	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20210903162142-ad29c8ab022f

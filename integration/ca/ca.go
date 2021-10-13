@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/grafana/dskit/runutil"
 )
 
 type CA struct {

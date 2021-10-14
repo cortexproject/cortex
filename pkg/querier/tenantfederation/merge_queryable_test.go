@@ -277,6 +277,8 @@ type selectTestCase struct {
 	matchers []*labels.Matcher
 	// expectedSeriesCount is the expected number of series returned by a Select filtered by the Matchers in selector.
 	expectedSeriesCount int
+	// expectedLabels is the expected label sets returned by a Select filtered by the Matchers in selector.
+	expectedLabels []labels.Labels
 	// expectedWarnings is a slice of storage.Warnings messages expected when querying.
 	expectedWarnings []string
 	// expectedQueryErr is the error expected when querying.
@@ -425,6 +427,41 @@ func TestMergeQueryable_Select(t *testing.T) {
 				{
 					name:                "should return all series when no matchers are provided",
 					expectedSeriesCount: 6,
+					expectedLabels: []labels.Labels{
+						{
+							{Name: "__tenant_id__", Value: "team-a"},
+							{Name: "instance", Value: "host1"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+							{Name: "tenant-team-a", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-a"},
+							{Name: "instance", Value: "host2.team-a"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host1"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+							{Name: "tenant-team-b", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host2.team-b"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-c"},
+							{Name: "instance", Value: "host1"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+							{Name: "tenant-team-c", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-c"},
+							{Name: "instance", Value: "host2.team-c"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+						},
+					},
 				},
 				{
 					name:                "should return only series for team-a and team-c tenants when there is with not-equals matcher for the team-b tenant",
@@ -493,9 +530,16 @@ func TestMergeQueryable_Select(t *testing.T) {
 						assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
 					}
 
+					if tc.expectedLabels != nil {
+						require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
+					}
+
 					count := 0
-					for seriesSet.Next() {
+					for i := 0; seriesSet.Next(); i++ {
 						count++
+						if tc.expectedLabels != nil {
+							require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+						}
 					}
 					require.Equal(t, tc.expectedSeriesCount, count)
 				})

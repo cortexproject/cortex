@@ -2720,14 +2720,13 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			flagext.DefaultValues(&limits)
 			limits.MetricRelabelConfigs = tc.metricRelabelConfigs
 
-			ds, ingesters,  _ := prepare(t, prepConfig{
+			ds, ingesters, _ := prepare(t, prepConfig{
 				numIngesters:     2,
 				happyIngesters:   2,
 				numDistributors:  1,
 				shardByAllLabels: true,
 				limits:           &limits,
 			})
-
 
 			// Push the series to the distributor
 			req := mockWriteRequest(tc.inputSeries, 1, 1)
@@ -2772,14 +2771,13 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	flagext.DefaultValues(&limits)
 	limits.MetricRelabelConfigs = metricRelabelConfigs
 
-	ds, ingesters, r, regs := prepare(t, prepConfig{
+	ds, ingesters, regs := prepare(t, prepConfig{
 		numIngesters:     2,
 		happyIngesters:   2,
 		numDistributors:  1,
 		shardByAllLabels: true,
 		limits:           &limits,
 	})
-	defer stopAll(ds, r)
 
 	validation.DiscardedSamples.Reset()
 
@@ -2807,7 +2805,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		cortex_distributor_received_samples_total{user="user1"} 1
 		`
 
-	testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...)
+	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))
 }
 
 func countMockIngestersCalls(ingesters []mockIngester, name string) int {

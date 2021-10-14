@@ -2779,13 +2779,13 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		shardByAllLabels: true,
 		limits:           &limits,
 	})
-	reg := regs[0]
-	reg.MustRegister(validation.DiscardedSamples)
 	defer stopAll(ds, r)
+
+	validation.DiscardedSamples.Reset()
 
 	// Push the series to the distributor
 	req := mockWriteRequest(inputSeries, 1, 1)
-	ctx := user.InjectOrgID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "user1")
 	_, err = ds[0].Push(ctx, req)
 	require.NoError(t, err)
 
@@ -2797,14 +2797,17 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	}
 
 	metrics := []string{"cortex_distributor_received_samples_total", "cortex_discarded_samples_total"}
-	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+
+	expectedMetrics := `
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
 		cortex_discarded_samples_total{reason="relabel_configuration",user="user"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="user"} 1
-		`), metrics...))
+		cortex_distributor_received_samples_total{user="user1"} 1
+		`
+
+	testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...)
 }
 
 func countMockIngestersCalls(ingesters []mockIngester, name string) int {

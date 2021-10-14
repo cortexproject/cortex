@@ -586,6 +586,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// TODO(goutham): we should ideally be passing the hints down to the storage layer
 			// and let the TSDB return us data with no chunks as in prometheus#8050.
 			// But this is an acceptable workaround for now.
+
+			// Only fail the function if we have validation error. We should return blocks that were successfully
+			// retrieved.
 			skipChunks := sp != nil && sp.Func == "series"
 
 			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
@@ -595,7 +598,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+				level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+				return nil
 			}
 
 			mySeries := []*storepb.Series(nil)
@@ -614,7 +618,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					break
 				}
 				if err != nil {
-					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress()))
+					return nil
 				}
 
 				// Response may either contain series, warning or hints.
@@ -650,12 +655,14 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if h := resp.GetHints(); h != nil {
 					hints := hintspb.SeriesResponseHints{}
 					if err := types.UnmarshalAny(h, &hints); err != nil {
-						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress())
+						level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress()))
+						return nil
 					}
 
 					ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 					if err != nil {
-						return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
+						level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
+						return nil
 					}
 
 					myQueriedBlocks = append(myQueriedBlocks, ids...)
@@ -725,19 +732,22 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+				level.Warn(spanLog).Log("err", "failed to fetch series from %s", c.RemoteAddress())
+				return nil
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if namesResp.Hints != nil {
 				hints := hintspb.LabelNamesResponseHints{}
 				if err := types.UnmarshalAny(namesResp.Hints, &hints); err != nil {
-					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c.RemoteAddress())
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal label names hints from %s", c.RemoteAddress()))
+					return nil
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 				if err != nil {
-					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
+					return nil
 				}
 
 				myQueriedBlocks = ids
@@ -802,19 +812,22 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+				level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+				return nil
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if valuesResp.Hints != nil {
 				hints := hintspb.LabelValuesResponseHints{}
 				if err := types.UnmarshalAny(valuesResp.Hints, &hints); err != nil {
-					return errors.Wrapf(err, "failed to unmarshal label values hints from %s", c.RemoteAddress())
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal label values hints from %s", c.RemoteAddress()))
+					return nil
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 				if err != nil {
-					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
+					return nil
 				}
 
 				myQueriedBlocks = ids

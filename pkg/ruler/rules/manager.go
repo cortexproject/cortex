@@ -620,7 +620,11 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			tenantIDs, err := tenant.TenantIDs(appCtx)
 			if err == nil && len(tenantIDs) > 1 {
 				// Mod the hash of the series so same series always goes to same subtenant
-				i := int(rule.Labels().Copy().Hash()) % len(tenantIDs)
+				h, _ := rule.Labels().Copy().HashForLabels(make([]byte, 0, 1024), labels.MetricName)
+				i := int(h) % len(tenantIDs)
+				if i < 0 {
+					i = i * -1
+				}
 				tenantID := tenantIDs[i]
 				appCtx = user.InjectOrgID(ctx, tenantID)
 			}

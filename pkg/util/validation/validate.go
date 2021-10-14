@@ -34,16 +34,16 @@ const (
 	// ErrQueryTooLong is used in chunk store, querier and query frontend.
 	ErrQueryTooLong = "the query time range exceeds the limit (query length: %s, limit: %s)"
 
-	missingMetricName             = "missing_metric_name"
-	invalidMetricName             = "metric_name_invalid"
-	greaterThanMaxSampleAge       = "greater_than_max_sample_age"
-	maxLabelNamesPerSeries        = "max_label_names_per_series"
-	tooFarInFuture                = "too_far_in_future"
-	invalidLabel                  = "label_invalid"
-	labelNameTooLong              = "label_name_too_long"
-	duplicateLabelNames           = "duplicate_label_names"
-	labelsNotSorted               = "labels_not_sorted"
-	labelValueTooLong             = "label_value_too_long"
+	missingMetricName       = "missing_metric_name"
+	invalidMetricName       = "metric_name_invalid"
+	greaterThanMaxSampleAge = "greater_than_max_sample_age"
+	maxLabelNamesPerSeries  = "max_label_names_per_series"
+	tooFarInFuture          = "too_far_in_future"
+	invalidLabel            = "label_invalid"
+	labelNameTooLong        = "label_name_too_long"
+	duplicateLabelNames     = "duplicate_label_names"
+	labelsNotSorted         = "labels_not_sorted"
+	labelValueTooLong       = "label_value_too_long"
 
 	// Exemplar-specific validation reasons
 	exemplarLabelsMissing    = "exemplar_labels_missing"

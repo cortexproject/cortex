@@ -746,7 +746,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-	require.NoError(t, querier.WaitSumMetrics(e2e.GreaterOrEqual(4), "cortex_blocks_meta_syncs_total"))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")

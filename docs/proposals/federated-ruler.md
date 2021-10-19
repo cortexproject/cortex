@@ -76,9 +76,9 @@ To support both of these use cases, we suggest an additional field `source_tenan
 
 | Challenge                                                                | Status                                |
 |--------------------------------------------------------------------------|---------------------------------------|
-| Allow federated rules behind feature flag                                | Implementation planned for PR [#4470] |
-| Allow federated rules only for select tenants                            | Implementation planned for PR [#4470] |
-| Where to store resulting series of federated rules                       | Implementation planned for PR [#4470] |
-| Which tenants to query from for federated rules                          | Implementation planned for PR [#4470] |
+| Allow federated rules behind feature flag                                | Implementation planned for PR [#4520] |
+| Allow federated rules only for select tenants                            | Implementation planned for PR [#4520] |
+| Where to store resulting series of federated rules                       | Implementation planned for PR [#4520] |
+| Which tenants to query from for federated rules                          | Implementation planned for PR [#4520] |
 
-[#4470]: https://github.com/cortexproject/cortex/pull/4470
+[#4520]: https://github.com/cortexproject/cortex/pull/4520

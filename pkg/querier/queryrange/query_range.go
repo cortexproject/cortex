@@ -223,13 +223,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Path = r.URL.Path
 
 	// Include the headers from http request in prometheusRequest.
-	// We don't include the following header in the codec -
-	// accept-encoding - defaultroundtripper uses the response_compression_enabled setting to inflate/deflate responses
-	// https://github.com/cortexproject/cortex/blob/master/pkg/querier/queryrange/roundtrip.go#L251
 	for h, hv := range r.Header {
-		if strings.EqualFold(h, "accept-encoding") {
-			continue
-		}
 		result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
 	}
 

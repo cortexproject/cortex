@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
@@ -46,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -319,6 +319,23 @@ templates:
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+
+	// Removed template files should be cleaned up
+	user3Cfg.Templates = []*alertspb.TemplateDesc{
+		{
+			Filename: "first.tpl",
+			Body:     `{{ define "t1" }}Template 1 ... {{end}}`,
+		},
+	}
+
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
+
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.False(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 }
 
 func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {

@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
+* [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
 
 ## 1.11.0-rc.0 in progress
 
@@ -47,6 +49,7 @@
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
 * [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
 * [ENHANCEMENT] Support memcached auto-discovery via `auto-discovery` flag, introduced by thanos in https://github.com/thanos-io/thanos/pull/4487. Both AWS and Google Cloud memcached service support auto-discovery, which returns a list of nodes of the memcached cluster. #4412
+* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
 * [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
 * [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
 * [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
@@ -61,6 +64,7 @@
 * [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
 * [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
+* [BUGFIX] AlertManager: remove stale template files. #4495
 
 
 ## 1.10.0 / 2021-08-03

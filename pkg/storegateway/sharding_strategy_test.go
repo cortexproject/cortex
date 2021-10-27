@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +17,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 
-	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -258,7 +258,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -616,7 +616,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				SubringCacheDisabled: true,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck

@@ -140,6 +140,7 @@ func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rulespb
 				Namespace: r.Namespace,
 				Name:      r.Name,
 				User:      k,
+				Interval:  r.Interval,
 			})
 		}
 	}
@@ -161,6 +162,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 			Namespace: r.Namespace,
 			Name:      r.Name,
 			User:      userID,
+			Interval:  r.Interval,
 		})
 	}
 	return result, nil

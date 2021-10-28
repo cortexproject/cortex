@@ -17,8 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -35,10 +37,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -509,16 +509,16 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
+		`component=compactor org_id=user-1 level=info msg="start of GC"`,
+		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
+		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-2 msg="start of GC"`,
-		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
+		`component=compactor org_id=user-2 level=info msg="start sync of metas"`,
+		`component=compactor org_id=user-2 level=info msg="start of GC"`,
+		`component=compactor org_id=user-2 level=info msg="start of compactions"`,
+		`component=compactor org_id=user-2 level=info msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
@@ -625,18 +625,18 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
+		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
+		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
 		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
+		`component=compactor org_id=user-1 level=info msg="start of GC"`,
+		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
+		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
@@ -733,8 +733,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="deleting blocks for tenant marked for deletion"`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
-		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
+		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
+		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block" block=01DTVP434PA9VFXSW2JKB3392D`,
 		`level=info component=cleaner org_id=user-1 msg="deleted blocks for tenant marked for deletion" deletedBlocks=1`,
 		`level=info component=cleaner org_id=user-1 msg="updating finished time in tenant deletion mark"`,
@@ -813,11 +813,14 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
-	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
+	cfg.ShardingRing.KVStore.Mock = ringStore
 
 	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient)
 
@@ -851,16 +854,16 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
+		`component=compactor org_id=user-1 level=info msg="start of GC"`,
+		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
+		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-2 msg="start of GC"`,
-		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
+		`component=compactor org_id=user-2 level=info msg="start sync of metas"`,
+		`component=compactor org_id=user-2 level=info msg="start of GC"`,
+		`component=compactor org_id=user-2 level=info msg="start of compactions"`,
+		`component=compactor org_id=user-2 level=info msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
@@ -890,7 +893,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	}
 
 	// Create a shared KV Store
-	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
 	var compactors []*Compactor
@@ -1212,7 +1216,8 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	}
 
 	// Create a shared KV Store
-	kvstore := consul.NewInMemoryClient(ring.GetCodec())
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	// Create two compactors
 	var compactors []*Compactor
@@ -1286,11 +1291,14 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	cfg := prepareConfig()
 	cfg.ShardingEnabled = true
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
-	cfg.ShardingRing.KVStore.Mock = consul.NewInMemoryClient(ring.GetCodec())
+	cfg.ShardingRing.KVStore.Mock = ringStore
 
 	// Set ObservePeriod to longer than the timeout period to mock a timeout while waiting on ring to become ACTIVE
 	cfg.ShardingRing.ObservePeriod = time.Second * 10

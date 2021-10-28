@@ -84,7 +84,7 @@ func TestForSeriesMatchingBatching(t *testing.T) {
 func TestTeardown(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	_, ing := newTestStore(t,
-		defaultIngesterTestConfig(),
+		defaultIngesterTestConfig(t),
 		defaultClientTestConfig(),
 		defaultLimitsTestConfig(),
 		reg)

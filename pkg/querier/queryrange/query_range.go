@@ -224,11 +224,13 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Path = r.URL.Path
 
 	// Include the headers from http request in prometheusRequest.
-	// We don't include the following header in the codec -
-	// accept-encoding - defaultroundtripper uses the response_compression_enabled setting to inflate/deflate responses
-	// https://github.com/cortexproject/cortex/blob/master/pkg/querier/queryrange/roundtrip.go#L251
+	// We don't include the following headers in the codec -
+	// accept-encoding - cortex uses the response_compression_enabled configuration setting to
+	//   inflate/deflate responses for range queries and the deflation options in the header are ignored.
+	//   The Gzip handler based on the config setting is registered here -
+	//   https://github.com/cortexproject/cortex/blob/85c378182d0d7bef81636c3894d426f7d745b72c/pkg/api/api.go#L159
 	// X-Scope-OrgID - defaultroundtripper already injects OrgId into queries created for ranges
-	// https://github.com/cortexproject/cortex/blob/master/pkg/querier/queryrange/roundtrip.go#L286
+	//   https://github.com/cortexproject/cortex/blob/master/pkg/querier/queryrange/roundtrip.go#L286
 	for h, hv := range r.Header {
 		if strings.EqualFold(h, "accept-encoding") || strings.EqualFold(h, user.OrgIDHeaderName) {
 			continue

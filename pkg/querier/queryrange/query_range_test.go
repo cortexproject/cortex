@@ -18,8 +18,8 @@ import (
 )
 
 func TestRequest(t *testing.T) {
-	// Copy parsedRequest to assign the expected headers to the request
-	//https://github.com/cortexproject/cortex/blob/62022c83aede47a32f87d0b57326e073d5095262/pkg/querier/queryrange/results_cache_test.go#L34
+	// Copy parsedRequest to assign the expected headers to the request.
+	// The test below adds a Test-Header header to the request and expects it back once the encode/decode of request is done via PrometheusCodec
 	r := *parsedRequest
 	r.Headers = reqHeaders
 	for i, tc := range []struct {

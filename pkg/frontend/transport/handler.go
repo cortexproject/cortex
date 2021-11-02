@@ -146,12 +146,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// log copy error so that we will know even though success response code returned, copy response error occurred
 	bytesCopied, err := io.Copy(w, resp.Body)
 	if err != nil {
-		msg := []interface{}{
-			"msg", "write response body error",
-			"err", err,
-			"bytesCopied", bytesCopied,
-		}
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log(msg...)
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 
 	// Check whether we should parse the query string.

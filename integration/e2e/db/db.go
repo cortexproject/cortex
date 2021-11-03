@@ -2,6 +2,7 @@ package e2edb
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -15,11 +16,23 @@ const (
 
 // NewMinio returns minio server, used as a local replacement for S3.
 func NewMinio(port int, bktNames ...string) *e2e.HTTPService {
-	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
-	commands := []string{
-		fmt.Sprintf("curl -sSL --tlsv1.2 -O '%s/root.key' -O '%s/root.cert'", minioKESGithubContent, minioKESGithubContent),
-	}
+	return newMinio(port, map[string]string{}, bktNames...)
+}
 
+// NewMinioWithKES returns minio server, configured to talk to a KES service.
+func NewMinioWithKES(port int, kesEndpoint, rootKeyFile, rootCertFile, caCertFile string, bktNames ...string) *e2e.HTTPService {
+	kesEnvVars := map[string]string{
+		"MINIO_KMS_KES_ENDPOINT":  kesEndpoint,
+		"MINIO_KMS_KES_KEY_FILE":  filepath.Join(e2e.ContainerSharedDir, rootKeyFile),
+		"MINIO_KMS_KES_CERT_FILE": filepath.Join(e2e.ContainerSharedDir, rootCertFile),
+		"MINIO_KMS_KES_CAPATH":    filepath.Join(e2e.ContainerSharedDir, caCertFile),
+		"MINIO_KMS_KES_KEY_NAME":  "my-minio-key",
+	}
+	return newMinio(port, kesEnvVars, bktNames...)
+}
+
+func newMinio(port int, envVars map[string]string, bktNames ...string) *e2e.HTTPService {
+	commands := []string{}
 	for _, bkt := range bktNames {
 		commands = append(commands, fmt.Sprintf("mkdir -p /data/%s", bkt))
 	}
@@ -33,17 +46,27 @@ func NewMinio(port int, bktNames ...string) *e2e.HTTPService {
 		e2e.NewHTTPReadinessProbe(port, "/minio/health/ready", 200, 200),
 		port,
 	)
-	m.SetEnvVars(map[string]string{
-		"MINIO_ACCESS_KEY": MinioAccessKey,
-		"MINIO_SECRET_KEY": MinioSecretKey,
-		"MINIO_BROWSER":    "off",
-		"ENABLE_HTTPS":     "0",
-		// https://docs.min.io/docs/minio-kms-quickstart-guide.html
-		"MINIO_KMS_KES_ENDPOINT":  "https://play.min.io:7373",
-		"MINIO_KMS_KES_KEY_FILE":  "root.key",
-		"MINIO_KMS_KES_CERT_FILE": "root.cert",
-		"MINIO_KMS_KES_KEY_NAME":  "my-minio-key",
-	})
+	envVars["MINIO_ACCESS_KEY"] = MinioAccessKey
+	envVars["MINIO_SECRET_KEY"] = MinioSecretKey
+	envVars["MINIO_BROWSER"] = "off"
+	envVars["ENABLE_HTTPS"] = "0"
+	m.SetEnvVars(envVars)
+	return m
+}
+
+// NewKES returns KES server, used as a local key management store
+func NewKES(port int, serverKeyFile, serverCertFile, rootCertFile string) *e2e.HTTPService {
+	// Run this as a shell command, so sub-shell can evaluate 'identity' of root user.
+	command := fmt.Sprintf("/kes server --addr 0.0.0.0:%d --key=%s --cert=%s --root=$(/kes tool identity of %s) --auth=off --quiet",
+		port, filepath.Join(e2e.ContainerSharedDir, serverKeyFile), filepath.Join(e2e.ContainerSharedDir, serverCertFile), filepath.Join(e2e.ContainerSharedDir, rootCertFile))
+
+	m := e2e.NewHTTPService(
+		"kes",
+		images.KES,
+		e2e.NewCommandWithoutEntrypoint("sh", "-c", command),
+		nil, // KES only supports https calls - TODO make Scenario able to call https or poll plain TCP socket.
+		port,
+	)
 	return m
 }
 

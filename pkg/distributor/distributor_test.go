@@ -2779,6 +2779,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		limits:           &limits,
 	})
 
+	regs[0].MustRegister(validation.DiscardedSamples)
 	validation.DiscardedSamples.Reset()
 
 	// Push the series to the distributor
@@ -2799,7 +2800,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	expectedMetrics := `
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="relabel_configuration",user="user"} 1
+		cortex_discarded_samples_total{reason="relabel_configuration",user="user1"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{user="user1"} 1

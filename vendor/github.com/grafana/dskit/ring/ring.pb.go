@@ -122,7 +122,7 @@ type InstanceDesc struct {
 	// When an instance is already registered in the ring with a value of 0 it's NOT safe to
 	// update the timestamp to "now" because it would break the contract, given the instance
 	// was already registered before "now". If unknown (0), it should be left as is, and the
-	// Cortex code will properly deal with that.
+	// code will properly deal with that.
 	RegisteredTimestamp int64 `protobuf:"varint,8,opt,name=registered_timestamp,json=registeredTimestamp,proto3" json:"registered_timestamp,omitempty"`
 }
 

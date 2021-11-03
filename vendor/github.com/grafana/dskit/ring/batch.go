@@ -37,9 +37,12 @@ type itemTracker struct {
 // Callback is passed the instance to target, and the indexes of the keys
 // to send to that instance.
 //
+// cleanup() is always called, either on an error before starting the batches or after they all finish.
+//
 // Not implemented as a method on Ring so we can test separately.
 func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
 	if r.InstancesCount() <= 0 {
+		cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
@@ -54,6 +57,7 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 	for i, key := range keys {
 		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones[:0])
 		if err != nil {
+			cleanup()
 			return err
 		}
 		itemTrackers[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors

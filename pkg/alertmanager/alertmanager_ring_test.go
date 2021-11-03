@@ -4,9 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 func TestIsHealthyForAlertmanagerOperations(t *testing.T) {

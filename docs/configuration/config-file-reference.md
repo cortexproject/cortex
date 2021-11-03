@@ -683,6 +683,11 @@ lifecycler:
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Comma-separated list of zones to exclude from the ring. Instances in
+    # excluded zones will be filtered out from the ring.
+    # CLI flag: -distributor.excluded-zones
+    [excluded_zones: <string> | default = ""]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
@@ -701,10 +706,13 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
-  # Minimum duration to wait before becoming ready. This is to work around race
-  # conditions with ingesters exiting and updating the ring.
+  # Minimum duration to wait after the internal readiness checks have passed but
+  # before succeeding the readiness endpoint. This is used to slowdown
+  # deployment controllers (eg. Kubernetes) after an instance is ready and
+  # before they proceed with a rolling update, to give the rest of the cluster
+  # instances enough time to receive ring updates.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m]
+  [min_ready_duration: <duration> | default = 15s]
 
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
@@ -728,6 +736,14 @@ lifecycler:
   # -distributor.extend-writes=false.
   # CLI flag: -ingester.unregister-on-shutdown
   [unregister_on_shutdown: <boolean> | default = true]
+
+  # When enabled the readiness probe succeeds only after all instances are
+  # ACTIVE and healthy in the ring, otherwise only the instance itself is
+  # checked. This option should be disabled if in your cluster multiple
+  # instances can be rolled out simultaneously, otherwise rolling updates may be
+  # slowed down.
+  # CLI flag: -ingester.readiness-check-ring-health
+  [readiness_check_ring_health: <boolean> | default = true]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by

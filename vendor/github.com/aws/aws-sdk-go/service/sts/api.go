@@ -1605,20 +1605,12 @@ type AssumeRoleInput struct {
 	TransitiveTagKeys []*string `type:"list"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleInput) GoString() string {
 	return s.String()
 }
@@ -1793,20 +1785,12 @@ type AssumeRoleOutput struct {
 	SourceIdentity *string `min:"2" type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleOutput) GoString() string {
 	return s.String()
 }
@@ -1933,20 +1917,12 @@ type AssumeRoleWithSAMLInput struct {
 	SAMLAssertion *string `min:"4" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleWithSAMLInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleWithSAMLInput) GoString() string {
 	return s.String()
 }
@@ -2113,20 +2089,12 @@ type AssumeRoleWithSAMLOutput struct {
 	SubjectType *string `type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleWithSAMLOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleWithSAMLOutput) GoString() string {
 	return s.String()
 }
@@ -2296,20 +2264,12 @@ type AssumeRoleWithWebIdentityInput struct {
 	WebIdentityToken *string `min:"4" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleWithWebIdentityInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleWithWebIdentityInput) GoString() string {
 	return s.String()
 }
@@ -2472,20 +2432,12 @@ type AssumeRoleWithWebIdentityOutput struct {
 	SubjectFromWebIdentityToken *string `min:"6" type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumeRoleWithWebIdentityOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumeRoleWithWebIdentityOutput) GoString() string {
 	return s.String()
 }
@@ -2553,20 +2505,12 @@ type AssumedRoleUser struct {
 	AssumedRoleId *string `min:"2" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s AssumedRoleUser) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s AssumedRoleUser) GoString() string {
 	return s.String()
 }
@@ -2608,20 +2552,12 @@ type Credentials struct {
 	SessionToken *string `type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s Credentials) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s Credentials) GoString() string {
 	return s.String()
 }
@@ -2659,20 +2595,12 @@ type DecodeAuthorizationMessageInput struct {
 	EncodedMessage *string `min:"1" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s DecodeAuthorizationMessageInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s DecodeAuthorizationMessageInput) GoString() string {
 	return s.String()
 }
@@ -2709,20 +2637,12 @@ type DecodeAuthorizationMessageOutput struct {
 	DecodedMessage *string `type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s DecodeAuthorizationMessageOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s DecodeAuthorizationMessageOutput) GoString() string {
 	return s.String()
 }
@@ -2752,20 +2672,12 @@ type FederatedUser struct {
 	FederatedUserId *string `min:"2" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s FederatedUser) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s FederatedUser) GoString() string {
 	return s.String()
 }
@@ -2794,20 +2706,12 @@ type GetAccessKeyInfoInput struct {
 	AccessKeyId *string `min:"16" type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetAccessKeyInfoInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetAccessKeyInfoInput) GoString() string {
 	return s.String()
 }
@@ -2841,20 +2745,12 @@ type GetAccessKeyInfoOutput struct {
 	Account *string `type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetAccessKeyInfoOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetAccessKeyInfoOutput) GoString() string {
 	return s.String()
 }
@@ -2869,20 +2765,12 @@ type GetCallerIdentityInput struct {
 	_ struct{} `type:"structure"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetCallerIdentityInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetCallerIdentityInput) GoString() string {
 	return s.String()
 }
@@ -2906,20 +2794,12 @@ type GetCallerIdentityOutput struct {
 	UserId *string `type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetCallerIdentityOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetCallerIdentityOutput) GoString() string {
 	return s.String()
 }
@@ -3069,20 +2949,12 @@ type GetFederationTokenInput struct {
 	Tags []*Tag `type:"list"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetFederationTokenInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetFederationTokenInput) GoString() string {
 	return s.String()
 }
@@ -3185,20 +3057,12 @@ type GetFederationTokenOutput struct {
 	PackedPolicySize *int64 `type:"integer"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetFederationTokenOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetFederationTokenOutput) GoString() string {
 	return s.String()
 }
@@ -3256,20 +3120,12 @@ type GetSessionTokenInput struct {
 	TokenCode *string `min:"6" type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetSessionTokenInput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetSessionTokenInput) GoString() string {
 	return s.String()
 }
@@ -3325,20 +3181,12 @@ type GetSessionTokenOutput struct {
 	Credentials *Credentials `type:"structure"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s GetSessionTokenOutput) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s GetSessionTokenOutput) GoString() string {
 	return s.String()
 }
@@ -3361,20 +3209,12 @@ type PolicyDescriptorType struct {
 	Arn *string `locationName:"arn" min:"20" type:"string"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s PolicyDescriptorType) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s PolicyDescriptorType) GoString() string {
 	return s.String()
 }
@@ -3427,20 +3267,12 @@ type Tag struct {
 	Value *string `type:"string" required:"true"`
 }
 
-// String returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// String returns the string representation
 func (s Tag) String() string {
 	return awsutil.Prettify(s)
 }
 
-// GoString returns the string representation.
-//
-// API parameter values that are decorated as "sensitive" in the API will not
-// be included in the string output. The member name will be present, but the
-// value will be replaced with "sensitive".
+// GoString returns the string representation
 func (s Tag) GoString() string {
 	return s.String()
 }

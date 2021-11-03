@@ -9,13 +9,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
+	dstime "github.com/grafana/dskit/time"
 )
 
 type BasicLifecyclerDelegate interface {
@@ -183,7 +182,7 @@ func (l *BasicLifecycler) starting(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) running(ctx context.Context) error {
-	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 	for {
@@ -195,7 +194,7 @@ func (l *BasicLifecycler) running(ctx context.Context) error {
 			f()
 
 		case <-ctx.Done():
-			level.Info(util_log.Logger).Log("msg", "ring lifecycler is shutting down", "ring", l.ringName)
+			level.Info(l.logger).Log("msg", "ring lifecycler is shutting down", "ring", l.ringName)
 			return nil
 		}
 	}
@@ -215,7 +214,7 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	}()
 
 	// Heartbeat while the stopping delegate function is running.
-	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 heartbeatLoop:
@@ -293,7 +292,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Duration) error {
-	heartbeatTickerStop, heartbeatTickerChan := util.NewDisableableTicker(l.cfg.HeartbeatPeriod)
+	heartbeatTickerStop, heartbeatTickerChan := dstime.NewDisableableTicker(l.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 	// The first observation will occur after the specified period.

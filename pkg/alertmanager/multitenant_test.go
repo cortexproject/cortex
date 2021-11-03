@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
@@ -44,7 +45,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -1445,7 +1445,7 @@ func TestAlertmanager_ReplicasPosition(t *testing.T) {
 
 	// First, create the alertmanager instances, we'll use a replication factor of 3 and create 3 instances so that we can get the tenant on each replica.
 	for i := 1; i <= 3; i++ {
-		//instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
+		// instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
 		instanceID := fmt.Sprintf("alertmanager-%d", i)
 
 		amConfig := mockAlertmanagerConfig(t)

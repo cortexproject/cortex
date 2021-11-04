@@ -11,14 +11,15 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20210912230133-d1bdfacee922
 	github.com/alicebob/miniredis/v2 v2.14.3
-	github.com/aws/aws-sdk-go v1.40.37
+	github.com/aws/aws-sdk-go v1.40.45
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
-	github.com/go-kit/log v0.1.0
+	github.com/go-kit/kit v0.12.0 // indirect
+	github.com/go-kit/log v0.2.0
 	github.com/go-openapi/strfmt v0.20.2
 	github.com/go-openapi/swag v0.19.15
 	github.com/go-redis/redis/v8 v8.11.4
@@ -30,7 +31,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/gorilla/mux v1.8.0
 	github.com/grafana/dskit v0.0.0-20211021180445-3bd016e9d7f1
-	github.com/json-iterator/go v1.1.11
+	github.com/json-iterator/go v1.1.12
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10
 	github.com/mitchellh/go-wordwrap v1.0.0
@@ -54,7 +55,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.9.0
-	golang.org/x/net v0.0.0-20210903162142-ad29c8ab022f
+	golang.org/x/net v0.0.0-20210917221730-978cfadd31cf
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/api v0.56.0
@@ -85,3 +86,7 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.38.0
 // confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
 // is v0.19.1. We pin version from late september here. Feel free to remove when updating to later version.
 replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20210923155558-c15594a03c45
+
+// Pin aws-sdk to version prior to go-kit update, to reduce the bulk of change.
+// Un-pin once Cortex 1.11 is released.
+replace github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.40.37

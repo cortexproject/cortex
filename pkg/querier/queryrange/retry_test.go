@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"

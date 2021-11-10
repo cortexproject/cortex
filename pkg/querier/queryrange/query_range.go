@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -53,7 +52,8 @@ var (
 type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
-	DecodeRequest(context.Context, *http.Request) (Request, error)
+	// The last parameter specifies a list of headers on the http request that should be included in the decoded request
+	DecodeRequest(context.Context, *http.Request, []string) (Request, error)
 	// DecodeResponse decodes a Response from an http response.
 	// The original request is also passed as a parameter this is useful for implementation that needs the request
 	// to merge result or build the result correctly.
@@ -188,7 +188,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, headers []string) (Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -223,19 +223,14 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
 
-	// Include the headers from http request in prometheusRequest.
-	// We don't include the following headers in the codec -
-	// accept-encoding - cortex uses the response_compression_enabled configuration setting to
-	//   inflate/deflate responses for range queries and the deflation options in the header are ignored.
-	//   The Gzip handler based on the config setting is registered here -
-	//   https://github.com/cortexproject/cortex/blob/85c378182d0d7bef81636c3894d426f7d745b72c/pkg/api/api.go#L159
-	// X-Scope-OrgID - defaultroundtripper already injects OrgId into queries created for ranges
-	//   https://github.com/cortexproject/cortex/blob/master/pkg/querier/queryrange/roundtrip.go#L286
-	for h, hv := range r.Header {
-		if strings.EqualFold(h, "accept-encoding") || strings.EqualFold(h, user.OrgIDHeaderName) {
-			continue
+	// Include the specified headers from http request in prometheusRequest.
+	for _, header := range headers {
+		for h, hv := range r.Header {
+			if strings.EqualFold(h, header) {
+				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
+				break
+			}
 		}
-		result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
 	}
 
 	for _, value := range r.Header.Values(cacheControlHeader) {

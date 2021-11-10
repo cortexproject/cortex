@@ -64,7 +64,7 @@ func TestRequest(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "1")
 			r = r.Clone(ctx)
 
-			req, err := PrometheusCodec.DecodeRequest(ctx, r)
+			req, err := PrometheusCodec.DecodeRequest(ctx, r, []string{"Test-Header"})
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)
 				return

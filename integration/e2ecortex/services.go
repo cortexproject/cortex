@@ -121,13 +121,21 @@ func NewQuerierWithConfigFile(name string, store RingStore, address, configFile 
 	)
 }
 
-func NewStoreGateway(name string, consulAddress string, flags map[string]string, image string) *CortexService {
-	return NewStoreGatewayWithConfigFile(name, consulAddress, "", flags, image)
+func NewStoreGateway(name string, store RingStore, address string, flags map[string]string, image string) *CortexService {
+	return NewStoreGatewayWithConfigFile(name, store, address, "", flags, image)
 }
 
-func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags map[string]string, image string) *CortexService {
+func NewStoreGatewayWithConfigFile(name string, store RingStore, address string, configFile string, flags map[string]string, image string) *CortexService {
 	if configFile != "" {
 		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
+	}
+
+	if store == RingStoreConsul {
+		flags["-consul.hostname"] = address
+		flags["-store-gateway.sharding-ring.consul.hostname"] = address
+	} else if store == RingStoreEtcd {
+		flags["-etcd.endpoints"] = address
+		flags["-store-gateway.sharding-ring.etcd.endpoints"] = address
 	}
 
 	if image == "" {
@@ -142,8 +150,7 @@ func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags
 			"-log.level": "warn",
 			// Store-gateway ring backend.
 			"-store-gateway.sharding-enabled":                 "true",
-			"-store-gateway.sharding-ring.store":              "consul",
-			"-store-gateway.sharding-ring.consul.hostname":    consulAddress,
+			"-store-gateway.sharding-ring.store":              string(store),
 			"-store-gateway.sharding-ring.replication-factor": "1",
 			// Startup quickly.
 			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",

@@ -53,7 +53,7 @@ func testQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T, streamChunks
 	// Start Cortex components.
 	ingesterBlocks := e2ecortex.NewIngester("ingester-blocks", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), blockFlags, "")
 	ingesterChunks := e2ecortex.NewIngester("ingester-chunks", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), chunksFlags, "")
-	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), blockFlags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), blockFlags, "")
 	require.NoError(t, s.StartAndWaitReady(ingesterBlocks, ingesterChunks, storeGateway))
 
 	// Sharding is disabled, pass gateway address.

@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -24,7 +25,13 @@ func TestS3Client(t *testing.T) {
 	defer s.Close()
 
 	// Start dependencies.
-	minio := e2edb.NewMinio(9000, bucketName)
+	// We use KES to emulate a Key Management Store for use with Minio
+	kesDNSName := networkName + "-kes"
+	require.NoError(t, writeCerts(s.SharedDir(), kesDNSName))
+	// Start dependencies.
+	kes := e2edb.NewKES(7373, serverKeyFile, serverCertFile, clientCertFile)
+	require.NoError(t, s.Start(kes)) // TODO: wait for it to be ready, but currently there is no way to probe.
+	minio := e2edb.NewMinioWithKES(9000, "https://"+kesDNSName+":7373", clientKeyFile, clientCertFile, caCertFile, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	tests := []struct {
@@ -94,11 +101,6 @@ func TestS3Client(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			switch tt.name {
-			case "config-with-deprecated-sse", "config-with-sse-s3":
-				t.Skip("TODO: Issue #4543")
-			}
-
 			client, err := s3.NewS3ObjectClient(tt.cfg)
 
 			require.NoError(t, err)

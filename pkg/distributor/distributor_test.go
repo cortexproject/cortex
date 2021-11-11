@@ -513,23 +513,23 @@ func TestPush_QuorumError(t *testing.T) {
 
 	d := dists[0]
 
-	// Using 489 just to make sure we are not hitting the &limits
+	// Using 429 just to make sure we are not hitting the &limits
 	// Simulating 2 4xx and 1 5xx -> Should return 4xx
-	ingesters[0].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[0].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[1].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
-	ingesters[2].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[2].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 
 	for i := 0; i < 1000; i++ {
 		request := makeWriteRequest(0, 30, 20)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
-		require.Equal(t, codes.Code(489), status.Code())
+		require.Equal(t, codes.Code(429), status.Code())
 	}
 
 	// Simulating 2 5xx and 1 4xx -> Should return 5xx
 	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
-	ingesters[1].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 
 	for i := 0; i < 10000; i++ {
@@ -542,7 +542,7 @@ func TestPush_QuorumError(t *testing.T) {
 
 	// Simulating 2 different errors and 1 success -> This case we may return any of the errors
 	ingesters[0].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
-	ingesters[1].failResp.Store(httpgrpc.Errorf(489, "Throttling"))
+	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].happy.Store(true)
 
 	for i := 0; i < 1000; i++ {
@@ -550,7 +550,7 @@ func TestPush_QuorumError(t *testing.T) {
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
-		require.True(t, status.Code() == 489 || status.Code() == 500)
+		require.True(t, status.Code() == 429 || status.Code() == 500)
 	}
 
 	// Simulating 1 error -> Should return 2xx
@@ -581,7 +581,7 @@ func TestPush_QuorumError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Give time to the ring get updated with the KV value
-	time.Sleep(5 * time.Second)
+	time.Sleep(time.Second)
 
 	for i := 0; i < 1000; i++ {
 		request := makeWriteRequest(0, 30, 20)

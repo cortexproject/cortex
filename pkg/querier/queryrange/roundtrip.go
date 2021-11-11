@@ -61,7 +61,7 @@ type Config struct {
 	MaxRetries             int  `yaml:"max_retries"`
 	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
-	ForwardedHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -71,7 +71,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
-	f.Var(&cfg.ForwardedHeaders, "querier.forward-headers-list", "List of headers which should be forwarded by the query_range middleware to downstream")
+	f.Var(&cfg.ForwardHeaders, "querier.forward-headers-list", "List of headers which should be forwarded by the query Frontend to downstream querier.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -217,7 +217,7 @@ func NewTripperware(
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			queryrange := NewRoundTripper(next, codec, cfg.ForwardedHeaders, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, codec, cfg.ForwardHeaders, queryRangeMiddleware...)
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"

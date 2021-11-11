@@ -22,7 +22,7 @@ import (
 	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -31,8 +31,12 @@ import (
 const StatusSuccess = "success"
 
 var (
-	matrix            = model.ValMatrix.String()
-	json              = jsoniter.ConfigCompatibleWithStandardLibrary
+	matrix = model.ValMatrix.String()
+	json   = jsoniter.Config{
+		EscapeHTML:             false, // No HTML in our responses.
+		SortMapKeys:            true,
+		ValidateJsonRawMessage: true,
+	}.Froze()
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
@@ -262,12 +266,11 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := ioutil.ReadAll(r.Body)
+	buf, err := bodyBuffer(r)
 	if err != nil {
 		log.Error(err)
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		return nil, err
 	}
-
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
@@ -279,6 +282,29 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
+}
+
+// Buffer can be used to read a response body.
+// This allows to avoid reading the body multiple times from the `http.Response.Body`.
+type Buffer interface {
+	Bytes() []byte
+}
+
+func bodyBuffer(res *http.Response) ([]byte, error) {
+	// Attempt to cast the response body to a Buffer and use it if possible.
+	// This is because the frontend may have already read the body and buffered it.
+	if buffer, ok := res.Body.(Buffer); ok {
+		return buffer.Bytes(), nil
+	}
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
+	if _, err := buf.ReadFrom(res.Body); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
@@ -303,8 +329,9 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(bytes.NewBuffer(b)),
-		StatusCode: http.StatusOK,
+		Body:          ioutil.NopCloser(bytes.NewBuffer(b)),
+		StatusCode:    http.StatusOK,
+		ContentLength: int64(len(b)),
 	}
 	return &resp, nil
 }
@@ -312,13 +339,13 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = client.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }
@@ -326,10 +353,10 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler.
 func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	stream := struct {
-		Metric model.Metric    `json:"metric"`
-		Values []client.Sample `json:"values"`
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
 	}{
-		Metric: client.FromLabelAdaptersToMetric(s.Labels),
+		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
 		Values: s.Samples,
 	}
 	return json.Marshal(stream)
@@ -339,7 +366,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	output := map[string]*SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
-			metric := client.FromLabelAdaptersToLabels(stream.Labels).String()
+			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
 				existing = &SampleStream{
@@ -349,9 +376,15 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
 			// The prometheus API is inclusive of start and end timestamps.
 			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-				if existing.Samples[len(existing.Samples)-1].TimestampMs == stream.Samples[0].TimestampMs {
+				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+				if existingEndTs == stream.Samples[0].TimestampMs {
+					// Typically this the cases where only 1 sample point overlap,
+					// so optimize with simple code.
 					stream.Samples = stream.Samples[1:]
-				}
+				} else if existingEndTs > stream.Samples[0].TimestampMs {
+					// Overlap might be big, use heavier algorithm to remove overlap.
+					stream.Samples = sliceSamples(stream.Samples, existingEndTs)
+				} // else there is no overlap, yay!
 			}
 			existing.Samples = append(existing.Samples, stream.Samples...)
 			output[metric] = existing
@@ -370,6 +403,26 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 
 	return result
+}
+
+// sliceSamples assumes given samples are sorted by timestamp in ascending order and
+// return a sub slice whose first element's is the smallest timestamp that is strictly
+// bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
+// timestamps in samples.
+func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
+	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
+		return samples
+	}
+
+	if len(samples) > 0 && minTs > samples[len(samples)-1].TimestampMs {
+		return samples[len(samples):]
+	}
+
+	searchResult := sort.Search(len(samples), func(i int) bool {
+		return samples[i].TimestampMs > minTs
+	})
+
+	return samples[searchResult:]
 }
 
 func parseDurationMs(s string) (int64, error) {

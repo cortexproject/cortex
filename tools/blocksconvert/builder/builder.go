@@ -10,13 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
 
@@ -25,8 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/planprocessor"
 )
@@ -38,10 +39,11 @@ type Config struct {
 	OutputDirectory string
 	Concurrency     int
 
-	ChunkCacheConfig cache.Config
-	UploadBlock      bool
-	DeleteLocalBlock bool
-	SeriesBatchSize  int
+	ChunkCacheConfig   cache.Config
+	UploadBlock        bool
+	DeleteLocalBlock   bool
+	SeriesBatchSize    int
+	TimestampTolerance time.Duration
 
 	PlanProcessorConfig planprocessor.Config
 }
@@ -55,6 +57,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.UploadBlock, "builder.upload", true, "Upload generated blocks to storage.")
 	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
 	f.IntVar(&cfg.SeriesBatchSize, "builder.series-batch-size", defaultSeriesBatchSize, "Number of series to keep in memory before batch-write to temp file. Lower to decrease memory usage during the block building.")
+	f.DurationVar(&cfg.TimestampTolerance, "builder.timestamp-tolerance", 0, "Adjust sample timestamps by up to this to align them to an exact number of seconds apart.")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (services.Service, error) {
@@ -195,7 +198,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 		return "", errors.Wrap(err, "failed to create chunk fetcher")
 	}
 
-	tsdbBuilder, err := newTsdbBuilder(p.builder.cfg.OutputDirectory, p.dayStart, p.dayEnd, p.builder.cfg.SeriesBatchSize, p.log,
+	tsdbBuilder, err := newTsdbBuilder(p.builder.cfg.OutputDirectory, p.dayStart, p.dayEnd, p.builder.cfg.TimestampTolerance, p.builder.cfg.SeriesBatchSize, p.log,
 		p.builder.processedSeries, p.builder.writtenSamples, p.builder.seriesInMemory)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create TSDB builder")
@@ -230,7 +233,8 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	p.builder.blocksSize.Add(float64(blockSize))
 
 	if p.builder.cfg.UploadBlock {
-		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient)
+		// No per-tenant config provider because the blocksconvert tool doesn't support it.
+		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient, nil)
 
 		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {
@@ -250,15 +254,15 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 	return ulid.String(), nil
 }
 
-func uploadBlock(ctx context.Context, planLog log.Logger, userBucket *bucket.UserBucketClient, blockDir string) error {
-	boff := util.NewBackoff(ctx, util.BackoffConfig{
+func uploadBlock(ctx context.Context, planLog log.Logger, userBucket objstore.Bucket, blockDir string) error {
+	boff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: 5,
 	})
 
 	for boff.Ongoing() {
-		err := block.Upload(ctx, planLog, userBucket, blockDir)
+		err := block.Upload(ctx, planLog, userBucket, blockDir, metadata.NoneFunc)
 		if err == nil {
 			return nil
 		}
@@ -293,7 +297,7 @@ func getBlockSize(dir string) (int64, error) {
 }
 
 func fetchAndBuild(ctx context.Context, f *Fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
-	b := util.NewBackoff(ctx, util.BackoffConfig{
+	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: 5,

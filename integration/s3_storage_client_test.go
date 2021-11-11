@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -9,12 +10,13 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 )
 
 func TestS3Client(t *testing.T) {
@@ -23,7 +25,13 @@ func TestS3Client(t *testing.T) {
 	defer s.Close()
 
 	// Start dependencies.
-	minio := e2edb.NewMinio(9000, bucketName)
+	// We use KES to emulate a Key Management Store for use with Minio
+	kesDNSName := networkName + "-kes"
+	require.NoError(t, writeCerts(s.SharedDir(), kesDNSName))
+	// Start dependencies.
+	kes := e2edb.NewKES(7373, serverKeyFile, serverCertFile, clientCertFile)
+	require.NoError(t, s.Start(kes)) // TODO: wait for it to be ready, but currently there is no way to probe.
+	minio := e2edb.NewMinioWithKES(9000, "https://"+kesDNSName+":7373", clientKeyFile, clientCertFile, caCertFile, bucketName)
 	require.NoError(t, s.StartAndWaitReady(minio))
 
 	tests := []struct {
@@ -61,6 +69,32 @@ func TestS3Client(t *testing.T) {
 				S3ForcePathStyle: true,
 				AccessKeyID:      e2edb.MinioAccessKey,
 				SecretAccessKey:  e2edb.MinioSecretKey,
+			},
+		},
+		{
+			name: "config-with-deprecated-sse",
+			cfg: s3.S3Config{
+				Endpoint:         minio.HTTPEndpoint(),
+				BucketNames:      bucketName,
+				S3ForcePathStyle: true,
+				Insecure:         true,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+				SSEEncryption:    true,
+			},
+		},
+		{
+			name: "config-with-sse-s3",
+			cfg: s3.S3Config{
+				Endpoint:         minio.HTTPEndpoint(),
+				BucketNames:      bucketName,
+				S3ForcePathStyle: true,
+				Insecure:         true,
+				AccessKeyID:      e2edb.MinioAccessKey,
+				SecretAccessKey:  e2edb.MinioSecretKey,
+				SSEConfig: cortex_s3.SSEConfig{
+					Type: "SSE-S3",
+				},
 			},
 		},
 	}

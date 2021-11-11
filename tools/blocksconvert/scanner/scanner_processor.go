@@ -87,9 +87,7 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 		return err
 	}
 
-	if !w.allowedUsers.IsAllowed(user) || (w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user)) {
-		w.ignoredEntries.Inc()
-		w.ignoredUsers[user] = struct{}{}
+	if !w.AcceptUser(user) {
 		return nil
 	}
 
@@ -109,6 +107,19 @@ func (w *processor) ProcessIndexEntry(indexEntry chunk.IndexEntry) error {
 	w.lastKey = k
 	w.chunks = append(w.chunks, chunkID)
 	return nil
+}
+
+func (w *processor) AcceptUser(user string) bool {
+	if _, found := w.ignoredUsers[user]; found {
+		w.ignoredEntries.Inc()
+		return false
+	}
+	if !w.allowedUsers.IsAllowed(user) || (w.ignoredUsersRegex != nil && w.ignoredUsersRegex.MatchString(user)) {
+		w.ignoredEntries.Inc()
+		w.ignoredUsers[user] = struct{}{}
+		return false
+	}
+	return true
 }
 
 func (w *processor) Flush() error {

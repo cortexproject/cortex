@@ -7,14 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/cortex"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/builder"
 	"github.com/cortexproject/cortex/tools/blocksconvert/cleaner"
@@ -44,12 +44,12 @@ func main() {
 	cfg.ServerConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
-	util.InitLogger(&cfg.ServerConfig)
+	util_log.InitLogger(&cfg.ServerConfig)
 
 	cortex.DisableSignalHandling(&cfg.ServerConfig)
 	serv, err := server.New(cfg.ServerConfig)
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "Unable to initialize server", "err", err.Error())
+		level.Error(util_log.Logger).Log("msg", "Unable to initialize server", "err", err.Error())
 		os.Exit(1)
 	}
 
@@ -60,19 +60,19 @@ func main() {
 	var targetService services.Service
 	switch cfg.Target {
 	case "scanner":
-		targetService, err = scanner.NewScanner(cfg.ScannerConfig, cfg.SharedConfig, util.Logger, registry)
+		targetService, err = scanner.NewScanner(cfg.ScannerConfig, cfg.SharedConfig, util_log.Logger, registry)
 	case "builder":
-		targetService, err = builder.NewBuilder(cfg.BuilderConfig, cfg.SharedConfig, util.Logger, registry)
+		targetService, err = builder.NewBuilder(cfg.BuilderConfig, cfg.SharedConfig, util_log.Logger, registry)
 	case "scheduler":
-		targetService, err = scheduler.NewScheduler(cfg.SchedulerConfig, cfg.SharedConfig, util.Logger, registry, serv.HTTP, serv.GRPC)
+		targetService, err = scheduler.NewScheduler(cfg.SchedulerConfig, cfg.SharedConfig, util_log.Logger, registry, serv.HTTP, serv.GRPC)
 	case "cleaner":
-		targetService, err = cleaner.NewCleaner(cfg.CleanerConfig, cfg.SharedConfig, util.Logger, registry)
+		targetService, err = cleaner.NewCleaner(cfg.CleanerConfig, cfg.SharedConfig, util_log.Logger, registry)
 	default:
 		err = fmt.Errorf("unknown target")
 	}
 
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "failed to initialize", "err", err)
+		level.Error(util_log.Logger).Log("msg", "failed to initialize", "err", err)
 		os.Exit(1)
 	}
 
@@ -88,7 +88,7 @@ func main() {
 		err = services.StartManagerAndAwaitHealthy(context.Background(), servManager)
 	}
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "Unable to start", "err", err.Error())
+		level.Error(util_log.Logger).Log("msg", "Unable to start", "err", err.Error())
 		os.Exit(1)
 	}
 
@@ -101,7 +101,7 @@ func main() {
 
 	// We only wait for target service. If any other service fails, listener will stop it (via manager)
 	if err := targetService.AwaitTerminated(context.Background()); err != nil {
-		level.Error(util.Logger).Log("msg", cfg.Target+" failed", "err", targetService.FailureCase())
+		level.Error(util_log.Logger).Log("msg", cfg.Target+" failed", "err", targetService.FailureCase())
 		os.Exit(1)
 	}
 }

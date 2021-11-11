@@ -1,9 +1,11 @@
 ---
-title: "Chunks Storage"
-linkTitle: "Chunks Storage"
+title: "Chunks Storage (deprecated)"
+linkTitle: "Chunks Storage (deprecated)"
 weight: 4
 menu:
 ---
+
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
 
 The chunks storage is a Cortex storage engine which stores each single time series into a separate object called _chunk_. Each chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) chunks. For this reason, the Cortex chunks storage requires two backend storages: a key-value store for the index and an object store for the chunks.
 
@@ -32,5 +34,6 @@ The current schema recommendation is the **v9 schema** for most use cases and **
 
 The following step-by-step guides can help you setting up Cortex running with the chunks storage:
 
-- [Running Cortex chunks storage in Production](../guides/running-chunks-storage-in-production.md)
-- [Running Cortex chunks storage with Cassandra](../guides/running-chunks-storage-with-cassandra.md)
+- [Getting started with Cortex chunks storage](./chunks-storage-getting-started.md)
+- [Running Cortex chunks storage in Production](./running-chunks-storage-in-production.md)
+- [Running Cortex chunks storage with Cassandra](./running-chunks-storage-with-cassandra.md)

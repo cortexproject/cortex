@@ -5,20 +5,20 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestTimeSeriesSeriesSet(t *testing.T) {
 
-	timeseries := []client.TimeSeries{
+	timeseries := []cortexpb.TimeSeries{
 		{
-			Labels: []client.LabelAdapter{
+			Labels: []cortexpb.LabelAdapter{
 				{
 					Name:  "label1",
 					Value: "value1",
 				},
 			},
-			Samples: []client.Sample{
+			Samples: []cortexpb.Sample{
 				{
 					Value:       3.14,
 					TimestampMs: 1234,
@@ -43,7 +43,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	require.False(t, ss.Next())
 
 	// Append a new sample to seek to
-	timeseries[0].Samples = append(timeseries[0].Samples, client.Sample{
+	timeseries[0].Samples = append(timeseries[0].Samples, cortexpb.Sample{
 		Value:       1.618,
 		TimestampMs: 2345,
 	})
@@ -59,14 +59,14 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 
 func TestTimeSeriesIterator(t *testing.T) {
 	ts := timeseries{
-		series: client.TimeSeries{
-			Labels: []client.LabelAdapter{
+		series: cortexpb.TimeSeries{
+			Labels: []cortexpb.LabelAdapter{
 				{
 					Name:  "label1",
 					Value: "value1",
 				},
 			},
-			Samples: []client.Sample{
+			Samples: []cortexpb.Sample{
 				{
 					Value:       3.14,
 					TimestampMs: 1234,

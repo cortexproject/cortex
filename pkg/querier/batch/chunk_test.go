@@ -24,15 +24,18 @@ func TestChunkIter(t *testing.T) {
 	forEncodings(t, func(t *testing.T, enc promchunk.Encoding) {
 		chunk := mkGenericChunk(t, 0, 100, enc)
 		iter := &chunkIterator{}
+
 		iter.reset(chunk)
 		testIter(t, 100, newIteratorAdapter(iter))
+
+		iter.reset(chunk)
 		testSeek(t, 100, newIteratorAdapter(iter))
 	})
 }
 
 func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 	for _, enc := range []promchunk.Encoding{
-		promchunk.DoubleDelta, promchunk.Varbit, promchunk.Bigchunk,
+		promchunk.DoubleDelta, promchunk.Varbit, promchunk.Bigchunk, promchunk.PrometheusXorChunk,
 	} {
 		t.Run(enc.String(), func(t *testing.T) {
 			f(t, enc)
@@ -56,7 +59,8 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 		require.Nil(t, npc)
 		ts = ts.Add(step)
 	}
-	return chunk.NewChunk(userID, fp, metric, pc, model.Time(0), ts)
+	ts = ts.Add(-step) // undo the add that we did just before exiting the loop
+	return chunk.NewChunk(userID, fp, metric, pc, from, ts)
 }
 
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {

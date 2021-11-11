@@ -1,6 +1,9 @@
 package backoff
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // An Operation is executing by Retry() or RetryNotify().
 // The operation will be retried using a backoff policy if it returns an error.
@@ -53,11 +56,16 @@ func RetryNotifyWithTimer(operation Operation, b BackOff, notify Notify, t Timer
 			return nil
 		}
 
-		if permanent, ok := err.(*PermanentError); ok {
+		var permanent *PermanentError
+		if errors.As(err, &permanent) {
 			return permanent.Err
 		}
 
 		if next = b.NextBackOff(); next == Stop {
+			if cerr := ctx.Err(); cerr != nil {
+				return cerr
+			}
+
 			return err
 		}
 
@@ -88,8 +96,16 @@ func (e *PermanentError) Unwrap() error {
 	return e.Err
 }
 
+func (e *PermanentError) Is(target error) bool {
+	_, ok := target.(*PermanentError)
+	return ok
+}
+
 // Permanent wraps the given err in a *PermanentError.
-func Permanent(err error) *PermanentError {
+func Permanent(err error) error {
+	if err == nil {
+		return nil
+	}
 	return &PermanentError{
 		Err: err,
 	}

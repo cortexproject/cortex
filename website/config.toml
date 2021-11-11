@@ -53,7 +53,7 @@ id = "UA-63872299-2"
 [languages]
 [languages.en]
 title = "Cortex"
-description = "A horizontally scalable, highly available, multi-tenant, long term Prometheus."
+description = "A horizontally scalable, highly available, multi-tenant, long term storage for Prometheus."
 languageName ="English"
 # Weight used for sorting.
 weight = 1

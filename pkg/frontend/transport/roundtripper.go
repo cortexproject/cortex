@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -24,6 +25,15 @@ type grpcRoundTripperAdapter struct {
 	roundTripper GrpcRoundTripper
 }
 
+type buffer struct {
+	buff []byte
+	io.ReadCloser
+}
+
+func (b *buffer) Bytes() []byte {
+	return b.buff
+}
+
 func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, error) {
 	req, err := server.HTTPRequest(r)
 	if err != nil {
@@ -36,9 +46,10 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 	}
 
 	httpResp := &http.Response{
-		StatusCode: int(resp.Code),
-		Body:       ioutil.NopCloser(bytes.NewReader(resp.Body)),
-		Header:     http.Header{},
+		StatusCode:    int(resp.Code),
+		Body:          &buffer{buff: resp.Body, ReadCloser: ioutil.NopCloser(bytes.NewReader(resp.Body))},
+		Header:        http.Header{},
+		ContentLength: int64(len(resp.Body)),
 	}
 	for _, h := range resp.Headers {
 		httpResp.Header[h.Key] = h.Values

@@ -90,7 +90,7 @@ func TestBucketWithGlobalMarkers_ShouldWorkCorrectlyWithBucketMetrics(t *testing
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bkt = objstore.BucketWithMetrics("", bkt, reg)
 	bkt = BucketWithGlobalMarkers(bkt)
-	userBkt := bucket.NewUserBucketClient("user-1", bkt)
+	userBkt := bucket.NewUserBucketClient("user-1", bkt, nil)
 
 	reader, err := userBkt.Get(ctx, "does-not-exist")
 	require.Error(t, err)

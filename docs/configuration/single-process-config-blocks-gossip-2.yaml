@@ -89,11 +89,12 @@ frontend_worker:
 ruler:
   enable_api: true
   enable_sharding: true
-  storage:
-    type: local
-    local:
-      directory: /tmp/cortex/rules
   ring:
     num_tokens: 512
     kvstore:
       store: memberlist
+
+ruler_storage:
+  backend: local
+  local:
+    directory: /tmp/cortex/rules

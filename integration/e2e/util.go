@@ -86,12 +86,22 @@ func PostRequest(url string) (*http.Response, error) {
 	return client.Post(url, "", strings.NewReader(""))
 }
 
-// timeToMilliseconds returns the input time as milliseconds, using the same
+// TimeToMilliseconds returns the input time as milliseconds, using the same
 // formula used by Prometheus in order to get the same timestamp when asserting
-// on query results.
+// on query results. The formula we're mimicking here is Prometheus parseTime().
+// See: https://github.com/prometheus/prometheus/blob/df80dc4d3970121f2f76cba79050983ffb3cdbb0/web/api/v1/api.go#L1690-L1694
 func TimeToMilliseconds(t time.Time) int64 {
-	// The millisecond is rounded to the nearest
-	return int64(math.Round(float64(t.UnixNano()) / 1000000))
+	// Convert to seconds.
+	sec := float64(t.Unix()) + float64(t.Nanosecond())/1e9
+
+	// Parse seconds.
+	s, ns := math.Modf(sec)
+
+	// Round nanoseconds part.
+	ns = math.Round(ns*1000) / 1000
+
+	// Convert to millis.
+	return (int64(s) * 1e3) + (int64(ns * 1e3))
 }
 
 func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label) (series []prompb.TimeSeries, vector model.Vector) {

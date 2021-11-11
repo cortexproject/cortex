@@ -2,7 +2,9 @@ package util
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,6 +93,45 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 			labelValues: []string{},
 			metrics:     []*dto.Metric{m1, m2, m3, m4, m5, m6}},
 	}, out2)
+}
+
+func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
+	const (
+		numMetrics         = 1000
+		numLabelsPerMetric = 10
+	)
+
+	// Generate metrics and add them to a metric family.
+	mf := &dto.MetricFamily{Metric: make([]*dto.Metric, 0, numMetrics)}
+	for i := 0; i < numMetrics; i++ {
+		labels := []*dto.LabelPair{{
+			Name:  proto.String("unique"),
+			Value: proto.String(strconv.Itoa(i)),
+		}}
+
+		for l := 1; l < numLabelsPerMetric; l++ {
+			labels = append(labels, &dto.LabelPair{
+				Name:  proto.String(fmt.Sprintf("label_%d", l)),
+				Value: proto.String(fmt.Sprintf("value_%d", l)),
+			})
+		}
+
+		mf.Metric = append(mf.Metric, &dto.Metric{
+			Label:   labels,
+			Counter: &dto.Counter{Value: proto.Float64(1.5)},
+		})
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		out := getMetricsWithLabelNames(mf, []string{"label_1", "label_2", "label_3"})
+
+		if expected := 1; len(out) != expected {
+			b.Fatalf("unexpected number of output groups: expected = %d got = %d", expected, len(out))
+		}
+	}
 }
 
 func makeLabels(namesAndValues ...string) []*dto.LabelPair {
@@ -995,4 +1037,124 @@ func float64p(v float64) *float64 {
 
 func uint64p(v uint64) *uint64 {
 	return &v
+}
+
+func BenchmarkGetLabels_SmallSet(b *testing.B) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	m.WithLabelValues("bad", "user1").Inc()
+	m.WithLabelValues("worse", "user1").Inc()
+	m.WithLabelValues("worst", "user1").Inc()
+
+	m.WithLabelValues("bad", "user2").Inc()
+	m.WithLabelValues("worst", "user2").Inc()
+
+	m.WithLabelValues("worst", "user3").Inc()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGetLabels_MediumSet(b *testing.B) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	for i := 1; i <= 1000; i++ {
+		m.WithLabelValues("bad", fmt.Sprintf("user%d", i)).Inc()
+		m.WithLabelValues("worse", fmt.Sprintf("user%d", i)).Inc()
+		m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+
+		if i%2 == 0 {
+			m.WithLabelValues("bad", fmt.Sprintf("user%d", i)).Inc()
+			m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+		} else {
+			m.WithLabelValues("worst", fmt.Sprintf("user%d", i)).Inc()
+		}
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestGetLabels(t *testing.T) {
+	m := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test",
+		ConstLabels: map[string]string{
+			"cluster": "abc",
+		},
+	}, []string{"reason", "user"})
+
+	m.WithLabelValues("bad", "user1").Inc()
+	m.WithLabelValues("worse", "user1").Inc()
+	m.WithLabelValues("worst", "user1").Inc()
+
+	m.WithLabelValues("bad", "user2").Inc()
+	m.WithLabelValues("worst", "user2").Inc()
+
+	m.WithLabelValues("worst", "user3").Inc()
+
+	verifyLabels(t, m, nil, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user3"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"cluster": "abc"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user2"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user3"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"reason": "bad"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user2"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"user": "user1"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "bad", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worst", "user": "user1"}),
+	})
+
+	verifyLabels(t, m, map[string]string{"user": "user1", "reason": "worse"}, []labels.Labels{
+		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
+	})
+}
+
+func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string, expectedLabels []labels.Labels) {
+	result, err := GetLabels(m, filter)
+	require.NoError(t, err)
+
+	sort.Slice(result, func(i, j int) bool {
+		return labels.Compare(result[i], result[j]) < 0
+	})
+
+	sort.Slice(expectedLabels, func(i, j int) bool {
+		return labels.Compare(expectedLabels[i], expectedLabels[j]) < 0
+	})
+
+	require.Equal(t, expectedLabels, result)
 }

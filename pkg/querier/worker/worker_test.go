@@ -3,60 +3,67 @@ package worker
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestResetConcurrency(t *testing.T) {
 	tests := []struct {
-		name                string
-		parallelism         int
-		maxConcurrent       int
-		numTargets          int
-		expectedConcurrency int
+		name                                  string
+		parallelism                           int
+		maxConcurrent                         int
+		numTargets                            int
+		expectedConcurrency                   int
+		expectedConcurrencyAfterTargetRemoval int
 	}{
 		{
-			name:                "Test create at least one processor per target",
-			parallelism:         0,
-			maxConcurrent:       0,
-			numTargets:          2,
-			expectedConcurrency: 2,
+			name:                                  "Test create at least one processor per target",
+			parallelism:                           0,
+			maxConcurrent:                         0,
+			numTargets:                            2,
+			expectedConcurrency:                   2,
+			expectedConcurrencyAfterTargetRemoval: 1,
 		},
 		{
-			name:                "Test parallelism per target",
-			parallelism:         4,
-			maxConcurrent:       0,
-			numTargets:          2,
-			expectedConcurrency: 8,
+			name:                                  "Test parallelism per target",
+			parallelism:                           4,
+			maxConcurrent:                         0,
+			numTargets:                            2,
+			expectedConcurrency:                   8,
+			expectedConcurrencyAfterTargetRemoval: 4,
 		},
 		{
-			name:                "Test Total Parallelism with a remainder",
-			parallelism:         1,
-			maxConcurrent:       7,
-			numTargets:          4,
-			expectedConcurrency: 7,
+			name:                                  "Test Total Parallelism with a remainder",
+			parallelism:                           1,
+			maxConcurrent:                         7,
+			numTargets:                            4,
+			expectedConcurrency:                   7,
+			expectedConcurrencyAfterTargetRemoval: 7,
 		},
 		{
-			name:                "Test Total Parallelism dividing evenly",
-			parallelism:         1,
-			maxConcurrent:       6,
-			numTargets:          2,
-			expectedConcurrency: 6,
+			name:                                  "Test Total Parallelism dividing evenly",
+			parallelism:                           1,
+			maxConcurrent:                         6,
+			numTargets:                            2,
+			expectedConcurrency:                   6,
+			expectedConcurrencyAfterTargetRemoval: 6,
 		},
 		{
-			name:                "Test Total Parallelism at least one worker per target",
-			parallelism:         1,
-			maxConcurrent:       3,
-			numTargets:          6,
-			expectedConcurrency: 6,
+			name:                                  "Test Total Parallelism at least one worker per target",
+			parallelism:                           1,
+			maxConcurrent:                         3,
+			numTargets:                            6,
+			expectedConcurrency:                   6,
+			expectedConcurrencyAfterTargetRemoval: 5,
 		},
 	}
 
@@ -68,7 +75,7 @@ func TestResetConcurrency(t *testing.T) {
 				MaxConcurrentRequests: tt.maxConcurrent,
 			}
 
-			w, err := newQuerierWorkerWithProcessor(cfg, util.Logger, &mockProcessor{}, "", nil)
+			w, err := newQuerierWorkerWithProcessor(cfg, log.NewNopLogger(), &mockProcessor{}, "", nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), w))
 
@@ -79,6 +86,12 @@ func TestResetConcurrency(t *testing.T) {
 			}
 
 			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() interface{} {
+				return getConcurrentProcessors(w)
+			})
+
+			// now we remove an address and ensure we still have the expected concurrency
+			w.AddressRemoved(fmt.Sprintf("127.0.0.1:%d", rand.Intn(tt.numTargets)))
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrencyAfterTargetRemoval, func() interface{} {
 				return getConcurrentProcessors(w)
 			})
 
@@ -105,3 +118,5 @@ type mockProcessor struct{}
 func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc.ClientConn, _ string) {
 	<-ctx.Done()
 }
+
+func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}

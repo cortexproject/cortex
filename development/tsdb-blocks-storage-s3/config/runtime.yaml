@@ -1,1 +1,2 @@
-# This file is left empty. It can be configured with overrides or other runtime config.
+# This file can be used to set overrides or other runtime config.
+ingester_stream_chunks_when_using_blocks: true

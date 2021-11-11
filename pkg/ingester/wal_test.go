@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/services"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -17,8 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestWAL(t *testing.T) {
@@ -28,7 +28,7 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, os.RemoveAll(dirname))
 	}()
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
@@ -84,14 +84,14 @@ func TestWAL(t *testing.T) {
 	lastSample := sampleStream.Values[len(sampleStream.Values)-1]
 
 	// In-order and out of order sample in the same request.
-	metric := client.FromLabelAdaptersToLabels(client.FromMetricsToLabelAdapters(sampleStream.Metric))
-	outOfOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
-	inOrderSample := client.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
+	metric := cortexpb.FromLabelAdaptersToLabels(cortexpb.FromMetricsToLabelAdapters(sampleStream.Metric))
+	outOfOrderSample := cortexpb.Sample{TimestampMs: int64(lastSample.Timestamp - 10), Value: 99}
+	inOrderSample := cortexpb.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, client.ToWriteRequest(
+	_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 		[]labels.Labels{metric, metric},
-		[]client.Sample{outOfOrderSample, inOrderSample}, nil, client.API))
+		[]cortexpb.Sample{outOfOrderSample, inOrderSample}, nil, cortexpb.API))
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(makeMetricValidationError(sampleOutOfOrder, metric,
 		fmt.Errorf("sample timestamp out of order; last timestamp: %v, incoming timestamp: %v", lastSample.Timestamp, model.Time(outOfOrderSample.TimestampMs))), userID).Error()), err)
 
@@ -108,7 +108,7 @@ func TestWAL(t *testing.T) {
 }
 
 func TestCheckpointRepair(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
@@ -290,7 +290,7 @@ func BenchmarkWALReplay(b *testing.B) {
 		require.NoError(b, os.RemoveAll(dirname))
 	}()
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true

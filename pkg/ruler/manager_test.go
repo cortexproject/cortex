@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -31,9 +31,9 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	const user = "testUser"
 
-	userRules := map[string]rules.RuleGroupList{
+	userRules := map[string]rulespb.RuleGroupList{
 		user: {
-			&rules.RuleGroupDesc{
+			&rulespb.RuleGroupDesc{
 				Name:      "group1",
 				Namespace: "ns",
 				Interval:  1 * time.Minute,
@@ -50,6 +50,13 @@ func TestSyncRuleGroups(t *testing.T) {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
+	// Verify that user rule groups are now cached locally.
+	{
+		users, err := m.mapper.users()
+		require.NoError(t, err)
+		require.Equal(t, []string{user}, users)
+	}
+
 	// Passing empty map / nil stops all managers.
 	m.SyncRuleGroups(context.Background(), nil)
 	require.Nil(t, getManager(m, user))
@@ -58,6 +65,13 @@ func TestSyncRuleGroups(t *testing.T) {
 	test.Poll(t, 1*time.Second, false, func() interface{} {
 		return mgr.(*mockRulesManager).running.Load()
 	})
+
+	// Verify that local rule groups were removed.
+	{
+		users, err := m.mapper.users()
+		require.NoError(t, err)
+		require.Equal(t, []string(nil), users)
+	}
 
 	// Resync same rules as before. Previously this didn't restart the manager.
 	m.SyncRuleGroups(context.Background(), userRules)
@@ -69,6 +83,13 @@ func TestSyncRuleGroups(t *testing.T) {
 	test.Poll(t, 1*time.Second, true, func() interface{} {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
+
+	// Verify that user rule groups are cached locally again.
+	{
+		users, err := m.mapper.users()
+		require.NoError(t, err)
+		require.Equal(t, []string{user}, users)
+	}
 
 	m.Stop()
 
@@ -103,7 +124,7 @@ func (m *mockRulesManager) Stop() {
 	close(m.done)
 }
 
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels) error {
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string) error {
 	return nil
 }
 

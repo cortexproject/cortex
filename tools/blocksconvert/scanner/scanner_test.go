@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 )
 
@@ -91,7 +91,7 @@ func TestVerifyPlansDir(t *testing.T) {
 
 	require.NoError(t, of.closeAllFiles(nil))
 
-	err = verifyPlanFiles(context.Background(), dir, util.Logger)
+	err = verifyPlanFiles(context.Background(), dir, util_log.Logger)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "456.plan"))
 	require.True(t, strings.Contains(err.Error(), "multiple entries for series s1 found in plan"))

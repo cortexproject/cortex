@@ -5,6 +5,8 @@ weight: 10
 slug: aws-tips
 ---
 
+**Warning: the chunks storage is deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
+
 This page shares some tips and things to take in consideration when running Cortex chunks storage on AWS.
 
 ## AWS Credentials
@@ -46,7 +48,7 @@ example set of command-line parameters from a fairly modest install:
 
 ```
    -target=table-manager
-   -metrics.url=http://prometheus.monitoring.svc.cluster.local./api/prom/
+   -metrics.url=http://prometheus.monitoring.svc.cluster.local./prometheus/
    -metrics.target-queue-length=100000
    -dynamodb.url=dynamodb://us-east-1/
    -schema-config-file=/etc/schema.yaml

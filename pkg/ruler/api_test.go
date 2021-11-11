@@ -4,30 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	io "io"
+
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rules"
-	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
 func TestRuler_rules(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
@@ -77,14 +79,14 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockSpecialCharRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
 	w := httptest.NewRecorder()
@@ -134,14 +136,14 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRules))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer r.StopAsync()
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, "user1")
 	w := httptest.NewRecorder()
@@ -170,14 +172,14 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rules.RuleGroupList)))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	tc := []struct {
 		name   string
@@ -261,14 +263,14 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(mockRulesNamespaces))
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	router := mux.NewRouter()
 	router.Path("/api/v1/rules/{namespace}").Methods(http.MethodDelete).HandlerFunc(a.DeleteNamespace)
@@ -299,17 +301,17 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 	require.Equal(t, "{\"status\":\"error\",\"data\":null,\"errorType\":\"server_error\",\"error\":\"unable to delete rg\"}", w.Body.String())
 }
 
-func TestRuler_Limits(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(newMockRuleStore(make(map[string]rules.RuleGroupList)))
+func TestRuler_LimitsPerGroup(t *testing.T) {
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
 	defer cleanup()
 
-	r, rcleanup := newTestRuler(t, cfg)
+	r, rcleanup := newTestRuler(t, cfg, nil)
 	defer rcleanup()
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
-	r.limits = &ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
 
-	a := NewAPI(r, r.store)
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
 	tc := []struct {
 		name   string
@@ -337,24 +339,74 @@ rules:
 `,
 			output: "per-user rules per rule group limit (limit: 1 actual: 2) exceeded\n",
 		},
-		{
-			name:   "when exceeding the rule group limit",
-			status: 400,
-			input: `
-name: test
-interval: 15s
-rules:
-- record: up_rule
-  expr: up{}
-`,
-			output: "per-user rules per rule group limit (limit: 1 actual: 1) exceeded\n",
-		},
 	}
 
 	for _, tt := range tc {
 		t.Run(tt.name, func(t *testing.T) {
 			router := mux.NewRouter()
 			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+			// POST
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+		})
+	}
+}
+
+func TestRuler_RulerGroupLimits(t *testing.T) {
+	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	defer cleanup()
+
+	r, rcleanup := newTestRuler(t, cfg, nil)
+	defer rcleanup()
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	tc := []struct {
+		name   string
+		input  string
+		output string
+		err    error
+		status int
+	}{
+		{
+			name:   "when pushing the first group within bounds of the limit",
+			status: 202,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: up{}
+`,
+			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+		},
+		{
+			name:   "when exceeding the rule group limit after sending the first group",
+			status: 400,
+			input: `
+name: test_second_group_will_fail
+interval: 15s
+rules:
+- record: up_rule
+  expr: up{}
+`,
+			output: "per-user rule groups limit (limit: 1 actual: 2) exceeded\n",
+		},
+	}
+
+	// define once so the requests build on each other so the number of rules can be tested
+	router := mux.NewRouter()
+	router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
 			// POST
 			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
 			w := httptest.NewRecorder()

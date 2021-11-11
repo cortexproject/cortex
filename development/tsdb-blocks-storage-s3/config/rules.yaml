@@ -1,0 +1,15 @@
+# Example rules file to load to Cortex via the ruler API.
+groups:
+  - name: example
+    rules:
+      - record: up:count
+        expr: count(up)
+
+  - name: example2
+    rules:
+      - alert: TooManyServices
+        expr: count(up) > 1
+        labels:
+          severity: page
+        annotations:
+          summary: Too many services

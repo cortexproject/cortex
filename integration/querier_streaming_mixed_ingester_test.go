@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"flag"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +18,19 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	client2 "github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
+	for _, streamChunks := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%v", streamChunks), func(t *testing.T) {
+			testQuerierWithStreamingBlocksAndChunksIngesters(t, streamChunks)
+		})
+	}
+}
+
+func testQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T, streamChunks bool) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -33,6 +43,7 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 		"-store-gateway.sharding-enabled":               "false",
 		"-querier.ingester-streaming":                   "true",
 	})
+	blockFlags["-ingester.stream-chunks-when-using-blocks"] = fmt.Sprintf("%v", streamChunks)
 
 	// Start dependencies.
 	consul := e2edb.NewConsul()
@@ -55,7 +66,7 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1024), "cortex_ring_tokens_total"))
 
-	s1 := []client2.Sample{
+	s1 := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2, TimestampMs: 2000},
 		{Value: 3, TimestampMs: 3000},
@@ -63,42 +74,42 @@ func TestQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T) {
 		{Value: 5, TimestampMs: 5000},
 	}
 
-	s2 := []client2.Sample{
+	s2 := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 1000},
 		{Value: 2.5, TimestampMs: 2500},
 		{Value: 3, TimestampMs: 3000},
 		{Value: 5.5, TimestampMs: 5500},
 	}
 
-	clientConfig := client2.Config{}
+	clientConfig := ingester_client.Config{}
 	clientConfig.RegisterFlags(flag.NewFlagSet("unused", flag.ContinueOnError)) // registers default values
 
 	// Push data to chunks ingester.
 	{
-		ingesterChunksClient, err := client2.MakeIngesterClient(ingesterChunks.GRPCEndpoint(), clientConfig)
+		ingesterChunksClient, err := ingester_client.MakeIngesterClient(ingesterChunks.GRPCEndpoint(), clientConfig)
 		require.NoError(t, err)
 		defer ingesterChunksClient.Close()
 
-		_, err = ingesterChunksClient.Push(user.InjectOrgID(context.Background(), "user"), &client2.WriteRequest{
-			Timeseries: []client2.PreallocTimeseries{
-				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "1"}}, Samples: s1}},
-				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s1}}},
-			Source: client2.API,
+		_, err = ingesterChunksClient.Push(user.InjectOrgID(context.Background(), "user"), &cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
+				{TimeSeries: &cortexpb.TimeSeries{Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "1"}}, Samples: s1}},
+				{TimeSeries: &cortexpb.TimeSeries{Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s1}}},
+			Source: cortexpb.API,
 		})
 		require.NoError(t, err)
 	}
 
 	// Push data to blocks ingester.
 	{
-		ingesterBlocksClient, err := client2.MakeIngesterClient(ingesterBlocks.GRPCEndpoint(), clientConfig)
+		ingesterBlocksClient, err := ingester_client.MakeIngesterClient(ingesterBlocks.GRPCEndpoint(), clientConfig)
 		require.NoError(t, err)
 		defer ingesterBlocksClient.Close()
 
-		_, err = ingesterBlocksClient.Push(user.InjectOrgID(context.Background(), "user"), &client2.WriteRequest{
-			Timeseries: []client2.PreallocTimeseries{
-				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s2}},
-				{TimeSeries: &client2.TimeSeries{Labels: []client2.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "3"}}, Samples: s1}}},
-			Source: client2.API,
+		_, err = ingesterBlocksClient.Push(user.InjectOrgID(context.Background(), "user"), &cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
+				{TimeSeries: &cortexpb.TimeSeries{Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "2"}}, Samples: s2}},
+				{TimeSeries: &cortexpb.TimeSeries{Labels: []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "s"}, {Name: "l", Value: "3"}}, Samples: s1}}},
+			Source: cortexpb.API,
 		})
 		require.NoError(t, err)
 	}

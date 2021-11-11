@@ -16,4 +16,4 @@ scrape_configs:
           container: 'cortex-2'
 
 remote_write:
-  - url: http://cortex-1:8001/api/prom/push
+  - url: http://cortex-1:8001/api/v1/push

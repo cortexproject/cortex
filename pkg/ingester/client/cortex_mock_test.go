@@ -4,15 +4,17 @@ import (
 	"context"
 
 	"github.com/stretchr/testify/mock"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 type IngesterServerMock struct {
 	mock.Mock
 }
 
-func (m *IngesterServerMock) Push(ctx context.Context, r *WriteRequest) (*WriteResponse, error) {
+func (m *IngesterServerMock) Push(ctx context.Context, r *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 	args := m.Called(ctx, r)
-	return args.Get(0).(*WriteResponse), args.Error(1)
+	return args.Get(0).(*cortexpb.WriteResponse), args.Error(1)
 }
 
 func (m *IngesterServerMock) Query(ctx context.Context, r *QueryRequest) (*QueryResponse, error) {
@@ -23,6 +25,11 @@ func (m *IngesterServerMock) Query(ctx context.Context, r *QueryRequest) (*Query
 func (m *IngesterServerMock) QueryStream(r *QueryRequest, s Ingester_QueryStreamServer) error {
 	args := m.Called(r, s)
 	return args.Error(0)
+}
+
+func (m *IngesterServerMock) QueryExemplars(ctx context.Context, r *ExemplarQueryRequest) (*ExemplarQueryResponse, error) {
+	args := m.Called(ctx, r)
+	return args.Get(0).(*ExemplarQueryResponse), args.Error(1)
 }
 
 func (m *IngesterServerMock) LabelValues(ctx context.Context, r *LabelValuesRequest) (*LabelValuesResponse, error) {

@@ -13,7 +13,7 @@ import (
 )
 
 func TestMetadataHandler_Success(t *testing.T) {
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return(
 		[]scrape.MetricMetadata{
 			{Metric: "alertmanager_dispatcher_aggregation_groups", Help: "Number of active aggregation groups", Type: "gauge", Unit: ""},
@@ -51,7 +51,7 @@ func TestMetadataHandler_Success(t *testing.T) {
 }
 
 func TestMetadataHandler_Error(t *testing.T) {
-	d := &mockDistributor{}
+	d := &MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return([]scrape.MetricMetadata{}, fmt.Errorf("no user id"))
 
 	handler := MetadataHandler(d)

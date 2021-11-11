@@ -8,11 +8,10 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (
@@ -252,6 +251,8 @@ func getFieldType(t reflect.Type) (string, error) {
 	case "cortex.moduleName":
 		return "string", nil
 	case "flagext.StringSliceCSV":
+		return "string", nil
+	case "flagext.CIDRSliceCSV":
 		return "string", nil
 	case "[]*relabel.Config":
 		return "relabel_config...", nil

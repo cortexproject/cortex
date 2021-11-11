@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -76,7 +76,7 @@ func TestQueryshardingMiddleware(t *testing.T) {
 	for _, c := range testExpr {
 		t.Run(c.name, func(t *testing.T) {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:     util.Logger,
+				Logger:     log.NewNopLogger(),
 				Reg:        nil,
 				MaxSamples: 1000,
 				Timeout:    time.Minute,
@@ -122,11 +122,11 @@ func sampleMatrixResponse() *PrometheusResponse {
 			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							TimestampMs: 5,
 							Value:       1,
@@ -138,11 +138,11 @@ func sampleMatrixResponse() *PrometheusResponse {
 					},
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							TimestampMs: 5,
 							Value:       8,
@@ -551,7 +551,7 @@ func BenchmarkQuerySharding(b *testing.B) {
 			time.Millisecond / 10,
 		} {
 			engine := promql.NewEngine(promql.EngineOpts{
-				Logger:     util.Logger,
+				Logger:     log.NewNopLogger(),
 				Reg:        nil,
 				MaxSamples: 100000000,
 				Timeout:    time.Minute,

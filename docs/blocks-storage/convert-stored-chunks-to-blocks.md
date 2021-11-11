@@ -35,26 +35,28 @@ Scanner is started by running `blocksconvert -target=scanner`. Scanner requires 
 
 - `-schema-config-file` – this is standard Cortex schema file.
 - `-bigtable.instance`, `-bigtable.project` – options for BigTable access.
+- `-dynamodb.url` - for DynamoDB access.  Example `dynamodb://us-east-1/`
 - `-blocks-storage.backend` and corresponding `-blocks-storage.*` options for storing plan files.
 - `-scanner.output-dir` – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.
 - `-scanner.allowed-users` – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.
 - `-scanner.ignore-users-regex` - If plans for all users are generated (`-scanner.allowed-users` is not set), then users matching this non-empty regular expression will be skipped.
 - `-scanner.tables-limit` – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.
 - `-scanner.tables` – Comma-separated list of tables to be scanned. Can be used to scan specific tables only. Note that schema is still used to find all tables first, and then this list is consulted to select only specified tables.
+- `-scanner.scan-period-start` & `-scanner.scan-period-end` - limit the scan to a particular date range (format like `2020-12-31`)
 
 Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
 For each table, it will fully read the table and generate a plan for each user and day stored in the table.
 Plan files are then uploaded to the configured blocks-storage bucket (at the `-blocksconvert.bucket-prefix` location prefix), and local copies are deleted.
 After that, scanner continues with the next table until it scans them all or `-scanner.tables-limit` is reached.
 
-Note that even though `blocksconvert` has options for configuring different Index store backends, **it only supports BigTable at the moment.**
+Note that even though `blocksconvert` has options for configuring different Index store backends, **it only supports BigTable and DynamoDB at the moment.**
 
 It is expected that only single Scanner process is running.
 Scanner does the scanning of multiple table subranges concurrently.
 
-Scanner exposes metrics with `cortex_blocksconvert_scanner_` prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn't close currently plan files until entire table has been scanned), scanned BigTable rows and parsed index entries.
+Scanner exposes metrics with `cortex_blocksconvert_scanner_` prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn't close currently plan files until entire table has been scanned), scanned rows and parsed index entries.
 
-**Scanner only supports schema version v9, v10 and v11. Earlier schema versions are currently not supported.**
+**Scanner only supports schema version v9 on DynamoDB; v9, v10 and v11 on BigTable. Earlier schema versions are currently not supported.**
 
 ### Scheduler
 
@@ -109,5 +111,5 @@ Cleaner should only be deployed if no other Builder is running. Running multiple
 
 The `blocksconvert` toolset currently has the following limitations:
 
-- Scanner supports only BigTable for chunks index backend, and cannot currently scan other databases.
-- Supports only chunks schema versions v9, v10 and v11
+- Scanner supports only BigTable and DynamoDB for chunks index backend, and cannot currently scan other databases.
+- Supports only chunks schema versions v9 for DynamoDB; v9, v10 and v11 for Bigtable.

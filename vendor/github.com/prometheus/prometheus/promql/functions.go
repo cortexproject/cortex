@@ -70,17 +70,17 @@ func extrapolatedRate(vals []parser.Value, args parser.Expressions, enh *EvalNod
 	if len(samples.Points) < 2 {
 		return enh.Out
 	}
-	var (
-		counterCorrection float64
-		lastValue         float64
-	)
-	for _, sample := range samples.Points {
-		if isCounter && sample.V < lastValue {
-			counterCorrection += lastValue
+
+	resultValue := samples.Points[len(samples.Points)-1].V - samples.Points[0].V
+	if isCounter {
+		var lastValue float64
+		for _, sample := range samples.Points {
+			if sample.V < lastValue {
+				resultValue += lastValue
+			}
+			lastValue = sample.V
 		}
-		lastValue = sample.V
 	}
-	resultValue := lastValue - samples.Points[0].V + counterCorrection
 
 	// Duration between first/last samples and boundary of range.
 	durationToStart := float64(samples.Points[0].T-rangeStart) / 1000
@@ -278,6 +278,23 @@ func funcSortDesc(vals []parser.Value, args parser.Expressions, enh *EvalNodeHel
 	return Vector(byValueSorter)
 }
 
+// === clamp(Vector parser.ValueTypeVector, min, max Scalar) Vector ===
+func funcClamp(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	vec := vals[0].(Vector)
+	min := vals[1].(Vector)[0].Point.V
+	max := vals[2].(Vector)[0].Point.V
+	if max < min {
+		return enh.Out
+	}
+	for _, el := range vec {
+		enh.Out = append(enh.Out, Sample{
+			Metric: enh.DropMetricName(el.Metric),
+			Point:  Point{V: math.Max(min, math.Min(max, el.V))},
+		})
+	}
+	return enh.Out
+}
+
 // === clamp_max(Vector parser.ValueTypeVector, max Scalar) Vector ===
 func funcClampMax(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
 	vec := vals[0].(Vector)
@@ -383,7 +400,16 @@ func funcCountOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNo
 	})
 }
 
-// === floor(Vector parser.ValueTypeVector) Vector ===
+// === last_over_time(Matrix parser.ValueTypeMatrix) Vector ===
+func funcLastOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	el := vals[0].(Matrix)[0]
+
+	return append(enh.Out, Sample{
+		Metric: el.Metric,
+		Point:  Point{V: el.Points[len(el.Points)-1].V},
+	})
+}
+
 // === max_over_time(Matrix parser.ValueTypeMatrix) Vector ===
 func funcMaxOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
 	return aggrOverTime(vals, enh, func(values []Point) float64 {
@@ -487,6 +513,13 @@ func funcAbsentOverTime(vals []parser.Value, args parser.Expressions, enh *EvalN
 		})
 }
 
+// === present_over_time(Vector parser.ValueTypeMatrix) Vector ===
+func funcPresentOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return aggrOverTime(vals, enh, func(values []Point) float64 {
+		return 1
+	})
+}
+
 func simpleFunc(vals []parser.Value, enh *EvalNodeHelper, f func(float64) float64) Vector {
 	for _, el := range vals[0].(Vector) {
 		enh.Out = append(enh.Out, Sample{
@@ -535,6 +568,99 @@ func funcLog2(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper)
 // === log10(Vector parser.ValueTypeVector) Vector ===
 func funcLog10(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
 	return simpleFunc(vals, enh, math.Log10)
+}
+
+// === sin(Vector parser.ValueTypeVector) Vector ===
+func funcSin(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Sin)
+}
+
+// === cos(Vector parser.ValueTypeVector) Vector ===
+func funcCos(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Cos)
+}
+
+// === tan(Vector parser.ValueTypeVector) Vector ===
+func funcTan(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Tan)
+}
+
+// == asin(Vector parser.ValueTypeVector) Vector ===
+func funcAsin(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Asin)
+}
+
+// == acos(Vector parser.ValueTypeVector) Vector ===
+func funcAcos(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Acos)
+}
+
+// == atan(Vector parser.ValueTypeVector) Vector ===
+func funcAtan(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Atan)
+}
+
+// == sinh(Vector parser.ValueTypeVector) Vector ===
+func funcSinh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Sinh)
+}
+
+// == cosh(Vector parser.ValueTypeVector) Vector ===
+func funcCosh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Cosh)
+}
+
+// == tanh(Vector parser.ValueTypeVector) Vector ===
+func funcTanh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Tanh)
+}
+
+// == asinh(Vector parser.ValueTypeVector) Vector ===
+func funcAsinh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Asinh)
+}
+
+// == acosh(Vector parser.ValueTypeVector) Vector ===
+func funcAcosh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Acosh)
+}
+
+// == atanh(Vector parser.ValueTypeVector) Vector ===
+func funcAtanh(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, math.Atanh)
+}
+
+// === rad(Vector parser.ValueTypeVector) Vector ===
+func funcRad(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, func(v float64) float64 {
+		return v * math.Pi / 180
+	})
+}
+
+// === deg(Vector parser.ValueTypeVector) Vector ===
+func funcDeg(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, func(v float64) float64 {
+		return v * 180 / math.Pi
+	})
+}
+
+// === pi() Scalar ===
+func funcPi(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return Vector{Sample{Point: Point{
+		V: math.Pi,
+	}}}
+}
+
+// === sgn(Vector parser.ValueTypeVector) Vector ===
+func funcSgn(vals []parser.Value, args parser.Expressions, enh *EvalNodeHelper) Vector {
+	return simpleFunc(vals, enh, func(v float64) float64 {
+		if v < 0 {
+			return -1
+		} else if v > 0 {
+			return 1
+		}
+		return v
+	})
 }
 
 // === timestamp(Vector parser.ValueTypeVector) Vector ===
@@ -890,15 +1016,25 @@ var FunctionCalls = map[string]FunctionCall{
 	"abs":                funcAbs,
 	"absent":             funcAbsent,
 	"absent_over_time":   funcAbsentOverTime,
+	"acos":               funcAcos,
+	"acosh":              funcAcosh,
+	"asin":               funcAsin,
+	"asinh":              funcAsinh,
+	"atan":               funcAtan,
+	"atanh":              funcAtanh,
 	"avg_over_time":      funcAvgOverTime,
 	"ceil":               funcCeil,
 	"changes":            funcChanges,
+	"clamp":              funcClamp,
 	"clamp_max":          funcClampMax,
 	"clamp_min":          funcClampMin,
+	"cos":                funcCos,
+	"cosh":               funcCosh,
 	"count_over_time":    funcCountOverTime,
 	"days_in_month":      funcDaysInMonth,
 	"day_of_month":       funcDayOfMonth,
 	"day_of_week":        funcDayOfWeek,
+	"deg":                funcDeg,
 	"delta":              funcDelta,
 	"deriv":              funcDeriv,
 	"exp":                funcExp,
@@ -914,22 +1050,31 @@ var FunctionCalls = map[string]FunctionCall{
 	"ln":                 funcLn,
 	"log10":              funcLog10,
 	"log2":               funcLog2,
+	"last_over_time":     funcLastOverTime,
 	"max_over_time":      funcMaxOverTime,
 	"min_over_time":      funcMinOverTime,
 	"minute":             funcMinute,
 	"month":              funcMonth,
+	"pi":                 funcPi,
 	"predict_linear":     funcPredictLinear,
+	"present_over_time":  funcPresentOverTime,
 	"quantile_over_time": funcQuantileOverTime,
+	"rad":                funcRad,
 	"rate":               funcRate,
 	"resets":             funcResets,
 	"round":              funcRound,
 	"scalar":             funcScalar,
+	"sgn":                funcSgn,
+	"sin":                funcSin,
+	"sinh":               funcSinh,
 	"sort":               funcSort,
 	"sort_desc":          funcSortDesc,
 	"sqrt":               funcSqrt,
 	"stddev_over_time":   funcStddevOverTime,
 	"stdvar_over_time":   funcStdvarOverTime,
 	"sum_over_time":      funcSumOverTime,
+	"tan":                funcTan,
+	"tanh":               funcTanh,
 	"time":               funcTime,
 	"timestamp":          funcTimestamp,
 	"vector":             funcVector,

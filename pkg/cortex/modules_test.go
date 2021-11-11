@@ -2,6 +2,7 @@ package cortex
 
 import (
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -97,5 +98,68 @@ func TestAPIConfig(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestCortex_InitRulerStorage(t *testing.T) {
+	tests := map[string]struct {
+		config       *Config
+		expectedInit bool
+	}{
+		"should init the ruler storage with target=ruler": {
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"ruler"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				return cfg
+			}(),
+			expectedInit: true,
+		},
+		"should not init the ruler storage on default config with target=all": {
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				return cfg
+			}(),
+			expectedInit: false,
+		},
+		"should init the ruler storage on legacy ruler storage config with target=all": {
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.Ruler.StoreConfig.Type = "local"
+				cfg.Ruler.StoreConfig.Local.Directory = os.TempDir()
+				return cfg
+			}(),
+			expectedInit: true,
+		},
+		"should init the ruler storage on ruler storage config with target=all": {
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				return cfg
+			}(),
+			expectedInit: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cortex := &Cortex{
+				Server: &server.Server{},
+				Cfg:    *testData.config,
+			}
+
+			_, err := cortex.initRulerStorage()
+			require.NoError(t, err)
+
+			if testData.expectedInit {
+				assert.NotNil(t, cortex.RulerStorage)
+			} else {
+				assert.Nil(t, cortex.RulerStorage)
+			}
+		})
+	}
 }

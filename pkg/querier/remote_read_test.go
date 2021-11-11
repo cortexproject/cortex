@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/common/model"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 )
@@ -36,7 +38,7 @@ func TestRemoteReadHandler(t *testing.T) {
 			},
 		}, nil
 	})
-	handler := RemoteReadHandler(q)
+	handler := RemoteReadHandler(q, log.NewNopLogger())
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{
@@ -65,12 +67,12 @@ func TestRemoteReadHandler(t *testing.T) {
 	expected := client.ReadResponse{
 		Results: []*client.QueryResponse{
 			{
-				Timeseries: []client.TimeSeries{
+				Timeseries: []cortexpb.TimeSeries{
 					{
-						Labels: []client.LabelAdapter{
+						Labels: []cortexpb.LabelAdapter{
 							{Name: "foo", Value: "bar"},
 						},
-						Samples: []client.Sample{
+						Samples: []cortexpb.Sample{
 							{Value: 0, TimestampMs: 0},
 							{Value: 1, TimestampMs: 1},
 							{Value: 2, TimestampMs: 2},
@@ -95,11 +97,11 @@ func (m mockQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels
 	return series.MatrixToSeriesSet(m.matrix)
 }
 
-func (m mockQuerier) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m mockQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (m mockQuerier) LabelNames() ([]string, storage.Warnings, error) {
+func (m mockQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 

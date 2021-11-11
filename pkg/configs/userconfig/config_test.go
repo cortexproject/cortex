@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/pkg/rulefmt"
@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var legacyRulesFile = `ALERT TestAlert
@@ -91,8 +91,9 @@ func TestParseLegacyAlerts(t *testing.T) {
 			labels.Label{Name: "message", Value: "I am a message"},
 		},
 		nil,
+		"",
 		true,
-		log.With(util.Logger, "alert", "TestAlert"),
+		log.With(util_log.Logger, "alert", "TestAlert"),
 	)
 
 	for i, tc := range []struct {

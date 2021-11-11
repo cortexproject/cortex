@@ -6,10 +6,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
@@ -20,8 +20,8 @@ var (
 )
 
 // ReadIndex reads, parses and returns a bucket index from the bucket.
-func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger log.Logger) (*Index, error) {
-	userBkt := bucket.NewUserBucketClient(userID, bkt)
+func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, logger log.Logger) (*Index, error) {
+	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Get the bucket index.
 	reader, err := userBkt.WithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, IndexCompressedFilename)
@@ -51,8 +51,8 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, logger l
 }
 
 // WriteIndex uploads the provided index to the storage.
-func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, idx *Index) error {
-	bkt = bucket.NewUserBucketClient(userID, bkt)
+func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, idx *Index) error {
+	bkt = bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Marshal the index.
 	content, err := json.Marshal(idx)
@@ -82,8 +82,9 @@ func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, idx *In
 
 // DeleteIndex deletes the bucket index from the storage. No error is returned if the index
 // does not exist.
-func DeleteIndex(ctx context.Context, bkt objstore.Bucket, userID string) error {
-	bkt = bucket.NewUserBucketClient(userID, bkt)
+func DeleteIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) error {
+	bkt = bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+
 	err := bkt.Delete(ctx, IndexCompressedFilename)
 	if err != nil && !bkt.IsObjNotFoundErr(err) {
 		return errors.Wrap(err, "delete bucket index")

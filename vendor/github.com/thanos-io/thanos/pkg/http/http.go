@@ -12,6 +12,8 @@ import (
 	"path"
 	"sync"
 
+	extpromhttp "github.com/thanos-io/thanos/pkg/extprom/http"
+
 	"github.com/go-kit/kit/log"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -35,6 +37,9 @@ type ClientConfig struct {
 	ProxyURL string `yaml:"proxy_url"`
 	// TLSConfig to use to connect to the targets.
 	TLSConfig TLSConfig `yaml:"tls_config"`
+	// ClientMetrics contains metrics that will be used to instrument
+	// the client that will be created with this config.
+	ClientMetrics *extpromhttp.ClientMetrics `yaml:"-"`
 }
 
 // TLSConfig configures TLS connections.
@@ -95,11 +100,19 @@ func NewHTTPClient(cfg ClientConfig, name string) (*http.Client, error) {
 		return nil, err
 	}
 
-	client, err := config_util.NewClientFromConfig(httpClientConfig, name, false, false)
+	client, err := config_util.NewClientFromConfig(httpClientConfig, name, config_util.WithHTTP2Disabled())
 	if err != nil {
 		return nil, err
 	}
-	client.Transport = &userAgentRoundTripper{name: ThanosUserAgent, rt: client.Transport}
+
+	tripper := client.Transport
+
+	if cfg.ClientMetrics != nil {
+		tripper = extpromhttp.InstrumentedRoundTripper(tripper, cfg.ClientMetrics)
+	}
+
+	client.Transport = &userAgentRoundTripper{name: ThanosUserAgent, rt: tripper}
+
 	return client, nil
 }
 
@@ -156,10 +169,7 @@ func (c FileSDConfig) convert() (file.SDConfig, error) {
 		return fileSDConfig, err
 	}
 	err = yaml.Unmarshal(b, &fileSDConfig)
-	if err != nil {
-		return fileSDConfig, err
-	}
-	return fileSDConfig, nil
+	return fileSDConfig, err
 }
 
 type AddressProvider interface {

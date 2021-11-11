@@ -6,13 +6,9 @@ import (
 	"sort"
 	"strconv"
 	"testing"
-	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
-	"github.com/stretchr/testify/assert"
-	"github.com/thanos-io/thanos/pkg/testutil"
 )
 
 func TestQueryRequest(t *testing.T) {
@@ -85,77 +81,11 @@ func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matr
 	return m
 }
 
-func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
-	tc := []struct {
-		desc     string
-		input    MetricMetadata_MetricType
-		expected textparse.MetricType
-	}{
-		{
-			desc:     "with a single-word metric",
-			input:    COUNTER,
-			expected: textparse.MetricTypeCounter,
-		},
-		{
-			desc:     "with a two-word metric",
-			input:    STATESET,
-			expected: textparse.MetricTypeStateset,
-		},
-		{
-			desc:     "with an unknown metric",
-			input:    MetricMetadata_MetricType(100),
-			expected: textparse.MetricTypeUnknown,
-		},
-	}
-
-	for _, tt := range tc {
-		t.Run(tt.desc, func(t *testing.T) {
-			m := MetricMetadataMetricTypeToMetricType(tt.input)
-			testutil.Equals(t, tt.expected, m)
-		})
-	}
-}
-
-func TestFromLabelAdaptersToLabels(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
-	actual := FromLabelAdaptersToLabels(input)
-
-	assert.Equal(t, expected, actual)
-
-	// All strings must NOT be copied.
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
-}
-
-func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
-	actual := FromLabelAdaptersToLabelsWithCopy(input)
-
-	assert.Equal(t, expected, actual)
-
-	// All strings must be copied.
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
-}
-
 func TestQueryResponse(t *testing.T) {
 	want := buildTestMatrix(10, 10, 10)
 	have := FromQueryResponse(ToQueryResponse(want))
 	if !reflect.DeepEqual(have, want) {
 		t.Fatalf("Bad FromQueryResponse(ToQueryResponse) round trip")
-	}
-}
-
-func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
-	input := []LabelAdapter{
-		{Name: "hello", Value: "world"},
-		{Name: "some label", Value: "and its value"},
-		{Name: "long long long long long label name", Value: "perhaps even longer label value, but who's counting anyway?"}}
-
-	for i := 0; i < b.N; i++ {
-		FromLabelAdaptersToLabelsWithCopy(input)
 	}
 }
 

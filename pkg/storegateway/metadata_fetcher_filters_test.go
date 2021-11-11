@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -41,7 +42,7 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	// Create a bucket backed by filesystem.
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
-	userBkt := bucket.NewUserBucketClient(userID, bkt)
+	userBkt := bucket.NewUserBucketClient(userID, bkt, nil)
 
 	shouldFetch := &metadata.DeletionMark{
 		ID:           ulid.MustNew(1, nil),
@@ -67,10 +68,10 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	if bucketIndexEnabled {
 		var err error
 
-		u := bucketindex.NewUpdater(bkt, userID, logger)
+		u := bucketindex.NewUpdater(bkt, userID, nil, logger)
 		idx, _, err = u.UpdateIndex(ctx, nil)
 		require.NoError(t, err)
-		require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, idx))
+		require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, idx))
 	}
 
 	inputMetas := map[ulid.ULID]*metadata.Meta{
@@ -100,7 +101,7 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 		require.NoError(t, f.Filter(ctx, inputMetas, synced))
 	}
 
-	assert.Equal(t, 1.0, promtest.ToFloat64(synced.WithLabelValues(markedForDeletionMeta)))
+	assert.Equal(t, 1.0, promtest.ToFloat64(synced.WithLabelValues(block.MarkedForDeletionMeta)))
 	assert.Equal(t, expectedMetas, inputMetas)
 	assert.Equal(t, expectedDeletionMarks, f.DeletionMarkBlocks())
 }

@@ -5,6 +5,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -14,9 +16,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func Test_newStoreGatewayClientFactory(t *testing.T) {
@@ -37,11 +36,10 @@ func Test_newStoreGatewayClientFactory(t *testing.T) {
 	// Create a client factory and query back the mocked service
 	// with different clients.
 	cfg := grpcclient.Config{}
-	tlsCfg := tls.ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := newStoreGatewayClientFactory(cfg, tlsCfg, reg)
+	factory := newStoreGatewayClientFactory(cfg, reg)
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())

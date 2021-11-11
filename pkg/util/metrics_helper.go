@@ -7,10 +7,21 @@ import (
 	"math"
 	"sync"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/pkg/labels"
+	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+)
+
+var (
+	bytesBufferPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(nil)
+		},
+	}
 )
 
 // Data for single value (counter/gauge) with labels.
@@ -343,25 +354,40 @@ func getMetricsWithLabelNames(mf *dto.MetricFamily, labelNames []string) map[str
 }
 
 func getLabelValues(m *dto.Metric, labelNames []string) ([]string, bool) {
-	all := map[string]string{}
-	for _, lp := range m.GetLabel() {
-		all[lp.GetName()] = lp.GetValue()
-	}
-
 	result := make([]string, 0, len(labelNames))
+
 	for _, ln := range labelNames {
-		lv, ok := all[ln]
-		if !ok {
+		found := false
+
+		// Look for the label among the metric ones. We re-iterate on each metric label
+		// which is algorithmically bad, but the main assumption is that the labelNames
+		// in input are typically very few units.
+		for _, lp := range m.GetLabel() {
+			if ln != lp.GetName() {
+				continue
+			}
+
+			result = append(result, lp.GetValue())
+			found = true
+			break
+		}
+
+		if !found {
 			// required labels not found
 			return nil, false
 		}
-		result = append(result, lv)
 	}
+
 	return result, true
 }
 
 func getLabelsString(labelValues []string) string {
-	buf := bytes.Buffer{}
+	// Get a buffer from the pool, reset it and release it at the
+	// end of the function.
+	buf := bytesBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bytesBufferPool.Put(buf)
+
 	for _, v := range labelValues {
 		buf.WriteString(v)
 		buf.WriteByte(0) // separator, not used in prometheus labels
@@ -428,14 +454,17 @@ func (s *SummaryData) Metric(desc *prometheus.Desc, labelValues ...string) prome
 	return prometheus.MustNewConstSummary(desc, s.sampleCount, s.sampleSum, s.quantiles, labelValues...)
 }
 
-// HistogramData keeps data required to build histogram Metric
+// HistogramData keeps data required to build histogram Metric.
 type HistogramData struct {
 	sampleCount uint64
 	sampleSum   float64
 	buckets     map[float64]uint64
 }
 
-// Adds histogram from gathered metrics to this histogram data.
+// AddHistogram adds histogram from gathered metrics to this histogram data.
+// Do not call this function after Metric() has been invoked, because histogram created by Metric
+// is using the buckets map (doesn't make a copy), and it's not allowed to change the buckets
+// after they've been passed to a prometheus.Metric.
 func (d *HistogramData) AddHistogram(histo *dto.Histogram) {
 	d.sampleCount += histo.GetSampleCount()
 	d.sampleSum += histo.GetSampleSum()
@@ -451,7 +480,10 @@ func (d *HistogramData) AddHistogram(histo *dto.Histogram) {
 	}
 }
 
-// Merged another histogram data into this one.
+// AddHistogramData merges another histogram data into this one.
+// Do not call this function after Metric() has been invoked, because histogram created by Metric
+// is using the buckets map (doesn't make a copy), and it's not allowed to change the buckets
+// after they've been passed to a prometheus.Metric.
 func (d *HistogramData) AddHistogramData(histo HistogramData) {
 	d.sampleCount += histo.sampleCount
 	d.sampleSum += histo.sampleSum
@@ -466,12 +498,22 @@ func (d *HistogramData) AddHistogramData(histo HistogramData) {
 	}
 }
 
-// Return prometheus metric from this histogram data.
+// Metric returns prometheus metric from this histogram data.
+//
+// Note that returned metric shares bucket with this HistogramData, so avoid
+// doing more modifications to this HistogramData after calling Metric.
 func (d *HistogramData) Metric(desc *prometheus.Desc, labelValues ...string) prometheus.Metric {
 	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets, labelValues...)
 }
 
-// Creates new histogram data collector.
+// Copy returns a copy of this histogram data.
+func (d *HistogramData) Copy() *HistogramData {
+	cp := &HistogramData{}
+	cp.AddHistogramData(*d)
+	return cp
+}
+
+// NewHistogramDataCollector creates new histogram data collector.
 func NewHistogramDataCollector(desc *prometheus.Desc) *HistogramDataCollector {
 	return &HistogramDataCollector{
 		desc: desc,
@@ -496,7 +538,9 @@ func (h *HistogramDataCollector) Collect(out chan<- prometheus.Metric) {
 	h.dataMu.RLock()
 	defer h.dataMu.RUnlock()
 
-	out <- h.data.Metric(h.desc)
+	// We must create a copy of the HistogramData data structure before calling Metric()
+	// to honor its contract.
+	out <- h.data.Copy().Metric(h.desc)
 }
 
 func (h *HistogramDataCollector) Add(hd HistogramData) {
@@ -583,7 +627,7 @@ func (r *UserRegistries) RemoveUserRegistry(user string, hard bool) {
 func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 	last, err := ur.reg.Gather()
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -605,7 +649,7 @@ func (r *UserRegistries) softRemoveUserRegistry(ur *UserRegistry) bool {
 
 	ur.lastGather, err = NewMetricFamilyMap(last)
 	if err != nil {
-		level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
+		level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", ur.user, "err", err)
 		return false
 	}
 
@@ -656,7 +700,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		}
 
 		if err != nil {
-			level.Warn(Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
+			level.Warn(util_log.Logger).Log("msg", "failed to gather metrics from registry", "user", entry.user, "err", err)
 			continue
 		}
 	}
@@ -697,4 +741,67 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	}
 
 	return sum
+}
+
+// GetLables returns list of label combinations used by this collector at the time of call.
+// This can be used to find and delete unused metrics.
+func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
+	ch := make(chan prometheus.Metric, 16)
+
+	go func() {
+		defer close(ch)
+		c.Collect(ch)
+	}()
+
+	errs := tsdb_errors.NewMulti()
+	var result []labels.Labels
+	dtoMetric := &dto.Metric{}
+	lbls := labels.NewBuilder(nil)
+
+nextMetric:
+	for m := range ch {
+		err := m.Write(dtoMetric)
+		if err != nil {
+			errs.Add(err)
+			// We cannot return here, to avoid blocking goroutine calling c.Collect()
+			continue
+		}
+
+		lbls.Reset(nil)
+		for _, lp := range dtoMetric.Label {
+			n := lp.GetName()
+			v := lp.GetValue()
+
+			filterValue, ok := filter[n]
+			if ok && filterValue != v {
+				continue nextMetric
+			}
+
+			lbls.Set(lp.GetName(), lp.GetValue())
+		}
+		result = append(result, lbls.Labels())
+	}
+
+	return result, errs.Err()
+}
+
+// DeleteMatchingLabels removes metric with labels matching the filter.
+func DeleteMatchingLabels(c CollectorVec, filter map[string]string) error {
+	lbls, err := GetLabels(c, filter)
+	if err != nil {
+		return err
+	}
+
+	for _, ls := range lbls {
+		c.Delete(ls.Map())
+	}
+
+	return nil
+}
+
+// CollectorVec is a collector that can delete metrics by labels.
+// Implemented by *prometheus.MetricVec (used by CounterVec, GaugeVec, SummaryVec, and HistogramVec).
+type CollectorVec interface {
+	prometheus.Collector
+	Delete(labels prometheus.Labels) bool
 }

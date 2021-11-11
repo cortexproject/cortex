@@ -39,9 +39,6 @@ var DefaultConfig = Config{
 	Timeout:        model.Duration(5 * time.Minute),
 }
 
-// TODO(FUSAKLA): Added to avoid breaking dependency of Cortex which uses the original struct name SwiftConfig.
-type SwiftConfig = Config
-
 type Config struct {
 	AuthVersion            int            `yaml:"auth_version"`
 	AuthUrl                string         `yaml:"auth_url"`
@@ -198,11 +195,20 @@ func (c *Container) Name() string {
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (c *Container) Iter(_ context.Context, dir string, f func(string) error) error {
+func (c *Container) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, string(DirDelim)) + string(DirDelim)
 	}
-	return c.connection.ObjectsWalk(c.name, &swift.ObjectsOpts{Prefix: dir, Delimiter: DirDelim}, func(opts *swift.ObjectsOpts) (interface{}, error) {
+
+	listOptions := &swift.ObjectsOpts{
+		Prefix:    dir,
+		Delimiter: DirDelim,
+	}
+	if objstore.ApplyIterOptions(options...).Recursive {
+		listOptions.Delimiter = rune(0)
+	}
+
+	return c.connection.ObjectsWalk(c.name, listOptions, func(opts *swift.ObjectsOpts) (interface{}, error) {
 		objects, err := c.connection.ObjectNames(c.name, opts)
 		if err != nil {
 			return objects, errors.Wrap(err, "list object names")
@@ -276,7 +282,7 @@ func (c *Container) IsObjNotFoundErr(err error) bool {
 }
 
 // Upload writes the contents of the reader as an object into the container.
-func (c *Container) Upload(_ context.Context, name string, r io.Reader) error {
+func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err error) {
 	size, err := objstore.TryToGetSize(r)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "could not guess file size, using large object to avoid issues if the file is larger than limit", "name", name, "err", err)
@@ -306,7 +312,7 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) error {
 			return errors.Wrap(err, "create file")
 		}
 	}
-	defer runutil.CloseWithLogOnErr(c.logger, file, "upload object close")
+	defer runutil.CloseWithErrCapture(&err, file, "upload object close")
 	if _, err := io.Copy(file, r); err != nil {
 		return errors.Wrap(err, "uploading object")
 	}

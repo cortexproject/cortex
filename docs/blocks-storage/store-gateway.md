@@ -81,6 +81,26 @@ The store-gateway replication optionally supports [zone-awareness](../guides/zon
 2. Enable blocks zone-aware replication via the `-store-gateway.sharding-ring.zone-awareness-enabled` CLI flag (or its respective YAML config option). Please be aware this configuration option should be set to store-gateways, queriers and rulers.
 3. Rollout store-gateways, queriers and rulers to apply the new configuration
 
+### Waiting for stable ring at startup
+
+In the event of a cluster cold start or scale up of 2+ store-gateway instances at the same time we may end up in a situation where each new store-gateway instance starts at a slightly different time and thus each one runs the initial blocks sync based on a different state of the ring. For example, in case of a cold start, the first store-gateway joining the ring may load all blocks since the sharding logic runs based on the current state of the ring, which is 1 single store-gateway.
+
+To reduce the likelihood this could happen, the store-gateway waits for a stable ring at startup. A ring is considered stable if no instance is added/removed to the ring for at least `-store-gateway.sharding-ring.wait-stability-min-duration`. If the ring keep getting changed after `-store-gateway.sharding-ring.wait-stability-max-duration`, the store-gateway will stop waiting for a stable ring and will proceed starting up normally.
+
+To disable this waiting logic, you can start the store-gateway with `-store-gateway.sharding-ring.wait-stability-min-duration=0`.
+
+## Blocks index-header
+
+The [index-header](./binary-index-header.md) is a subset of the block index which the store-gateway downloads from the object storage and keeps on the local disk in order to speed up queries.
+
+At startup, the store-gateway downloads the index-header of each block belonging to its shard. A store-gateway is not ready until this initial index-header download is completed. Moreover, while running, the store-gateway periodically looks for newly uploaded blocks in the storage and downloads the index-header for the blocks belonging to its shard.
+
+### Index-header lazy loading
+
+By default, each index-header is memory mapped by the store-gateway right after downloading it. In a cluster with a large number of blocks, each store-gateway may have a large amount of memory mapped index-headers, regardless how frequently they're used at query time.
+
+Cortex supports a configuration option `-blocks-storage.bucket-store.index-header-lazy-loading-enabled=true` to enable index-header lazy loading. When enabled, index-headers will be memory mapped only once required by a query and will be automatically released after `-blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout` time of inactivity.
+
 ## Caching
 
 The store-gateway supports the following caches:
@@ -212,13 +232,13 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
-    # Period at which to heartbeat to the ring.
+    # Period at which to heartbeat to the ring. 0 = disabled.
     # CLI flag: -store-gateway.sharding-ring.heartbeat-period
     [heartbeat_period: <duration> | default = 15s]
 
     # The heartbeat timeout after which store gateways are considered unhealthy
-    # within the ring. This option needs be set both on the store-gateway and
-    # querier when running in microservices mode.
+    # within the ring. 0 = never (timeout disabled). This option needs be set
+    # both on the store-gateway and querier when running in microservices mode.
     # CLI flag: -store-gateway.sharding-ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -237,6 +257,16 @@ store_gateway:
     # availability zones.
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
+
+    # Minimum time to wait for ring stability at startup. 0 to disable.
+    # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
+    [wait_stability_min_duration: <duration> | default = 1m]
+
+    # Maximum time to wait for ring stability at startup. If the store-gateway
+    # ring keeps changing after this period of time, the store-gateway will
+    # start anyway.
+    # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
+    [wait_stability_max_duration: <duration> | default = 5m]
 
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
@@ -271,6 +301,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.endpoint
     [endpoint: <string> | default = ""]
 
+    # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+    # to autodetect it.
+    # CLI flag: -blocks-storage.s3.region
+    [region: <string> | default = ""]
+
     # S3 bucket name
     # CLI flag: -blocks-storage.s3.bucket-name
     [bucket_name: <string> | default = ""]
@@ -294,6 +329,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
+    # The s3_sse_config configures the S3 server-side encryption.
+    # The CLI flags prefix for this block config is: blocks-storage
+    [sse: <s3_sse_config>]
+
     http:
       # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
@@ -307,6 +346,30 @@ blocks_storage:
       # client will accept any certificate and hostname.
       # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -blocks-storage.s3.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -blocks-storage.s3.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -blocks-storage.s3.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
 
   gcs:
     # GCS bucket name
@@ -436,11 +499,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.sync-interval
     [sync_interval: <duration> | default = 15m]
 
-    # Max size - in bytes - of a per-tenant chunk pool, used to reduce memory
-    # allocations.
-    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-    [max_chunk_pool_bytes: <int> | default = 2147483648]
-
     # Max number of concurrent queries to execute against the long-term storage.
     # The limit is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
@@ -518,10 +576,10 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
-      # Deprecated: compress postings before storing them to postings cache.
-      # This option is unused and postings compression is always enabled.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.postings-compression-enabled
-      [postings_compression_enabled: <boolean> | default = false]
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -569,6 +627,11 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
+
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
 
       # Size of each subrange that bucket object is split into for better
       # caching.
@@ -635,6 +698,11 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
+
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
 
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
@@ -723,6 +791,22 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
 
+    # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+    # The pool is shared across all tenants. 0 to disable the limit.
+    # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+    [max_chunk_pool_bytes: <int> | default = 2147483648]
+
+    # If enabled, store-gateway will lazy load an index-header only once
+    # required by a query.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+    [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+    # If index-header lazy loading is enabled and this setting is > 0, the
+    # store-gateway will offload unused index-headers after 'idle timeout'
+    # inactivity.
+    # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+    [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir
@@ -758,7 +842,9 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.head-compaction-concurrency
     [head_compaction_concurrency: <int> | default = 5]
 
-    # If TSDB head is idle for this duration, it is compacted. 0 means disabled.
+    # If TSDB head is idle for this duration, it is compacted. Note that up to
+    # 25% jitter is added to the value to avoid ingesters compacting
+    # concurrently. 0 means disabled.
     # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
     [head_compaction_idle_timeout: <duration> | default = 1h]
 
@@ -799,4 +885,9 @@ blocks_storage:
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+    # Enables support for exemplars in TSDB and sets the maximum number that
+    # will be stored. 0 or less means disabled.
+    # CLI flag: -blocks-storage.tsdb.max-exemplars
+    [max_exemplars: <int> | default = 0]
 ```

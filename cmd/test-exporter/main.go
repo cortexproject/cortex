@@ -5,14 +5,13 @@ import (
 	"math"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/testexporter/correctness"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -28,7 +27,7 @@ func main() {
 	flagext.RegisterFlags(&serverConfig, &runnerConfig)
 	flag.Parse()
 
-	util.InitLogger(&serverConfig)
+	log.InitLogger(&serverConfig)
 
 	// Setting the environment variable JAEGER_AGENT_HOST enables tracing
 	if trace, err := tracing.NewFromEnv("test-exporter"); err != nil {

@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"context"
 	"html/template"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRenderHTTPResponse(t *testing.T) {
@@ -82,21 +89,71 @@ func TestWriteTextResponse(t *testing.T) {
 	assert.Equal(t, "text/plain", w.Header().Get("Content-Type"))
 }
 
+func TestStreamWriteYAMLResponse(t *testing.T) {
+	type testStruct struct {
+		Name  string `yaml:"name"`
+		Value int    `yaml:"value"`
+	}
+	tt := struct {
+		name                string
+		headers             map[string]string
+		expectedOutput      string
+		expectedContentType string
+		value               map[string]*testStruct
+	}{
+		name: "Test Stream Render YAML",
+		headers: map[string]string{
+			"Content-Type": "application/yaml",
+		},
+		expectedContentType: "application/yaml",
+		value:               make(map[string]*testStruct),
+	}
+
+	// Generate some data to serialize.
+	for i := 0; i < rand.Intn(100)+1; i++ {
+		ts := testStruct{
+			Name:  "testName" + strconv.Itoa(i),
+			Value: i,
+		}
+		tt.value[ts.Name] = &ts
+	}
+	d, err := yaml.Marshal(tt.value)
+	require.NoError(t, err)
+	tt.expectedOutput = string(d)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	iter := make(chan interface{})
+	go func() {
+		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
+		close(done)
+	}()
+	for k, v := range tt.value {
+		iter <- map[string]*testStruct{k: v}
+	}
+	close(iter)
+	<-done
+	assert.Equal(t, tt.expectedContentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, 200, w.Code)
+	assert.YAMLEq(t, tt.expectedOutput, w.Body.String())
+}
+
 func TestParseProtoReader(t *testing.T) {
 	// 47 bytes compressed and 53 uncompressed
-	req := &client.PreallocWriteRequest{
-		WriteRequest: client.WriteRequest{
-			Timeseries: []client.PreallocTimeseries{
+	req := &cortexpb.PreallocWriteRequest{
+		WriteRequest: cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
 				{
-					TimeSeries: &client.TimeSeries{
-						Labels: []client.LabelAdapter{
+					TimeSeries: &cortexpb.TimeSeries{
+						Labels: []cortexpb.LabelAdapter{
 							{Name: "foo", Value: "bar"},
 						},
-						Samples: []client.Sample{
+						Samples: []cortexpb.Sample{
 							{Value: 10, TimestampMs: 1},
 							{Value: 20, TimestampMs: 2},
 							{Value: 30, TimestampMs: 3},
 						},
+						Exemplars: []cortexpb.Exemplar{},
 					},
 				},
 			},
@@ -125,7 +182,7 @@ func TestParseProtoReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			assert.Nil(t, util.SerializeProtoResponse(w, req, tt.compression))
-			var fromWire client.PreallocWriteRequest
+			var fromWire cortexpb.PreallocWriteRequest
 
 			reader := w.Result().Body
 			if tt.useBytesBuffer {
@@ -156,4 +213,9 @@ func (b bytesBuffered) Close() error {
 
 func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 	return b.Buffer
+}
+
+func TestIsRequestBodyTooLargeRegression(t *testing.T) {
+	_, err := ioutil.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), ioutil.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
+	assert.True(t, util.IsRequestBodyTooLarge(err))
 }

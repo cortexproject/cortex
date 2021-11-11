@@ -2,6 +2,7 @@ package api
 
 import (
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -150,7 +151,7 @@ func TestConfigDiffHandler(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://test.com/config?mode=diff", nil)
 			w := httptest.NewRecorder()
 
-			h := configHandler(actualCfg, defaultCfg)
+			h := DefaultConfigHandler(actualCfg, defaultCfg)
 			h(w, req)
 			resp := w.Result()
 			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
@@ -161,4 +162,30 @@ func TestConfigDiffHandler(t *testing.T) {
 		})
 	}
 
+}
+
+func TestConfigOverrideHandler(t *testing.T) {
+	cfg := &Config{
+		CustomConfigHandler: func(_ interface{}, _ interface{}) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				_, err := w.Write([]byte("config"))
+				assert.NoError(t, err)
+			}
+		},
+	}
+
+	req := httptest.NewRequest("GET", "http://test.com/config", nil)
+	w := httptest.NewRecorder()
+
+	h := cfg.configHandler(
+		struct{ name string }{name: "actual"},
+		struct{ name string }{name: "default"},
+	)
+	h(w, req)
+	resp := w.Result()
+	assert.Equal(t, 200, resp.StatusCode)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("config"), body)
 }

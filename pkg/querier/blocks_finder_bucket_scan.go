@@ -9,8 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 var (
@@ -48,6 +49,7 @@ type BucketScanBlocksFinder struct {
 	services.Service
 
 	cfg             BucketScanBlocksFinderConfig
+	cfgProvider     bucket.TenantConfigProvider
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
@@ -68,9 +70,10 @@ type BucketScanBlocksFinder struct {
 	scanLastSuccess prometheus.Gauge
 }
 
-func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
+func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
 	d := &BucketScanBlocksFinder{
 		cfg:               cfg,
+		cfgProvider:       cfgProvider,
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
@@ -268,7 +271,7 @@ pushJobsLoop:
 // scanUserBlocksWithRetries runs scanUserBlocks() retrying multiple times
 // in case of error.
 func (d *BucketScanBlocksFinder) scanUserBlocksWithRetries(ctx context.Context, userID string) (metas bucketindex.Blocks, deletionMarks map[ulid.ULID]*bucketindex.BlockDeletionMark, err error) {
-	retries := util.NewBackoff(ctx, util.BackoffConfig{
+	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Second,
 		MaxBackoff: 30 * time.Second,
 		MaxRetries: 3,
@@ -363,7 +366,7 @@ func (d *BucketScanBlocksFinder) getOrCreateMetaFetcher(userID string) (block.Me
 
 func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.MetadataFetcher, objstore.Bucket, *block.IgnoreDeletionMarkFilter, error) {
 	userLogger := util_log.WithUserID(userID, d.logger)
-	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient)
+	userBucket := bucket.NewUserBucketClient(userID, d.bucketClient, d.cfgProvider)
 	userReg := prometheus.NewRegistry()
 
 	// The following filters have been intentionally omitted:

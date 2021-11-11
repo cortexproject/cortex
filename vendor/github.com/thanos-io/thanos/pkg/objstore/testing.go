@@ -4,8 +4,10 @@
 package objstore
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"sort"
@@ -21,7 +23,7 @@ func CreateTemporaryTestBucketName(t testing.TB) string {
 	src := rand.NewSource(time.Now().UnixNano())
 
 	// Bucket name need to conform: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-s3-bucket-naming-requirements.html.
-	name := strings.Replace(strings.Replace(fmt.Sprintf("test_%x_%s", src.Int63(), strings.ToLower(t.Name())), "_", "-", -1), "/", "-", -1)
+	name := strings.ReplaceAll(strings.Replace(fmt.Sprintf("test_%x_%s", src.Int63(), strings.ToLower(t.Name())), "_", "-", -1), "/", "-")
 	if len(name) >= 63 {
 		name = name[:63]
 	}
@@ -153,8 +155,10 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	// Upload should be idempotent.
 	testutil.Ok(t, bkt.Upload(ctx, "id1/obj_2.some", strings.NewReader("@test-data2@")))
 	testutil.Ok(t, bkt.Upload(ctx, "id1/obj_3.some", strings.NewReader("@test-data3@")))
-	testutil.Ok(t, bkt.Upload(ctx, "id2/obj_4.some", strings.NewReader("@test-data4@")))
-	testutil.Ok(t, bkt.Upload(ctx, "obj_5.some", strings.NewReader("@test-data5@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id1/sub/subobj_1.some", strings.NewReader("@test-data4@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id1/sub/subobj_2.some", strings.NewReader("@test-data5@")))
+	testutil.Ok(t, bkt.Upload(ctx, "id2/obj_4.some", strings.NewReader("@test-data6@")))
+	testutil.Ok(t, bkt.Upload(ctx, "obj_5.some", strings.NewReader("@test-data7@")))
 
 	// Can we iter over items from top dir?
 	var seen []string
@@ -167,13 +171,32 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	sort.Strings(seen)
 	testutil.Equals(t, expected, seen)
 
+	// Can we iter over items from top dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	expected = []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some", "id2/obj_4.some", "obj_5.some"}
+	sort.Strings(expected)
+	sort.Strings(seen)
+	testutil.Equals(t, expected, seen)
+
 	// Can we iter over items from id1/ dir?
 	seen = []string{}
 	testutil.Ok(t, bkt.Iter(ctx, "id1/", func(fn string) error {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/"}, seen)
+
+	// Can we iter over items from id1/ dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "id1/", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from id1 dir?
 	seen = []string{}
@@ -181,7 +204,15 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/"}, seen)
+
+	// Can we iter over items from id1 dir recursively?
+	seen = []string{}
+	testutil.Ok(t, bkt.Iter(ctx, "id1", func(fn string) error {
+		seen = append(seen, fn)
+		return nil
+	}, WithRecursiveIter))
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_2.some", "id1/obj_3.some", "id1/sub/subobj_1.some", "id1/sub/subobj_2.some"}, seen)
 
 	// Can we iter over items from not existing dir?
 	testutil.Ok(t, bkt.Iter(ctx, "id0", func(fn string) error {
@@ -203,7 +234,7 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 		seen = append(seen, fn)
 		return nil
 	}))
-	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_3.some"}, seen)
+	testutil.Equals(t, []string{"id1/obj_1.some", "id1/obj_3.some", "id1/sub/"}, seen)
 
 	testutil.Ok(t, bkt.Delete(ctx, "id2/obj_4.some"))
 
@@ -216,4 +247,65 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	sort.Strings(expected)
 	sort.Strings(seen)
 	testutil.Equals(t, expected, seen)
+
+	testutil.Ok(t, bkt.Upload(ctx, "obj_6.som", bytes.NewReader(make([]byte, 1024*1024*200))))
+	testutil.Ok(t, bkt.Delete(ctx, "obj_6.som"))
+}
+
+type delayingBucket struct {
+	bkt   Bucket
+	delay time.Duration
+}
+
+func WithDelay(bkt Bucket, delay time.Duration) Bucket {
+	return &delayingBucket{bkt: bkt, delay: delay}
+}
+
+func (d *delayingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	time.Sleep(d.delay)
+	return d.bkt.Get(ctx, name)
+}
+
+func (d *delayingBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
+	time.Sleep(d.delay)
+	return d.bkt.Attributes(ctx, name)
+}
+
+func (d *delayingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error {
+	time.Sleep(d.delay)
+	return d.bkt.Iter(ctx, dir, f, options...)
+}
+
+func (d *delayingBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	time.Sleep(d.delay)
+	return d.bkt.GetRange(ctx, name, off, length)
+}
+
+func (d *delayingBucket) Exists(ctx context.Context, name string) (bool, error) {
+	time.Sleep(d.delay)
+	return d.bkt.Exists(ctx, name)
+}
+
+func (d *delayingBucket) Upload(ctx context.Context, name string, r io.Reader) error {
+	time.Sleep(d.delay)
+	return d.bkt.Upload(ctx, name, r)
+}
+
+func (d *delayingBucket) Delete(ctx context.Context, name string) error {
+	time.Sleep(d.delay)
+	return d.bkt.Delete(ctx, name)
+}
+
+func (d *delayingBucket) Name() string {
+	time.Sleep(d.delay)
+	return d.bkt.Name()
+}
+
+func (d *delayingBucket) Close() error {
+	// No delay for a local operation.
+	return d.bkt.Close()
+}
+func (d *delayingBucket) IsObjNotFoundErr(err error) bool {
+	// No delay for a local operation.
+	return d.bkt.IsObjNotFoundErr(err)
 }

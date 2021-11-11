@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	text_template "text/template"
 	"time"
@@ -97,12 +98,24 @@ func query(ctx context.Context, q string, ts time.Time, queryFn QueryFunc) (quer
 	return result, nil
 }
 
+func convertToFloat(i interface{}) (float64, error) {
+	switch v := i.(type) {
+	case float64:
+		return v, nil
+	case string:
+		return strconv.ParseFloat(v, 64)
+	default:
+		return 0, fmt.Errorf("can't convert %T to float", v)
+	}
+}
+
 // Expander executes templates in text or HTML mode with a common set of Prometheus template functions.
 type Expander struct {
 	text    string
 	name    string
 	data    interface{}
 	funcMap text_template.FuncMap
+	options []string
 }
 
 // NewTemplateExpander returns a template expander ready to use.
@@ -114,7 +127,11 @@ func NewTemplateExpander(
 	timestamp model.Time,
 	queryFunc QueryFunc,
 	externalURL *url.URL,
+	options []string,
 ) *Expander {
+	if options == nil {
+		options = []string{"missingkey=zero"}
+	}
 	return &Expander{
 		text: text,
 		name: name,
@@ -163,9 +180,13 @@ func NewTemplateExpander(
 				sort.Stable(sorter)
 				return v
 			},
-			"humanize": func(v float64) string {
+			"humanize": func(i interface{}) (string, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return "", err
+				}
 				if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
-					return fmt.Sprintf("%.4g", v)
+					return fmt.Sprintf("%.4g", v), nil
 				}
 				if math.Abs(v) >= 1 {
 					prefix := ""
@@ -176,7 +197,7 @@ func NewTemplateExpander(
 						prefix = p
 						v /= 1000
 					}
-					return fmt.Sprintf("%.4g%s", v, prefix)
+					return fmt.Sprintf("%.4g%s", v, prefix), nil
 				}
 				prefix := ""
 				for _, p := range []string{"m", "u", "n", "p", "f", "a", "z", "y"} {
@@ -186,11 +207,15 @@ func NewTemplateExpander(
 					prefix = p
 					v *= 1000
 				}
-				return fmt.Sprintf("%.4g%s", v, prefix)
+				return fmt.Sprintf("%.4g%s", v, prefix), nil
 			},
-			"humanize1024": func(v float64) string {
+			"humanize1024": func(i interface{}) (string, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return "", err
+				}
 				if math.Abs(v) <= 1 || math.IsNaN(v) || math.IsInf(v, 0) {
-					return fmt.Sprintf("%.4g", v)
+					return fmt.Sprintf("%.4g", v), nil
 				}
 				prefix := ""
 				for _, p := range []string{"ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi", "Yi"} {
@@ -200,14 +225,18 @@ func NewTemplateExpander(
 					prefix = p
 					v /= 1024
 				}
-				return fmt.Sprintf("%.4g%s", v, prefix)
+				return fmt.Sprintf("%.4g%s", v, prefix), nil
 			},
-			"humanizeDuration": func(v float64) string {
+			"humanizeDuration": func(i interface{}) (string, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return "", err
+				}
 				if math.IsNaN(v) || math.IsInf(v, 0) {
-					return fmt.Sprintf("%.4g", v)
+					return fmt.Sprintf("%.4g", v), nil
 				}
 				if v == 0 {
-					return fmt.Sprintf("%.4gs", v)
+					return fmt.Sprintf("%.4gs", v), nil
 				}
 				if math.Abs(v) >= 1 {
 					sign := ""
@@ -221,16 +250,16 @@ func NewTemplateExpander(
 					days := int64(v) / 60 / 60 / 24
 					// For days to minutes, we display seconds as an integer.
 					if days != 0 {
-						return fmt.Sprintf("%s%dd %dh %dm %ds", sign, days, hours, minutes, seconds)
+						return fmt.Sprintf("%s%dd %dh %dm %ds", sign, days, hours, minutes, seconds), nil
 					}
 					if hours != 0 {
-						return fmt.Sprintf("%s%dh %dm %ds", sign, hours, minutes, seconds)
+						return fmt.Sprintf("%s%dh %dm %ds", sign, hours, minutes, seconds), nil
 					}
 					if minutes != 0 {
-						return fmt.Sprintf("%s%dm %ds", sign, minutes, seconds)
+						return fmt.Sprintf("%s%dm %ds", sign, minutes, seconds), nil
 					}
 					// For seconds, we display 4 significant digits.
-					return fmt.Sprintf("%s%.4gs", sign, v)
+					return fmt.Sprintf("%s%.4gs", sign, v), nil
 				}
 				prefix := ""
 				for _, p := range []string{"m", "u", "n", "p", "f", "a", "z", "y"} {
@@ -240,17 +269,25 @@ func NewTemplateExpander(
 					prefix = p
 					v *= 1000
 				}
-				return fmt.Sprintf("%.4g%ss", v, prefix)
+				return fmt.Sprintf("%.4g%ss", v, prefix), nil
 			},
-			"humanizePercentage": func(v float64) string {
-				return fmt.Sprintf("%.4g%%", v*100)
+			"humanizePercentage": func(i interface{}) (string, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("%.4g%%", v*100), nil
 			},
-			"humanizeTimestamp": func(v float64) string {
+			"humanizeTimestamp": func(i interface{}) (string, error) {
+				v, err := convertToFloat(i)
+				if err != nil {
+					return "", err
+				}
 				if math.IsNaN(v) || math.IsInf(v, 0) {
-					return fmt.Sprintf("%.4g", v)
+					return fmt.Sprintf("%.4g", v), nil
 				}
 				t := model.TimeFromUnixNano(int64(v * 1e9)).Time().UTC()
-				return fmt.Sprint(t)
+				return fmt.Sprint(t), nil
 			},
 			"pathPrefix": func() string {
 				return externalURL.Path
@@ -259,18 +296,21 @@ func NewTemplateExpander(
 				return externalURL.String()
 			},
 		},
+		options: options,
 	}
 }
 
 // AlertTemplateData returns the interface to be used in expanding the template.
-func AlertTemplateData(labels map[string]string, externalLabels map[string]string, value float64) interface{} {
+func AlertTemplateData(labels map[string]string, externalLabels map[string]string, externalURL string, value float64) interface{} {
 	return struct {
 		Labels         map[string]string
 		ExternalLabels map[string]string
+		ExternalURL    string
 		Value          float64
 	}{
 		Labels:         labels,
 		ExternalLabels: externalLabels,
+		ExternalURL:    externalURL,
 		Value:          value,
 	}
 }
@@ -302,7 +342,9 @@ func (te Expander) Expand() (result string, resultErr error) {
 
 	templateTextExpansionTotal.Inc()
 
-	tmpl, err := text_template.New(te.name).Funcs(te.funcMap).Option("missingkey=zero").Parse(te.text)
+	tmpl := text_template.New(te.name).Funcs(te.funcMap)
+	tmpl.Option(te.options...)
+	tmpl, err := tmpl.Parse(te.text)
 	if err != nil {
 		return "", errors.Wrapf(err, "error parsing template %v", te.name)
 	}
@@ -327,7 +369,7 @@ func (te Expander) ExpandHTML(templateFiles []string) (result string, resultErr 
 	}()
 
 	tmpl := html_template.New(te.name).Funcs(html_template.FuncMap(te.funcMap))
-	tmpl.Option("missingkey=zero")
+	tmpl.Option(te.options...)
 	tmpl.Funcs(html_template.FuncMap{
 		"tmpl": func(name string, data interface{}) (html_template.HTML, error) {
 			var buffer bytes.Buffer

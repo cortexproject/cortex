@@ -10,14 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -47,13 +46,13 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	tw, _, err := NewTripperware(Config{},
-		util.Logger,
+		log.NewNopLogger(),
 		mockLimits{},
 		PrometheusCodec,
 		nil,
 		chunk.SchemaConfig{},
 		promql.EngineOpts{
-			Logger:     util.Logger,
+			Logger:     log.NewNopLogger(),
 			Reg:        nil,
 			MaxSamples: 1000,
 			Timeout:    time.Minute,

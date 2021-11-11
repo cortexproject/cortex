@@ -7,16 +7,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type Config struct {
@@ -30,7 +30,7 @@ type Config struct {
 
 	QuerierID string `yaml:"id"`
 
-	GRPCClientConfig grpcclient.ConfigWithTLS `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -68,6 +68,10 @@ type processor interface {
 	//
 	// processorManager (not processor) is responsible for starting as many goroutines as needed for each connection.
 	processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string)
+
+	// notifyShutdown notifies the remote query-frontend or query-scheduler that the querier is
+	// shutting down.
+	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
 }
 
 type querierWorker struct {
@@ -204,6 +208,8 @@ func (w *querierWorker) AddressRemoved(address string) {
 	w.mu.Lock()
 	p := w.managers[address]
 	delete(w.managers, address)
+	// Called with lock.
+	w.resetConcurrency()
 	w.mu.Unlock()
 
 	if p != nil {

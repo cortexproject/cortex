@@ -4,6 +4,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -58,7 +59,7 @@ func (a labelPairs) copyValuesAndSort() labels.Labels {
 func TestFPMapper(t *testing.T) {
 	sm := newSeriesMap()
 
-	mapper := newFPMapper(sm)
+	mapper := newFPMapper(sm, log.NewNopLogger())
 
 	// Everything is empty, resolving a FP should do nothing.
 	assertFingerprintEqual(t, mapper.mapFP(fp1, cm11), fp1)

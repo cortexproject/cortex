@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func Test_ResponseToSamples(t *testing.T) {
@@ -15,11 +15,11 @@ func Test_ResponseToSamples(t *testing.T) {
 			ResultType: string(parser.ValueTypeMatrix),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       1,
 							TimestampMs: 1,
@@ -31,11 +31,11 @@ func Test_ResponseToSamples(t *testing.T) {
 					},
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       8,
 							TimestampMs: 1,

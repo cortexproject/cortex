@@ -29,12 +29,12 @@ It currently only supports queries with `Matrix` response types.
 
 ```yaml
 control:
-  host: http://localhost:8080/api/prom
+  host: http://localhost:8080/prometheus
   headers:
     "X-Scope-OrgID": 1234
 
 test:
-  host: http://localhost:8081/api/prom
+  host: http://localhost:8081/prometheus
   headers:
     "X-Scope-OrgID": 1234
 

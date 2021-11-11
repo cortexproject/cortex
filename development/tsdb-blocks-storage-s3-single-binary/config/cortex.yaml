@@ -64,17 +64,20 @@ ruler:
   enable_api: true
   enable_sharding: true
   poll_interval: 2s
-  storage:
-    type: s3
-    s3:
-      bucketnames: cortex-rules
-      s3forcepathstyle: true
-      s3: http://cortex:supersecret@minio.:9000
   ring:
     kvstore:
       store: consul
       consul:
         host: consul:8500
+
+ruler_storage:
+  backend: s3
+  s3:
+    bucket_name:       cortex-rules
+    endpoint:          minio:9000
+    access_key_id:     cortex
+    secret_access_key: supersecret
+    insecure: true
 
 runtime_config:
   file: ./config/runtime.yaml

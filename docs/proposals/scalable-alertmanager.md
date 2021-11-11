@@ -7,7 +7,7 @@ slug: scalable-alertmanager
 
 - Author: [Josh Abreu](https://github.com/gotjosh)
 - Date: December 2020
-- Status: Proposed
+- Status: Accepted
 
 ## Context and Background
 

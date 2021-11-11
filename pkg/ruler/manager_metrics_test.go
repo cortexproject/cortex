@@ -92,14 +92,20 @@ cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 100
 cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 1
 # HELP cortex_prometheus_rule_group_iterations_missed_total The total number of rule group evaluations missed due to slow rule group evaluation.
 # TYPE cortex_prometheus_rule_group_iterations_missed_total counter
-cortex_prometheus_rule_group_iterations_missed_total{user="user1"} 1
-cortex_prometheus_rule_group_iterations_missed_total{user="user2"} 10
-cortex_prometheus_rule_group_iterations_missed_total{user="user3"} 100
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_one",user="user1"} 1
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_one",user="user2"} 10
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_one",user="user3"} 100
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_two",user="user1"} 1
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_two",user="user2"} 10
+cortex_prometheus_rule_group_iterations_missed_total{rule_group="group_two",user="user3"} 100
 # HELP cortex_prometheus_rule_group_iterations_total The total number of scheduled rule group evaluations, whether executed or missed.
 # TYPE cortex_prometheus_rule_group_iterations_total counter
-cortex_prometheus_rule_group_iterations_total{user="user1"} 1
-cortex_prometheus_rule_group_iterations_total{user="user2"} 10
-cortex_prometheus_rule_group_iterations_total{user="user3"} 100
+cortex_prometheus_rule_group_iterations_total{rule_group="group_one",user="user1"} 1
+cortex_prometheus_rule_group_iterations_total{rule_group="group_one",user="user2"} 10
+cortex_prometheus_rule_group_iterations_total{rule_group="group_one",user="user3"} 100
+cortex_prometheus_rule_group_iterations_total{rule_group="group_two",user="user1"} 1
+cortex_prometheus_rule_group_iterations_total{rule_group="group_two",user="user2"} 10
+cortex_prometheus_rule_group_iterations_total{rule_group="group_two",user="user3"} 100
 # HELP cortex_prometheus_rule_group_last_duration_seconds The duration of the last rule group evaluation.
 # TYPE cortex_prometheus_rule_group_last_duration_seconds gauge
 cortex_prometheus_rule_group_last_duration_seconds{rule_group="group_one",user="user1"} 1000
@@ -135,9 +141,11 @@ func populateManager(base float64) *prometheus.Registry {
 
 	metrics.evalDuration.Observe(base)
 	metrics.iterationDuration.Observe(base)
-	metrics.iterationsMissed.Add(base)
-	metrics.iterationsScheduled.Add(base)
 
+	metrics.iterationsScheduled.WithLabelValues("group_one").Add(base)
+	metrics.iterationsScheduled.WithLabelValues("group_two").Add(base)
+	metrics.iterationsMissed.WithLabelValues("group_one").Add(base)
+	metrics.iterationsMissed.WithLabelValues("group_two").Add(base)
 	metrics.evalTotal.WithLabelValues("group_one").Add(base)
 	metrics.evalTotal.WithLabelValues("group_two").Add(base)
 	metrics.evalFailures.WithLabelValues("group_one").Add(base)
@@ -162,8 +170,8 @@ func populateManager(base float64) *prometheus.Registry {
 type groupMetrics struct {
 	evalDuration         prometheus.Summary
 	iterationDuration    prometheus.Summary
-	iterationsMissed     prometheus.Counter
-	iterationsScheduled  prometheus.Counter
+	iterationsMissed     *prometheus.CounterVec
+	iterationsScheduled  *prometheus.CounterVec
 	evalTotal            *prometheus.CounterVec
 	evalFailures         *prometheus.CounterVec
 	groupInterval        *prometheus.GaugeVec
@@ -186,14 +194,20 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 			Help:       "The duration of rule group evaluations.",
 			Objectives: map[float64]float64{0.01: 0.001, 0.05: 0.005, 0.5: 0.05, 0.90: 0.01, 0.99: 0.001},
 		}),
-		iterationsMissed: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "prometheus_rule_group_iterations_missed_total",
-			Help: "The total number of rule group evaluations missed due to slow rule group evaluation.",
-		}),
-		iterationsScheduled: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "prometheus_rule_group_iterations_total",
-			Help: "The total number of scheduled rule group evaluations, whether executed or missed.",
-		}),
+		iterationsMissed: promauto.With(r).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "prometheus_rule_group_iterations_missed_total",
+				Help: "The total number of rule group evaluations missed due to slow rule group evaluation.",
+			},
+			[]string{"rule_group"},
+		),
+		iterationsScheduled: promauto.With(r).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "prometheus_rule_group_iterations_total",
+				Help: "The total number of scheduled rule group evaluations, whether executed or missed.",
+			},
+			[]string{"rule_group"},
+		),
 		evalTotal: promauto.With(r).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "prometheus_rule_evaluations_total",

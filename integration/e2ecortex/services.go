@@ -121,6 +121,9 @@ func NewStoreGatewayWithConfigFile(name, consulAddress, configFile string, flags
 			"-store-gateway.sharding-ring.store":              "consul",
 			"-store-gateway.sharding-ring.consul.hostname":    consulAddress,
 			"-store-gateway.sharding-ring.replication-factor": "1",
+			// Startup quickly.
+			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",
+			"-store-gateway.sharding-ring.wait-stability-max-duration": "0",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -301,6 +304,9 @@ func NewSingleBinary(name string, flags map[string]string, image string, otherPo
 			"-ingester.concurrent-flushes":   "10",
 			"-ingester.max-transfer-retries": "10",
 			"-ingester.num-tokens":           "512",
+			// Startup quickly.
+			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",
+			"-store-gateway.sharding-ring.wait-stability-max-duration": "0",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -350,7 +356,27 @@ func NewAlertmanager(name string, flags map[string]string, image string) *Cortex
 	)
 }
 
-func NewRuler(name string, flags map[string]string, image string) *CortexService {
+func NewAlertmanagerWithTLS(name string, flags map[string]string, image string) *CortexService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":                               "alertmanager",
+			"-log.level":                            "warn",
+			"-experimental.alertmanager.enable-api": "true",
+		}, flags))...),
+		e2e.NewTCPReadinessProbe(httpPort),
+		httpPort,
+		grpcPort,
+		GossipPort,
+	)
+}
+
+func NewRuler(name string, consulAddress string, flags map[string]string, image string) *CortexService {
 	if image == "" {
 		image = GetDefaultImage()
 	}
@@ -361,6 +387,9 @@ func NewRuler(name string, flags map[string]string, image string) *CortexService
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
 			"-log.level": "warn",
+			// Configure the ingesters ring backend
+			"-ring.store":      "consul",
+			"-consul.hostname": consulAddress,
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

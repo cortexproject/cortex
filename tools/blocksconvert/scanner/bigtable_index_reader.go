@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigtable"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
@@ -66,7 +66,7 @@ func (r *bigtableIndexReader) IndexTableNames(ctx context.Context) ([]string, er
 //
 // Index entries are returned in HashValue, RangeValue order.
 // Entries for the same HashValue and RangeValue are passed to the same processor.
-func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []IndexEntryProcessor) error {
+func (r *bigtableIndexReader) ReadIndexEntries(ctx context.Context, tableName string, processors []chunk.IndexEntryProcessor) error {
 	client, err := bigtable.NewClient(ctx, r.project, r.instance)
 	if err != nil {
 		return errors.Wrap(err, "create bigtable client failed")

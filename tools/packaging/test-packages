@@ -40,10 +40,13 @@ trap cleanup EXIT
 
 function test_with_systemd() {
     local -r image=$1
-    local -r install_command=$2
+    local -r platform=$2
+    local -r install_command=$3
     local container
 
-    container=$(docker run --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro -itd -v "$(pwd)"/dist:/opt/cortex -p 9009 "${image}")
+    echo "Testing $install_command on $image ($platform)"
+
+    container=$(docker run --platform="${platform}" --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro -itd -v "$(pwd)"/dist:/opt/cortex -p 9009 "${image}")
     CONTAINERS+=("${container}")
 
     port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "9009/tcp") 0).HostPort}}' "${container}")
@@ -53,5 +56,8 @@ function test_with_systemd() {
     ready 10 1 "${port}" || error "Testing image: ${image} with command: '${install_command}' failed"
 }
 
-test_with_systemd "${IMAGE_PREFIX}"debian-systemd "dpkg -i /opt/cortex/cortex-${VERSION}.deb"
-test_with_systemd "${IMAGE_PREFIX}"centos-systemd "rpm -i /opt/cortex/cortex-${VERSION}.rpm"
+test_with_systemd "${IMAGE_PREFIX}"debian-systemd:amd64 linux/amd64 "dpkg -i /opt/cortex/cortex-${VERSION}_amd64.deb"
+test_with_systemd "${IMAGE_PREFIX}"debian-systemd:arm64 linux/arm64 "dpkg -i /opt/cortex/cortex-${VERSION}_arm64.deb"
+
+test_with_systemd "${IMAGE_PREFIX}"centos-systemd:amd64 linux/amd64 "rpm -i /opt/cortex/cortex-${VERSION}_amd64.rpm"
+test_with_systemd "${IMAGE_PREFIX}"centos-systemd:arm64 linux/arm64 "rpm -i /opt/cortex/cortex-${VERSION}_arm64.rpm"

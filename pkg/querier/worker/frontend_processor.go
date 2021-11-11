@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
-	processorBackoffConfig = util.BackoffConfig{
+	processorBackoffConfig = backoff.Config{
 		MinBackoff: 50 * time.Millisecond,
 		MaxBackoff: 1 * time.Second,
 	}
@@ -28,7 +28,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) pr
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
-		maxMessageSize: cfg.GRPCClientConfig.GRPC.MaxSendMsgSize,
+		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 	}
 }
@@ -42,11 +42,22 @@ type frontendProcessor struct {
 	log log.Logger
 }
 
+// notifyShutdown implements processor.
+func (fp *frontendProcessor) notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string) {
+	client := frontendv1pb.NewFrontendClient(conn)
+
+	req := &frontendv1pb.NotifyClientShutdownRequest{ClientID: fp.querierID}
+	if _, err := client.NotifyClientShutdown(ctx, req); err != nil {
+		// Since we're shutting down there's nothing we can do except logging it.
+		level.Warn(fp.log).Log("msg", "failed to notify querier shutdown to query-frontend", "address", address, "err", err)
+	}
+}
+
 // runOne loops, trying to establish a stream to the frontend to begin request processing.
 func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string) {
 	client := frontendv1pb.NewFrontendClient(conn)
 
-	backoff := util.NewBackoff(ctx, processorBackoffConfig)
+	backoff := backoff.New(ctx, processorBackoffConfig)
 	for backoff.Ongoing() {
 		c, err := client.Process(ctx)
 		if err != nil {

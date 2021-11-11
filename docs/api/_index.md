@@ -33,6 +33,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Ingesters ring status](#ingesters-ring-status) | Ingester | `GET /ingester/ring` |
 | [Instant query](#instant-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
+| [Exemplar query](#exemplar-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
 | [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/series` |
 | [Get label names](#get-label-names) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend | `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
@@ -41,6 +42,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier | `GET /api/v1/user_stats` |
 | [Get tenant chunks](#get-tenant-chunks) | Querier | `GET /api/v1/chunks` |
 | [Ruler ring status](#ruler-ring-status) | Ruler | `GET /ruler/ring` |
+| [Ruler rules ](#ruler-rule-groups) | Ruler | `GET /ruler/rule_groups` |
 | [List rules](#list-rules) | Ruler | `GET <prometheus-http-prefix>/api/v1/rules` |
 | [List alerts](#list-alerts) | Ruler | `GET <prometheus-http-prefix>/api/v1/alerts` |
 | [List rule groups](#list-rule-groups) | Ruler | `GET /api/v1/rules` |
@@ -49,9 +51,12 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Set rule group](#set-rule-group) | Ruler | `POST /api/v1/rules/{namespace}` |
 | [Delete rule group](#delete-rule-group) | Ruler | `DELETE /api/v1/rules/{namespace}/{groupName}` |
 | [Delete namespace](#delete-namespace) | Ruler | `DELETE /api/v1/rules/{namespace}` |
+| [Delete tenant configuration](#delete-tenant-configuration) | Ruler | `POST /ruler/delete_tenant_config` |
 | [Alertmanager status](#alertmanager-status) | Alertmanager | `GET /multitenant_alertmanager/status` |
+| [Alertmanager configs](#alertmanager-configs) | Alertmanager | `GET /multitenant_alertmanager/configs` |
 | [Alertmanager ring status](#alertmanager-ring-status) | Alertmanager | `GET /multitenant_alertmanager/ring` |
 | [Alertmanager UI](#alertmanager-ui) | Alertmanager | `GET /<alertmanager-http-prefix>` |
+| [Alertmanager Delete Tenant Configuration](#alertmanager-delete-tenant-configuration) | Alertmanager | `POST /multitenant_alertmanager/delete_tenant_config` |
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager | `DELETE /api/v1/alerts` |
@@ -117,7 +122,7 @@ Displays the configuration currently applied to Cortex (in YAML format), includi
 GET /config?mode=diff
 ```
 
-Displays the configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the  default values.
+Displays the configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the default values.
 
 ```
 GET /config?mode=defaults
@@ -132,6 +137,14 @@ GET /runtime_config
 ```
 
 Displays the runtime configuration currently applied to Cortex (in YAML format), including default values. Please be aware that the endpoint will be only available if Cortex is configured with the `-runtime-config.file` option.
+
+#### Different modes
+
+```
+GET /runtime_config?mode=diff
+```
+
+Displays the runtime configuration currently applied to Cortex (in YAML format) as before, but containing only the values that differ from the default values.
 
 ### Services status
 
@@ -195,11 +208,19 @@ POST <legacy-http-prefix>/push
 
 Entrypoint for the [Prometheus remote write](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
-This API endpoint accepts an HTTP POST request with a body containing a request encoded with [Protocol Buffers](https://developers.google.com/protocol-buffers) and compressed with [Snappy](https://github.com/google/snappy). The definition of the protobuf message can be found in [`cortex.proto`](https://github.com/cortexproject/cortex/blob/master/pkg/ingester/client/cortex.proto#28). The HTTP request should contain the header `X-Prometheus-Remote-Write-Version` set to `0.1.0`.
+This API endpoint accepts an HTTP POST request with a body containing a request encoded with [Protocol Buffers](https://developers.google.com/protocol-buffers) and compressed with [Snappy](https://github.com/google/snappy). The definition of the protobuf message can be found in [`cortex.proto`](https://github.com/cortexproject/cortex/blob/master/pkg/cortexpb/cortex.proto#L12). The HTTP request should contain the header `X-Prometheus-Remote-Write-Version` set to `0.1.0`.
 
 _For more information, please check out Prometheus [Remote storage integrations](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations)._
 
 _Requires [authentication](#authentication)._
+
+### Distributor ring status
+
+```
+GET /distributor/ring
+```
+
+Displays a web page with the distributor hash ring status, including the state, healthy and last heartbeat time of each distributor.
 
 ### Tenants stats
 
@@ -236,6 +257,10 @@ GET,POST /flush
 ```
 
 Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
+
+When using blocks storage, this endpoint accepts `tenant` parameter to specify tenant whose blocks are compacted and shipped. This parameter may be specified multiple times to select more tenants. If no tenant is specified, all tenants are flushed.
+
+Flush endpoint now also accepts `wait=true` parameter, which makes the call synchronous – it will only return after flushing has finished. Note that returned status code does not reflect the result of flush operation. This parameter is only available when using blocks storage.
 
 ### Shutdown
 
@@ -293,6 +318,21 @@ GET,POST <legacy-http-prefix>/api/v1/query_range
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
 
 _For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Exemplar query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/query_exemplars
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/query_exemplars
+```
+
+Prometheus-compatible exemplar query endpoint.
+
+_For more information, please check out the Prometheus [exemplar query](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-exemplars) documentation._
 
 _Requires [authentication](#authentication)._
 
@@ -420,6 +460,14 @@ GET /ruler_ring
 ```
 
 Displays a web page with the ruler hash ring status, including the state, healthy and last heartbeat time of each ruler.
+
+### Ruler rules
+
+```
+GET /ruler/rule_groups
+```
+
+List all tenant rules. This endpoint is not part of ruler-API and is always available regardless of whether ruler-API is enabled or not. It should not be exposed to end users. This endpoint returns a YAML dictionary with all the rule groups for each tenant and `200` status code on success.
 
 ### List rules
 
@@ -628,6 +676,18 @@ _This experimental endpoint is disabled by default and can be enabled via the `-
 
 _Requires [authentication](#authentication)._
 
+### Delete tenant configuration
+
+```
+POST /ruler/delete_tenant_config
+```
+
+This deletes all rule groups for tenant, and returns `200` on success. Calling endpoint when no rule groups exist for user returns `200`. Authentication is only to identify the tenant.
+
+This is intended as internal API, and not to be exposed to users. This endpoint is enabled regardless of whether `-experimental.ruler.enable-api` is enabled or not.
+
+_Requires [authentication](#authentication)._
+
 ## Alertmanager
 
 ### Alertmanager status
@@ -640,6 +700,14 @@ GET /status
 ```
 
 Displays a web page with the current status of the Alertmanager, including the Alertmanager cluster members.
+
+### Alertmanager configs
+
+```
+GET /multitenant_alertmanager/configs
+```
+
+List all Alertmanager configurations. This endpoint is not part of alertmanager-API and is always available regardless of whether alertmanager-API is enabled or not. It should not be exposed to end users. This endpoint returns a YAML dictionary with all the Alertmanager configurations and `200` status code on success.
 
 ### Alertmanager ring status
 
@@ -659,6 +727,18 @@ GET /<legacy-http-prefix>
 ```
 
 Displays the Alertmanager UI.
+
+_Requires [authentication](#authentication)._
+
+### Alertmanager Delete Tenant Configuration
+
+```
+POST /multitenant_alertmanager/delete_tenant_config
+```
+
+This endpoint deletes configuration for a tenant identified by `X-Scope-OrgID` header.
+It is internal, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`.
+The endpoint returns a status code of `200` if the user's configuration has been deleted, or it didn't exist in the first place.
 
 _Requires [authentication](#authentication)._
 
@@ -689,6 +769,9 @@ This endpoint expects the Alertmanager **YAML** configuration in the request bod
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
 
 _Requires [authentication](#authentication)._
+
+> **Note:** When using `curl` send the request body from a file, ensure that you use the `--data-binary` flag instead of `-d`, `--data`, or `--data-ascii`.
+> The latter options do not preserve carriage returns and newlines.
 
 #### Example request body
 

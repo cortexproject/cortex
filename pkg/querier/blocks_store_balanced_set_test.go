@@ -6,15 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
@@ -24,7 +22,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
-	s := newBlocksStoreBalancedSet(serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), reg)
+	s := newBlocksStoreBalancedSet(serviceAddrs, ClientConfig{}, log.NewNopLogger(), reg)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 	defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
@@ -134,7 +132,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			s := newBlocksStoreBalancedSet(testData.serviceAddrs, tls.ClientConfig{}, log.NewNopLogger(), nil)
+			s := newBlocksStoreBalancedSet(testData.serviceAddrs, ClientConfig{}, log.NewNopLogger(), nil)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 

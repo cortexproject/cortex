@@ -7,7 +7,7 @@ slug: tenant-deletion
 
 - Author: [Peter Stibrany](https://github.com/pstibrany)
 - Date: November 2020
-- Status: Proposed
+- Status: Accepted
 
 ## Deletion of tenant data
 

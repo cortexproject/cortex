@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestFromValue(t *testing.T) {
@@ -33,7 +33,7 @@ func TestFromValue(t *testing.T) {
 			err:   false,
 			expected: []SampleStream{
 				{
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       1,
 							TimestampMs: 1,
@@ -65,11 +65,11 @@ func TestFromValue(t *testing.T) {
 			err: false,
 			expected: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       1,
 							TimestampMs: 1,
@@ -77,11 +77,11 @@ func TestFromValue(t *testing.T) {
 					},
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a2"},
 						{Name: "b", Value: "b2"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       2,
 							TimestampMs: 2,
@@ -119,11 +119,11 @@ func TestFromValue(t *testing.T) {
 			err: false,
 			expected: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
 						{Name: "b", Value: "b1"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       1,
 							TimestampMs: 1,
@@ -135,11 +135,11 @@ func TestFromValue(t *testing.T) {
 					},
 				},
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a2"},
 						{Name: "b", Value: "b2"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{
 							Value:       8,
 							TimestampMs: 1,

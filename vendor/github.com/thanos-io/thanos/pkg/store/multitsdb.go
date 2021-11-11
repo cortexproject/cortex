@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/kit/log"
-	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
+	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/tracing"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -269,7 +269,7 @@ func (s *MultiTSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_Seri
 
 }
 
-// LabelNames returns all known label names.
+// LabelNames returns all known label names constrained by the matchers.
 func (s *MultiTSDBStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	span, ctx := tracing.StartSpan(ctx, "multitsdb_label_names")
 	defer span.Finish()

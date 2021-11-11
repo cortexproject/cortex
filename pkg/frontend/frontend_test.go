@@ -12,8 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -27,9 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (
@@ -232,7 +232,10 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	// v1 will be nil if DownstreamURL is defined.
 	require.Nil(t, v2)
 	if v1 != nil {
-		defer v1.Close()
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
+		t.Cleanup(func() {
+			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), v1))
+		})
 	}
 
 	grpcServer := grpc.NewServer(

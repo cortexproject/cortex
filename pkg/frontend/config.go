@@ -4,7 +4,7 @@ import (
 	"flag"
 	"net/http"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -20,10 +20,6 @@ type CombinedFrontendConfig struct {
 	FrontendV1 v1.Config               `yaml:",inline"`
 	FrontendV2 v2.Config               `yaml:",inline"`
 
-	// Deprecated. Replaced with pkg/api/Config.ResponseCompression field.
-	// TODO: To be removed in Cortex 1.8.
-	CompressResponses bool `yaml:"compress_responses"`
-
 	DownstreamURL string `yaml:"downstream_url"`
 }
 
@@ -32,12 +28,10 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.FrontendV1.RegisterFlags(f)
 	cfg.FrontendV2.RegisterFlags(f)
 
-	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "This flag is about to be deprecated. Please use -api.response-compression-enabled instead.")
-
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
 
-// Initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
+// InitFrontend initializes frontend (either V1 -- without scheduler, or V2 -- with scheduler) or no frontend at
 // all if downstream Prometheus URL is used instead.
 //
 // Returned RoundTripper can be wrapped in more round-tripper middlewares, and then eventually registered
@@ -47,7 +41,7 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
-		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL)
+		rt, err := NewDownstreamRoundTripper(cfg.DownstreamURL, http.DefaultTransport)
 		return rt, nil, nil, err
 
 	case cfg.FrontendV2.SchedulerAddress != "":
@@ -74,7 +68,6 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 		if err != nil {
 			return nil, nil, nil, err
 		}
-
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, err
+		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
 	}
 }

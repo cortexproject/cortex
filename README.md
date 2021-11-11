@@ -14,7 +14,7 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 - **Highly available:** When run in a cluster, Cortex can replicate data between machines. This allows you to survive machine failure without gaps in your graphs.
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
-- **Long term storage:** Cortex supports Amazon DynamoDB, Google Bigtable, Cassandra, S3, GCS and Microsoft Azure for long term storage of metric data.  This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
+- **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data. This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
 Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
@@ -25,9 +25,8 @@ Read the [getting started guide](https://cortexmetrics.io/docs/getting-started) 
 project. Before deploying Cortex with a permanent storage backend you
 should read:
 1. [An overview of Cortex's architecture](https://cortexmetrics.io/docs/architecture/)
-1. [A guide to running Cortex](https://cortexmetrics.io/docs/guides/running-chunks-storage-in-production/)
-1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/arguments/)
-1. [Steps to run Cortex with Cassandra](https://cortexmetrics.io/docs/guides/running-chunks-storage-with-cassandra/)
+1. [Getting started with Cortex](https://cortexmetrics.io/docs/getting-started/)
+1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/)
 
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
@@ -37,7 +36,7 @@ To learn more about Cortex, consult the following talks and articles.
 
 ### Recent talks and articles
 
-- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)
+- Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
 - Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won’t look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
 - Oct 2020 blog post "[Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity](https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/)"
 - Sep 2020 blog post "[A Tale of Tail Latencies](https://www.weave.works/blog/a-tale-of-tail-latencies)"
@@ -133,7 +132,7 @@ For security issues see https://github.com/cortexproject/cortex/security/policy
 
 ## Community Meetings
 
-The Cortex community call happens every three weeks on Thursday at 03:30pm – 04:15pm UTC to get calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring).
+The Cortex community call happens every two weeks on Thursday, alternating at 1200 UTC and 1700 UTC. To get a calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring) or check out [the CNCF community calendar](https://www.cncf.io/calendar/).
 
 Meeting notes are held [here](https://docs.google.com/document/d/1shtXSAqp3t7fiC-9uZcKkq3mgwsItAJlH6YW6x1joZo/edit).
 
@@ -154,9 +153,9 @@ in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/ove
 
 ### Grafana Cloud
 
-To use Cortex as part of Grafana Cloud, sign up for [Grafana Cloud](https://grafana.com/cloud)
-by clicking "Log In" in the top right and then "Sign Up Now".  Cortex is included
-as part of the Starter and Basic Hosted Grafana plans.
+The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016. Employing 6 out of 8 maintainers for Cortex enables [Grafana Labs](https://grafana.com/) to offer Cortex-as-a-service with exceptional performance and reliability. As the creators of [Grafana](https://grafana.com/oss/grafana/), [Loki](https://grafana.com/oss/loki/), and [Tempo](https://grafana.com/oss/tempo/), Grafana Labs can offer you the most wholistic Observability-as-a-Service stack out there.
+
+For further information see Grafana Cloud [documentation](https://grafana.com/docs/grafana-cloud/), [tutorials](https://grafana.com/tutorials/), [webinars](https://grafana.com/videos/), and [KubeCon talks](https://grafana.com/categories/cortex/). Get started today and [sign up here](https://grafana.com/products/cloud/).
 
 ### Amazon Managed Service for Prometheus (AMP)
 

@@ -65,20 +65,21 @@ ruler:
   enable_api: true
   enable_sharding: true
   poll_interval: 2s
-  storage:
-    type: swift
-    swift:
-      auth_url:          http://localhost:5000/v2.0
-      username:          admin
-      password:          s3cr3t
-      project_name:      admin
-      region_name:       RegionOne
-      container_name: cortex-rules
   ring:
     kvstore:
       store: consul
       consul:
         host: localhost:8500
+
+ruler_storage:
+  backend: swift
+  swift:
+    auth_url:          http://localhost:5000/v2.0
+    username:          admin
+    password:          s3cr3t
+    project_name:      admin
+    region_name:       RegionOne
+    container_name: cortex-rules
 
 runtime_config:
   file: ./config/runtime.yaml

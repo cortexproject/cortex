@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -16,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 	ctx    = context.Background()
 	engine = promql.NewEngine(promql.EngineOpts{
 		Reg:                prometheus.DefaultRegisterer,
-		Logger:             util.Logger,
+		Logger:             log.NewNopLogger(),
 		Timeout:            1 * time.Hour,
 		MaxSamples:         10e6,
 		ActiveQueryTracker: nil,
@@ -611,11 +611,13 @@ func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers 
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(name string) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames() ([]string, storage.Warnings, error) { return nil, nil, nil }
-func (m *testMatrix) Close() error                                    { return nil }
+func (m *testMatrix) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+func (m *testMatrix) Close() error { return nil }
 
 func newSeries(metric labels.Labels, generator func(float64) float64) *promql.StorageSeries {
 	sort.Sort(metric)
@@ -673,6 +675,7 @@ func splitByShard(shardIndex, shardTotal int, testMatrices *testMatrix) *testMat
 		}
 		lbs := s.Labels().Copy()
 		lbs = append(lbs, labels.Label{Name: "__cortex_shard__", Value: fmt.Sprintf("%d_of_%d", shardIndex, shardTotal)})
+		sort.Sort(lbs)
 		res.series = append(res.series, promql.NewStorageSeries(promql.Series{
 			Metric: lbs,
 			Points: points,

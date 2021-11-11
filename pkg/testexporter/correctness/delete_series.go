@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -103,7 +103,7 @@ func (d *DeleteSeriesTest) sendDeleteRequestLoop() {
 	// send a delete request as soon as we start to avoid missing creation of delete request across restarts.
 	err := d.sendDeleteRequest()
 	if err != nil {
-		level.Error(util.Logger).Log("msg", "error sending delete request", "error", err)
+		level.Error(util_log.Logger).Log("msg", "error sending delete request", "error", err)
 	}
 
 	t := time.NewTicker(d.cfg.deleteRequestCreationInterval)
@@ -114,7 +114,7 @@ func (d *DeleteSeriesTest) sendDeleteRequestLoop() {
 		case <-t.C:
 			err := d.sendDeleteRequest()
 			if err != nil {
-				level.Error(util.Logger).Log("msg", "error sending delete request", "error", err)
+				level.Error(util_log.Logger).Log("msg", "error sending delete request", "error", err)
 			}
 		case <-d.quit:
 			return
@@ -233,7 +233,7 @@ func (d *DeleteSeriesTest) sendDeleteRequest() (err error) {
 		}
 	}
 
-	level.Error(util.Logger).Log("msg", "sending delete request", "selector", selectors, "starttime", startTime, "endtime", endTime)
+	level.Error(util_log.Logger).Log("msg", "sending delete request", "selector", selectors, "starttime", startTime, "endtime", endTime)
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return

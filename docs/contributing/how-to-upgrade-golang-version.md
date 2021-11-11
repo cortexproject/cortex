@@ -14,6 +14,7 @@ To upgrade the Golang version:
    - Update the Docker image tag in `.github/workflows/*`
 2. Upgrade integration tests version
    - Update the Golang version installed in the `integration` job in `.github/workflows/*`
+3. Upgrade the reference to the latest build image called `LATEST_BUILD_IMAGE_TAG` in `Makefile`
 
 If the minimum support Golang version should be upgraded as well:
 

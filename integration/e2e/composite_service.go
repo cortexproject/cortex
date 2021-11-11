@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // CompositeHTTPService abstract an higher-level service composed, under the hood,
@@ -16,13 +15,13 @@ type CompositeHTTPService struct {
 	services []*HTTPService
 
 	// Generic retry backoff.
-	retryBackoff *util.Backoff
+	retryBackoff *backoff.Backoff
 }
 
 func NewCompositeHTTPService(services ...*HTTPService) *CompositeHTTPService {
 	return &CompositeHTTPService{
 		services: services,
-		retryBackoff: util.NewBackoff(context.Background(), util.BackoffConfig{
+		retryBackoff: backoff.New(context.Background(), backoff.Config{
 			MinBackoff: 300 * time.Millisecond,
 			MaxBackoff: 600 * time.Millisecond,
 			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯

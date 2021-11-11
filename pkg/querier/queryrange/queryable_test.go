@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/astmapper"
 )
 
@@ -91,11 +91,11 @@ func TestSelect(t *testing.T) {
 						ResultType: string(parser.ValueTypeVector),
 						Result: []SampleStream{
 							{
-								Labels: []client.LabelAdapter{
+								Labels: []cortexpb.LabelAdapter{
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []client.Sample{
+								Samples: []cortexpb.Sample{
 									{
 										Value:       1,
 										TimestampMs: 1,
@@ -107,11 +107,11 @@ func TestSelect(t *testing.T) {
 								},
 							},
 							{
-								Labels: []client.LabelAdapter{
+								Labels: []cortexpb.LabelAdapter{
 									{Name: "a", Value: "a1"},
 									{Name: "b", Value: "b1"},
 								},
-								Samples: []client.Sample{
+								Samples: []cortexpb.Sample{
 									{
 										Value:       8,
 										TimestampMs: 1,
@@ -141,11 +141,11 @@ func TestSelect(t *testing.T) {
 					t,
 					NewSeriesSet([]SampleStream{
 						{
-							Labels: []client.LabelAdapter{
+							Labels: []cortexpb.LabelAdapter{
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []client.Sample{
+							Samples: []cortexpb.Sample{
 								{
 									Value:       1,
 									TimestampMs: 1,
@@ -157,11 +157,11 @@ func TestSelect(t *testing.T) {
 							},
 						},
 						{
-							Labels: []client.LabelAdapter{
+							Labels: []cortexpb.LabelAdapter{
 								{Name: "a", Value: "a1"},
 								{Name: "b", Value: "b1"},
 							},
-							Samples: []client.Sample{
+							Samples: []cortexpb.Sample{
 								{
 									Value:       8,
 									TimestampMs: 1,
@@ -219,10 +219,10 @@ func TestSelectConcurrent(t *testing.T) {
 					ResultType: string(parser.ValueTypeVector),
 					Result: []SampleStream{
 						{
-							Labels: []client.LabelAdapter{
+							Labels: []cortexpb.LabelAdapter{
 								{Name: "a", Value: "1"},
 							},
-							Samples: []client.Sample{
+							Samples: []cortexpb.Sample{
 								{
 									Value:       1,
 									TimestampMs: 1,

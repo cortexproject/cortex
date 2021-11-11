@@ -7,17 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 const (
@@ -53,10 +52,10 @@ var (
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
-					Samples: []client.Sample{
+					Samples: []cortexpb.Sample{
 						{Value: 137, TimestampMs: 1536673680000},
 						{Value: 137, TimestampMs: 1536673780000},
 					},
@@ -67,9 +66,9 @@ var (
 )
 
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
-	var samples []client.Sample
+	var samples []cortexpb.Sample
 	for i := start; i <= end; i += step {
-		samples = append(samples, client.Sample{
+		samples = append(samples, cortexpb.Sample{
 			TimestampMs: int64(i),
 			Value:       float64(i),
 		})
@@ -81,7 +80,7 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 			ResultType: matrix,
 			Result: []SampleStream{
 				{
-					Labels: []client.LabelAdapter{
+					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
 					},
 					Samples: samples,
@@ -92,7 +91,11 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 }
 
 func mkExtent(start, end int64) Extent {
-	res := mkAPIResponse(start, end, 10)
+	return mkExtentWithStep(start, end, 10)
+}
+
+func mkExtentWithStep(start, end, step int64) Extent {
+	res := mkAPIResponse(start, end, step)
 	any, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
@@ -105,16 +108,19 @@ func mkExtent(start, end int64) Extent {
 }
 
 func TestShouldCache(t *testing.T) {
-	c := &resultsCache{logger: util.Logger, cacheGenNumberLoader: newMockCacheGenNumberLoader()}
+	maxCacheTime := int64(150 * 1000)
+	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
 	for _, tc := range []struct {
 		name                   string
+		request                Request
 		input                  Response
 		cacheGenNumberToInject string
 		expected               bool
 	}{
 		// Tests only for cacheControlHeader
 		{
-			name: "does not contain the cacheControl header",
+			name:    "does not contain the cacheControl header",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -126,7 +132,8 @@ func TestShouldCache(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "does contain the cacheControl header which has the value",
+			name:    "does contain the cacheControl header which has the value",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -138,7 +145,8 @@ func TestShouldCache(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "cacheControl header contains extra values but still good",
+			name:    "cacheControl header contains extra values but still good",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -151,18 +159,21 @@ func TestShouldCache(t *testing.T) {
 		},
 		{
 			name:     "broken response",
+			request:  &PrometheusRequest{Query: "metric"},
 			input:    Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
-			name: "nil headers",
+			name:    "nil headers",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{nil},
 			}),
 			expected: true,
 		},
 		{
-			name: "had cacheControl header but no values",
+			name:    "had cacheControl header but no values",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
@@ -171,7 +182,8 @@ func TestShouldCache(t *testing.T) {
 
 		// Tests only for cacheGenNumber header
 		{
-			name: "cacheGenNumber not set in both header and store",
+			name:    "cacheGenNumber not set in both header and store",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -183,7 +195,8 @@ func TestShouldCache(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "cacheGenNumber set in store but not in header",
+			name:    "cacheGenNumber set in store but not in header",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -196,7 +209,8 @@ func TestShouldCache(t *testing.T) {
 			expected:               false,
 		},
 		{
-			name: "cacheGenNumber set in header but not in store",
+			name:    "cacheGenNumber set in header but not in store",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -208,7 +222,8 @@ func TestShouldCache(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "cacheGenNumber in header and store are the same",
+			name:    "cacheGenNumber in header and store are the same",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -221,7 +236,8 @@ func TestShouldCache(t *testing.T) {
 			expected:               true,
 		},
 		{
-			name: "inconsistency between cacheGenNumber in header and store",
+			name:    "inconsistency between cacheGenNumber in header and store",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -234,7 +250,8 @@ func TestShouldCache(t *testing.T) {
 			expected:               false,
 		},
 		{
-			name: "cacheControl header says not to catch and cacheGenNumbers in store and headers have consistency",
+			name:    "cacheControl header says not to catch and cacheGenNumbers in store and headers have consistency",
+			request: &PrometheusRequest{Query: "metric"},
 			input: Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
@@ -250,11 +267,122 @@ func TestShouldCache(t *testing.T) {
 			cacheGenNumberToInject: "1",
 			expected:               false,
 		},
+		// @ modifier on vector selectors.
+		{
+			name:     "@ modifier on vector selector, before end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on vector selector, after end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 127", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on vector selector, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 151", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on vector selector, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ 151", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on vector selector with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on vector selector with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		// @ modifier on matrix selectors.
+		{
+			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on matrix selector, after end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on matrix selector, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on matrix selector, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on matrix selector with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on matrix selector with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		// @ modifier on subqueries.
+		{
+			name:     "@ modifier on subqueries, before end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on subqueries, after end, before maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries, before end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries, after end, after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
+		{
+			name:     "@ modifier on subqueries with start() before maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: true,
+		},
+		{
+			name:     "@ modifier on subqueries with end() after maxCacheTime",
+			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
+			input:    Response(&PrometheusResponse{}),
+			expected: false,
+		},
 	} {
 		{
 			t.Run(tc.name, func(t *testing.T) {
 				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
-				ret := c.shouldCacheResponse(ctx, tc.input)
+				ret := c.shouldCacheResponse(ctx, tc.request, tc.input, maxCacheTime)
 				require.Equal(t, tc.expected, ret)
 			})
 		}
@@ -262,14 +390,15 @@ func TestShouldCache(t *testing.T) {
 }
 
 func TestPartition(t *testing.T) {
-	for i, tc := range []struct {
+	for _, tc := range []struct {
+		name                   string
 		input                  Request
 		prevCachedResponse     []Extent
 		expectedRequests       []Request
 		expectedCachedResponse []Response
 	}{
-		// 1. Test a complete hit.
 		{
+			name: "Test a complete hit.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
@@ -282,8 +411,8 @@ func TestPartition(t *testing.T) {
 			},
 		},
 
-		// Test with a complete miss.
 		{
+			name: "Test with a complete miss.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
@@ -296,11 +425,9 @@ func TestPartition(t *testing.T) {
 					Start: 0,
 					End:   100,
 				}},
-			expectedCachedResponse: nil,
 		},
-
-		// Test a partial hit.
 		{
+			name: "Test a partial hit.",
 			input: &PrometheusRequest{
 				Start: 0,
 				End:   100,
@@ -318,9 +445,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(50, 100, 10),
 			},
 		},
-
-		// Test multiple partial hits.
 		{
+			name: "Test multiple partial hits.",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   200,
@@ -340,9 +466,8 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(160, 200, 10),
 			},
 		},
-
-		// Partial hits with tiny gap.
 		{
+			name: "Partial hits with tiny gap.",
 			input: &PrometheusRequest{
 				Start: 100,
 				End:   160,
@@ -361,8 +486,38 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(100, 120, 10),
 			},
 		},
+		{
+			name: "Extent is outside the range and the request has a single step (same start and end).",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(50, 90),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 100,
+					End:   100,
+				},
+			},
+		},
+		{
+			name: "Test when hit has a large step and only a single sample extent.",
+			// If there is a only a single sample in the split interval, start and end will be the same.
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtent(100, 100),
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponse(100, 105, 10),
+			},
+		},
 	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			s := resultsCache{
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
@@ -371,6 +526,214 @@ func TestPartition(t *testing.T) {
 			require.Nil(t, err)
 			require.Equal(t, tc.expectedRequests, reqs)
 			require.Equal(t, tc.expectedCachedResponse, resps)
+		})
+	}
+}
+
+func TestHandleHit(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		input                      Request
+		cachedEntry                []Extent
+		expectedUpdatedCachedEntry []Extent
+	}{
+		{
+			name: "Should drop tiny extent that overlaps with non-tiny request only",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   120,
+				Step:  5,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(110, 150, 5),
+				mkExtentWithStep(160, 165, 5),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 150, 5),
+				mkExtentWithStep(160, 165, 5),
+			},
+		},
+		{
+			name: "Should replace tiny extents that are cover by bigger request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   200,
+				Step:  5,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(110, 115, 5),
+				mkExtentWithStep(120, 125, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 200, 5),
+				mkExtentWithStep(220, 225, 5),
+				mkExtentWithStep(240, 250, 5),
+			},
+		},
+		{
+			name: "Should not drop tiny extent that completely overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   105,
+				Step:  5,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 50, 5),
+				mkExtentWithStep(60, 65, 5),
+				mkExtentWithStep(100, 105, 5),
+				mkExtentWithStep(160, 165, 5),
+			},
+			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
+		},
+		{
+			name: "Should not drop tiny extent that partially center-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 106,
+				End:   108,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(104, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: nil, // no cache update need, request fulfilled using cache
+		},
+		{
+			name: "Should not drop tiny extent that partially left-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   106,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(104, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(100, 110, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+		},
+		{
+			name: "Should not drop tiny extent that partially right-overlaps with tiny request",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   106,
+				Step:  2,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(98, 102, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 64, 2),
+				mkExtentWithStep(98, 106, 2),
+				mkExtentWithStep(160, 166, 2),
+			},
+		},
+		{
+			name: "Should merge fragmented extents if request fills the hole",
+			input: &PrometheusRequest{
+				Start: 40,
+				End:   80,
+				Step:  20,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(0, 20, 20),
+				mkExtentWithStep(80, 100, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(0, 100, 20),
+			},
+		},
+		{
+			name: "Should left-extend extent if request starts earlier than extent in cache",
+			input: &PrometheusRequest{
+				Start: 40,
+				End:   80,
+				Step:  20,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(40, 160, 20),
+			},
+		},
+		{
+			name: "Should right-extend extent if request ends later than extent in cache",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   180,
+				Step:  20,
+			},
+			cachedEntry: []Extent{
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 180, 20),
+			},
+		},
+		{
+			name: "Should not throw error if complete-overlapped smaller Extent is erroneous",
+			input: &PrometheusRequest{
+				// This request is carefully crated such that cachedEntry is not used to fulfill
+				// the request.
+				Start: 160,
+				End:   180,
+				Step:  20,
+			},
+			cachedEntry: []Extent{
+				{
+					Start: 60,
+					End:   80,
+
+					// if the optimization of "sorting by End when Start of 2 Extents are equal" is not there, this nil
+					// response would cause error during Extents merge phase. With the optimization
+					// this bad Extent should be dropped. The good Extent below can be used instead.
+					Response: nil,
+				},
+				mkExtentWithStep(60, 160, 20),
+			},
+			expectedUpdatedCachedEntry: []Extent{
+				mkExtentWithStep(60, 180, 20),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sut := resultsCache{
+				extractor:      PrometheusResponseExtractor{},
+				minCacheExtent: 10,
+				limits:         mockLimits{},
+				merger:         PrometheusCodec,
+				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
+				}),
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			response, updatedExtents, err := sut.handleHit(ctx, tc.input, tc.cachedEntry, 0)
+			require.NoError(t, err)
+
+			expectedResponse := mkAPIResponse(tc.input.GetStart(), tc.input.GetEnd(), tc.input.GetStep())
+			require.Equal(t, expectedResponse, response, "response does not match the expectation")
+			require.Equal(t, tc.expectedUpdatedCachedEntry, updatedExtents, "updated cache entry does not match the expectation")
 		})
 	}
 }

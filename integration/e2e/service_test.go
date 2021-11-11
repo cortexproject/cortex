@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestWaitSumMetric(t *testing.T) {
@@ -79,7 +79,7 @@ metric_b_summary_count 1
 		},
 	}
 
-	s.SetBackoff(util.BackoffConfig{
+	s.SetBackoff(backoff.Config{
 		MinBackoff: 300 * time.Millisecond,
 		MaxBackoff: 600 * time.Millisecond,
 		MaxRetries: 50,
@@ -87,7 +87,7 @@ metric_b_summary_count 1
 	require.NoError(t, s.WaitSumMetrics(Equals(221), "metric_a"))
 
 	// No retry.
-	s.SetBackoff(util.BackoffConfig{
+	s.SetBackoff(backoff.Config{
 		MinBackoff: 0,
 		MaxBackoff: 0,
 		MaxRetries: 1,
@@ -163,10 +163,27 @@ metric_b 1000
 		},
 	}
 
-	s.SetBackoff(util.BackoffConfig{
+	s.SetBackoff(backoff.Config{
 		MinBackoff: 300 * time.Millisecond,
 		MaxBackoff: 600 * time.Millisecond,
 		MaxRetries: 50,
 	})
 	require.NoError(t, s.WaitSumMetrics(Equals(math.NaN()), "metric_a"))
+}
+
+func TestParseDockerPort(t *testing.T) {
+	_, err := parseDockerIPv4Port("")
+	assert.Error(t, err)
+
+	actual, err := parseDockerIPv4Port("0.0.0.0:36999")
+	assert.NoError(t, err)
+	assert.Equal(t, 36999, actual)
+
+	actual, err = parseDockerIPv4Port("0.0.0.0:49155\n:::49156")
+	assert.NoError(t, err)
+	assert.Equal(t, 49155, actual)
+
+	actual, err = parseDockerIPv4Port(":::49156\n0.0.0.0:49155")
+	assert.NoError(t, err)
+	assert.Equal(t, 49155, actual)
 }

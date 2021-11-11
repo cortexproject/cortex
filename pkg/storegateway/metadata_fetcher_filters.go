@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -69,7 +69,7 @@ func (f *IgnoreDeletionMarkFilter) FilterWithBucketIndex(_ context.Context, meta
 		}
 
 		if time.Since(time.Unix(mark.DeletionTime, 0)).Seconds() > f.delay.Seconds() {
-			synced.WithLabelValues(markedForDeletionMeta).Inc()
+			synced.WithLabelValues(block.MarkedForDeletionMeta).Inc()
 			delete(metas, mark.ID)
 		}
 	}

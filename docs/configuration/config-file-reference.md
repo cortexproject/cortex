@@ -1151,7 +1151,7 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = false]
 
-# List of headers from requests to be forwarded via query_range middleware.
+# List of headers which should be forwarded by the query Frontend to downstream querier.
 # CLI flag: -querier.forward-headers-list
 [forward_headers_list: <list of string> | default = []]
 ```

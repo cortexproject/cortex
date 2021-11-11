@@ -18,10 +18,10 @@ import (
 )
 
 func TestRequest(t *testing.T) {
-	// Copy parsedRequest to assign the expected headers to the request.
+	// Create a Copy parsedRequest to assign the expected headers to the request without affecting other tests using the global.
 	// The test below adds a Test-Header header to the request and expects it back once the encode/decode of request is done via PrometheusCodec
-	r := *parsedRequest
-	r.Headers = reqHeaders
+	parsedRequestWithHeaders := *parsedRequest
+	parsedRequestWithHeaders.Headers = reqHeaders
 	for i, tc := range []struct {
 		url         string
 		expected    Request
@@ -29,7 +29,7 @@ func TestRequest(t *testing.T) {
 	}{
 		{
 			url:      query,
-			expected: &r,
+			expected: &parsedRequestWithHeaders,
 		},
 		{
 			url:         "api/v1/query_range?start=foo",
@@ -62,6 +62,8 @@ func TestRequest(t *testing.T) {
 			r.Header.Add("Test-Header", "test")
 
 			ctx := user.InjectOrgID(context.Background(), "1")
+
+			// Get a deep copy of the request with Context changed to ctx
 			r = r.Clone(ctx)
 
 			req, err := PrometheusCodec.DecodeRequest(ctx, r, []string{"Test-Header"})

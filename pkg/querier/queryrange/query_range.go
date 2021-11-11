@@ -52,8 +52,7 @@ var (
 type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
-	// The last parameter specifies a list of headers on the http request that should be included in the decoded request
-	DecodeRequest(context.Context, *http.Request, []string) (Request, error)
+	DecodeRequest(_ context.Context, request *http.Request, forwardHeaders []string) (Request, error)
 	// DecodeResponse decodes a Response from an http response.
 	// The original request is also passed as a parameter this is useful for implementation that needs the request
 	// to merge result or build the result correctly.
@@ -188,7 +187,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, headers []string) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -224,7 +223,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, headers
 	result.Path = r.URL.Path
 
 	// Include the specified headers from http request in prometheusRequest.
-	for _, header := range headers {
+	for _, header := range forwardHeaders {
 		for h, hv := range r.Header {
 			if strings.EqualFold(h, header) {
 				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})

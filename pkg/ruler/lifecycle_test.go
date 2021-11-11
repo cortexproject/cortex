@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/testutils"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -39,7 +39,7 @@ func TestRulerShutdown(t *testing.T) {
 
 	// Wait until the tokens are registered in the ring
 	test.Poll(t, 100*time.Millisecond, config.Ring.NumTokens, func() interface{} {
-		return testutils.NumTokens(ringStore, "localhost", ring.RulerRingKey)
+		return numTokens(ringStore, "localhost", ring.RulerRingKey)
 	})
 
 	require.Equal(t, ring.ACTIVE, r.lifecycler.GetState())
@@ -48,7 +48,7 @@ func TestRulerShutdown(t *testing.T) {
 
 	// Wait until the tokens are unregistered from the ring
 	test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
-		return testutils.NumTokens(ringStore, "localhost", ring.RulerRingKey)
+		return numTokens(ringStore, "localhost", ring.RulerRingKey)
 	})
 }
 
@@ -106,4 +106,18 @@ func generateSortedTokens(numTokens int) ring.Tokens {
 	})
 
 	return ring.Tokens(tokens)
+}
+
+// numTokens determines the number of tokens owned by the specified
+// address
+func numTokens(c kv.Client, name, ringKey string) int {
+	ringDesc, err := c.Get(context.Background(), ringKey)
+
+	// The ringDesc may be null if the lifecycler hasn't stored the ring
+	// to the KVStore yet.
+	if ringDesc == nil || err != nil {
+		return 0
+	}
+	rd := ringDesc.(*ring.Desc)
+	return len(rd.Ingesters[name].Tokens)
 }

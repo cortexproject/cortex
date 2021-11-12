@@ -28,7 +28,7 @@ query_range:
   align_queries_with_step: true
   cache_results: true
 
-  # list of headers from requests to be forwarded via query_range middleware.
+  # list of request headers  forwarded by query frontend to downstream queriers.
   forward_headers_list:
     - Authorization
 

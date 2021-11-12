@@ -118,7 +118,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
 - `-querier.forward-headers-list`
 
-   Request headers to be forwarded to downstream via query_range middleware. Multiple headers may be specified. Defaults to empty.
+   Request headers  forwarded by query frontend to downstream queriers. Multiple headers may be specified. Defaults to empty.
 
 - `-frontend.max-cache-freshness`
 

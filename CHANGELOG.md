@@ -7,6 +7,7 @@
 * [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
 * [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
+* [ENHANCEMENT] Add curl in Docker base image to support mTLS probes. #4427
 
 ## 1.11.0-rc.0 in progress
 

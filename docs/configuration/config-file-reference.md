@@ -1168,7 +1168,7 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = false]
 
 # List of headers forwarded by the query Frontend to downstream querier.
-# CLI flag: -querier.forward-headers-list
+# CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of string> | default = []]
 ```
 

@@ -116,7 +116,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
 
    If set to true, will cause the querier to cache query results.  The cache will be used to answer future, overlapping queries.  The query frontend calculates extra queries required to fill gaps in the cache.
 
-- `-querier.forward-headers-list`
+- `-frontend.forward-headers-list`
 
    Request headers  forwarded by query frontend to downstream queriers. Multiple headers may be specified. Defaults to empty.
 

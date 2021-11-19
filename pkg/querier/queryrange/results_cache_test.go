@@ -32,6 +32,12 @@ var (
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
 	}
+	reqHeaders = []*PrometheusRequestHeader{
+		{
+			Name:   "Test-Header",
+			Values: []string{"test"},
+		},
+	}
 	noCacheRequest = &PrometheusRequest{
 		Path:           "/api/v1/query_range",
 		Start:          1536673680 * 1e3,

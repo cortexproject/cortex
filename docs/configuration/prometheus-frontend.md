@@ -28,6 +28,10 @@ query_range:
   align_queries_with_step: true
   cache_results: true
 
+  # list of request headers  forwarded by query frontend to downstream queriers.
+  forward_headers_list:
+    - Authorization
+
   results_cache:
     cache:
 

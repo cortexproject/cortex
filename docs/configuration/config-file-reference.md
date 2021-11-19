@@ -1166,6 +1166,10 @@ results_cache:
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = false]
+
+# List of headers forwarded by the query Frontend to downstream querier.
+# CLI flag: -frontend.forward-headers-list
+[forward_headers_list: <list of string> | default = []]
 ```
 
 ### `ruler_config`

@@ -26,6 +26,7 @@
 * [FEATURE] Query Frontend: Add `cortex_query_fetched_series_total` and `cortex_query_fetched_chunks_bytes_total` per-user counters to expose the number of series and bytes fetched as part of queries. These metrics can be enabled with the `-frontend.query-stats-enabled` flag (or its respective YAML config option `query_stats_enabled`). #4343
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
 * [FEATURE] Distributor: Add label `status` to metric `cortex_distributor_ingester_append_failures_total` #4442
+* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
 * [FEATURE] Queries: Added `present_over_time` PromQL function, also some TSDB optimisations. #4505
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341

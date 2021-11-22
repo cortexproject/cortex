@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
 func TestClient_LoadAllRuleGroups(t *testing.T) {

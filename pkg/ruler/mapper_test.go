@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -394,4 +394,38 @@ func sliceContains(t *testing.T, find string, in []string) bool {
 	}
 
 	return false
+}
+
+func TestYamlFormatting(t *testing.T) {
+	l := log.NewLogfmtLogger(os.Stdout)
+	l = level.NewFilter(l, level.AllowInfo())
+	setupRuleSets()
+
+	m := &mapper{
+		Path:   "/rules",
+		FS:     afero.NewMemMapFs(),
+		logger: l,
+	}
+
+	updated, files, err := m.MapRules(testUser, initialRuleSet)
+	require.True(t, updated)
+	require.Len(t, files, 1)
+	require.Equal(t, fileOnePath, files[0])
+	require.NoError(t, err)
+
+	data, err := afero.ReadFile(m.FS, fileOnePath)
+	require.NoError(t, err)
+
+	expected := `groups:
+    - name: rulegroup_two
+      rules:
+        - record: example_rule
+          expr: example_expr
+    - name: rulegroup_one
+      rules:
+        - record: example_rule
+          expr: example_expr
+`
+
+	require.Equal(t, expected, string(data))
 }

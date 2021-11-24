@@ -18,7 +18,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -642,7 +643,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 	if record != nil {
 		record.Samples = append(record.Samples, tsdb_record.RefSample{
-			Ref: uint64(fp),
+			Ref: chunks.HeadSeriesRef(fp),
 			T:   int64(timestamp),
 			V:   float64(value),
 		})

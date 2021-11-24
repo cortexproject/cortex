@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ func TestSeries(t *testing.T) {
 		l := labels.Labels{labels.Label{Name: generateString(r), Value: generateString(r)}}
 		series[l.String()] = testSeries{
 			l:       l,
-			cs:      []chunks.Meta{{Ref: r.Uint64(), MinTime: r.Int63(), MaxTime: r.Int63()}},
+			cs:      []chunks.Meta{{Ref: chunks.ChunkRef(r.Uint64()), MinTime: r.Int63(), MaxTime: r.Int63()}},
 			samples: r.Uint64(),
 			minTime: r.Int63(),
 			maxTime: r.Int63(),

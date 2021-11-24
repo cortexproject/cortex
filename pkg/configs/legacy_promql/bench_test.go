@@ -21,7 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	tsdb_storage "github.com/prometheus/prometheus/storage"
 )
 
 func BenchmarkRangeQuery(b *testing.B) {
@@ -54,7 +55,7 @@ func BenchmarkRangeQuery(b *testing.B) {
 		}
 		metrics = append(metrics, labels.FromStrings("__name__", "h_hundred", "l", strconv.Itoa(i), "le", "+Inf"))
 	}
-	refs := make([]uint64, len(metrics))
+	refs := make([]tsdb_storage.SeriesRef, len(metrics))
 
 	// A day of data plus 10k steps.
 	numIntervals := 8640 + 10000

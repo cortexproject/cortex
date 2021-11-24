@@ -916,7 +916,7 @@ Loop:
 			}
 
 			for _, sam := range walRecordSamples[:m] {
-				mod := sam.Ref % uint64(params.numWorkers)
+				mod := uint64(sam.Ref) % uint64(params.numWorkers)
 				shards[mod].samples = append(shards[mod].samples, sam)
 			}
 
@@ -968,7 +968,7 @@ func processWALSamples(userStates *userStates, stateCache map[string]*userState,
 		}
 		sc := seriesCache[samples.userID]
 		for i := range samples.samples {
-			series, ok := sc[samples.samples[i].Ref]
+			series, ok := sc[uint64(samples.samples[i].Ref)]
 			if !ok {
 				series, ok = state.fpToSeries.get(model.Fingerprint(samples.samples[i].Ref))
 				if !ok {

@@ -15,7 +15,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
@@ -317,7 +318,7 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 	}
 
 	type chunkToRead struct {
-		ref   uint64
+		ref   chunks.ChunkRef
 		chunk *chunkenc.Chunk
 		err   *error
 	}
@@ -340,7 +341,7 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 		}()
 	}
 
-	seriesRef := 0
+	seriesRef := storage.SeriesRef(0)
 	for s, ok := it.Next(); ok; s, ok = it.Next() {
 		l := s.Metric
 		cs := s.Chunks
@@ -385,7 +386,7 @@ func addSeriesToIndex(indexWriter *index.Writer, sl *seriesList, unsortedChunksR
 			cs[ix].Chunk = nil
 		}
 
-		if err := indexWriter.AddSeries(uint64(seriesRef), l, cs...); err != nil {
+		if err := indexWriter.AddSeries(seriesRef, l, cs...); err != nil {
 			return stats, errors.Wrapf(err, "adding series %v", l)
 		}
 

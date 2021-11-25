@@ -23,7 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -247,7 +247,7 @@ func TestTracingContext(t *testing.T) {
 	}
 
 	sp, _ := opentracing.StartSpanFromContext(context.Background(), "client")
-	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*chunk.HttpgrpcHeadersCarrier)(req.HttpRequest))
+	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*httpgrpcutil.HttpgrpcHeadersCarrier)(req.HttpRequest))
 
 	frontendToScheduler(t, frontendLoop, req)
 

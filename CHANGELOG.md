@@ -2,8 +2,17 @@
 
 ## master / unreleased
 
+* [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
+* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
+* [ENHANCEMENT] Added new ring related config `-ingester.readiness-check-ring-health` when enabled the readiness probe will succeed only after all instances are ACTIVE and healthy in the ring, this is enabled by default. #4539
+* [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
+* [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
+* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
+* [BUGFIX] AlertManager: remove stale template files. #4495
 
 ## 1.11.0 2021-11-25
+
 * [BUGFIX] Update go-kit package to fix spurious log messages #4544
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`

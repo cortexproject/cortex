@@ -6,19 +6,19 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/ring"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -308,7 +308,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				break
 			} else if err != nil {
 				// Do not track a failure if the context was canceled.
-				if !grpc_util.IsGRPCContextCanceled(err) {
+				if !grpcutil.IsGRPCContextCanceled(err) {
 					d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 				}
 

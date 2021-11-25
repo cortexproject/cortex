@@ -20,8 +20,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
@@ -43,10 +45,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -319,6 +319,23 @@ templates:
 		cortex_alertmanager_config_last_reload_successful{user="user2"} 1
 		cortex_alertmanager_config_last_reload_successful{user="user3"} 1
 	`), "cortex_alertmanager_config_last_reload_successful"))
+
+	// Removed template files should be cleaned up
+	user3Cfg.Templates = []*alertspb.TemplateDesc{
+		{
+			Filename: "first.tpl",
+			Body:     `{{ define "t1" }}Template 1 ... {{end}}`,
+		},
+	}
+
+	require.NoError(t, store.SetAlertConfig(ctx, user3Cfg))
+
+	err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+	require.NoError(t, err)
+
+	require.True(t, dirExists(t, user3Dir))
+	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
+	require.False(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
 }
 
 func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {
@@ -1428,7 +1445,7 @@ func TestAlertmanager_ReplicasPosition(t *testing.T) {
 
 	// First, create the alertmanager instances, we'll use a replication factor of 3 and create 3 instances so that we can get the tenant on each replica.
 	for i := 1; i <= 3; i++ {
-		//instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
+		// instanceIDs = append(instanceIDs, fmt.Sprintf("alertmanager-%d", i))
 		instanceID := fmt.Sprintf("alertmanager-%d", i)
 
 		amConfig := mockAlertmanagerConfig(t)

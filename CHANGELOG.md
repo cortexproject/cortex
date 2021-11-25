@@ -13,7 +13,6 @@
 
 ## 1.11.0 2021-11-25
 
-* [BUGFIX] Update go-kit package to fix spurious log messages #4544
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`
@@ -70,6 +69,7 @@
 * [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
 * [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
+* [BUGFIX] Update go-kit package to fix spurious log messages #4544
 
 
 ## 1.10.0 / 2021-08-03

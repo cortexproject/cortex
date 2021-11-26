@@ -10,12 +10,15 @@
 =======
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
+* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
 * [ENHANCEMENT] Added new ring related config `-ingester.readiness-check-ring-health` when enabled the readiness probe will succeed only after all instances are ACTIVE and healthy in the ring, this is enabled by default. #4539
 * [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
 * [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
+* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
+* [BUGFIX] AlertManager: remove stale template files. #4495
 
-## 1.11.0-rc.0 in progress
+## 1.11.0 2021-11-25
 
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
@@ -42,7 +45,6 @@
 * [FEATURE] Query Frontend: Add `cortex_query_fetched_series_total` and `cortex_query_fetched_chunks_bytes_total` per-user counters to expose the number of series and bytes fetched as part of queries. These metrics can be enabled with the `-frontend.query-stats-enabled` flag (or its respective YAML config option `query_stats_enabled`). #4343
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
 * [FEATURE] Distributor: Add label `status` to metric `cortex_distributor_ingester_append_failures_total` #4442
-* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
 * [FEATURE] Queries: Added `present_over_time` PromQL function, also some TSDB optimisations. #4505
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341
@@ -64,11 +66,11 @@
 * [ENHANCEMENT] Memberlist: expose configuration of memberlist packet compression via `-memberlist.compression=enabled`. #4346
 * [ENHANCEMENT] Update Go version to 1.16.6. #4362
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
+* [ENHANCEMENT] Querier: performance improvements in socket and memory handling. #4429 #4377
 * [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
 * [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
 * [ENHANCEMENT] Support memcached auto-discovery via `auto-discovery` flag, introduced by thanos in https://github.com/thanos-io/thanos/pull/4487. Both AWS and Google Cloud memcached service support auto-discovery, which returns a list of nodes of the memcached cluster. #4412
-* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
 * [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
 * [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
 * [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
@@ -103,11 +105,15 @@
 >>>>>>> [querier] honor querier mint,maxt if no SelectHints are passed to Select (#4413)
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> Fixed panic while collecting Prometheus metrics (#4483)
 
 =======
 * [BUGFIX] AlertManager: remove stale template files. #4495
 >>>>>>> Removing Stale alert manager templates files (#4495)
+=======
+* [BUGFIX] Update go-kit package to fix spurious log messages #4544
+>>>>>>> Merge release 1.11 to master (#4569)
 
 
 ## 1.10.0 / 2021-08-03

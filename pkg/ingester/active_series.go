@@ -8,7 +8,7 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"

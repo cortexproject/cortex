@@ -1650,6 +1650,10 @@ ring:
 # an info level log message.
 # CLI flag: -ruler.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
+
+# Disable the rule_group label on exported metrics
+# CLI flag: -ruler.disable-rule-group-label
+[disable_rule_group_label: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`

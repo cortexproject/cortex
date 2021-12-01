@@ -659,6 +659,15 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			removeLabel(labelName, &ts.Labels)
 		}
 
+		if len(ts.Labels) == 0 || wasNameLabelRemoved(ts.Labels) {
+			validation.DiscardedExemplars.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Samples)))
+
+			continue
+		}
+
 		// We rely on sorted labels in different places:
 		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
 		// different tokens, which is bad.
@@ -782,6 +791,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func wasNameLabelRemoved(labels []cortexpb.LabelAdapter) bool {
+	const nameLabel = "__name__"
+
+	for i := 0; i < len(labels); i++ {
+		pair := labels[i]
+		if pair.Name == nameLabel {
+			return false
+		}
+	}
+
+	return true
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

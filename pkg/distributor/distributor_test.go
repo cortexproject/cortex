@@ -1102,6 +1102,17 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 				{Name: "__name__", Value: "some_metric"},
 			},
 		},
+		// Edge case: remove label __name__ will drop all user metrics
+		{
+			removeReplica: true,
+			removeLabels:  []string{"__name__"},
+			inputSeries: labels.Labels{
+				{Name: "__name__", Value: "some_metric"},
+				{Name: "cluster", Value: "one"},
+				{Name: "__replica__", Value: "two"},
+			},
+			expectedSeries: labels.Labels{},
+		},
 		// Remove multiple labels and replica.
 		{
 			removeReplica: true,
@@ -1154,11 +1165,15 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		_, err = ds[0].Push(ctx, req)
 		require.NoError(t, err)
 
+		expectedTimeseriesLen := 0
+		if len(tc.expectedSeries) > 0 {
+			expectedTimeseriesLen = 1
+		}
 		// Since each test pushes only 1 series, we do expect the ingester
 		// to have received exactly 1 series
 		for i := range ingesters {
 			timeseries := ingesters[i].series()
-			assert.Equal(t, 1, len(timeseries))
+			assert.Equal(t, expectedTimeseriesLen, len(timeseries))
 			for _, v := range timeseries {
 				assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
 			}

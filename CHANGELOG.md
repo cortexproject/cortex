@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
+* [ENHANCEMENT] Ruler: Add `ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
 * [ENHANCEMENT] Added new ring related config `-ingester.readiness-check-ring-health` when enabled the readiness probe will succeed only after all instances are ACTIVE and healthy in the ring, this is enabled by default. #4539
 * [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514

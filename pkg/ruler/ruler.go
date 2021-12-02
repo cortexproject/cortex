@@ -115,7 +115,8 @@ type Config struct {
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
-	EnableQueryStats bool `yaml:"query_stats_enabled"`
+	EnableQueryStats      bool `yaml:"query_stats_enabled"`
+	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 }
 
 // Validate config and returns error on failure
@@ -179,6 +180,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
+	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }

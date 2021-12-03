@@ -638,7 +638,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if len(l) == 0 {
-				// all labels are gone, therefore the __name__ label is not present, samples will be discarded
+				// all labels are gone, samples will be discarded
 				validation.DiscardedSamples.WithLabelValues(
 					validation.DroppedByRelabelConfiguration,
 					userID,
@@ -659,7 +659,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			removeLabel(labelName, &ts.Labels)
 		}
 
-		if len(ts.Labels) == 0 || wasNameLabelRemoved(ts.Labels) {
+		if len(ts.Labels) == 0 {
 			validation.DiscardedExemplars.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,
 				userID,
@@ -791,19 +791,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 	return &cortexpb.WriteResponse{}, firstPartialErr
-}
-
-func wasNameLabelRemoved(labels []cortexpb.LabelAdapter) bool {
-	const nameLabel = "__name__"
-
-	for i := 0; i < len(labels); i++ {
-		pair := labels[i]
-		if pair.Name == nameLabel {
-			return false
-		}
-	}
-
-	return true
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

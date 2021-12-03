@@ -1102,17 +1102,6 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 				{Name: "__name__", Value: "some_metric"},
 			},
 		},
-		// Edge case: remove label __name__ will drop all user metrics
-		{
-			removeReplica: true,
-			removeLabels:  []string{"__name__"},
-			inputSeries: labels.Labels{
-				{Name: "__name__", Value: "some_metric"},
-				{Name: "cluster", Value: "one"},
-				{Name: "__replica__", Value: "two"},
-			},
-			expectedSeries: labels.Labels{},
-		},
 		// Remove multiple labels and replica.
 		{
 			removeReplica: true,
@@ -1165,20 +1154,57 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 		_, err = ds[0].Push(ctx, req)
 		require.NoError(t, err)
 
-		expectedTimeseriesLen := 0
-		if len(tc.expectedSeries) > 0 {
-			expectedTimeseriesLen = 1
-		}
 		// Since each test pushes only 1 series, we do expect the ingester
 		// to have received exactly 1 series
 		for i := range ingesters {
 			timeseries := ingesters[i].series()
-			assert.Equal(t, expectedTimeseriesLen, len(timeseries))
+			assert.Equal(t, 1, len(timeseries))
 			for _, v := range timeseries {
 				assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
 			}
 		}
 	}
+}
+
+func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "user")
+	type testcase struct {
+		inputSeries    labels.Labels
+		expectedSeries labels.Labels
+		removeReplica  bool
+		removeLabels   []string
+	}
+
+	tc := testcase{
+		removeReplica: true,
+		removeLabels:  []string{"__name__"},
+		inputSeries: labels.Labels{
+			{Name: "__name__", Value: "some_metric"},
+			{Name: "cluster", Value: "one"},
+			{Name: "__replica__", Value: "two"},
+		},
+		expectedSeries: labels.Labels{},
+	}
+
+	var err error
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.DropLabels = tc.removeLabels
+	limits.AcceptHASamples = tc.removeReplica
+
+	ds, _, _ := prepare(t, prepConfig{
+		numIngesters:     2,
+		happyIngesters:   2,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           &limits,
+	})
+
+	// Push the series to the distributor
+	req := mockWriteRequest([]labels.Labels{tc.inputSeries}, 1, 1)
+	_, err = ds[0].Push(ctx, req)
+	require.Error(t, err)
+	assert.Equal(t, "rpc error: code = Code(400) desc = sample missing metric name", err.Error())
 }
 
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {

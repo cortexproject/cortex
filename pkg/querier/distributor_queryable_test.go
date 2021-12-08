@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxt, mint = 0, 10
+	mint, maxt = 0, 10
 )
 
 func TestDistributorQuerier(t *testing.T) {

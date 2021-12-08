@@ -2,6 +2,7 @@ package azure
 
 import (
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/azure"
 	yaml "gopkg.in/yaml.v2"
@@ -14,6 +15,16 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		ContainerName:      cfg.ContainerName,
 		Endpoint:           cfg.Endpoint,
 		MaxRetries:         cfg.MaxRetries,
+		HTTPConfig: azure.HTTPConfig{
+			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
+		},
 	}
 
 	// Thanos currently doesn't support passing the config as is, but expects a YAML,

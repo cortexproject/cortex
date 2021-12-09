@@ -13,7 +13,6 @@
 * [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
 * [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
 * [BUGFIX] AlertManager: remove stale template files. #4495
-* [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
 
 ## 1.11.0 2021-11-25
 

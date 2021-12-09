@@ -251,7 +251,10 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		return nil, err
 	}
 
-	// Merge results from replication set.
+	return mergeExemplarQueryResponses(results), nil
+}
+
+func mergeExemplarQueryResponses(results []interface{}) *ingester_client.ExemplarQueryResponse {
 	var keys []string
 	exemplarResults := make(map[string]cortexpb.TimeSeries)
 	for _, result := range results {
@@ -262,9 +265,11 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 			if !ok {
 				exemplarResults[lbls] = ts
 				keys = append(keys, lbls)
+			} else {
+				// Merge in any missing values from another ingesters exemplars for this series.
+				e.Exemplars = mergeExemplarSets(e.Exemplars, ts.Exemplars)
+				exemplarResults[lbls] = e
 			}
-			// Merge in any missing values from another ingesters exemplars for this series.
-			e.Exemplars = mergeExemplarSets(e.Exemplars, ts.Exemplars)
 		}
 	}
 
@@ -276,7 +281,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		result[i] = exemplarResults[k]
 	}
 
-	return &ingester_client.ExemplarQueryResponse{Timeseries: result}, nil
+	return &ingester_client.ExemplarQueryResponse{Timeseries: result}
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.

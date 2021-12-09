@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/config"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/http"
 )
 
 // Config holds the config options for an Azure backend
@@ -16,7 +16,7 @@ type Config struct {
 	Endpoint           string         `yaml:"endpoint_suffix"`
 	MaxRetries         int            `yaml:"max_retries"`
 
-	config.HTTP `yaml:"http"`
+	http.Config `yaml:"http"`
 }
 
 // RegisterFlags registers the flags for Azure storage
@@ -31,5 +31,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ContainerName, prefix+"azure.container-name", "", "Azure storage container name")
 	f.StringVar(&cfg.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
 	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
-	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"azure.", f)
+	cfg.Config.RegisterFlagsWithPrefix(prefix+"azure.", f)
 }

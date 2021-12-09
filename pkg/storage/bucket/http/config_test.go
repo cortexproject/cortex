@@ -1,4 +1,4 @@
-package config
+package http
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
-var defaultConfig = HTTP{
+var defaultConfig = Config{
 	IdleConnTimeout:       90 * time.Second,
 	ResponseHeaderTimeout: 2 * time.Minute,
 	InsecureSkipVerify:    false,
@@ -21,12 +21,12 @@ var defaultConfig = HTTP{
 	MaxConnsPerHost:       0,
 }
 
-func TestHTTP(t *testing.T) {
+func TestConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		config         string
-		expectedConfig HTTP
+		expectedConfig Config
 		expectedErr    error
 	}{
 		"default config": {
@@ -45,7 +45,7 @@ max_idle_connections: 6
 max_idle_connections_per_host: 7
 max_connections_per_host: 8
 `,
-			expectedConfig: HTTP{
+			expectedConfig: Config{
 				IdleConnTimeout:       2 * time.Second,
 				ResponseHeaderTimeout: 3 * time.Second,
 				InsecureSkipVerify:    true,
@@ -68,7 +68,7 @@ max_connections_per_host: 8
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			cfg := HTTP{}
+			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
 			err := yaml.Unmarshal([]byte(testData.config), &cfg)

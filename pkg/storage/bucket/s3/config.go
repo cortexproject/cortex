@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/config"
+	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -39,7 +39,7 @@ var (
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
 type HTTPConfig struct {
-	config.HTTP `yaml:",inline"`
+	bucket_http.Config `yaml:",inline"`
 
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
@@ -47,7 +47,7 @@ type HTTPConfig struct {
 
 // RegisterFlagsWithPrefix registers the flags for s3 storage with the provided prefix
 func (cfg *HTTPConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"s3.", f)
+	cfg.Config.RegisterFlagsWithPrefix(prefix+"s3.", f)
 }
 
 // Config holds the config options for an S3 backend

@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/config"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/http"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
 	MaxRetries: 20,
-	HTTP: config.HTTP{
+	Config: http.Config{
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 2 * time.Minute,
 		InsecureSkipVerify:    false,
@@ -62,7 +62,7 @@ http:
 				ContainerName:      "test-container-name",
 				Endpoint:           "test-endpoint-suffix",
 				MaxRetries:         1,
-				HTTP: config.HTTP{
+				Config: http.Config{
 					IdleConnTimeout:       2 * time.Second,
 					ResponseHeaderTimeout: 3 * time.Second,
 					InsecureSkipVerify:    true,

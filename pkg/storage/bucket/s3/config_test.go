@@ -11,14 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/config"
+	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
 	HTTP: HTTPConfig{
-		HTTP: config.HTTP{
+		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
 			ResponseHeaderTimeout: 2 * time.Minute,
 			InsecureSkipVerify:    false,
@@ -81,7 +81,7 @@ http:
 					KMSEncryptionContext: "test-kms-encryption-context",
 				},
 				HTTP: HTTPConfig{
-					HTTP: config.HTTP{
+					Config: bucket_http.Config{
 						IdleConnTimeout:       2 * time.Second,
 						ResponseHeaderTimeout: 3 * time.Second,
 						InsecureSkipVerify:    true,

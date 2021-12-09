@@ -1,12 +1,12 @@
-package config
+package http
 
 import (
 	"flag"
 	"time"
 )
 
-// HTTP stores the http.Client configuration for the storage clients.
-type HTTP struct {
+// Config stores the http.Client configuration for the storage clients.
+type Config struct {
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
 	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
@@ -18,12 +18,12 @@ type HTTP struct {
 }
 
 // RegisterFlags registers the flags for the storage HTTP client.
-func (cfg *HTTP) RegisterFlags(f *flag.FlagSet) {
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
 // RegisterFlagsWithPrefix registers the flags for the storage HTTP client with the provided prefix.
-func (cfg *HTTP) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.IdleConnTimeout, prefix+"http.idle-conn-timeout", 90*time.Second, "The time an idle connection will remain idle before closing.")
 	f.DurationVar(&cfg.ResponseHeaderTimeout, prefix+"http.response-header-timeout", 2*time.Minute, "The amount of time the client will wait for a servers response headers.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"http.insecure-skip-verify", false, "If the client connects via HTTPS and this option is enabled, the client will accept any certificate and hostname.")

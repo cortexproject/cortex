@@ -73,10 +73,14 @@ The Cortex services are:
 - [Distributor](#distributor)
 - [Ingester](#ingester)
 - [Querier](#querier)
-- [Query frontend](#query-frontend) (optional)
-- [Ruler](#ruler) (optional)
+- [Compactor](./blocks-storage/compactor.md) (required for blocks storage)
+- [Store gateway](./blocks-storage/store-gateway.md) (required for blocks storage)
 - [Alertmanager](#alertmanager) (optional)
 - [Configs API](#configs-api) (optional)
+- [Overrides exporter](./guides/overrides-exporter.md) (optional)
+- [Query frontend](#query-frontend) (optional)
+- [Query scheduler](./operations/scalable-query-frontend.md#query-scheduler) (optional)
+- [Ruler](#ruler) (optional)
 
 ### Distributor
 

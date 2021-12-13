@@ -13,7 +13,7 @@
 * [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
-* [BUGFIX] Azure Blocks Storage: update Thanos dependency to pull in https://github.com/thanos-io/thanos/pull/4928 to conserve memory. #4585
+* [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
 
 ## 1.11.0 2021-11-25
 

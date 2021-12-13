@@ -55,6 +55,9 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;li>Install required Node modules with:
 &lt;pre>&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
 &lt;/code>&lt;/pre>&lt;/li>
+&lt;li>Install &lt;a href="https://github.com/campoy/embedmd">embedmd&lt;/a> &lt;code>v1.0.0&lt;/code>:
+&lt;pre>&lt;code>go install github.com/campoy/embedmd@v1.0.0
+&lt;/code>&lt;/pre>&lt;/li>
 &lt;li>Run &lt;code>make BUILD_IN_CONTAINER=false web-build&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;h2 id="run-it">Run it&lt;/h2>

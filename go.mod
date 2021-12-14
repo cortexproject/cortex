@@ -18,7 +18,6 @@ require (
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.1
 	github.com/fsouza/fake-gcs-server v1.7.0
-	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-kit/log v0.2.0
 	github.com/go-openapi/strfmt v0.21.0
 	github.com/go-openapi/swag v0.19.15
@@ -32,8 +31,6 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/grafana/dskit v0.0.0-20211021180445-3bd016e9d7f1
 	github.com/json-iterator/go v1.1.12
-	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
-	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10
 	github.com/mitchellh/go-wordwrap v1.0.0
@@ -86,8 +83,8 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.38.0
 // We only pin this version to avoid problems with running go get: github.com/thanos-io/thanos@main. That
 // currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
 // confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
-// is v0.19.1. We pin version from late september here. Feel free to remove when updating to later version.
-replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211122085937-de0e3848ff60
+// is v0.19.1. We pin version from early December here. Feel free to remove when updating to later version.
+replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211208205607-d1acaea2a11a
 
 // Pin aws-sdk to version prior to go-kit update, to reduce the bulk of change.
 // Un-pin once Cortex 1.11 is released.

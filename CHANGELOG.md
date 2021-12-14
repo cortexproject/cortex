@@ -14,6 +14,7 @@
 * [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
+* [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
 
 ## 1.11.0 2021-11-25
 

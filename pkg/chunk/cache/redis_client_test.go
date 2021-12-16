@@ -2,11 +2,11 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,9 +15,17 @@ func TestRedisClient(t *testing.T) {
 	require.Nil(t, err)
 	defer single.Close()
 
+	singleDS, err := mockRedisClientSingleWithDNS()
+	require.Nil(t, err)
+	defer singleDS.Close()
+
 	cluster, err := mockRedisClientCluster()
 	require.Nil(t, err)
 	defer cluster.Close()
+
+	clusterHosts, err := mockRedisClientClusterWithHosts()
+	require.Nil(t, err)
+	defer clusterHosts.Close()
 
 	ctx := context.Background()
 
@@ -30,8 +38,16 @@ func TestRedisClient(t *testing.T) {
 			client: single,
 		},
 		{
+			name:   "single redis client with dns discovery",
+			client: singleDS,
+		},
+		{
 			name:   "cluster redis client",
 			client: cluster,
+		},
+		{
+			name:   "cluster redis client with hosts",
+			client: clusterHosts,
 		},
 	}
 
@@ -69,13 +85,23 @@ func mockRedisClientSingle() (*RedisClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RedisClient{
-		expiration: time.Minute,
-		timeout:    100 * time.Millisecond,
-		rdb: redis.NewClient(&redis.Options{
-			Addr: redisServer.Addr(),
-		}),
-	}, nil
+
+	cfg := &RedisConfig{
+		Endpoint: redisServer.Addr(),
+	}
+	return NewRedisClient(cfg, log.NewNopLogger())
+}
+
+func mockRedisClientSingleWithDNS() (*RedisClient, error) {
+	redisServer, err := miniredis.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &RedisConfig{
+		Addresses: fmt.Sprintf("dns+localhost:%s", redisServer.Port()),
+	}
+	return NewRedisClient(cfg, log.NewNopLogger())
 }
 
 func mockRedisClientCluster() (*RedisClient, error) {
@@ -87,14 +113,24 @@ func mockRedisClientCluster() (*RedisClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RedisClient{
-		expiration: time.Minute,
-		timeout:    100 * time.Millisecond,
-		rdb: redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs: []string{
-				redisServer1.Addr(),
-				redisServer2.Addr(),
-			},
-		}),
-	}, nil
+
+	cfg := &RedisConfig{
+		Endpoint: fmt.Sprintf("%s,%s", redisServer1.Addr(), redisServer2.Addr()),
+	}
+	return NewRedisClient(cfg, log.NewNopLogger())
+}
+
+func mockRedisClientClusterWithHosts() (*RedisClient, error) {
+	redisServer1, err := miniredis.Run()
+	if err != nil {
+		return nil, err
+	}
+	redisServer2, err := miniredis.Run()
+	if err != nil {
+		return nil, err
+	}
+	cfg := &RedisConfig{
+		Addresses: fmt.Sprintf("localhost:%s,localhost:%s", redisServer1.Port(), redisServer2.Port()),
+	}
+	return NewRedisClient(cfg, log.NewNopLogger())
 }

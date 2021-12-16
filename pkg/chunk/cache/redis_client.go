@@ -5,19 +5,27 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
 	"github.com/go-redis/redis/v8"
+	"github.com/thanos-io/thanos/pkg/discovery/dns"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
 type RedisConfig struct {
 	Endpoint           string         `yaml:"endpoint"`
 	MasterName         string         `yaml:"master_name"`
+	Service            string         `yaml:"service"`
+	Addresses          string         `yaml:"addresses"` // EXPERIMENTAL.
 	Timeout            time.Duration  `yaml:"timeout"`
 	Expiration         time.Duration  `yaml:"expiration"`
 	DB                 int            `yaml:"db"`
@@ -33,6 +41,8 @@ type RedisConfig struct {
 func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"redis.endpoint", "", description+"Redis Server endpoint to use for caching. A comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If empty, no redis will be used.")
 	f.StringVar(&cfg.MasterName, prefix+"redis.master-name", "", description+"Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.")
+	f.StringVar(&cfg.Service, prefix+"redis.service", "redis", description+"SRV service used to discover redis servers.")
+	f.StringVar(&cfg.Addresses, prefix+"redis.addresses", "", description+"Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery")
 	f.DurationVar(&cfg.Timeout, prefix+"redis.timeout", 500*time.Millisecond, description+"Maximum time to wait before giving up on redis requests.")
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.DB, prefix+"redis.db", 0, description+"Database index.")
@@ -51,7 +61,7 @@ type RedisClient struct {
 }
 
 // NewRedisClient creates Redis client
-func NewRedisClient(cfg *RedisConfig) *RedisClient {
+func NewRedisClient(cfg *RedisConfig, logger log.Logger) (*RedisClient, error) {
 	opt := &redis.UniversalOptions{
 		Addrs:       strings.Split(cfg.Endpoint, ","),
 		MasterName:  cfg.MasterName,
@@ -61,6 +71,43 @@ func NewRedisClient(cfg *RedisConfig) *RedisClient {
 		IdleTimeout: cfg.IdleTimeout,
 		MaxConnAge:  cfg.MaxConnAge,
 	}
+
+	var addresses []string
+	if len(cfg.Addresses) > 0 {
+		util_log.WarnExperimentalUse("DNS-based redis service discovery")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resolver := dns.NewResolver(dns.GolangResolverType.ToResolver(logger), logger)
+		for _, addr := range strings.Split(cfg.Addresses, ",") {
+			qtype, name := dns.GetQTypeName(addr)
+			if qtype == "" {
+				addresses = append(addresses, name)
+				continue
+			}
+			resolved, err := resolver.Resolve(ctx, name, dns.QType(qtype))
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to resolve redis address", "addr", addr, "err", err)
+				continue
+			}
+			addresses = append(addresses, resolved...)
+		}
+		if len(addresses) == 0 {
+			return nil, fmt.Errorf("failed to resolve any redis addresses: %s", cfg.Addresses)
+		}
+	} else if len(cfg.Service) > 0 {
+		_, addrs, err := net.LookupSRV(cfg.Service, "tcp", cfg.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addrs {
+			addresses = append(addresses, fmt.Sprintf("%s:%d", addr.Target, addr.Port))
+		}
+	}
+	if len(addresses) > 0 {
+		opt.Addrs = addresses
+	}
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
 	}
@@ -68,7 +115,7 @@ func NewRedisClient(cfg *RedisConfig) *RedisClient {
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
-	}
+	}, nil
 }
 
 func (c *RedisClient) Ping(ctx context.Context) error {

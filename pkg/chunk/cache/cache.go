@@ -99,7 +99,11 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger) (Cache, error
 			cfg.Redis.Expiration = cfg.DefaultValidity
 		}
 		cacheName := cfg.Prefix + "redis"
-		cache := NewRedisCache(cacheName, NewRedisClient(&cfg.Redis), reg, logger)
+		client, err := NewRedisClient(&cfg.Redis, logger)
+		if err != nil {
+			return nil, err
+		}
+		cache := NewRedisCache(cacheName, client, reg, logger)
 		caches = append(caches, NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg))
 	}
 

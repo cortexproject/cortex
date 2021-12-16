@@ -4353,6 +4353,15 @@ The `redis_config` configures the Redis backend cache. The supported CLI flags `
 # CLI flag: -<prefix>.redis.master-name
 [master_name: <string> | default = ""]
 
+# SRV service used to discover redis servers.
+# CLI flag: -<prefix>.redis.service
+[service: <string> | default = "redis"]
+
+# Comma separated addresses list in DNS Service Discovery format:
+# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# CLI flag: -<prefix>.redis.addresses
+[addresses: <string> | default = ""]
+
 # Maximum time to wait before giving up on redis requests.
 # CLI flag: -<prefix>.redis.timeout
 [timeout: <duration> | default = 500ms]

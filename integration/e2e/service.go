@@ -245,7 +245,7 @@ func (s *ConcreteService) setContainerName() error {
 	s.containerName = NetworkContainerHost(s.usedNetworkName, s.name)
 	// Linux supports up to 64 chars for hostname
 	if len(s.containerName) > 64 {
-		return fmt.Errorf("service container name %s should not exceed 64.", s.containerName)
+		return fmt.Errorf("service container name [%s] should not exceed 64", s.containerName)
 	}
 	return nil
 }

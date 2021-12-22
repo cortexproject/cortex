@@ -15,6 +15,7 @@
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
+* [BUGFIX] Set appropriate `Content-Type` header for /services endpoint, which previously hard-coded `text/plain`. #4596
 
 ## 1.11.0 2021-11-25
 

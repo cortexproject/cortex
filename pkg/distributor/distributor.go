@@ -637,6 +637,14 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			if len(l) == 0 {
+				// all labels are gone, samples will be discarded
+				validation.DiscardedSamples.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Samples)))
+				continue
+			}
 			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
 		}
 
@@ -652,6 +660,11 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 
 		if len(ts.Labels) == 0 {
+			validation.DiscardedExemplars.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Samples)))
+
 			continue
 		}
 

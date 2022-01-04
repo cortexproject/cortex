@@ -17,12 +17,9 @@ A federated rule is any rule which contains the `src_tenants` field.
 
 ## Reasoning
 
-There are two primary use cases for allowing federated rules which query data from multiple tenants; administration of cortex and composite tenants.
+The primary use case for allowing federated rules which query data from multiple tenants is the administration of cortex.
 
 In the case of the administration of cortex, when running Cortex within a large organization, there may be metrics spanning across tenants which might be desired to be monitored e.g. administrative metrics of the cortex system like `prometheus_rule_evaluation_failures_total` aggregated by `__tenant_id__`. In this case, a team e.g. `infra` may wish to be able to create a rule, owned by `infra` which queries multiple tenants `t0|t1|...|ti` and stores resulting series in `infra`.
-
-Additionally an organization may wish to treat several cortex tenants `t0|t1|...|ti` as one logical tenant due to compactor scalability. In this case a composite tenant `t0|t1|...|ti` would own a federated rule, which queries each subtenant `t0` thru `ti`. The resulting data could be sent to  a random, but consistent subtenant can be chosen to store the resulting series in, in this case `tj` where 0 <= j <= i.
-More explicitly, for a given recording rule and the produced series `foobarbaz` which is owned by the composite tenant `0|1|2|3`, a subtenant `0`, `1`, `2` or `3` is chosen to always store the series `foobarbaz` in, lets say `2`. Another rule and produced series `fizzbuzz` owned by the same composite tenant `0|1|2|3` makes this same chose of subtenant, in our case chosing `0`.
 
 ## Challenges
 
@@ -34,9 +31,9 @@ Federated tenant rules and alerts will not be a good fit for organization and sh
 
 #### Proposal
 
-For federated rules owned by a single tenant, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag `ruler.enable-federated-rules`
+For federated rules, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag `ruler.enable-federated-rules`
 
-To support composite tenants, if tenant federation is enabled for ruler and alertmanager via `tenant-federation.enabled`, then ruler use a `mergeQueryable` to aggregate the results of querying multiple tenants. The ruler and alertmanager APIs should be updated to always call `tenant.GetTenantIDs` instead of `tenant.GetTenantID`, which will use the MultiTenantResolver when tenant federation is enabled.
+If tenant federation is enabled, then ruler should use a `mergeQueryable` to aggregate the results of querying multiple tenants.
 
 ### Allow federated rules only for select tenants
 
@@ -56,7 +53,7 @@ A single tenant rule always stores produced series in the tenant where the rule 
 
 #### Proposal
 
-For composite tenants a random but consistent subtenant of the multiple tenants owning the rule is chosen using a hashmod of the series label to determine the subtenant and for single tenants owning a federated rule the resulting series is saved in the tenant which owns the rule.
+Tenants owning a federated rule the resulting series is saved in the tenant which owns the rule.
 
 ### Which tenants to query from for federated rules
 
@@ -66,17 +63,15 @@ A single tenant rule always queries the tenant which owns the rule. This 1 -> 1 
 
 #### Proposal
 
-As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed. In the case of a composite tenant where a set of tenants `A|B|C|...|Z` are being treated as a single logical tenant when querying this explicit assignment of destination tenant isn't explicitly called for, but could prove useful.
+As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed.
 
-To support both of these use cases, we suggest an additional field `src_tenants` on the rule containing an OrgID string e.g. `t0|t1|...|ti` which when present determines which tenants to query for the given rule. In the case of a composite tenant this field would be optional, as ownership of a rule by a composite tenant implies source tenants e.g. for the composite tenant `t0|t1|...|ti` the natural source sub tenants would be `t0`, `t1`, `t2` etc.
+To support this we suggest an additional field `src_tenants` on the rule group containing an OrgID string e.g. `t0|t1|...|ti` which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.
 
 ## Conclusion
 
 | Challenge                                                                | Status                                |
 |--------------------------------------------------------------------------|---------------------------------------|
-| Allow federated rules behind feature flag                                | Implementation planned for PR [#4520] |
-| Allow federated rules only for select tenants                            | Implementation planned for PR [#4520] |
-| Where to store resulting series of federated rules                       | Implementation planned for PR [#4520] |
-| Which tenants to query from for federated rules                          | Implementation planned for PR [#4520] |
-
-[#4520]: https://github.com/cortexproject/cortex/pull/4520
+| Allow federated rules behind feature flag                                | Planned but not yet implemented       |
+| Allow federated rules only for select tenants                            | Planned but not yet implemented       |
+| Where to store resulting series of federated rules                       | Planned but not yet implemented       |
+| Which tenants to query from for federated rules                          | Planned but not yet implemented       |

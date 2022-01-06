@@ -152,7 +152,7 @@ compactor:
   # global location too. This option can (and should) be safely disabled as soon
   # as the compactor has successfully run at least once.
   # CLI flag: -compactor.block-deletion-marks-migration-enabled
-  [block_deletion_marks_migration_enabled: <boolean> | default = true]
+  [block_deletion_marks_migration_enabled: <boolean> | default = false]
 
   # Comma separated list of tenants that can be compacted. If specified, only
   # these tenants will be compacted by compactor, otherwise all tenants can be

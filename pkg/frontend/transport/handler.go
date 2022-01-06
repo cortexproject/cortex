@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-kit/log"
@@ -145,7 +147,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	// log copy response body error so that we will know even though success response code returned
 	bytesCopied, err := io.Copy(w, resp.Body)
-	if err != nil {
+	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 

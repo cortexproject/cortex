@@ -96,13 +96,9 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Upgrade golang
-        run: |
-          cd /tmp
-          wget https://dl.google.com/go/go1.16.6.linux-amd64.tar.gz
-          tar -zxvf go1.16.6.linux-amd64.tar.gz
-          sudo rm -fr /usr/local/go
-          sudo mv /tmp/go /usr/local/go
-          cd -
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.5
       - name: Checkout Repo
         uses: actions/checkout@v2
       - name: Install Docker Client

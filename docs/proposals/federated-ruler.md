@@ -2,7 +2,7 @@
 title: "Ruler Tenant Federation"
 linkTitle: "Ruler Tenant Federation"
 weight: 1
-slug: "Ruler Tenant Federation
+slug: "ruler-tenant-federation"
 ---
 
 - Author: [Rees Dooley](https://github.com/rdooley)
@@ -11,7 +11,7 @@ slug: "Ruler Tenant Federation
 
 ## Overview
 
-This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after refered to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.
+This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after referred to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.
 
 A federated rule is any rule which contains the `src_tenants` field.
 

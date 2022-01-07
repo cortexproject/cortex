@@ -3,9 +3,8 @@ package azure
 import (
 	"flag"
 
-	"github.com/grafana/dskit/flagext"
-
 	"github.com/cortexproject/cortex/pkg/storage/bucket/http"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config holds the config options for an Azure backend

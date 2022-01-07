@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/flagext"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestPage(t *testing.T) {

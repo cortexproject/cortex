@@ -8,12 +8,12 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // channelBufferSize is the size of the channels used to send events from Put, Delete,

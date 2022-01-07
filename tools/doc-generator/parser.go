@@ -8,10 +8,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/logging"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 var (

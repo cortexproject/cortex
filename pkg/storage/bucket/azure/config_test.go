@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/http"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.

@@ -3,11 +3,10 @@ package grpcclient
 import (
 	"context"
 
+	"github.com/grafana/dskit/backoff"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/grafana/dskit/backoff"
 )
 
 // NewBackoffRetry gRPC middleware.

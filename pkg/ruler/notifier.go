@@ -11,7 +11,6 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/crypto/tls"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
@@ -20,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 type NotifierConfig struct {

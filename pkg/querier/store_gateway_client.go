@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/crypto/tls"
-	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,6 +13,8 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 func newStoreGatewayClientFactory(clientCfg grpcclient.Config, reg prometheus.Registerer) client.PoolFactory {

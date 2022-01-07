@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 

@@ -1,13 +1,12 @@
 package grpcclient
 
 import (
+	dsmiddleware "github.com/grafana/dskit/middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
-
-	dsmiddleware "github.com/grafana/dskit/middleware"
 )
 
 func Instrument(requestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {

@@ -20,14 +20,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/alecthomas/units"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/encoding"
@@ -92,12 +94,19 @@ const (
 	// Labels for metrics.
 	labelEncode = "encode"
 	labelDecode = "decode"
+
+	minBlockSyncConcurrency = 1
+)
+
+var (
+	errBlockSyncConcurrencyNotValid = errors.New("the block sync concurrency must be equal or greater than 1.")
 )
 
 type bucketStoreMetrics struct {
 	blocksLoaded          prometheus.Gauge
 	blockLoads            prometheus.Counter
 	blockLoadFailures     prometheus.Counter
+	lastLoadedBlock       prometheus.Gauge
 	blockDrops            prometheus.Counter
 	blockDropFailures     prometheus.Counter
 	seriesDataTouched     *prometheus.SummaryVec
@@ -144,6 +153,10 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	m.blocksLoaded = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "thanos_bucket_store_blocks_loaded",
 		Help: "Number of currently loaded blocks.",
+	})
+	m.lastLoadedBlock = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name: "thanos_bucket_store_blocks_last_loaded_timestamp_seconds",
+		Help: "Timestamp when last block got loaded.",
 	})
 
 	m.seriesDataTouched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
@@ -298,6 +311,13 @@ type BucketStore struct {
 	enableSeriesResponseHints bool
 }
 
+func (b *BucketStore) validate() error {
+	if b.blockSyncConcurrency < minBlockSyncConcurrency {
+		return errBlockSyncConcurrencyNotValid
+	}
+	return nil
+}
+
 type noopCache struct{}
 
 func (noopCache) StorePostings(context.Context, ulid.ULID, labels.Label, []byte) {}
@@ -305,9 +325,9 @@ func (noopCache) FetchMultiPostings(_ context.Context, _ ulid.ULID, keys []label
 	return map[labels.Label][]byte{}, keys
 }
 
-func (noopCache) StoreSeries(context.Context, ulid.ULID, uint64, []byte) {}
-func (noopCache) FetchMultiSeries(_ context.Context, _ ulid.ULID, ids []uint64) (map[uint64][]byte, []uint64) {
-	return map[uint64][]byte{}, ids
+func (noopCache) StoreSeries(context.Context, ulid.ULID, storage.SeriesRef, []byte) {}
+func (noopCache) FetchMultiSeries(_ context.Context, _ ulid.ULID, ids []storage.SeriesRef) (map[storage.SeriesRef][]byte, []storage.SeriesRef) {
+	return map[storage.SeriesRef][]byte{}, ids
 }
 
 // BucketStoreOption are functions that configure BucketStore.
@@ -403,8 +423,13 @@ func NewBucketStore(
 	}
 
 	// Depend on the options
-	s.indexReaderPool = indexheader.NewReaderPool(s.logger, lazyIndexReaderEnabled, lazyIndexReaderIdleTimeout, extprom.WrapRegistererWithPrefix("thanos_bucket_store_", s.reg))
+	indexReaderPoolMetrics := indexheader.NewReaderPoolMetrics(extprom.WrapRegistererWithPrefix("thanos_bucket_store_", s.reg))
+	s.indexReaderPool = indexheader.NewReaderPool(s.logger, lazyIndexReaderEnabled, lazyIndexReaderIdleTimeout, indexReaderPoolMetrics)
 	s.metrics = newBucketStoreMetrics(s.reg) // TODO(metalmatze): Might be possible via Option too
+
+	if err := s.validate(); err != nil {
+		return nil, errors.Wrap(err, "validate config")
+	}
 
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, errors.Wrap(err, "create dir")
@@ -610,7 +635,7 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 	s.blocks[b.meta.ULID] = b
 
 	s.metrics.blocksLoaded.Inc()
-
+	s.metrics.lastLoadedBlock.SetToCurrentTime()
 	return nil
 }
 
@@ -658,6 +683,16 @@ func (s *BucketStore) TimeRange() (mint, maxt int64) {
 	return mint, maxt
 }
 
+func (s *BucketStore) LabelSet() []labelpb.ZLabelSet {
+	labelSets := s.advLabelSets
+
+	if s.enableCompatibilityLabel && len(labelSets) > 0 {
+		labelSets = append(labelSets, labelpb.ZLabelSet{Labels: []labelpb.ZLabel{{Name: CompatibilityTypeLabelName, Value: "store"}}})
+	}
+
+	return labelSets
+}
+
 // Info implements the storepb.StoreServer interface.
 func (s *BucketStore) Info(context.Context, *storepb.InfoRequest) (*storepb.InfoResponse, error) {
 	mint, maxt := s.TimeRange()
@@ -668,14 +703,8 @@ func (s *BucketStore) Info(context.Context, *storepb.InfoRequest) (*storepb.Info
 	}
 
 	s.mtx.RLock()
-	res.LabelSets = s.advLabelSets
+	res.LabelSets = s.LabelSet()
 	s.mtx.RUnlock()
-
-	if s.enableCompatibilityLabel && len(res.LabelSets) > 0 {
-		// This is for compatibility with Querier v0.7.0.
-		// See query.StoreCompatibilityTypeLabelName comment for details.
-		res.LabelSets = append(res.LabelSets, labelpb.ZLabelSet{Labels: []labelpb.ZLabel{{Name: CompatibilityTypeLabelName, Value: "store"}}})
-	}
 	return res, nil
 }
 
@@ -709,7 +738,7 @@ func (s *BucketStore) limitMaxTime(maxt int64) int64 {
 
 type seriesEntry struct {
 	lset labels.Labels
-	refs []uint64
+	refs []chunks.ChunkRef
 	chks []storepb.AggrChunk
 }
 
@@ -744,6 +773,7 @@ func (s *bucketSeriesSet) Err() error {
 
 // blockSeries returns series matching given matchers, that have some data in given time range.
 func blockSeries(
+	ctx context.Context,
 	extLset labels.Labels, // External labels added to the returned series labels.
 	indexr *bucketIndexReader, // Index reader for block.
 	chunkr *bucketChunkReader, // Chunk reader for block.
@@ -754,7 +784,7 @@ func blockSeries(
 	minTime, maxTime int64, // Series must have data in this time range to be returned.
 	loadAggregates []storepb.Aggr, // List of aggregates to load when loading chunks.
 ) (storepb.SeriesSet, *queryStats, error) {
-	ps, err := indexr.ExpandedPostings(matchers)
+	ps, err := indexr.ExpandedPostings(ctx, matchers)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "expanded matching posting")
 	}
@@ -771,7 +801,7 @@ func blockSeries(
 	// Preload all series index data.
 	// TODO(bwplotka): Consider not keeping all series in memory all the time.
 	// TODO(bwplotka): Do lazy loading in one step as `ExpandingPostings` method.
-	if err := indexr.PreloadSeries(ps); err != nil {
+	if err := indexr.PreloadSeries(ctx, ps); err != nil {
 		return nil, nil, errors.Wrap(err, "preload series")
 	}
 
@@ -796,7 +826,7 @@ func blockSeries(
 		s := seriesEntry{}
 		if !skipChunks {
 			// Schedule loading chunks.
-			s.refs = make([]uint64, 0, len(chks))
+			s.refs = make([]chunks.ChunkRef, 0, len(chks))
 			s.chks = make([]storepb.AggrChunk, 0, len(chks))
 			for j, meta := range chks {
 				// seriesEntry s is appended to res, but not at every outer loop iteration,
@@ -828,7 +858,7 @@ func blockSeries(
 		return newBucketSeriesSet(res), indexr.stats, nil
 	}
 
-	if err := chunkr.load(res, loadAggregates); err != nil {
+	if err := chunkr.load(ctx, res, loadAggregates); err != nil {
 		return nil, nil, errors.Wrap(err, "load chunks")
 	}
 
@@ -987,7 +1017,6 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	}
 
 	s.mtx.RLock()
-
 	for _, bs := range s.blockSets {
 		blockMatchers, ok := bs.labelMatchers(matchers...)
 		if !ok {
@@ -1002,6 +1031,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 		for _, b := range blocks {
 			b := b
+			gctx := gctx
 
 			if s.enableSeriesResponseHints {
 				// Keep track of queried blocks.
@@ -1010,9 +1040,9 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 
 			var chunkr *bucketChunkReader
 			// We must keep the readers open until all their data has been sent.
-			indexr := b.indexReader(gctx)
+			indexr := b.indexReader()
 			if !req.SkipChunks {
-				chunkr = b.chunkReader(gctx)
+				chunkr = b.chunkReader()
 				defer runutil.CloseWithLogOnErr(s.logger, chunkr, "series block")
 			}
 
@@ -1020,7 +1050,16 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			defer runutil.CloseWithLogOnErr(s.logger, indexr, "series block")
 
 			g.Go(func() error {
+				span, newCtx := tracing.StartSpan(gctx, "bucket_store_block_series", tracing.Tags{
+					"block.id":         b.meta.ULID,
+					"block.mint":       b.meta.MinTime,
+					"block.maxt":       b.meta.MaxTime,
+					"block.resolution": b.meta.Thanos.Downsample.Resolution,
+				})
+				defer span.Finish()
+
 				part, pstats, err := blockSeries(
+					newCtx,
 					b.extLset,
 					indexr,
 					chunkr,
@@ -1040,6 +1079,9 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 				stats = stats.merge(pstats)
 				mtx.Unlock()
 
+				// No info about samples exactly, so pass at least chunks.
+				span.SetTag("processed.series", len(indexr.loadedSeries))
+				span.SetTag("processed.chunks", pstats.chunksFetched)
 				return nil
 			})
 		}
@@ -1050,27 +1092,28 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	defer func() {
 		s.metrics.seriesDataTouched.WithLabelValues("postings").Observe(float64(stats.postingsTouched))
 		s.metrics.seriesDataFetched.WithLabelValues("postings").Observe(float64(stats.postingsFetched))
-		s.metrics.seriesDataSizeTouched.WithLabelValues("postings").Observe(float64(stats.postingsTouchedSizeSum))
-		s.metrics.seriesDataSizeFetched.WithLabelValues("postings").Observe(float64(stats.postingsFetchedSizeSum))
+		s.metrics.seriesDataSizeTouched.WithLabelValues("postings").Observe(float64(stats.PostingsTouchedSizeSum))
+		s.metrics.seriesDataSizeFetched.WithLabelValues("postings").Observe(float64(stats.PostingsFetchedSizeSum))
 		s.metrics.seriesDataTouched.WithLabelValues("series").Observe(float64(stats.seriesTouched))
 		s.metrics.seriesDataFetched.WithLabelValues("series").Observe(float64(stats.seriesFetched))
-		s.metrics.seriesDataSizeTouched.WithLabelValues("series").Observe(float64(stats.seriesTouchedSizeSum))
-		s.metrics.seriesDataSizeFetched.WithLabelValues("series").Observe(float64(stats.seriesFetchedSizeSum))
+		s.metrics.seriesDataSizeTouched.WithLabelValues("series").Observe(float64(stats.SeriesTouchedSizeSum))
+		s.metrics.seriesDataSizeFetched.WithLabelValues("series").Observe(float64(stats.SeriesFetchedSizeSum))
 		s.metrics.seriesDataTouched.WithLabelValues("chunks").Observe(float64(stats.chunksTouched))
 		s.metrics.seriesDataFetched.WithLabelValues("chunks").Observe(float64(stats.chunksFetched))
-		s.metrics.seriesDataSizeTouched.WithLabelValues("chunks").Observe(float64(stats.chunksTouchedSizeSum))
-		s.metrics.seriesDataSizeFetched.WithLabelValues("chunks").Observe(float64(stats.chunksFetchedSizeSum))
+		s.metrics.seriesDataSizeTouched.WithLabelValues("chunks").Observe(float64(stats.ChunksTouchedSizeSum))
+		s.metrics.seriesDataSizeFetched.WithLabelValues("chunks").Observe(float64(stats.ChunksFetchedSizeSum))
 		s.metrics.resultSeriesCount.Observe(float64(stats.mergedSeriesCount))
 		s.metrics.cachedPostingsCompressions.WithLabelValues(labelEncode).Add(float64(stats.cachedPostingsCompressions))
 		s.metrics.cachedPostingsCompressions.WithLabelValues(labelDecode).Add(float64(stats.cachedPostingsDecompressions))
 		s.metrics.cachedPostingsCompressionErrors.WithLabelValues(labelEncode).Add(float64(stats.cachedPostingsCompressionErrors))
 		s.metrics.cachedPostingsCompressionErrors.WithLabelValues(labelDecode).Add(float64(stats.cachedPostingsDecompressionErrors))
-		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelEncode).Add(stats.cachedPostingsCompressionTimeSum.Seconds())
-		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelDecode).Add(stats.cachedPostingsDecompressionTimeSum.Seconds())
-		s.metrics.cachedPostingsOriginalSizeBytes.Add(float64(stats.cachedPostingsOriginalSizeSum))
-		s.metrics.cachedPostingsCompressedSizeBytes.Add(float64(stats.cachedPostingsCompressedSizeSum))
+		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelEncode).Add(stats.CachedPostingsCompressionTimeSum.Seconds())
+		s.metrics.cachedPostingsCompressionTimeSeconds.WithLabelValues(labelDecode).Add(stats.CachedPostingsDecompressionTimeSum.Seconds())
+		s.metrics.cachedPostingsOriginalSizeBytes.Add(float64(stats.CachedPostingsOriginalSizeSum))
+		s.metrics.cachedPostingsCompressedSizeBytes.Add(float64(stats.CachedPostingsCompressedSizeSum))
 
 		level.Debug(s.logger).Log("msg", "stats query processed",
+			"request", req,
 			"stats", fmt.Sprintf("%+v", stats), "err", err)
 	}()
 
@@ -1088,8 +1131,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			return status.Error(code, err.Error())
 		}
 		stats.blocksQueried = len(res)
-		stats.getAllDuration = time.Since(begin)
-		s.metrics.seriesGetAllDuration.Observe(stats.getAllDuration.Seconds())
+		stats.GetAllDuration = time.Since(begin)
+		s.metrics.seriesGetAllDuration.Observe(stats.GetAllDuration.Seconds())
 		s.metrics.seriesBlocksQueried.Observe(float64(stats.blocksQueried))
 	}
 	// Merge the sub-results from each selected block.
@@ -1123,8 +1166,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 			err = status.Error(codes.Unknown, errors.Wrap(set.Err(), "expand series set").Error())
 			return
 		}
-		stats.mergeDuration = time.Since(begin)
-		s.metrics.seriesMergeDuration.Observe(stats.mergeDuration.Seconds())
+		stats.MergeDuration = time.Since(begin)
+		s.metrics.seriesMergeDuration.Observe(stats.MergeDuration.Seconds())
 
 		err = nil
 	})
@@ -1186,6 +1229,8 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 
 	for _, b := range s.blocks {
 		b := b
+		gctx := gctx
+
 		if !b.overlapsClosedInterval(req.Start, req.End) {
 			continue
 		}
@@ -1195,9 +1240,16 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 
 		resHints.AddQueriedBlock(b.meta.ULID)
 
-		indexr := b.indexReader(gctx)
+		indexr := b.indexReader()
 
 		g.Go(func() error {
+			span, newCtx := tracing.StartSpan(gctx, "bucket_store_block_series", tracing.Tags{
+				"block.id":         b.meta.ULID,
+				"block.mint":       b.meta.MinTime,
+				"block.maxt":       b.meta.MaxTime,
+				"block.resolution": b.meta.Thanos.Downsample.Resolution,
+			})
+			defer span.Finish()
 			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label names")
 
 			var result []string
@@ -1219,7 +1271,7 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 
 				result = strutil.MergeSlices(res, extRes)
 			} else {
-				seriesSet, _, err := blockSeries(b.extLset, indexr, nil, reqSeriesMatchers, nil, seriesLimiter, true, req.Start, req.End, nil)
+				seriesSet, _, err := blockSeries(newCtx, b.extLset, indexr, nil, reqSeriesMatchers, nil, seriesLimiter, true, req.Start, req.End, nil)
 				if err != nil {
 					return errors.Wrapf(err, "fetch series for block %s", b.meta.ULID)
 				}
@@ -1325,9 +1377,15 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 
 		resHints.AddQueriedBlock(b.meta.ULID)
 
-		indexr := b.indexReader(gctx)
-
+		indexr := b.indexReader()
 		g.Go(func() error {
+			span, newCtx := tracing.StartSpan(gctx, "bucket_store_block_series", tracing.Tags{
+				"block.id":         b.meta.ULID,
+				"block.mint":       b.meta.MinTime,
+				"block.maxt":       b.meta.MaxTime,
+				"block.resolution": b.meta.Thanos.Downsample.Resolution,
+			})
+			defer span.Finish()
 			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label values")
 
 			var result []string
@@ -1344,7 +1402,7 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 				}
 				result = res
 			} else {
-				seriesSet, _, err := blockSeries(b.extLset, indexr, nil, reqSeriesMatchers, nil, seriesLimiter, true, req.Start, req.End, nil)
+				seriesSet, _, err := blockSeries(newCtx, b.extLset, indexr, nil, reqSeriesMatchers, nil, seriesLimiter, true, req.Start, req.End, nil)
 				if err != nil {
 					return errors.Wrapf(err, "fetch series for block %s", b.meta.ULID)
 				}
@@ -1666,14 +1724,14 @@ func (b *bucketBlock) chunkRangeReader(ctx context.Context, seq int, off, length
 	return b.bkt.GetRange(ctx, b.chunkObjs[seq], off, length)
 }
 
-func (b *bucketBlock) indexReader(ctx context.Context) *bucketIndexReader {
+func (b *bucketBlock) indexReader() *bucketIndexReader {
 	b.pendingReaders.Add(1)
-	return newBucketIndexReader(ctx, b)
+	return newBucketIndexReader(b)
 }
 
-func (b *bucketBlock) chunkReader(ctx context.Context) *bucketChunkReader {
+func (b *bucketBlock) chunkReader() *bucketChunkReader {
 	b.pendingReaders.Add(1)
-	return newBucketChunkReader(ctx, b)
+	return newBucketChunkReader(b)
 }
 
 // matchRelabelLabels verifies whether the block matches the given matchers.
@@ -1702,24 +1760,22 @@ func (b *bucketBlock) Close() error {
 // bucketIndexReader is a custom index reader (not conforming index.Reader interface) that reads index that is stored in
 // object storage without having to fully download it.
 type bucketIndexReader struct {
-	ctx   context.Context
 	block *bucketBlock
 	dec   *index.Decoder
 	stats *queryStats
 
 	mtx          sync.Mutex
-	loadedSeries map[uint64][]byte
+	loadedSeries map[storage.SeriesRef][]byte
 }
 
-func newBucketIndexReader(ctx context.Context, block *bucketBlock) *bucketIndexReader {
+func newBucketIndexReader(block *bucketBlock) *bucketIndexReader {
 	r := &bucketIndexReader{
-		ctx:   ctx,
 		block: block,
 		dec: &index.Decoder{
 			LookupSymbol: block.indexHeaderReader.LookupSymbol,
 		},
 		stats:        &queryStats{},
-		loadedSeries: map[uint64][]byte{},
+		loadedSeries: map[storage.SeriesRef][]byte{},
 	}
 	return r
 }
@@ -1733,7 +1789,7 @@ func newBucketIndexReader(ctx context.Context, block *bucketBlock) *bucketIndexR
 // Reminder: A posting is a reference (represented as a uint64) to a series reference, which in turn points to the first
 // chunk where the series contains the matching label-value pair for a given block of data. Postings can be fetched by
 // single label name=value.
-func (r *bucketIndexReader) ExpandedPostings(ms []*labels.Matcher) ([]uint64, error) {
+func (r *bucketIndexReader) ExpandedPostings(ctx context.Context, ms []*labels.Matcher) ([]storage.SeriesRef, error) {
 	var (
 		postingGroups []*postingGroup
 		allRequested  = false
@@ -1782,7 +1838,7 @@ func (r *bucketIndexReader) ExpandedPostings(ms []*labels.Matcher) ([]uint64, er
 		keys = append(keys, allPostingsLabel)
 	}
 
-	fetchedPostings, err := r.fetchPostings(keys)
+	fetchedPostings, err := r.fetchPostings(ctx, keys)
 	if err != nil {
 		return nil, errors.Wrap(err, "get postings")
 	}
@@ -1917,7 +1973,7 @@ type postingPtr struct {
 // fetchPostings fill postings requested by posting groups.
 // It returns one postings for each key, in the same order.
 // If postings for given key is not fetched, entry at given index will be nil.
-func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings, error) {
+func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Label) ([]index.Postings, error) {
 	timer := prometheus.NewTimer(r.block.metrics.postingsFetchDuration)
 	defer timer.ObserveDuration()
 
@@ -1926,7 +1982,7 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 	output := make([]index.Postings, len(keys))
 
 	// Fetch postings from the cache with a single call.
-	fromCache, _ := r.block.indexCache.FetchMultiPostings(r.ctx, r.block.meta.ULID, keys)
+	fromCache, _ := r.block.indexCache.FetchMultiPostings(ctx, r.block.meta.ULID, keys)
 
 	// Iterate over all groups and fetch posting from cache.
 	// If we have a miss, mark key to be fetched in `ptrs` slice.
@@ -1935,7 +1991,7 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 		// Get postings for the given key from cache first.
 		if b, ok := fromCache[key]; ok {
 			r.stats.postingsTouched++
-			r.stats.postingsTouchedSizeSum += len(b)
+			r.stats.PostingsTouchedSizeSum += units.Base2Bytes(len(b))
 
 			// Even if this instance is not using compression, there may be compressed
 			// entries in the cache written by other stores.
@@ -1947,7 +2003,7 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 				s := time.Now()
 				l, err = diffVarintSnappyDecode(b)
 				r.stats.cachedPostingsDecompressions += 1
-				r.stats.cachedPostingsDecompressionTimeSum += time.Since(s)
+				r.stats.CachedPostingsDecompressionTimeSum += time.Since(s)
 				if err != nil {
 					r.stats.cachedPostingsDecompressionErrors += 1
 				}
@@ -1989,7 +2045,7 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 		return uint64(ptrs[i].ptr.Start), uint64(ptrs[i].ptr.End)
 	})
 
-	g, ctx := errgroup.WithContext(r.ctx)
+	g, ctx := errgroup.WithContext(ctx)
 	for _, part := range parts {
 		i, j := part.ElemRng[0], part.ElemRng[1]
 
@@ -2010,8 +2066,8 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 			r.mtx.Lock()
 			r.stats.postingsFetchCount++
 			r.stats.postingsFetched += j - i
-			r.stats.postingsFetchDurationSum += fetchTime
-			r.stats.postingsFetchedSizeSum += int(length)
+			r.stats.PostingsFetchDurationSum += fetchTime
+			r.stats.PostingsFetchedSizeSum += units.Base2Bytes(int(length))
 			r.mtx.Unlock()
 
 			for _, p := range ptrs[i:j] {
@@ -2047,16 +2103,16 @@ func (r *bucketIndexReader) fetchPostings(keys []labels.Label) ([]index.Postings
 				// Truncate first 4 bytes which are length of posting.
 				output[p.keyID] = newBigEndianPostings(pBytes[4:])
 
-				r.block.indexCache.StorePostings(r.ctx, r.block.meta.ULID, keys[p.keyID], dataToCache)
+				r.block.indexCache.StorePostings(ctx, r.block.meta.ULID, keys[p.keyID], dataToCache)
 
 				// If we just fetched it we still have to update the stats for touched postings.
 				r.stats.postingsTouched++
-				r.stats.postingsTouchedSizeSum += len(pBytes)
+				r.stats.PostingsTouchedSizeSum += units.Base2Bytes(len(pBytes))
 				r.stats.cachedPostingsCompressions += compressions
 				r.stats.cachedPostingsCompressionErrors += compressionErrors
-				r.stats.cachedPostingsOriginalSizeSum += len(pBytes)
-				r.stats.cachedPostingsCompressedSizeSum += compressedSize
-				r.stats.cachedPostingsCompressionTimeSum += compressionTime
+				r.stats.CachedPostingsOriginalSizeSum += units.Base2Bytes(len(pBytes))
+				r.stats.CachedPostingsCompressedSizeSum += units.Base2Bytes(compressedSize)
+				r.stats.CachedPostingsCompressionTimeSum += compressionTime
 				r.mtx.Unlock()
 			}
 			return nil
@@ -2093,8 +2149,8 @@ func newBigEndianPostings(list []byte) *bigEndianPostings {
 	return &bigEndianPostings{list: list}
 }
 
-func (it *bigEndianPostings) At() uint64 {
-	return uint64(it.cur)
+func (it *bigEndianPostings) At() storage.SeriesRef {
+	return storage.SeriesRef(it.cur)
 }
 
 func (it *bigEndianPostings) Next() bool {
@@ -2106,8 +2162,8 @@ func (it *bigEndianPostings) Next() bool {
 	return false
 }
 
-func (it *bigEndianPostings) Seek(x uint64) bool {
-	if uint64(it.cur) >= x {
+func (it *bigEndianPostings) Seek(x storage.SeriesRef) bool {
+	if storage.SeriesRef(it.cur) >= x {
 		return true
 	}
 
@@ -2135,21 +2191,21 @@ func (it *bigEndianPostings) length() int {
 	return len(it.list) / 4
 }
 
-func (r *bucketIndexReader) PreloadSeries(ids []uint64) error {
+func (r *bucketIndexReader) PreloadSeries(ctx context.Context, ids []storage.SeriesRef) error {
 	timer := prometheus.NewTimer(r.block.metrics.seriesFetchDuration)
 	defer timer.ObserveDuration()
 
 	// Load series from cache, overwriting the list of ids to preload
 	// with the missing ones.
-	fromCache, ids := r.block.indexCache.FetchMultiSeries(r.ctx, r.block.meta.ULID, ids)
+	fromCache, ids := r.block.indexCache.FetchMultiSeries(ctx, r.block.meta.ULID, ids)
 	for id, b := range fromCache {
 		r.loadedSeries[id] = b
 	}
 
 	parts := r.block.partitioner.Partition(len(ids), func(i int) (start, end uint64) {
-		return ids[i], ids[i] + maxSeriesSize
+		return uint64(ids[i]), uint64(ids[i] + maxSeriesSize)
 	})
-	g, ctx := errgroup.WithContext(r.ctx)
+	g, ctx := errgroup.WithContext(ctx)
 	for _, p := range parts {
 		s, e := p.Start, p.End
 		i, j := p.ElemRng[0], p.ElemRng[1]
@@ -2161,7 +2217,7 @@ func (r *bucketIndexReader) PreloadSeries(ids []uint64) error {
 	return g.Wait()
 }
 
-func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []uint64, refetch bool, start, end uint64) error {
+func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.SeriesRef, refetch bool, start, end uint64) error {
 	begin := time.Now()
 
 	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start))
@@ -2172,12 +2228,12 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []uint64, refetc
 	r.mtx.Lock()
 	r.stats.seriesFetchCount++
 	r.stats.seriesFetched += len(ids)
-	r.stats.seriesFetchDurationSum += time.Since(begin)
-	r.stats.seriesFetchedSizeSum += int(end - start)
+	r.stats.SeriesFetchDurationSum += time.Since(begin)
+	r.stats.SeriesFetchedSizeSum += units.Base2Bytes(int(end - start))
 	r.mtx.Unlock()
 
 	for i, id := range ids {
-		c := b[id-start:]
+		c := b[uint64(id)-start:]
 
 		l, n := binary.Uvarint(c)
 		if n < 1 {
@@ -2193,12 +2249,12 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []uint64, refetc
 			level.Warn(r.block.logger).Log("msg", "series size exceeded expected size; refetching", "id", id, "series length", n+int(l), "maxSeriesSize", maxSeriesSize)
 
 			// Fetch plus to get the size of next one if exists.
-			return r.loadSeries(ctx, ids[i:], true, id, id+uint64(n+int(l)+1))
+			return r.loadSeries(ctx, ids[i:], true, uint64(id), uint64(id)+uint64(n+int(l)+1))
 		}
 		c = c[n : n+int(l)]
 		r.mtx.Lock()
 		r.loadedSeries[id] = c
-		r.block.indexCache.StoreSeries(r.ctx, r.block.meta.ULID, id, c)
+		r.block.indexCache.StoreSeries(ctx, r.block.meta.ULID, id, c)
 		r.mtx.Unlock()
 	}
 	return nil
@@ -2270,14 +2326,14 @@ type symbolizedLabel struct {
 // LoadSeriesForTime returns false, when there are no series data for given time range.
 //
 // Error is returned on decoding error or if the reference does not resolve to a known series.
-func (r *bucketIndexReader) LoadSeriesForTime(ref uint64, lset *[]symbolizedLabel, chks *[]chunks.Meta, skipChunks bool, mint, maxt int64) (ok bool, err error) {
+func (r *bucketIndexReader) LoadSeriesForTime(ref storage.SeriesRef, lset *[]symbolizedLabel, chks *[]chunks.Meta, skipChunks bool, mint, maxt int64) (ok bool, err error) {
 	b, ok := r.loadedSeries[ref]
 	if !ok {
 		return false, errors.Errorf("series %d not found", ref)
 	}
 
 	r.stats.seriesTouched++
-	r.stats.seriesTouchedSizeSum += len(b)
+	r.stats.SeriesTouchedSizeSum += units.Base2Bytes(len(b))
 	return decodeSeriesForTime(b, lset, chks, skipChunks, mint, maxt)
 }
 
@@ -2351,7 +2407,7 @@ func decodeSeriesForTime(b []byte, lset *[]symbolizedLabel, chks *[]chunks.Meta,
 			}
 
 			*chks = append(*chks, chunks.Meta{
-				Ref:     uint64(ref),
+				Ref:     chunks.ChunkRef(ref),
 				MinTime: mint,
 				MaxTime: maxt,
 			})
@@ -2370,7 +2426,6 @@ type loadIdx struct {
 }
 
 type bucketChunkReader struct {
-	ctx   context.Context
 	block *bucketBlock
 
 	toLoad [][]loadIdx
@@ -2382,9 +2437,8 @@ type bucketChunkReader struct {
 	chunkBytes []*[]byte // Byte slice to return to the chunk pool on close.
 }
 
-func newBucketChunkReader(ctx context.Context, block *bucketBlock) *bucketChunkReader {
+func newBucketChunkReader(block *bucketBlock) *bucketChunkReader {
 	return &bucketChunkReader{
-		ctx:    ctx,
 		block:  block,
 		stats:  &queryStats{},
 		toLoad: make([][]loadIdx, len(block.chunkObjs)),
@@ -2402,7 +2456,7 @@ func (r *bucketChunkReader) Close() error {
 
 // addLoad adds the chunk with id to the data set to be fetched.
 // Chunk will be fetched and saved to res[seriesEntry][chunk] upon r.load(res, <...>) call.
-func (r *bucketChunkReader) addLoad(id uint64, seriesEntry, chunk int) error {
+func (r *bucketChunkReader) addLoad(id chunks.ChunkRef, seriesEntry, chunk int) error {
 	var (
 		seq = int(id >> 32)
 		off = uint32(id)
@@ -2415,8 +2469,8 @@ func (r *bucketChunkReader) addLoad(id uint64, seriesEntry, chunk int) error {
 }
 
 // load loads all added chunks and saves resulting aggrs to res.
-func (r *bucketChunkReader) load(res []seriesEntry, aggrs []storepb.Aggr) error {
-	g, ctx := errgroup.WithContext(r.ctx)
+func (r *bucketChunkReader) load(ctx context.Context, res []seriesEntry, aggrs []storepb.Aggr) error {
+	g, ctx := errgroup.WithContext(ctx)
 
 	for seq, pIdxs := range r.toLoad {
 		sort.Slice(pIdxs, func(i, j int) bool {
@@ -2462,28 +2516,36 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 
 	r.stats.chunksFetchCount++
 	r.stats.chunksFetched += len(pIdxs)
-	r.stats.chunksFetchDurationSum += time.Since(fetchBegin)
-	r.stats.chunksFetchedSizeSum += int(part.End - part.Start)
+	r.stats.ChunksFetchDurationSum += time.Since(fetchBegin)
+	r.stats.ChunksFetchedSizeSum += units.Base2Bytes(int(part.End - part.Start))
 
 	var (
-		buf        = make([]byte, EstimatedMaxChunkSize)
+		buf        []byte
 		readOffset = int(pIdxs[0].offset)
 
 		// Save a few allocations.
-		written  int64
+		written  int
 		diff     uint32
 		chunkLen int
 		n        int
 	)
 
+	bufPooled, err := r.block.chunkPool.Get(EstimatedMaxChunkSize)
+	if err == nil {
+		buf = *bufPooled
+	} else {
+		buf = make([]byte, EstimatedMaxChunkSize)
+	}
+	defer r.block.chunkPool.Put(&buf)
+
 	for i, pIdx := range pIdxs {
 		// Fast forward range reader to the next chunk start in case of sparse (for our purposes) byte range.
 		for readOffset < int(pIdx.offset) {
-			written, err = io.CopyN(ioutil.Discard, bufReader, int64(pIdx.offset)-int64(readOffset))
+			written, err = bufReader.Discard(int(pIdx.offset) - int(readOffset))
 			if err != nil {
 				return errors.Wrap(err, "fast forward range reader")
 			}
-			readOffset += int(written)
+			readOffset += written
 		}
 		// Presume chunk length to be reasonably large for common use cases.
 		// However, declaration for EstimatedMaxChunkSize warns us some chunks could be larger in some rare cases.
@@ -2516,7 +2578,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 				return errors.Wrap(err, "populate chunk")
 			}
 			r.stats.chunksTouched++
-			r.stats.chunksTouchedSizeSum += int(chunkDataLen)
+			r.stats.ChunksTouchedSizeSum += units.Base2Bytes(int(chunkDataLen))
 			continue
 		}
 
@@ -2540,15 +2602,15 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 		locked = true
 
 		r.stats.chunksFetchCount++
-		r.stats.chunksFetchDurationSum += time.Since(fetchBegin)
-		r.stats.chunksFetchedSizeSum += len(*nb)
+		r.stats.ChunksFetchDurationSum += time.Since(fetchBegin)
+		r.stats.ChunksFetchedSizeSum += units.Base2Bytes(len(*nb))
 		err = populateChunk(&(res[pIdx.seriesEntry].chks[pIdx.chunk]), rawChunk((*nb)[n:]), aggrs, r.save)
 		if err != nil {
 			r.block.chunkPool.Put(nb)
 			return errors.Wrap(err, "populate chunk")
 		}
 		r.stats.chunksTouched++
-		r.stats.chunksTouchedSizeSum += int(chunkDataLen)
+		r.stats.ChunksTouchedSizeSum += units.Base2Bytes(int(chunkDataLen))
 
 		r.block.chunkPool.Put(nb)
 	}
@@ -2602,79 +2664,79 @@ type queryStats struct {
 	blocksQueried int
 
 	postingsTouched          int
-	postingsTouchedSizeSum   int
+	PostingsTouchedSizeSum   units.Base2Bytes
 	postingsToFetch          int
 	postingsFetched          int
-	postingsFetchedSizeSum   int
+	PostingsFetchedSizeSum   units.Base2Bytes
 	postingsFetchCount       int
-	postingsFetchDurationSum time.Duration
+	PostingsFetchDurationSum time.Duration
 
 	cachedPostingsCompressions         int
 	cachedPostingsCompressionErrors    int
-	cachedPostingsOriginalSizeSum      int
-	cachedPostingsCompressedSizeSum    int
-	cachedPostingsCompressionTimeSum   time.Duration
+	CachedPostingsOriginalSizeSum      units.Base2Bytes
+	CachedPostingsCompressedSizeSum    units.Base2Bytes
+	CachedPostingsCompressionTimeSum   time.Duration
 	cachedPostingsDecompressions       int
 	cachedPostingsDecompressionErrors  int
-	cachedPostingsDecompressionTimeSum time.Duration
+	CachedPostingsDecompressionTimeSum time.Duration
 
 	seriesTouched          int
-	seriesTouchedSizeSum   int
+	SeriesTouchedSizeSum   units.Base2Bytes
 	seriesFetched          int
-	seriesFetchedSizeSum   int
+	SeriesFetchedSizeSum   units.Base2Bytes
 	seriesFetchCount       int
-	seriesFetchDurationSum time.Duration
+	SeriesFetchDurationSum time.Duration
 
 	chunksTouched          int
-	chunksTouchedSizeSum   int
+	ChunksTouchedSizeSum   units.Base2Bytes
 	chunksFetched          int
-	chunksFetchedSizeSum   int
+	ChunksFetchedSizeSum   units.Base2Bytes
 	chunksFetchCount       int
-	chunksFetchDurationSum time.Duration
+	ChunksFetchDurationSum time.Duration
 
-	getAllDuration    time.Duration
+	GetAllDuration    time.Duration
 	mergedSeriesCount int
 	mergedChunksCount int
-	mergeDuration     time.Duration
+	MergeDuration     time.Duration
 }
 
 func (s queryStats) merge(o *queryStats) *queryStats {
 	s.blocksQueried += o.blocksQueried
 
 	s.postingsTouched += o.postingsTouched
-	s.postingsTouchedSizeSum += o.postingsTouchedSizeSum
+	s.PostingsTouchedSizeSum += o.PostingsTouchedSizeSum
 	s.postingsFetched += o.postingsFetched
-	s.postingsFetchedSizeSum += o.postingsFetchedSizeSum
+	s.PostingsFetchedSizeSum += o.PostingsFetchedSizeSum
 	s.postingsFetchCount += o.postingsFetchCount
-	s.postingsFetchDurationSum += o.postingsFetchDurationSum
+	s.PostingsFetchDurationSum += o.PostingsFetchDurationSum
 
 	s.cachedPostingsCompressions += o.cachedPostingsCompressions
 	s.cachedPostingsCompressionErrors += o.cachedPostingsCompressionErrors
-	s.cachedPostingsOriginalSizeSum += o.cachedPostingsOriginalSizeSum
-	s.cachedPostingsCompressedSizeSum += o.cachedPostingsCompressedSizeSum
-	s.cachedPostingsCompressionTimeSum += o.cachedPostingsCompressionTimeSum
+	s.CachedPostingsOriginalSizeSum += o.CachedPostingsOriginalSizeSum
+	s.CachedPostingsCompressedSizeSum += o.CachedPostingsCompressedSizeSum
+	s.CachedPostingsCompressionTimeSum += o.CachedPostingsCompressionTimeSum
 	s.cachedPostingsDecompressions += o.cachedPostingsDecompressions
 	s.cachedPostingsDecompressionErrors += o.cachedPostingsDecompressionErrors
-	s.cachedPostingsDecompressionTimeSum += o.cachedPostingsDecompressionTimeSum
+	s.CachedPostingsDecompressionTimeSum += o.CachedPostingsDecompressionTimeSum
 
 	s.seriesTouched += o.seriesTouched
-	s.seriesTouchedSizeSum += o.seriesTouchedSizeSum
+	s.SeriesTouchedSizeSum += o.SeriesTouchedSizeSum
 	s.seriesFetched += o.seriesFetched
-	s.seriesFetchedSizeSum += o.seriesFetchedSizeSum
+	s.SeriesFetchedSizeSum += o.SeriesFetchedSizeSum
 	s.seriesFetchCount += o.seriesFetchCount
-	s.seriesFetchDurationSum += o.seriesFetchDurationSum
+	s.SeriesFetchDurationSum += o.SeriesFetchDurationSum
 
 	s.chunksTouched += o.chunksTouched
-	s.chunksTouchedSizeSum += o.chunksTouchedSizeSum
+	s.ChunksTouchedSizeSum += o.ChunksTouchedSizeSum
 	s.chunksFetched += o.chunksFetched
-	s.chunksFetchedSizeSum += o.chunksFetchedSizeSum
+	s.ChunksFetchedSizeSum += o.ChunksFetchedSizeSum
 	s.chunksFetchCount += o.chunksFetchCount
-	s.chunksFetchDurationSum += o.chunksFetchDurationSum
+	s.ChunksFetchDurationSum += o.ChunksFetchDurationSum
 
-	s.getAllDuration += o.getAllDuration
+	s.GetAllDuration += o.GetAllDuration
 	s.mergedSeriesCount += o.mergedSeriesCount
 	s.mergedChunksCount += o.mergedChunksCount
-	s.mergeDuration += o.mergeDuration
+	s.MergeDuration += o.MergeDuration
 
 	return &s
 }

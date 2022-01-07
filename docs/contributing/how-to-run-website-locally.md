@@ -18,7 +18,11 @@ The following initial setup is required only once:
    ```
    cd website && npm install && cd -
    ```
-4. Run `make BUILD_IN_CONTAINER=false web-build`
+4. Install [embedmd](https://github.com/campoy/embedmd) `v1.0.0`:
+   ```
+   go install github.com/campoy/embedmd@v1.0.0
+   ```
+5. Run `make BUILD_IN_CONTAINER=false web-build`
 
 
 ## Run it

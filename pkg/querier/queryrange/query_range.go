@@ -19,7 +19,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -52,7 +52,7 @@ var (
 type Codec interface {
 	Merger
 	// DecodeRequest decodes a Request from an http request.
-	DecodeRequest(context.Context, *http.Request) (Request, error)
+	DecodeRequest(_ context.Context, request *http.Request, forwardHeaders []string) (Request, error)
 	// DecodeResponse decodes a Response from an http response.
 	// The original request is also passed as a parameter this is useful for implementation that needs the request
 	// to merge result or build the result correctly.
@@ -187,7 +187,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -222,6 +222,16 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Reques
 	result.Query = r.FormValue("query")
 	result.Path = r.URL.Path
 
+	// Include the specified headers from http request in prometheusRequest.
+	for _, header := range forwardHeaders {
+		for h, hv := range r.Header {
+			if strings.EqualFold(h, header) {
+				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
+				break
+			}
+		}
+	}
+
 	for _, value := range r.Header.Values(cacheControlHeader) {
 		if strings.Contains(value, noStoreValue) {
 			result.CachingOptions.Disabled = true
@@ -247,12 +257,20 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 		Path:     promReq.Path,
 		RawQuery: params.Encode(),
 	}
+	var h = http.Header{}
+
+	for _, hv := range promReq.Headers {
+		for _, v := range hv.Values {
+			h.Add(hv.Name, v)
+		}
+	}
+
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
 		URL:        u,
 		Body:       http.NoBody,
-		Header:     http.Header{},
+		Header:     h,
 	}
 
 	return req.WithContext(ctx), nil
@@ -266,20 +284,15 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	// Preallocate the buffer with the exact size so we don't waste allocations
-	// while progressively growing an initial small buffer. The buffer capacity
-	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
-	// internally works.
-	buf := bytes.NewBuffer(make([]byte, 0, r.ContentLength+bytes.MinRead))
-	if _, err := buf.ReadFrom(r.Body); err != nil {
+	buf, err := bodyBuffer(r)
+	if err != nil {
 		log.Error(err)
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		return nil, err
 	}
-
-	log.LogFields(otlog.Int("bytes", buf.Len()))
+	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
-	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
@@ -287,6 +300,29 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
+}
+
+// Buffer can be used to read a response body.
+// This allows to avoid reading the body multiple times from the `http.Response.Body`.
+type Buffer interface {
+	Bytes() []byte
+}
+
+func bodyBuffer(res *http.Response) ([]byte, error) {
+	// Attempt to cast the response body to a Buffer and use it if possible.
+	// This is because the frontend may have already read the body and buffered it.
+	if buffer, ok := res.Body.(Buffer); ok {
+		return buffer.Bytes(), nil
+	}
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
+	if _, err := buf.ReadFrom(res.Body); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
@@ -392,7 +428,6 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 // bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
 // timestamps in samples.
 func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
-
 	if len(samples) <= 0 || minTs < samples[0].TimestampMs {
 		return samples
 	}

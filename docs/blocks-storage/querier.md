@@ -278,8 +278,8 @@ blocks_storage:
       # CLI flag: -blocks-storage.s3.http.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
-      # If the client connects to S3 via HTTPS and this option is enabled, the
-      # client will accept any certificate and hostname.
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
       # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
@@ -339,6 +339,44 @@ blocks_storage:
     # Number of retries for recoverable errors
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -blocks-storage.azure.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -blocks-storage.azure.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -blocks-storage.azure.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -blocks-storage.azure.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -blocks-storage.azure.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -blocks-storage.azure.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -blocks-storage.azure.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -blocks-storage.azure.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
 
   swift:
     # OpenStack Swift authentication API version. 0 to autodetect.
@@ -512,6 +550,11 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
 
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
+
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
@@ -558,6 +601,11 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
+
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
 
       # Size of each subrange that bucket object is split into for better
       # caching.
@@ -624,6 +672,11 @@ blocks_storage:
         # stored. If set to 0, no maximum size is enforced.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
         [max_item_size: <int> | default = 1048576]
+
+        # Use memcached auto-discovery mechanism provided by some cloud provider
+        # like GCP and AWS
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
+        [auto_discovery: <boolean> | default = false]
 
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl

@@ -2,9 +2,10 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -64,6 +65,10 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {
 			return resp, nil
+		}
+
+		if errors.Is(err, context.Canceled) {
+			return nil, err
 		}
 
 		// Retry if we get a HTTP 500 or a non-HTTP error.

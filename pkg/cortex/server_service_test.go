@@ -19,7 +19,7 @@ func TestServerStopViaContext(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -40,7 +40,7 @@ func TestServerStopViaShutdown(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	s := NewServerService(serv, func() []services.Service { return nil })
@@ -61,7 +61,7 @@ func TestServerStopViaStop(t *testing.T) {
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	serv, err := server.New(server.Config{})
+	serv, err := server.New(server.Config{HTTPListenNetwork: server.DefaultNetwork})
 	require.NoError(t, err)
 
 	s := NewServerService(serv, func() []services.Service { return nil })

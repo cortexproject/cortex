@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -15,8 +17,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 
-	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -242,7 +242,8 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			store := consul.NewInMemoryClient(ring.GetCodec())
+			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Initialize the ring state.
 			require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
@@ -257,7 +258,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				ZoneAwarenessEnabled: testData.zoneAwarenessEnabled,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
@@ -599,7 +600,8 @@ func TestShuffleShardingStrategy(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			store := consul.NewInMemoryClient(ring.GetCodec())
+			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			// Initialize the ring state.
 			require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
@@ -614,7 +616,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				SubringCacheDisabled: true,
 			}
 
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
 			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck

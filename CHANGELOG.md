@@ -2,6 +2,24 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Keep track of discarded samples due to relabel configuration in `cortex_discarded_samples_total`. #4503
+* [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
+* [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled). #4562
+* [CHANGE] Compactor block deletion mark migration, needed when upgrading from v1.7, is now disabled by default. #4597
+* [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
+* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
+* [ENHANCEMENT] Added new ring related config `-ingester.readiness-check-ring-health` when enabled the readiness probe will succeed only after all instances are ACTIVE and healthy in the ring, this is enabled by default. #4539
+* [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
+* [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
+* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
+* [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
+* [BUGFIX] AlertManager: remove stale template files. #4495
+* [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
+* [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
+
+## 1.11.0 2021-11-25
+
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
   - `-memberlist.retransmit-factor`
@@ -10,18 +28,15 @@
   - `-memberlist.gossip-nodes`
   - `-memberlist.gossip-to-dead-nodes-time`
   - `-memberlist.dead-node-reclaim-time`
+* [CHANGE] `-querier.max-fetched-chunks-per-query` previously applied to chunks from ingesters and store separately; now the two combined should not exceed the limit. #4260
+* [CHANGE] Memberlist: the metric `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
+* [CHANGE] Some files and directories created by Cortex components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394
+* [CHANGE] The metric `cortex_deprecated_flags_inuse_total` has been renamed to `deprecated_flags_inuse_total` as part of using grafana/dskit functionality. #4443
 * [FEATURE] Ruler: Add new `-ruler.query-stats-enabled` which when enabled will report the `cortex_ruler_query_seconds_total` as a per-user metric that tracks the sum of the wall time of executing queries in the ruler in seconds. #4317
 * [FEATURE] Query Frontend: Add `cortex_query_fetched_series_total` and `cortex_query_fetched_chunks_bytes_total` per-user counters to expose the number of series and bytes fetched as part of queries. These metrics can be enabled with the `-frontend.query-stats-enabled` flag (or its respective YAML config option `query_stats_enabled`). #4343
 * [FEATURE] AlertManager: Add support for SNS Receiver. #4382
-* [CHANGE] Update Go version to 1.16.6. #4362
-* [CHANGE] Querier / ruler: Change `-querier.max-fetched-chunks-per-query` configuration to limit to maximum number of chunks that can be fetched in a single query. The number of chunks fetched by ingesters AND long-term storare combined should not exceed the value configured on `-querier.max-fetched-chunks-per-query`. #4260
-* [CHANGE] Memberlist: the `memberlist_kv_store_value_bytes` has been removed due to values no longer being stored in-memory as encoded bytes. #4345
-* [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
-  * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
-* [CHANGE] Some files and directories created by Mimir components on local disk now have stricter permissions, and are only readable by owner, but not group or others. #4394
-* [CHANGE] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
-* [CHANGE] Memberlist: forward only changes, not entire original message. #4419
-* [CHANGE] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
+* [FEATURE] Distributor: Add label `status` to metric `cortex_distributor_ingester_append_failures_total` #4442
+* [FEATURE] Queries: Added `present_over_time` PromQL function, also some TSDB optimisations. #4505
 * [ENHANCEMENT] Add timeout for waiting on compactor to become ACTIVE in the ring. #4262
 * [ENHANCEMENT] Reduce memory used by streaming queries, particularly in ruler. #4341
 * [ENHANCEMENT] Ring: allow experimental configuration of disabling of heartbeat timeouts by setting the relevant configuration value to zero. Applies to the following: #4342
@@ -40,12 +55,29 @@
   * `-store-gateway.sharding-ring.heartbeat-period`
 * [ENHANCEMENT] Memberlist: optimized receive path for processing ring state updates, to help reduce CPU utilization in large clusters. #4345
 * [ENHANCEMENT] Memberlist: expose configuration of memberlist packet compression via `-memberlist.compression=enabled`. #4346
+* [ENHANCEMENT] Update Go version to 1.16.6. #4362
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
+* [ENHANCEMENT] Querier: performance improvements in socket and memory handling. #4429 #4377
+* [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
+* [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
+* [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
+* [ENHANCEMENT] Support memcached auto-discovery via `auto-discovery` flag, introduced by thanos in https://github.com/thanos-io/thanos/pull/4487. Both AWS and Google Cloud memcached service support auto-discovery, which returns a list of nodes of the memcached cluster. #4412
+* [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
+* [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
+* [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
 * [BUGFIX] HA Tracker: when cleaning up obsolete elected replicas from KV store, tracker didn't update number of cluster per user correctly. #4336
 * [BUGFIX] Ruler: fixed counting of PromQL evaluation errors as user-errors when updating `cortex_ruler_queries_failed_total`. #4335
 * [BUGFIX] Ingester: When using block storage, prevent any reads or writes while the ingester is stopping. This will prevent accessing TSDB blocks once they have been already closed. #4304
 * [BUGFIX] Ingester: fixed ingester stuck on start up (LEAVING ring state) when `-ingester.heartbeat-period=0` and `-ingester.unregister-on-shutdown=false`. #4366
+* [BUGFIX] Ingester: panic during shutdown while fetching batches from cache. #4397
 * [BUGFIX] Querier: After query-frontend restart, querier may have lower than configured concurrency. #4417
+* [BUGFIX] Memberlist: forward only changes, not entire original message. #4419
+* [BUGFIX] Memberlist: don't accept old tombstones as incoming change, and don't forward such messages to other gossip members. #4420
+* [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
+* [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
+* [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
+* [BUGFIX] Update go-kit package to fix spurious log messages #4544
+
 
 ## 1.10.0 / 2021-08-03
 

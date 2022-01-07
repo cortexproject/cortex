@@ -16,12 +16,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -32,7 +33,6 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -58,9 +58,11 @@ func newTestStore(t require.TestingT, cfg Config, clientConfig client.Config, li
 	return store, ing
 }
 
-func newDefaultTestStore(t require.TestingT) (*testStore, *Ingester) {
+func newDefaultTestStore(t testing.TB) (*testStore, *Ingester) {
+	t.Helper()
+
 	return newTestStore(t,
-		defaultIngesterTestConfig(),
+		defaultIngesterTestConfig(t),
 		defaultClientTestConfig(),
 		defaultLimitsTestConfig(), nil)
 }
@@ -259,7 +261,7 @@ func TestIngesterMetadataAppend(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 			limits.MaxLocalMetadataPerMetric = 50
-			_, ing := newTestStore(t, defaultIngesterTestConfig(), defaultClientTestConfig(), limits, nil)
+			_, ing := newTestStore(t, defaultIngesterTestConfig(t), defaultClientTestConfig(), limits, nil)
 			userIDs, _ := pushTestMetadata(t, ing, tc.numMetadata, tc.metadataPerMetric)
 
 			for _, userID := range userIDs {
@@ -289,7 +291,7 @@ func TestIngesterMetadataAppend(t *testing.T) {
 }
 
 func TestIngesterPurgeMetadata(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.MetadataRetainPeriod = 20 * time.Millisecond
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
 	userIDs, _ := pushTestMetadata(t, ing, 10, 3)
@@ -307,7 +309,7 @@ func TestIngesterPurgeMetadata(t *testing.T) {
 
 func TestIngesterMetadataMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.MetadataRetainPeriod = 20 * time.Millisecond
 	_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), reg)
 	_, _ = pushTestMetadata(t, ing, 10, 3)
@@ -379,7 +381,7 @@ func TestIngesterSendsOnlySeriesWithData(t *testing.T) {
 
 func TestIngesterIdleFlush(t *testing.T) {
 	// Create test ingester with short flush cycle
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
 	cfg.MaxChunkIdle = 100 * time.Millisecond
 	cfg.RetainPeriod = 500 * time.Millisecond
@@ -416,7 +418,7 @@ func TestIngesterIdleFlush(t *testing.T) {
 
 func TestIngesterSpreadFlush(t *testing.T) {
 	// Create test ingester with short flush cycle
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.SpreadFlushes = true
 	cfg.FlushCheckPeriod = 20 * time.Millisecond
 	store, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
@@ -528,7 +530,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	chunksIngesterGenerator := func() *Ingester {
-		cfg := defaultIngesterTestConfig()
+		cfg := defaultIngesterTestConfig(t)
 		cfg.WALConfig.WALEnabled = true
 		cfg.WALConfig.Recover = true
 		cfg.WALConfig.Dir = chunksDir
@@ -539,7 +541,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -651,7 +653,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	chunksIngesterGenerator := func() *Ingester {
-		cfg := defaultIngesterTestConfig()
+		cfg := defaultIngesterTestConfig(t)
 		cfg.WALConfig.WALEnabled = true
 		cfg.WALConfig.Recover = true
 		cfg.WALConfig.Dir = chunksDir
@@ -662,7 +664,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	}
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(), limits, blocksDir, nil)
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, blocksDir, nil)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -870,7 +872,7 @@ func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexp
 }
 
 func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpected bool) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	clientCfg := defaultClientTestConfig()
 
 	const (
@@ -913,7 +915,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 }
 
 func BenchmarkIngester_QueryStream(b *testing.B) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
 	_, ing := newTestStore(b, cfg, clientCfg, limits, nil)
@@ -1012,7 +1014,7 @@ func TestIngesterActiveSeries(t *testing.T) {
 			registry := prometheus.NewRegistry()
 
 			// Create a mocked ingester
-			cfg := defaultIngesterTestConfig()
+			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 

@@ -17,13 +17,13 @@ func (fl *FakeLogger) Log(keyvals ...interface{}) error {
 func TestNewApiWithoutSourceIPExtractor(t *testing.T) {
 	cfg := Config{}
 	serverCfg := server.Config{
-		MetricsNamespace: "without_source_ip_extractor",
+		HTTPListenNetwork: server.DefaultNetwork,
+		MetricsNamespace:  "without_source_ip_extractor",
 	}
 	server, err := server.New(serverCfg)
 	require.NoError(t, err)
 
 	api, err := New(cfg, serverCfg, server, &FakeLogger{})
-
 	require.NoError(t, err)
 	require.Nil(t, api.sourceIPs)
 }
@@ -31,14 +31,14 @@ func TestNewApiWithoutSourceIPExtractor(t *testing.T) {
 func TestNewApiWithSourceIPExtractor(t *testing.T) {
 	cfg := Config{}
 	serverCfg := server.Config{
-		LogSourceIPs:     true,
-		MetricsNamespace: "with_source_ip_extractor",
+		HTTPListenNetwork: server.DefaultNetwork,
+		LogSourceIPs:      true,
+		MetricsNamespace:  "with_source_ip_extractor",
 	}
 	server, err := server.New(serverCfg)
 	require.NoError(t, err)
 
 	api, err := New(cfg, serverCfg, server, &FakeLogger{})
-
 	require.NoError(t, err)
 	require.NotNil(t, api.sourceIPs)
 }
@@ -49,6 +49,7 @@ func TestNewApiWithInvalidSourceIPExtractor(t *testing.T) {
 		HTTP: &mux.Router{},
 	}
 	serverCfg := server.Config{
+		HTTPListenNetwork:  server.DefaultNetwork,
 		LogSourceIPs:       true,
 		LogSourceIPsHeader: "SomeHeader",
 		LogSourceIPsRegex:  "[*",

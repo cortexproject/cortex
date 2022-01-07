@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestManagerMetrics(t *testing.T) {
+func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics()
+	managerMetrics := NewManagerMetrics(false)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -130,6 +130,104 @@ cortex_prometheus_rule_group_rules{rule_group="group_one",user="user3"} 100000
 cortex_prometheus_rule_group_rules{rule_group="group_two",user="user1"} 1000
 cortex_prometheus_rule_group_rules{rule_group="group_two",user="user2"} 10000
 cortex_prometheus_rule_group_rules{rule_group="group_two",user="user3"} 100000
+`))
+	require.NoError(t, err)
+}
+
+func TestManagerMetricsWithoutRuleGroupLabel(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	managerMetrics := NewManagerMetrics(true)
+	mainReg.MustRegister(managerMetrics)
+	managerMetrics.AddUserRegistry("user1", populateManager(1))
+	managerMetrics.AddUserRegistry("user2", populateManager(10))
+	managerMetrics.AddUserRegistry("user3", populateManager(100))
+
+	managerMetrics.AddUserRegistry("user4", populateManager(1000))
+	managerMetrics.RemoveUserRegistry("user4")
+
+	//noinspection ALL
+	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+# HELP cortex_prometheus_last_evaluation_samples The number of samples returned during the last rule group evaluation.
+# TYPE cortex_prometheus_last_evaluation_samples gauge
+cortex_prometheus_last_evaluation_samples{user="user1"} 2000
+cortex_prometheus_last_evaluation_samples{user="user2"} 20000
+cortex_prometheus_last_evaluation_samples{user="user3"} 200000
+# HELP cortex_prometheus_rule_evaluation_duration_seconds The duration for a rule to execute.
+# TYPE cortex_prometheus_rule_evaluation_duration_seconds summary
+cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.5"} 1
+cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.9"} 1
+cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.99"} 1
+cortex_prometheus_rule_evaluation_duration_seconds_sum{user="user1"} 1
+cortex_prometheus_rule_evaluation_duration_seconds_count{user="user1"} 1
+cortex_prometheus_rule_evaluation_duration_seconds{user="user2",quantile="0.5"} 10
+cortex_prometheus_rule_evaluation_duration_seconds{user="user2",quantile="0.9"} 10
+cortex_prometheus_rule_evaluation_duration_seconds{user="user2",quantile="0.99"} 10
+cortex_prometheus_rule_evaluation_duration_seconds_sum{user="user2"} 10
+cortex_prometheus_rule_evaluation_duration_seconds_count{user="user2"} 1
+cortex_prometheus_rule_evaluation_duration_seconds{user="user3",quantile="0.5"} 100
+cortex_prometheus_rule_evaluation_duration_seconds{user="user3",quantile="0.9"} 100
+cortex_prometheus_rule_evaluation_duration_seconds{user="user3",quantile="0.99"} 100
+cortex_prometheus_rule_evaluation_duration_seconds_sum{user="user3"} 100
+cortex_prometheus_rule_evaluation_duration_seconds_count{user="user3"} 1
+# HELP cortex_prometheus_rule_evaluation_failures_total The total number of rule evaluation failures.
+# TYPE cortex_prometheus_rule_evaluation_failures_total counter
+cortex_prometheus_rule_evaluation_failures_total{user="user1"} 2
+cortex_prometheus_rule_evaluation_failures_total{user="user2"} 20
+cortex_prometheus_rule_evaluation_failures_total{user="user3"} 200
+# HELP cortex_prometheus_rule_evaluations_total The total number of rule evaluations.
+# TYPE cortex_prometheus_rule_evaluations_total counter
+cortex_prometheus_rule_evaluations_total{user="user1"} 2
+cortex_prometheus_rule_evaluations_total{user="user2"} 20
+cortex_prometheus_rule_evaluations_total{user="user3"} 200
+# HELP cortex_prometheus_rule_group_duration_seconds The duration of rule group evaluations.
+# TYPE cortex_prometheus_rule_group_duration_seconds summary
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.01"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.05"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.5"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.9"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user1",quantile="0.99"} 1
+cortex_prometheus_rule_group_duration_seconds_sum{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds_count{user="user1"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.01"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.05"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.5"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.9"} 10
+cortex_prometheus_rule_group_duration_seconds{user="user2",quantile="0.99"} 10
+cortex_prometheus_rule_group_duration_seconds_sum{user="user2"} 10
+cortex_prometheus_rule_group_duration_seconds_count{user="user2"} 1
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.01"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.05"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.5"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.9"} 100
+cortex_prometheus_rule_group_duration_seconds{user="user3",quantile="0.99"} 100
+cortex_prometheus_rule_group_duration_seconds_sum{user="user3"} 100
+cortex_prometheus_rule_group_duration_seconds_count{user="user3"} 1
+# HELP cortex_prometheus_rule_group_iterations_missed_total The total number of rule group evaluations missed due to slow rule group evaluation.
+# TYPE cortex_prometheus_rule_group_iterations_missed_total counter
+cortex_prometheus_rule_group_iterations_missed_total{user="user1"} 2
+cortex_prometheus_rule_group_iterations_missed_total{user="user2"} 20
+cortex_prometheus_rule_group_iterations_missed_total{user="user3"} 200
+# HELP cortex_prometheus_rule_group_iterations_total The total number of scheduled rule group evaluations, whether executed or missed.
+# TYPE cortex_prometheus_rule_group_iterations_total counter
+cortex_prometheus_rule_group_iterations_total{user="user1"} 2
+cortex_prometheus_rule_group_iterations_total{user="user2"} 20
+cortex_prometheus_rule_group_iterations_total{user="user3"} 200
+# HELP cortex_prometheus_rule_group_last_duration_seconds The duration of the last rule group evaluation.
+# TYPE cortex_prometheus_rule_group_last_duration_seconds gauge
+cortex_prometheus_rule_group_last_duration_seconds{user="user1"} 2000
+cortex_prometheus_rule_group_last_duration_seconds{user="user2"} 20000
+cortex_prometheus_rule_group_last_duration_seconds{user="user3"} 200000
+# HELP cortex_prometheus_rule_group_last_evaluation_timestamp_seconds The timestamp of the last rule group evaluation in seconds.
+# TYPE cortex_prometheus_rule_group_last_evaluation_timestamp_seconds gauge
+cortex_prometheus_rule_group_last_evaluation_timestamp_seconds{user="user1"} 2000
+cortex_prometheus_rule_group_last_evaluation_timestamp_seconds{user="user2"} 20000
+cortex_prometheus_rule_group_last_evaluation_timestamp_seconds{user="user3"} 200000
+# HELP cortex_prometheus_rule_group_rules The number of rules.
+# TYPE cortex_prometheus_rule_group_rules gauge
+cortex_prometheus_rule_group_rules{user="user1"} 2000
+cortex_prometheus_rule_group_rules{user="user2"} 20000
+cortex_prometheus_rule_group_rules{user="user3"} 200000
 `))
 	require.NoError(t, err)
 }
@@ -265,7 +363,7 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 func TestMetricsArePerUser(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics()
+	managerMetrics := NewManagerMetrics(true)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))

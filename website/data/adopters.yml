@@ -30,6 +30,9 @@ adopters:
 - name: MayaData
   url: https://mayadata.io/
   logo: mayadata.svg
+- name: Northflank
+  url: https://northflank.com/
+  logo: northflank.svg
 - name: Opstrace
   url: https://opstrace.com/
   logo: opstrace.png

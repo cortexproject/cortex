@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -10,6 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/kv/etcd"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
@@ -17,9 +22,6 @@ import (
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
-	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 )
 
 func TestKVList(t *testing.T) {
@@ -39,7 +41,7 @@ func TestKVList(t *testing.T) {
 		sort.Strings(keys)
 		require.Equal(t, keysToCreate, keys, "returned key paths did not match created paths")
 
-		verifyClientMetrics(t, reg, map[string]uint64{
+		verifyClientMetricsHistogram(t, reg, "cortex_kv_request_duration_seconds", map[string]uint64{
 			"List": 1,
 			"CAS":  3,
 		})
@@ -63,7 +65,7 @@ func TestKVDelete(t *testing.T) {
 		require.NoError(t, err, "unexpected error")
 		require.Nil(t, v, "object was not deleted")
 
-		verifyClientMetrics(t, reg, map[string]uint64{
+		verifyClientMetricsHistogram(t, reg, "cortex_kv_request_duration_seconds", map[string]uint64{
 			"Delete": 1,
 			"CAS":    1,
 			"GET":    1,
@@ -117,7 +119,9 @@ func TestKVWatchAndDelete(t *testing.T) {
 	})
 }
 
-func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client {
+func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client {
+	t.Helper()
+
 	etcdSvc := e2edb.NewETCD()
 	require.NoError(t, scenario.StartAndWaitReady(etcdSvc))
 
@@ -131,13 +135,15 @@ func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) 
 				MaxRetries:  5,
 			},
 		},
-	}, stringCodec{}, reg)
+	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
 
 	return etcdKv
 }
 
-func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client {
+func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client {
+	t.Helper()
+
 	consulSvc := e2edb.NewConsul()
 	require.NoError(t, scenario.StartAndWaitReady(consulSvc))
 
@@ -152,14 +158,14 @@ func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer
 				WatchKeyRateLimit: 1,
 			},
 		},
-	}, stringCodec{}, reg)
+	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
 
 	return consulKv
 }
 
 func testKVs(t *testing.T, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
-	setupFns := map[string]func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client{
+	setupFns := map[string]func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client{
 		"etcd":   setupEtcd,
 		"consul": setupConsul,
 	}
@@ -171,23 +177,30 @@ func testKVs(t *testing.T, testFn func(t *testing.T, client kv.Client, reg *prom
 	}
 }
 
-func testKVScenario(t *testing.T, kvSetupFn func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer) kv.Client, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
+func testKVScenario(t *testing.T, kvSetupFn func(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, logger log.Logger) kv.Client, testFn func(t *testing.T, client kv.Client, reg *prometheus.Registry)) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
 
 	reg := prometheus.NewRegistry()
-	client := kvSetupFn(t, s, reg)
+	client := kvSetupFn(t, s, prometheus.WrapRegistererWithPrefix("cortex_", reg), log.NewNopLogger())
 	testFn(t, client, reg)
 }
 
-func verifyClientMetrics(t *testing.T, reg *prometheus.Registry, sampleCounts map[string]uint64) {
+func verifyClientMetricsHistogram(t *testing.T, reg *prometheus.Registry, metricNameToVerify string, sampleCounts map[string]uint64) {
 	metrics, err := reg.Gather()
 	require.NoError(t, err)
 
-	require.Len(t, metrics, 1)
-	require.Equal(t, "cortex_kv_request_duration_seconds", metrics[0].GetName())
-	require.Equal(t, dto.MetricType_HISTOGRAM, metrics[0].GetType())
+	var metricToVerify *dto.MetricFamily
+	for _, metric := range metrics {
+		if metric.GetName() != metricNameToVerify {
+			continue
+		}
+		metricToVerify = metric
+		break
+	}
+	require.NotNilf(t, metricToVerify, "Metric %s not found in registry", metricNameToVerify)
+	require.Equal(t, dto.MetricType_HISTOGRAM, metricToVerify.GetType())
 
 	getMetricOperation := func(labels []*dto.LabelPair) (string, error) {
 		for _, l := range labels {
@@ -198,9 +211,8 @@ func verifyClientMetrics(t *testing.T, reg *prometheus.Registry, sampleCounts ma
 		return "", errors.New("no operation")
 	}
 
-	for _, metric := range metrics[0].GetMetric() {
+	for _, metric := range metricToVerify.GetMetric() {
 		op, err := getMetricOperation(metric.Label)
-
 		require.NoErrorf(t, err, "No operation label found in metric %v", metric.String())
 		assert.Equal(t, sampleCounts[op], metric.GetHistogram().GetSampleCount(), op)
 	}

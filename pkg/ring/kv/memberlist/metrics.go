@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/dskit/services"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func (m *KV) createAndRegisterMetrics() {

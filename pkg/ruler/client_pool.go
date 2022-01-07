@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // ClientsPool is the interface used to get the client from the pool for a specified address.

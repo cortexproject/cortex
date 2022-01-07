@@ -8,11 +8,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
-	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type mockClient struct {

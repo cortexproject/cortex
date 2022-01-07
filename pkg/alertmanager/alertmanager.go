@@ -15,7 +15,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
@@ -50,6 +49,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 const (

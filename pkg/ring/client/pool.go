@@ -9,12 +9,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/ring/util"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // PoolClient is the interface that should be implemented by a

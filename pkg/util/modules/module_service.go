@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // ErrStopProcess is the error returned by a service as a hint to stop the server entirely.

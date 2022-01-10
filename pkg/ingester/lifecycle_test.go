@@ -83,7 +83,7 @@ func TestIngesterRestart(t *testing.T) {
 	}
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+		return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
 	})
 
 	{
@@ -96,7 +96,7 @@ func TestIngesterRestart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-		return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+		return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
 	})
 }
 
@@ -111,7 +111,7 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 
 			// Make sure the ingester has been added to the ring.
 			test.Poll(t, 100*time.Millisecond, 1, func() interface{} {
-				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
 			})
 
 			recorder := httptest.NewRecorder()
@@ -120,7 +120,7 @@ func TestIngester_ShutdownHandler(t *testing.T) {
 
 			// Make sure the ingester has been removed from the ring even when UnregisterFromRing is false.
 			test.Poll(t, 100*time.Millisecond, 0, func() interface{} {
-				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", ring.IngesterRingKey)
+				return numTokens(config.LifecyclerConfig.RingConfig.KVStore.Mock, "localhost", RingKey)
 			})
 		})
 	}
@@ -341,7 +341,7 @@ func TestIngesterFlush(t *testing.T) {
 	// the ring, the data is in the chunk store.
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing.lifecycler))
 	test.Poll(t, 200*time.Millisecond, 0, func() interface{} {
-		r, err := ing.lifecycler.KVStore.Get(context.Background(), ring.IngesterRingKey)
+		r, err := ing.lifecycler.KVStore.Get(context.Background(), RingKey)
 		if err != nil {
 			return -1
 		}

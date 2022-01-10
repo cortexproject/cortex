@@ -48,6 +48,9 @@ var (
 )
 
 const (
+	// ringKey is the key under which we store the rulers ring in the KVStore.
+	ringKey = "ring"
+
 	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency  = 10
 	fetchRulesConcurrency = 16
@@ -316,12 +319,12 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ring.RulerRingKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix("cortex_", r.registry))
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix("cortex_", r.registry))
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r.registry), r.logger)
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r.registry), r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}

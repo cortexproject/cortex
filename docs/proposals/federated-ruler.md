@@ -65,7 +65,7 @@ A single tenant rule always queries the tenant which owns the rule. This 1 -> 1 
 
 As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed.
 
-To support this we suggest an additional field `src_tenants` on the rule group containing an OrgID string e.g. `t0|t1|...|ti` which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.
+To support this we suggest an additional field `src_tenants` on the rule group containing an array of OrgIDs e.g. `[t0,t1,...,ti]` which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.
 
 ## Conclusion
 
